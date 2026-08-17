@@ -1,4 +1,5 @@
 // 快速添加输入框的中文自然语言解析(纯逻辑,零 DOM)。
+// 符号分工:#标签 /清单 @需求方 !优先级。
 // 策略:按固定优先级依次扫描各类 token,用字符占用表防止同一段文字被解析两次;
 // 未被占用的字符收拢空白后即标题。同一字段出现多个 token 时,按出现位置后者生效。
 
@@ -108,6 +109,8 @@ function firstOccurrence(rule: RepeatRule, today: string): string {
 
 const RE = {
   tag: /#([^\s#@!！]+)/g,
+  // '/' 必须在行首或空白之后,防止误吞 8/20 这类日期
+  list: /(?<!\S)\/([^\s#@/!！]+)/g,
   who: /@([^\s#@!！]+)/g,
   prioWord: /[!！](高|中|低)/g,
   prioBang: /[!！]+/g,
@@ -118,6 +121,8 @@ const RE = {
   repDaily: /每天/g,
   ymd: /(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])/g,
   monthDay: new RegExp(`(?<!\\d)(${NUM})月(${NUM})[日号]`, "g"),
+  monthEndN: new RegExp(`(?<!\\d)(${NUM})月底`, "g"),
+  monthPart: /月底|月初|月中|年底/g,
   mmDd: /(?<![\d-])(\d{1,2})-(\d{1,2})(?![\d-])/g,
   mmSlashDd: /(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g,
   relWord: /大后天|后天|明天|今晚|今天/g,
@@ -130,6 +135,9 @@ const RE = {
   clock: new RegExp(`(上午|早上|中午|下午|晚上)?(?<!\\d)(${NUM})点(半|(${NUM})分)?`, "g"),
   noon: /中午/g,
 };
+
+// 长词在前:「之前」自身含「前」
+const DEADLINE = ["之前", "以前", "前"];
 
 // ---------- 主入口 ----------
 
@@ -162,18 +170,24 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     return true;
   };
 
+  // eatDeadline:日期 token 紧跟的「之前/以前/前」是 deadline 语气词,一并吞掉(日期不变)
   const scan = (
     re: RegExp,
     on: (m: RegExpExecArray) => { chip: ParseChip; apply: (s: State) => void } | null,
+    eatDeadline = false,
   ): void => {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(input)) !== null) {
       const a = m.index;
-      const b = a + m[0].length;
+      let b = a + m[0].length;
       if (!free(a, b)) continue;
       const t = on(m);
       if (t === null) continue;
+      if (eatDeadline) {
+        const suf = DEADLINE.find((w) => input.startsWith(w, b));
+        if (suf !== undefined && free(b, b + suf.length)) b += suf.length;
+      }
       for (let i = a; i < b; i++) consumed[i] = true;
       tokens.push({ start: a, chip: t.chip, apply: t.apply });
     }
@@ -220,30 +234,59 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     return null;
   };
 
-  // ---- 1. #清单/标签(取到空白或下一个 #@! 为止) ----
-  // 清单归属的判定依赖「第一个命中清单的 # 生效」,# 的正则扫描顺序即出现顺序,可在扫描期定型。
-  scan(RE.tag, (m) => {
-    const name = m[1];
-    if (st.listName === null) {
-      const hit =
-        opts.listNames.find((n) => n === name) ?? opts.listNames.find((n) => n.startsWith(name));
-      if (hit !== undefined) {
-        st.listName = hit;
-        return { chip: { kind: "list", text: hit }, apply: () => {} };
+  /** 月底/月初/月中:当月对应日子已过(严格早于今天)则顺延到下个月 */
+  const resolveMonthPoint = (day: number | "end"): string => {
+    let y = Number(today.slice(0, 4));
+    let mo = Number(today.slice(5, 7));
+    for (;;) {
+      const d = day === "end" ? daysInMonth(y, mo) : day;
+      const cand = `${y}-${pad2(mo)}-${pad2(d)}`;
+      if (cmpYMD(cand, today) >= 0) return cand;
+      mo += 1;
+      if (mo > 12) {
+        mo = 1;
+        y += 1;
       }
     }
+  };
+
+  /** N月底:当年该月最后一天,已过则明年 */
+  const resolveMonthEnd = (mo: number): string | null => {
+    if (mo < 1 || mo > 12) return null;
+    let y = Number(today.slice(0, 4));
+    let cand = `${y}-${pad2(mo)}-${pad2(daysInMonth(y, mo))}`;
+    if (cmpYMD(cand, today) < 0) {
+      y += 1;
+      cand = `${y}-${pad2(mo)}-${pad2(daysInMonth(y, mo))}`;
+    }
+    return cand;
+  };
+
+  // ---- 1. #标签(只管标签,取到空白或下一个 #@! 为止) ----
+  scan(RE.tag, (m) => {
+    const name = m[1];
     st.tags.push(name);
     return { chip: { kind: "tag", text: name }, apply: () => {} };
   });
 
-  // ---- 2. @人(同一正则扫描顺序即出现顺序,直接覆盖实现「最后一个生效」) ----
+  // ---- 2. /清单(先精确后前缀,都不中原样返回交由调用方新建;扫描序即出现序,覆盖实现「最后一个生效」) ----
+  scan(RE.list, (m) => {
+    const name = m[1];
+    const hit =
+      opts.listNames.find((n) => n === name) ?? opts.listNames.find((n) => n.startsWith(name));
+    const final = hit ?? name;
+    st.listName = final;
+    return { chip: { kind: "list", text: final }, apply: () => {} };
+  });
+
+  // ---- 3. @人(同一正则扫描顺序即出现顺序,直接覆盖实现「最后一个生效」) ----
   scan(RE.who, (m) => {
     const name = m[1];
     st.who = name;
     return { chip: { kind: "who", text: name }, apply: () => {} };
   });
 
-  // ---- 3. 优先级(带字形式) ----
+  // ---- 4. 优先级(带字形式) ----
   scan(RE.prioWord, (m) => {
     const lv: Priority = m[1] === "高" ? 3 : m[1] === "中" ? 2 : 1;
     return {
@@ -254,7 +297,7 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     };
   });
 
-  // ---- 4. 循环(须在日期之前:每周一/每月28号 会被 周一/28号 抢走) ----
+  // ---- 5. 循环(须在日期之前:每周一/每月28号 会被 周一/28号 抢走) ----
   scan(RE.repWorkday, () => ({
     chip: { kind: "repeat", text: "每个工作日" },
     apply: (s) => {
@@ -301,93 +344,163 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     },
   }));
 
-  // ---- 5. 日期(长格式在前,防止部分吞噬) ----
-  scan(RE.ymd, (m) => {
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const d = Number(m[3]);
-    if (mo < 1 || mo > 12 || d < 1 || d > daysInMonth(y, mo)) return null;
-    const ymd = `${y}-${pad2(mo)}-${pad2(d)}`;
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  // ---- 6. 日期(长格式在前,防止部分吞噬;末参 true = 吞「之前/以前/前」后缀) ----
+  scan(
+    RE.ymd,
+    (m) => {
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const d = Number(m[3]);
+      if (mo < 1 || mo > 12 || d < 1 || d > daysInMonth(y, mo)) return null;
+      const ymd = `${y}-${pad2(mo)}-${pad2(d)}`;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.monthDay, (m) => {
-    const mo = num(m[1]);
-    const d = num(m[2]);
-    if (mo === null || d === null) return null;
-    const ymd = resolveMonthDay(mo, d);
-    if (ymd === null) return null;
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.monthDay,
+    (m) => {
+      const mo = num(m[1]);
+      const d = num(m[2]);
+      if (mo === null || d === null) return null;
+      const ymd = resolveMonthDay(mo, d);
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.mmDd, (m) => {
-    const ymd = resolveMonthDay(Number(m[1]), Number(m[2]));
-    if (ymd === null) return null;
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  // N月底(须在裸「月底」之前,否则「十月底」的「十」会漏在标题里)
+  scan(
+    RE.monthEndN,
+    (m) => {
+      const mo = num(m[1]);
+      if (mo === null) return null;
+      const ymd = resolveMonthEnd(mo);
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.mmSlashDd, (m) => {
-    const ymd = resolveMonthDay(Number(m[1]), Number(m[2]));
-    if (ymd === null) return null;
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  // 月底/月初/月中/年底
+  scan(
+    RE.monthPart,
+    (m) => {
+      const w = m[0];
+      let ymd: string;
+      if (w === "年底") {
+        const y = Number(today.slice(0, 4));
+        ymd = cmpYMD(`${y}-12-31`, today) >= 0 ? `${y}-12-31` : `${y + 1}-12-31`;
+      } else {
+        ymd = resolveMonthPoint(w === "月底" ? "end" : w === "月初" ? 1 : 15);
+      }
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.relWord, (m) => {
-    const w = m[0];
-    if (w === "今晚") {
-      return {
-        chip: { kind: "date", text: "今晚" },
-        apply: (s) => {
-          s.due = today;
-          s.dateSet = true;
-          s.tonight = true;
-        },
-      };
-    }
-    const off = w === "今天" ? 0 : w === "明天" ? 1 : w === "后天" ? 2 : 3;
-    const ymd = addDays(today, off);
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.mmDd,
+    (m) => {
+      const ymd = resolveMonthDay(Number(m[1]), Number(m[2]));
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  scan(
+    RE.mmSlashDd,
+    (m) => {
+      const ymd = resolveMonthDay(Number(m[1]), Number(m[2]));
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  scan(
+    RE.relWord,
+    (m) => {
+      const w = m[0];
+      if (w === "今晚") {
+        return {
+          chip: { kind: "date", text: "今晚" },
+          apply: (s) => {
+            s.due = today;
+            s.dateSet = true;
+            s.tonight = true;
+          },
+        };
+      }
+      const off = w === "今天" ? 0 : w === "明天" ? 1 : w === "后天" ? 2 : 3;
+      const ymd = addDays(today, off);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
   // 上/下/本 + 周X:以周一为一周开始的自然周定位(「上周X」为容错,产出过去日期)
-  scan(RE.otherWeek, (m) => {
-    const target = DAY_CH[m[2]];
-    const off = target === 0 ? 6 : target - 1;
-    const shift = m[1] === "下" ? 7 : m[1] === "上" ? -7 : 0;
-    const ymd = addDays(weekStart(today), shift + off);
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.otherWeek,
+    (m) => {
+      const target = DAY_CH[m[2]];
+      const off = target === 0 ? 6 : target - 1;
+      const shift = m[1] === "下" ? 7 : m[1] === "上" ? -7 : 0;
+      const ymd = addDays(weekStart(today), shift + off);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
   // 周X/星期X:>= 今天的最近一个(今天就是周X 时取今天)
-  scan(RE.weekday, (m) => {
-    const delta = (DAY_CH[m[1]] - dayOfWeek(today) + 7) % 7;
-    const ymd = addDays(today, delta);
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.weekday,
+    (m) => {
+      const delta = (DAY_CH[m[1]] - dayOfWeek(today) + 7) % 7;
+      const ymd = addDays(today, delta);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.daysAfter, (m) => {
-    const n = num(m[1]);
-    if (n === null) return null;
-    const ymd = addDays(today, n);
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.daysAfter,
+    (m) => {
+      const n = num(m[1]);
+      if (n === null) return null;
+      const ymd = addDays(today, n);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.weeksAfter, (m) => {
-    const n = num(m[1]);
-    if (n === null) return null;
-    const ymd = addDays(today, n * 7);
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.weeksAfter,
+    (m) => {
+      const n = num(m[1]);
+      if (n === null) return null;
+      const ymd = addDays(today, n * 7);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  scan(RE.bareDay, (m) => {
-    const d = num(m[1]);
-    if (d === null) return null;
-    const ymd = resolveBareDay(d);
-    if (ymd === null) return null;
-    return { chip: dateChip(ymd), apply: setDate(ymd) };
-  });
+  scan(
+    RE.bareDay,
+    (m) => {
+      const d = num(m[1]);
+      if (d === null) return null;
+      const ymd = resolveBareDay(d);
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
 
-  // ---- 6. 时间 ----
+  // ---- 7. 时间 ----
   scan(RE.hhmm, (m) => {
     const h = Number(m[1]);
     const mi = Number(m[2]);
@@ -432,8 +545,8 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     },
   }));
 
-  // ---- 7. 裸感叹号串(放最后:此时紧随的 token 已被占用,可视作边界) ----
-  // 紧跟普通正文(「!棒」)时按标点处理,不吞。
+  // ---- 8. 裸感叹号串(放最后:此时紧随的 token 已被占用,可视作边界) ----
+  // 全角/半角混合按总长度计级;紧跟普通正文(「!棒」)时按标点处理,不吞。
   scan(RE.prioBang, (m) => {
     const b = m.index + m[0].length;
     if (b < input.length && !consumed[b] && !/[\s#@]/.test(input[b])) return null;

@@ -3,14 +3,14 @@
 
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import type { AppData, List, Priority, RepeatRule, Settings, Task } from "./model";
+import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task } from "./model";
 import { defaultData, newId, newTask } from "./model";
 import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
 export type ViewId =
-  | "inbox" | "today" | "upcoming" | "anytime" | "logbook"
+  | "inbox" | "today" | "upcoming" | "all" | "logbook"
   | "calendar" | "quadrant" | "focus" | "stats" | "settings"
   | "list" | "who" | "tag" | "trash";
 
@@ -27,6 +27,8 @@ export interface UIState {
   searchOpen: boolean;
   paletteOpen: boolean;
   toast: { msg: string; undoable: boolean; key: number } | null;
+  /** 自定义右键菜单：null = 关闭 */
+  ctxMenu: { x: number; y: number; ids: string[] } | null;
 }
 
 export interface FocusState {
@@ -58,6 +60,7 @@ export const appStore = createStore<AppState>(() => ({
   ui: {
     view: "today", listId: null, who: null, tag: null,
     expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
+    ctxMenu: null,
   },
   focus: { taskId: null, running: false, endsAt: null, totalMinutes: 0 },
   undoDepth: 0,
@@ -199,7 +202,6 @@ export interface AddTaskInput {
   dueTime?: string | null;
   repeat?: RepeatRule | null;
   notes?: string;
-  someday?: boolean;
 }
 
 /** 日期变化后提醒的再生规则：dueTime 是第一来源（响过而被清空的提醒随新日期复活），
@@ -220,7 +222,6 @@ export function addTask(input: AddTaskInput): string {
     due: input.due ?? null,
     dueTime: input.dueTime ?? null,
     repeat: input.repeat ?? null,
-    someday: input.someday ?? false,
     order: Date.now(),
   });
   // 有日期+时间 → 自动带提醒；只有日期不打扰
@@ -269,7 +270,8 @@ export function completeTask(id: string) {
         due: nd,
         // dueTime 优先再生提醒：响过的提醒（已被 sweep 清成 null）要在新落点复活
         reminder: regenReminder(t, nd),
-        subtasks: t.subtasks.map((s) => ({ ...s, done: false })),
+        // 子任务的专属日期属于上一轮，随循环推进一并清掉（重新继承母任务）
+        subtasks: t.subtasks.map((s) => ({ ...s, done: false, due: null, dueTime: null })),
         postponeCount: 0,
       };
       return { ...d, tasks: d.tasks.map((x) => (x.id === id ? advanced : x)).concat(doneCopy) };
@@ -349,7 +351,7 @@ export function setTasksDue(ids: string[], due: string | null) {
       if (!ids.includes(t.id)) return t;
       const postpone = t.due && due && cmpYMD(due, t.due) > 0 ? 1 : 0;
       return {
-        ...t, due, someday: due ? false : t.someday,
+        ...t, due,
         postponeCount: t.postponeCount + postpone,
         reminder: due ? regenReminder(t, due) : null,
       };
@@ -375,6 +377,18 @@ export function toggleSubtask(taskId: string, subId: string) {
     tasks: d.tasks.map((t) =>
       t.id === taskId
         ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, done: !s.done } : s)) }
+        : t,
+    ),
+  }));
+}
+
+/** 子任务字段更新（自己的日期/优先级/标题） */
+export function updateSubtask(taskId: string, subId: string, patch: Partial<Subtask>) {
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) =>
+      t.id === taskId
+        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, ...patch } : s)) }
         : t,
     ),
   }));
@@ -489,33 +503,94 @@ export function setFocusState(patch: Partial<FocusState>) {
   appStore.setState({ focus: { ...appStore.getState().focus, ...patch } });
 }
 
+export function openCtxMenu(x: number, y: number, ids: string[]) {
+  const ui = appStore.getState().ui;
+  appStore.setState({ ui: { ...ui, ctxMenu: { x, y, ids } } });
+}
+
+export function closeCtxMenu() {
+  const ui = appStore.getState().ui;
+  if (ui.ctxMenu) appStore.setState({ ui: { ...ui, ctxMenu: null } });
+}
+
 // ---------- 派生查询（UI 共用；返回未删除任务） ----------
 
 export function aliveTasks(d: AppData): Task[] {
   return d.tasks.filter((t) => !t.deletedAt);
 }
 
-export function tasksForToday(d: AppData, today = todayYMD()): { overdue: Task[]; todays: Task[]; doneToday: Task[] } {
-  const alive = aliveTasks(d);
-  const overdue = alive
-    .filter((t) => !t.done && t.due && cmpYMD(t.due, today) < 0)
-    .sort(byPriorityThenOrder);
-  const todays = alive
-    .filter((t) => !t.done && t.due === today)
-    .sort(byPriorityThenOrder);
-  const doneToday = alive
+/** 日期视图的统一行：母任务本身，或带自己日期的子任务（sub 非 null 时） */
+export interface DateRow {
+  task: Task;
+  sub: Subtask | null;
+}
+
+export function rowDue(r: DateRow): string | null {
+  return r.sub ? r.sub.due ?? null : r.task.due;
+}
+
+export function rowTime(r: DateRow): string | null {
+  return r.sub ? r.sub.dueTime ?? null : r.task.dueTime;
+}
+
+export function rowPriority(r: DateRow): Priority {
+  return r.sub ? r.sub.priority ?? r.task.priority : r.task.priority;
+}
+
+/** 所有会出现在日期/总览视图里的未完成行：未完成母任务 + 有自己日期的未完成子任务 */
+export function openRows(d: AppData): DateRow[] {
+  const rows: DateRow[] = [];
+  for (const t of aliveTasks(d)) {
+    if (t.done) continue;
+    rows.push({ task: t, sub: null });
+    for (const s of t.subtasks) {
+      if (!s.done && s.due) rows.push({ task: t, sub: s });
+    }
+  }
+  return rows;
+}
+
+/** 排序：time = 时间优先（同时间按重要性）；priority = 重要性优先（同级按时间）。无日期的都排最后 */
+export function sortRows(rows: DateRow[], mode: "time" | "priority"): DateRow[] {
+  const key = (r: DateRow) => `${rowDue(r) ?? "9999-99-99"}T${rowTime(r) ?? "99:99"}`;
+  return [...rows].sort((a, b) => {
+    if (mode === "priority") {
+      if (rowPriority(a) !== rowPriority(b)) return rowPriority(b) - rowPriority(a);
+      const ka = key(a), kb = key(b);
+      if (ka !== kb) return ka < kb ? -1 : 1;
+    } else {
+      const ka = key(a), kb = key(b);
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      if (rowPriority(a) !== rowPriority(b)) return rowPriority(b) - rowPriority(a);
+    }
+    return a.task.order - b.task.order;
+  });
+}
+
+export function tasksForToday(d: AppData, today = todayYMD()): { overdue: DateRow[]; todays: DateRow[]; doneToday: Task[] } {
+  const mode = d.settings.sortMode;
+  const rows = openRows(d);
+  const overdue = sortRows(rows.filter((r) => { const due = rowDue(r); return due && cmpYMD(due, today) < 0; }), mode);
+  const todays = sortRows(rows.filter((r) => rowDue(r) === today), mode);
+  const doneToday = aliveTasks(d)
     // doneAt 是 UTC ISO，必须转回本地日期再归日，否则本地 0-8 点完成的会归到昨天
     .filter((t) => t.done && t.doneAt && toYMD(new Date(t.doneAt)) === today)
     .sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : -1));
   return { overdue, todays, doneToday };
 }
 
+/** 旧比较器：仍被四象限等纯任务列表使用 */
 export function byPriorityThenOrder(a: Task, b: Task): number {
   if (a.priority !== b.priority) return b.priority - a.priority;
   const at = a.dueTime ?? "99:99";
   const bt = b.dueTime ?? "99:99";
   if (at !== bt) return at < bt ? -1 : 1;
   return a.order - b.order;
+}
+
+/** 任务列表按设置排序（不含子任务行的场景用） */
+export function sortTasks(tasks: Task[], mode: "time" | "priority"): Task[] {
+  return sortRows(tasks.map((t) => ({ task: t, sub: null })), mode).map((r) => r.task);
 }
 
 /** 需求方列表（按未完成任务数降序） */

@@ -1,0 +1,66 @@
+/* 右键菜单 .ctx-：与 .popmenu 同质感，fixed 定位；子菜单悬停右弹，右缘不够向左翻 */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 192px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: 6px;
+  animation: card-in .12s ease-out;
+}
+
+/* 多选时的头部小字 */
+.ctx-count {
+  padding: 2px 10px 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  letter-spacing: .5px;
+}
+
+.ctx-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 10px; border-radius: var(--r-sm);
+  font-size: 13px; color: var(--ink); text-align: left;
+  white-space: nowrap;
+}
+.ctx-item:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* 删除项：红色悬停态（红与 base.css 的 .btn.danger 一致） */
+.ctx-item.ctx-danger:hover { background: rgba(192, 86, 74, .12); color: #C0564A; }
+
+.ctx-caret { margin-left: auto; padding-left: 14px; color: var(--ink-3); font-size: 11px; }
+.ctx-item:hover .ctx-caret { color: inherit; }
+
+.ctx-sep { height: 1px; background: var(--hair); margin: 5px 8px; }
+
+/* 子菜单：挂在父项上右弹；打开期间父项保持高亮 */
+.ctx-subwrap { position: relative; }
+.ctx-subwrap.open > .ctx-item { background: var(--accent-soft); color: var(--accent); }
+.ctx-subwrap.open > .ctx-item .ctx-caret { color: inherit; }
+.ctx-submenu {
+  position: absolute; top: -7px; left: calc(100% + 2px);
+  min-width: 150px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: 6px;
+  animation: card-in .12s ease-out;
+}
+.ctx-submenu.flip { left: auto; right: calc(100% + 2px); }
+
+/* 清单色点 */
+.ctx-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* 需求方内联输入 */
+.ctx-input {
+  width: calc(100% - 8px); margin: 2px 4px;
+  border: 1px solid var(--hair); background: var(--bg);
+  border-radius: var(--r-sm); padding: 5px 9px;
+  outline: none; font-size: 13px; color: var(--ink);
+}
+.ctx-input:focus { border-color: var(--accent); }
+.ctx-input::placeholder { color: var(--ink-3); }

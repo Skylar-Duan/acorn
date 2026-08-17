@@ -1,14 +1,11 @@
 // 「随手记一条」浮窗：独立小窗，Alt+Space 唤起。
-// 不碰数据文件——解析后把结果发给主窗落库，用完即隐。
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// 不碰数据文件——解析后把结果发给主窗落库，用完即隐。补全候选（清单/标签/需求方）由主窗随 context 事件下发。
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "../styles/themes.css";
 import "../styles/base.css";
-import { parseQuickAdd } from "../core/parse";
-
-const CHIP_ICON: Record<string, string> = {
-  date: "📅", time: "🕒", repeat: "↻", list: "▤", tag: "#", who: "＠", priority: "⚑",
-};
+import type { ParseResult } from "../core/parse";
+import SyntaxInput from "../components/SyntaxInput";
 
 function applyThemeAttrs(theme: string, mode: string) {
   const el = document.documentElement;
@@ -19,40 +16,41 @@ function applyThemeAttrs(theme: string, mode: string) {
       : mode;
 }
 
+interface Ctx {
+  listNames: string[];
+  tagNames: string[];
+  whoNames: string[];
+  theme: string;
+  mode: string;
+}
+
 function QuickAddApp() {
   const [text, setText] = useState("");
-  const [listNames, setListNames] = useState<string[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [ctx, setCtx] = useState<Ctx>({ listNames: [], tagNames: [], whoNames: [], theme: "forest", mode: "system" });
 
   useEffect(() => {
     applyThemeAttrs("forest", "system");
     void (async () => {
       const { listen, emitTo } = await import("@tauri-apps/api/event");
-      await listen<{ listNames: string[]; theme: string; mode: string }>("quickadd:context", (e) => {
-        setListNames(e.payload.listNames);
+      await listen<Ctx>("quickadd:context", (e) => {
+        setCtx(e.payload);
         applyThemeAttrs(e.payload.theme, e.payload.mode);
       });
       await listen("quickadd:show", async () => {
         setText("");
         await emitTo("main", "quickadd:pull", {});
-        setTimeout(() => inputRef.current?.focus(), 50);
       });
       await emitTo("main", "quickadd:pull", {});
     })();
   }, []);
-
-  const parsed = useMemo(() => {
-    if (!text.trim()) return null;
-    return parseQuickAdd(text, { now: new Date(), listNames });
-  }, [text, listNames]);
 
   async function hide() {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     await getCurrentWindow().hide();
   }
 
-  async function submit() {
-    if (!parsed || !parsed.title.trim()) return;
+  async function submit(parsed: ParseResult) {
+    if (!parsed.title.trim()) return;
     const { emitTo } = await import("@tauri-apps/api/event");
     await emitTo("main", "quickadd:submit", {
       title: parsed.title.trim(),
@@ -75,6 +73,9 @@ function QuickAddApp() {
         boxShadow: "var(--shadow)", padding: "16px 18px", margin: 8,
         display: "flex", flexDirection: "column", gap: 10,
       }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") void hide();
+      }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }} data-tauri-drag-region>
         <span style={{ fontFamily: "var(--serif)", fontSize: 15, letterSpacing: 2, color: "var(--ink-2)" }} data-tauri-drag-region>
@@ -82,26 +83,18 @@ function QuickAddApp() {
         </span>
         <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>Esc 关闭 · 回车收下</span>
       </div>
-      <input
-        ref={inputRef}
-        className="input"
-        autoFocus
-        style={{ fontSize: 15, padding: "10px 14px" }}
-        placeholder="想到什么记什么…「周五下午3点 提交周报 #工作 @李哥 !高」"
+      <SyntaxInput
         value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.nativeEvent.isComposing) void submit();
-          if (e.key === "Escape") void hide();
-        }}
+        onChange={setText}
+        onSubmit={submit}
+        autoFocus
+        placeholder="想到什么记什么…「周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"
+        lists={ctx.listNames}
+        tags={ctx.tagNames}
+        whos={ctx.whoNames}
+        showChips
+        inputStyle={{ fontSize: 15, padding: "10px 14px" }}
       />
-      <div style={{ display: "flex", gap: 6, minHeight: 22, flexWrap: "wrap" }}>
-        {parsed?.chips.map((c, i) => (
-          <span key={i} className="chip">
-            {CHIP_ICON[c.kind] ?? ""} {c.text}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

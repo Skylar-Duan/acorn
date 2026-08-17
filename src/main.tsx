@@ -4,7 +4,8 @@ import App from "./App";
 import "./styles/themes.css";
 import "./styles/base.css";
 import "./styles/app.css";
-import { initStore, addTask, appStore, flushSave, showToast } from "./core/store";
+import { addList, addTask, allTags, allWho, appStore, flushSave, initStore, showToast } from "./core/store";
+import { LIST_COLORS } from "./core/model";
 import { startThemeSync } from "./core/themeCtl";
 import { startReminderLoop } from "./core/reminders";
 import { wireFocusCommands } from "./core/focusCtl";
@@ -44,6 +45,8 @@ void (async () => {
       const d = appStore.getState().data;
       await emitTo("quickadd", "quickadd:context", {
         listNames: d.lists.map((l) => l.name),
+        tagNames: allTags(d).map((t) => t.tag),
+        whoNames: allWho(d).map((w) => w.who),
         theme: d.settings.theme,
         mode: d.settings.mode,
       });
@@ -56,7 +59,12 @@ void (async () => {
         return;
       }
       const { listName, ...input } = e.payload;
-      const listId = listName ? s.data.lists.find((l) => l.name === listName)?.id ?? null : null;
+      let listId: string | null = null;
+      if (listName) {
+        const hit = s.data.lists.find((l) => l.name === listName);
+        // /新清单 自动创建
+        listId = hit ? hit.id : addList(listName, LIST_COLORS[s.data.lists.length % LIST_COLORS.length]);
+      }
       addTask({ ...input, listId });
       showToast("已收下 🌰", false);
     });

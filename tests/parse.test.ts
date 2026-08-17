@@ -159,6 +159,101 @@ describe("日期 · N天后/N周后", () => {
   });
 });
 
+describe("日期 · 月底家族", () => {
+  it("月底 = 当月最后一天", () => {
+    const r = p("月底 报销");
+    expect(r.due).toBe("2026-08-31");
+    expect(r.title).toBe("报销");
+    expect(r.chips[0]).toEqual({ kind: "date", text: "8月31日" });
+  });
+
+  it("月底:now 已是当月最后一天 → 就是今天(不跳下月)", () => {
+    const r = p("月底 冲刺", new Date(2026, 7, 31, 9, 0)); // 2026-08-31 周一
+    expect(r.due).toBe("2026-08-31");
+    expect(r.title).toBe("冲刺");
+  });
+
+  it("十月底(汉字月份)", () => {
+    const r = p("十月底 交材料");
+    expect(r.due).toBe("2026-10-31");
+    expect(r.title).toBe("交材料");
+  });
+
+  it("3月底 已过 → 明年", () => {
+    expect(p("3月底 续约").due).toBe("2027-03-31");
+  });
+
+  it("二月底 已过 → 明年二月末(平年 28 号)", () => {
+    expect(p("二月底 报表").due).toBe("2027-02-28");
+  });
+
+  it("8月底 = 本月底(未过不跳年)", () => {
+    expect(p("8月底 结项").due).toBe("2026-08-31");
+  });
+
+  it("月初 已过 → 下月 1 号", () => {
+    const r = p("月初 交房租");
+    expect(r.due).toBe("2026-09-01");
+    expect(r.title).toBe("交房租");
+  });
+
+  it("月初:now 恰是 1 号 → 当天", () => {
+    expect(p("月初 交房租", new Date(2026, 8, 1, 8, 0)).due).toBe("2026-09-01");
+  });
+
+  it("月中 已过 → 下月 15 号", () => {
+    expect(p("月中 发工资").due).toBe("2026-09-15");
+  });
+
+  it("月中:15 号未过 → 当月 15 号", () => {
+    expect(p("月中 查进度", new Date(2026, 7, 10, 8, 0)).due).toBe("2026-08-15");
+  });
+
+  it("年底 = 当年 12月31日", () => {
+    const r = p("年底 年度总结");
+    expect(r.due).toBe("2026-12-31");
+    expect(r.title).toBe("年度总结");
+  });
+});
+
+describe("日期 · 之前后缀(deadline 语气词,日期不变)", () => {
+  it("十月底之前 交材料", () => {
+    const r = p("十月底之前 交材料");
+    expect(r.due).toBe("2026-10-31");
+    expect(r.title).toBe("交材料");
+  });
+
+  it("明天之前 回复邮件", () => {
+    const r = p("明天之前 回复邮件");
+    expect(r.due).toBe("2026-08-22");
+    expect(r.title).toBe("回复邮件");
+  });
+
+  it("月底前 报销", () => {
+    const r = p("月底前 报销");
+    expect(r.due).toBe("2026-08-31");
+    expect(r.title).toBe("报销");
+  });
+
+  it("周五以前 提交周报", () => {
+    const r = p("周五以前 提交周报");
+    expect(r.due).toBe("2026-08-21");
+    expect(r.title).toBe("提交周报");
+  });
+
+  it("9月1号之前 缴学费", () => {
+    const r = p("9月1号之前 缴学费");
+    expect(r.due).toBe("2026-09-01");
+    expect(r.title).toBe("缴学费");
+  });
+
+  it("后缀不相邻(隔空白)不吞:「明天 之前的会议纪要」", () => {
+    const r = p("明天 之前的会议纪要");
+    expect(r.due).toBe("2026-08-22");
+    expect(r.title).toBe("之前的会议纪要");
+  });
+});
+
 describe("时间", () => {
   it("HH:MM 未过 → 今天", () => {
     const r = p("14:30 面试");
@@ -309,39 +404,93 @@ describe("循环", () => {
   });
 });
 
-describe("清单与标签", () => {
-  it("#精确命中清单", () => {
+describe("标签(#只管标签)", () => {
+  it("#与清单同名也进 tags,不再产生 listName", () => {
     const r = p("#工作 写方案");
-    expect(r.listName).toBe("工作");
-    expect(r.tags).toEqual([]);
+    expect(r.listName).toBeNull();
+    expect(r.tags).toEqual(["工作"]);
     expect(r.title).toBe("写方案");
-    expect(r.chips[0]).toEqual({ kind: "list", text: "工作" });
+    expect(r.chips[0]).toEqual({ kind: "tag", text: "工作" });
   });
 
-  it("#前缀命中清单", () => {
+  it("#清单名前缀也只是 tag", () => {
     const r = p("#工 写方案");
-    expect(r.listName).toBe("工作");
-    expect(r.tags).toEqual([]);
+    expect(r.listName).toBeNull();
+    expect(r.tags).toEqual(["工"]);
   });
 
-  it("反例:#不存在的清单 → 进 tags", () => {
+  it("#任意词 → 进 tags", () => {
     const r = p("#不存在的清单 试试");
     expect(r.listName).toBeNull();
     expect(r.tags).toEqual(["不存在的清单"]);
     expect(r.chips[0]).toEqual({ kind: "tag", text: "不存在的清单" });
   });
 
-  it("多个 #:第一个命中清单的作 listName,其余全是 tags", () => {
+  it("多个 #:全部按出现顺序进 tags", () => {
     const r = p("#工作 #重要 #生活 整理");
+    expect(r.listName).toBeNull();
+    expect(r.tags).toEqual(["工作", "重要", "生活"]);
+    expect(r.title).toBe("整理");
+  });
+});
+
+describe("清单(/)", () => {
+  it("/精确命中清单", () => {
+    const r = p("/工作 写方案");
     expect(r.listName).toBe("工作");
-    expect(r.tags).toEqual(["重要", "生活"]);
+    expect(r.tags).toEqual([]);
+    expect(r.title).toBe("写方案");
+    expect(r.chips[0]).toEqual({ kind: "list", text: "工作" });
+  });
+
+  it("/前缀命中清单:「/工」→ 工作", () => {
+    const r = p("/工 写方案");
+    expect(r.listName).toBe("工作");
+    expect(r.tags).toEqual([]);
+  });
+
+  it("/未命中 → 原样返回作 listName(调用方自动新建)", () => {
+    const r = p("/新清单 试试");
+    expect(r.listName).toBe("新清单");
+    expect(r.tags).toEqual([]);
+    expect(r.title).toBe("试试");
+    expect(r.chips[0]).toEqual({ kind: "list", text: "新清单" });
+  });
+
+  it("多个 /:最后一个生效,chips 保留全部", () => {
+    const r = p("/生活 /工作 整理");
+    expect(r.listName).toBe("工作");
+    expect(r.chips.filter((c) => c.kind === "list")).toHaveLength(2);
     expect(r.title).toBe("整理");
   });
 
-  it("第一个 # 未命中、第二个命中 → 第二个作 listName", () => {
-    const r = p("#随手记 #工作 记账");
+  it("「8/20」不被 / 规则误吞:仍是日期", () => {
+    const r = p("8/20 交材料");
+    expect(r.listName).toBeNull();
+    expect(r.due).toBe("2027-08-20"); // 8月20日已过 → 明年
+    expect(r.title).toBe("交材料");
+    expect(r.chips[0]?.kind).toBe("date");
+  });
+
+  it("正文中间无空白的 / 不触发:「下载A/B测试报告」", () => {
+    const r = p("下载A/B测试报告");
+    expect(r.listName).toBeNull();
+    expect(r.title).toBe("下载A/B测试报告");
+    expect(r.chips).toEqual([]);
+  });
+
+  it("/清单名取到下一个 ! 符号为止:「/工作!高」", () => {
+    const r = p("跟进合同 /工作!高");
     expect(r.listName).toBe("工作");
-    expect(r.tags).toEqual(["随手记"]);
+    expect(r.priority).toBe(3);
+    expect(r.title).toBe("跟进合同");
+  });
+
+  it("# 与 / 并存:各管各的", () => {
+    const r = p("#重要 /工作 开会");
+    expect(r.listName).toBe("工作");
+    expect(r.tags).toEqual(["重要"]);
+    expect(r.title).toBe("开会");
   });
 });
 
@@ -401,6 +550,32 @@ describe("优先级", () => {
     expect(r.title).toBe("买菜");
   });
 
+  it("全角句尾:报税！ = 1", () => {
+    const r = p("报税！");
+    expect(r.priority).toBe(1);
+    expect(r.title).toBe("报税");
+  });
+
+  it("全角:！！ = 2", () => {
+    const r = p("！！ 优化启动");
+    expect(r.priority).toBe(2);
+    expect(r.title).toBe("优化启动");
+  });
+
+  it("全角:！！！ = 3", () => {
+    expect(p("！！！ 处理线上事故").priority).toBe(3);
+  });
+
+  it("混合:!！ = 2", () => {
+    const r = p("催审批 !！");
+    expect(r.priority).toBe(2);
+    expect(r.title).toBe("催审批");
+  });
+
+  it("超过 3 个一律 3:！！！！", () => {
+    expect(p("！！！！ 加急").priority).toBe(3);
+  });
+
   it("反例:「!棒」不吞正文", () => {
     const r = p("!棒 点子");
     expect(r.priority).toBe(0);
@@ -410,8 +585,8 @@ describe("优先级", () => {
 });
 
 describe("组合与标题清理", () => {
-  it("周五下午3点 提交周报 #工作 @李哥 !高", () => {
-    const r = p("周五下午3点 提交周报 #工作 @李哥 !高");
+  it("周五下午3点 提交周报 /工作 @李哥 !高", () => {
+    const r = p("周五下午3点 提交周报 /工作 @李哥 !高");
     expect(r.due).toBe("2026-08-21"); // now 为周五 → 今天
     expect(r.dueTime).toBe("15:00");
     expect(r.listName).toBe("工作");
@@ -422,6 +597,13 @@ describe("组合与标题清理", () => {
     expect(r.chips.map((c) => c.kind)).toEqual(["date", "time", "list", "who", "priority"]);
   });
 
+  it("同样组合改用 #:进 tags,listName 为空", () => {
+    const r = p("周五下午3点 提交周报 #工作 @李哥 !高");
+    expect(r.listName).toBeNull();
+    expect(r.tags).toEqual(["工作"]);
+    expect(r.chips.map((c) => c.kind)).toEqual(["date", "time", "tag", "who", "priority"]);
+  });
+
   it("每月28号 还信用卡 21:00", () => {
     const r = p("每月28号 还信用卡 21:00");
     expect(r.repeat).toEqual({ kind: "monthly", day: 28 });
@@ -430,8 +612,8 @@ describe("组合与标题清理", () => {
     expect(r.title).toBe("还信用卡");
   });
 
-  it("明天上午11点@王姐 对账 #生活", () => {
-    const r = p("明天上午11点@王姐 对账 #生活");
+  it("明天上午11点@王姐 对账 /生活", () => {
+    const r = p("明天上午11点@王姐 对账 /生活");
     expect(r.due).toBe("2026-08-22");
     expect(r.dueTime).toBe("11:00");
     expect(r.who).toBe("王姐");

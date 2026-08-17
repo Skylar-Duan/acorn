@@ -35,13 +35,14 @@ export async function maybeRunSmoke(): Promise<boolean> {
     const reread = await persist.loadData();
     check("落盘后重读", !!reread && reread.tasks.some((t) => t.id === id1) && reread.tasks.find((t) => t.id === id2)?.done === true);
 
-    const p = parseQuickAdd("明天下午3点 交周报 #工作 @李哥 !高", {
+    const p = parseQuickAdd("明天下午3点 交周报 /工作 @李哥 #紧要 !高", {
       now: new Date(),
       listNames: ["工作"],
     });
     check(
       "中文解析",
-      p.due === addDays(today, 1) && p.dueTime === "15:00" && p.listName === "工作" && p.who === "李哥" && p.priority === 3,
+      p.due === addDays(today, 1) && p.dueTime === "15:00" && p.listName === "工作" &&
+        p.who === "李哥" && p.priority === 3 && p.tags.includes("紧要"),
       JSON.stringify(p),
     );
 

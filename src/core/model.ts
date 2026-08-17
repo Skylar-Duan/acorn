@@ -6,6 +6,10 @@ export interface Subtask {
   id: string;
   title: string;
   done: boolean;
+  /** 子任务自己的日期/优先级；null/undefined = 继承母任务。有自己日期的子任务会单独出现在日期视图里 */
+  due?: string | null;
+  dueTime?: string | null;
+  priority?: Priority | null;
 }
 
 export type RepeatRule =
@@ -32,8 +36,6 @@ export interface Task {
   reminder: string | null;
   repeat: RepeatRule | null;
   subtasks: Subtask[];
-  /** 「随时」抽屉：没有日期压力的存放处 */
-  someday: boolean;
   done: boolean;
   /** ISO 完成时刻 */
   doneAt: string | null;
@@ -74,10 +76,12 @@ export interface Settings {
   focusMinutesDefault: number; // 25
   /** 只填日期没填时间的任务，提醒默认落在这个钟点 */
   reminderDefaultTime: string; // '09:00'
+  /** 列表排序：时间优先（同时间按重要性）或重要性优先 */
+  sortMode: "time" | "priority";
 }
 
 export interface AppData {
-  version: 1;
+  version: 2;
   lists: List[];
   tasks: Task[];
   sessions: FocusSession[];
@@ -102,12 +106,13 @@ export function defaultSettings(): Settings {
     autostart: false,
     focusMinutesDefault: 25,
     reminderDefaultTime: "09:00",
+    sortMode: "time",
   };
 }
 
 export function defaultData(): AppData {
   return {
-    version: 1,
+    version: 2,
     lists: [
       { id: newId(), name: "工作", color: "clay", order: 0 },
       { id: newId(), name: "生活", color: "moss", order: 1 },
@@ -131,7 +136,6 @@ export function newTask(partial: Partial<Task> & { title: string }): Task {
     reminder: null,
     repeat: null,
     subtasks: [],
-    someday: false,
     done: false,
     doneAt: null,
     createdAt: new Date().toISOString(),
@@ -143,17 +147,28 @@ export function newTask(partial: Partial<Task> & { title: string }): Task {
   };
 }
 
-/** 数据文件载入后的兜底：老版本字段补齐（向前兼容） */
+/** 数据文件载入后的兜底：老版本字段补齐、废弃字段清理（向前兼容，绝不丢数据）
+ *  v1 → v2：someday 概念取消（无日期任务统一住收件箱/全部），字段直接丢弃；
+ *  子任务补 due/dueTime/priority（默认继承母任务，存为 null） */
 export function migrate(raw: unknown): AppData {
-  const d = (raw ?? {}) as Partial<AppData>;
+  const d = (raw ?? {}) as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };
   const base = defaultData();
   const settings = { ...defaultSettings(), ...(d.settings ?? {}) };
-  const tasks = (Array.isArray(d.tasks) ? d.tasks : []).map((t) => ({
-    ...newTask({ title: "" }),
-    ...t,
-  }));
+  const tasks = (Array.isArray(d.tasks) ? d.tasks : []).map((t) => {
+    const merged = { ...newTask({ title: "" }), ...t } as Task & { someday?: boolean };
+    const { someday: _dropped, ...rest } = merged;
+    return {
+      ...rest,
+      subtasks: (rest.subtasks ?? []).map((s) => ({
+        due: null,
+        dueTime: null,
+        priority: null,
+        ...s,
+      })),
+    };
+  });
   return {
-    version: 1,
+    version: 2,
     lists: Array.isArray(d.lists) && d.lists.length ? (d.lists as List[]) : base.lists,
     tasks,
     sessions: Array.isArray(d.sessions) ? (d.sessions as FocusSession[]) : [],

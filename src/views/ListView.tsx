@@ -1,17 +1,17 @@
-// 通用列表视图：收件箱 / 随时 / 某清单 / 某需求方 / 某标签 / 日志 / 回收站 共用。
+// 通用列表视图：收件箱 / 某清单 / 某需求方 / 某标签 / 日志 / 回收站 共用。
 import { Fragment, useMemo } from "react";
 import type { Task } from "../core/model";
 import { cmpYMD, todayYMD } from "../core/dates";
 import {
-  aliveTasks, byPriorityThenOrder, deleteList, purgeTrash, renameList,
-  restoreTask, setListColor, useApp,
+  aliveTasks, deleteList, purgeTrash, renameList,
+  restoreTask, setListColor, sortTasks, useApp,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 import QuickAddBar from "../components/QuickAddBar";
 
-export type ListKind = "inbox" | "anytime" | "list" | "who" | "tag" | "logbook" | "trash";
+export type ListKind = "inbox" | "list" | "who" | "tag" | "logbook" | "trash";
 
 export default function ListView({ kind }: { kind: ListKind }) {
   const data = useApp((s) => s.data);
@@ -23,37 +23,33 @@ export default function ListView({ kind }: { kind: ListKind }) {
 
   const list = kind === "list" && listId ? data.lists.find((l) => l.id === listId) : null;
 
+  const sortMode = data.settings.sortMode;
+
   const { title, sub, tasks, showAdd, defaults, fade } = useMemo(() => {
     const alive = aliveTasks(data);
     switch (kind) {
       case "inbox":
         return {
-          title: "收件箱", sub: "还没归类、没安排日期的想法",
-          tasks: alive.filter((t) => !t.done && !t.listId && !t.due && !t.someday).sort(byPriorityThenOrder),
+          title: "收件箱", sub: "还没安排日期、没归类的想法",
+          tasks: sortTasks(alive.filter((t) => !t.done && !t.listId && !t.due), sortMode),
           showAdd: true, defaults: {}, fade: true,
-        };
-      case "anytime":
-        return {
-          title: "随时", sub: "不赶时间，有空就做",
-          tasks: alive.filter((t) => !t.done && t.someday).sort(byPriorityThenOrder),
-          showAdd: true, defaults: { someday: true }, fade: true,
         };
       case "list":
         return {
           title: list?.name ?? "清单", sub: "",
-          tasks: alive.filter((t) => !t.done && t.listId === listId).sort(sortByDueThenPriority),
+          tasks: sortTasks(alive.filter((t) => !t.done && t.listId === listId), sortMode),
           showAdd: true, defaults: { listId }, fade: true,
         };
       case "who":
         return {
           title: who ?? "需求方", sub: `为 TA 做的所有事`,
-          tasks: alive.filter((t) => !t.done && t.who === who).sort(sortByDueThenPriority),
+          tasks: sortTasks(alive.filter((t) => !t.done && t.who === who), sortMode),
           showAdd: true, defaults: { who }, fade: true,
         };
       case "tag":
         return {
           title: `# ${tag ?? ""}`, sub: "",
-          tasks: alive.filter((t) => !t.done && t.tags.includes(tag ?? "")).sort(sortByDueThenPriority),
+          tasks: sortTasks(alive.filter((t) => !t.done && t.tags.includes(tag ?? "")), sortMode),
           showAdd: false, defaults: {}, fade: true,
         };
       case "logbook":
@@ -69,7 +65,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           showAdd: false, defaults: {}, fade: false,
         };
     }
-  }, [data, kind, listId, who, tag, list]);
+  }, [data, kind, listId, who, tag, list, sortMode]);
 
   // 清单/需求方视图：按日期分组展示更有章法
   const groups: { label: string; items: Task[] }[] = useMemo(() => {
@@ -82,7 +78,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
     if (overdue.length) out.push({ label: `逾期 ${overdue.length}`, items: overdue });
     if (todays.length) out.push({ label: "今天", items: todays });
     if (later.length) out.push({ label: "以后", items: later });
-    if (nodate.length) out.push({ label: kind === "anytime" ? "" : "未安排", items: nodate });
+    if (nodate.length) out.push({ label: kind === "inbox" ? "" : "未安排", items: nodate });
     return out.length ? out : [{ label: "", items: [] }];
   }, [tasks, kind, today]);
 
@@ -175,9 +171,3 @@ export default function ListView({ kind }: { kind: ListKind }) {
   );
 }
 
-function sortByDueThenPriority(a: Task, b: Task): number {
-  const ad = a.due ?? "9999-99-99";
-  const bd = b.due ?? "9999-99-99";
-  if (ad !== bd) return ad < bd ? -1 : 1;
-  return byPriorityThenOrder(a, b);
-}

@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import Today from "./views/Today";
 import Upcoming from "./views/Upcoming";
 import ListView from "./views/ListView";
+import AllView from "./views/AllView";
 import Calendar from "./views/Calendar";
 import Quadrant from "./views/Quadrant";
 import FocusView from "./views/FocusView";
@@ -11,6 +12,7 @@ import StatsView from "./views/StatsView";
 import Settings from "./views/Settings";
 import CommandPalette from "./components/CommandPalette";
 import SearchOverlay from "./components/SearchOverlay";
+import ContextMenu from "./components/ContextMenu";
 import {
   clearSelection, completeTask, deleteTasks, dismissToast, expandTask,
   navigate, postponeTasks, setPaletteOpen, setSearchOpen, setSelection,
@@ -53,6 +55,17 @@ export default function App() {
     };
   }, [toast]);
 
+  // 屏蔽 WebView2 原生右键菜单（输入框里保留系统菜单，用户要粘贴）
+  useEffect(() => {
+    function onCtx(e: MouseEvent) {
+      const el = e.target as HTMLElement | null;
+      const editable = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (!editable) e.preventDefault();
+    }
+    document.addEventListener("contextmenu", onCtx);
+    return () => document.removeEventListener("contextmenu", onCtx);
+  }, []);
+
   // 全局快捷键
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -74,7 +87,7 @@ export default function App() {
       }
       if (mod && /^[1-5]$/.test(e.key)) {
         e.preventDefault();
-        navigate((["inbox", "today", "upcoming", "anytime", "logbook"] as const)[Number(e.key) - 1]);
+        navigate((["inbox", "today", "upcoming", "all", "logbook"] as const)[Number(e.key) - 1]);
         return;
       }
       if (inEditable()) return;
@@ -118,7 +131,7 @@ export default function App() {
       case "today": return <Today />;
       case "upcoming": return <Upcoming />;
       case "inbox": return <ListView kind="inbox" />;
-      case "anytime": return <ListView kind="anytime" />;
+      case "all": return <AllView />;
       case "logbook": return <ListView kind="logbook" />;
       case "list": return <ListView kind="list" />;
       case "who": return <ListView kind="who" />;
@@ -156,6 +169,7 @@ export default function App() {
 
       {paletteOpen && <CommandPalette />}
       {searchOpen && <SearchOverlay />}
+      <ContextMenu />
 
       {toast && (
         <div className="toast" key={toast.key}>

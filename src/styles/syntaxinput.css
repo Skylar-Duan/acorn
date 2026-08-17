@@ -1,0 +1,70 @@
+/* 快捷语法输入框（SyntaxInput）：自动补全下拉 + 解析 chips。
+   组件不带外框——快速添加条/浮窗等宿主自己包边框与底色。前缀约定 .si- */
+
+.si-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.si-input {
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+}
+.si-input::placeholder { color: var(--ink-3); }
+
+/* 解析 chips：视觉与 app.css 的 .chip 一致；这里再声明一份，供未载入 app.css 的小窗使用 */
+.si-chips { display: flex; gap: 6px; flex: none; align-items: center; }
+.si-chips .chip {
+  font-size: var(--fs-xs);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+  animation: si-chip-in .14s ease-out;
+}
+@keyframes si-chip-in { from { opacity: 0; transform: scale(.85); } }
+
+/* 自动补全下拉：挂输入框正下方的小卡 */
+.si-drop {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 0;
+  min-width: 180px;
+  max-width: 320px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: 5px;
+  z-index: 70;
+  animation: si-drop-in .12s ease-out;
+}
+@keyframes si-drop-in { from { opacity: 0; transform: translateY(-3px); } }
+
+.si-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.si-item.on { background: var(--accent-soft); color: var(--accent); }
+
+.si-mark { color: var(--ink-3); font-size: 12px; flex: none; }
+.si-item.on .si-mark { color: var(--accent); }

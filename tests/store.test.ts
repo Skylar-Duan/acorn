@@ -52,6 +52,7 @@ beforeEach(async () => {
     ui: {
       view: "today", listId: null, who: null, tag: null,
       expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
+      ctxMenu: null,
     },
     focus: { taskId: null, running: false, endsAt: null, totalMinutes: 0 },
     undoDepth: 0,
@@ -78,7 +79,6 @@ describe("addTask", () => {
     expect(t.reminder).toBeNull();
     expect(t.repeat).toBeNull();
     expect(t.subtasks).toEqual([]);
-    expect(t.someday).toBe(false);
     expect(t.done).toBe(false);
     expect(t.doneAt).toBeNull();
     expect(t.postponeCount).toBe(0);
@@ -434,8 +434,8 @@ describe("派生查询", () => {
     updateTask(doneOld, { done: true, doneAt: "2026-08-16T10:00:00.000Z" });
 
     const r = tasksForToday(appStore.getState().data, TODAY);
-    expect(r.overdue.map((t) => t.id)).toEqual([over]);
-    expect(r.todays.map((t) => t.id)).toEqual([high, low]); // 优先级 3 在前
+    expect(r.overdue.map((x) => x.task.id)).toEqual([over]);
+    expect(r.todays.map((x) => x.task.id)).toEqual([high, low]); // 同日无时间 → 优先级 3 在前
     expect(r.doneToday.map((t) => t.id)).toEqual([doneToday]);
   });
 });

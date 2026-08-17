@@ -41,6 +41,7 @@
 }
 .side nav li:hover { background: var(--card); }
 .side nav li.on { background: var(--card); box-shadow: var(--shadow-sm); font-weight: 600; }
+.side nav li.dropping { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }
 .side nav li .ico { width: 15px; height: 15px; stroke: var(--ink-2); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .side nav li.on .ico { stroke: var(--accent); }
 .side nav li .n { margin-left: auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }

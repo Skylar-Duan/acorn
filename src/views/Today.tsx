@@ -1,9 +1,9 @@
 // 今天：主战场。逾期置顶，可一键全部顺延；底部当日小结。
+// 行来自 DateRow：母任务 + 带自己日期的子任务（「母 › 子」形式）。
 import { Fragment } from "react";
+import type { DateRow } from "../core/store";
 import { formatCN, todayYMD } from "../core/dates";
-import {
-  postponeTasks, tasksForToday, useApp,
-} from "../core/store";
+import { postponeTasks, tasksForToday, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 import QuickAddBar from "../components/QuickAddBar";
@@ -15,17 +15,17 @@ export default function Today() {
   const today = todayYMD();
 
   const { overdue, todays, doneToday } = tasksForToday(data, today);
-  const orderedIds = [...overdue, ...todays, ...doneToday].map((t) => t.id);
+  const orderedIds = [...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task.id);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
   const total = todays.length + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
 
-  const renderRow = (t: (typeof todays)[number], fade = true) => (
-    <Fragment key={t.id}>
-      {expandedId === t.id ? (
-        <TaskCard task={t} />
+  const renderRow = (r: DateRow) => (
+    <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
+      {!r.sub && expandedId === r.task.id ? (
+        <TaskCard task={r.task} />
       ) : (
-        <TaskRow task={t} orderedIds={orderedIds} fadeOnDone={fade} />
+        <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />
       )}
     </Fragment>
   );
@@ -42,17 +42,25 @@ export default function Today() {
           <>
             <div className="group-head warn">
               逾期 {overdue.length}
-              <button className="act" onClick={() => postponeTasks(overdue.map((t) => t.id))}>
+              <button className="act" onClick={() => postponeTasks([...new Set(overdue.map((r) => r.task.id))])}>
                 全部推到明天 →
               </button>
             </div>
-            {overdue.map((t) => renderRow(t))}
+            {overdue.map(renderRow)}
           </>
         )}
         {todays.length > 0 && <div className="group-head">今天</div>}
-        {todays.map((t) => renderRow(t))}
+        {todays.map(renderRow)}
         {doneToday.length > 0 && <div className="group-head">已完成 {doneToday.length}</div>}
-        {doneToday.map((t) => renderRow(t, false))}
+        {doneToday.map((t) => (
+          <Fragment key={t.id}>
+            {expandedId === t.id ? (
+              <TaskCard task={t} />
+            ) : (
+              <TaskRow task={t} orderedIds={orderedIds} fadeOnDone={false} />
+            )}
+          </Fragment>
+        ))}
         {overdue.length === 0 && todays.length === 0 && doneToday.length === 0 && (
           <div className="empty">
             <span className="glyph">🌰</span>

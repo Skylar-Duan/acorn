@@ -19,8 +19,6 @@ function goHome(t: Task) {
   } else if (t.due) {
     // 未来日期且无清单：家在「计划」——送去收件箱会落进空视图
     navigate("upcoming");
-  } else if (t.someday) {
-    navigate("anytime");
   } else {
     navigate("inbox");
   }
