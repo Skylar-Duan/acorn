@@ -55,7 +55,7 @@ void (async () => {
       const s = appStore.getState();
       // 数据没加载成功时不接收——此时任何写入都会拿空库覆盖磁盘真数据
       if (!s.loaded || s.loadError) {
-        showToast("数据尚未就绪（S 盘没插？），这条没有收下", false);
+        showToast("数据尚未就绪（数据文件夹不可用？），这条没有收下", false);
         return;
       }
       const { listName, ...input } = e.payload;

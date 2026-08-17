@@ -1,21 +1,55 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- 底：暖纸色圆角方 -->
-  <rect x="64" y="64" width="896" height="896" rx="224" fill="#F1EFE3"/>
-  <!-- 身体 -->
-  <path d="M320 552 C320 724 404 862 512 882 C620 862 704 724 704 552 Z" fill="#C99A63"/>
-  <!-- 身体高光 -->
-  <path d="M360 580 C364 690 404 790 452 830 C400 760 372 660 372 580 Z" fill="#D9B080" opacity="0.7"/>
+  <!-- 橡果 Acorn 图标（10-Platform 版，2026-08-17 重绘）
+       与 02 原版的两点差别：
+       ① 垂直居中 —— 原版整只橡果的包围盒中心落在 y≈585，比底板中心 512 低 73px，
+          肉眼可见偏下。这版把「柄顶 186 → 果底 838」摆正，中心正好 512。
+       ② 提亮 —— 原版帽 #8A6547 / 身 #C99A63 偏深偏土，这版换成暖蜜色渐变，
+          圆一点、亮一点，小圆脸更醒目。 -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFDF8"/>
+      <stop offset="1" stop-color="#FCF1E1"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#FCDDAB"/>
+      <stop offset="1" stop-color="#EEB575"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#DDAA75"/>
+      <stop offset="1" stop-color="#BC8250"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="232" fill="url(#plate)"/>
+
+  <!-- 落影：让果子坐在底板上，不是浮着 -->
+  <ellipse cx="512" cy="846" rx="188" ry="26" fill="#C08B58" opacity="0.16"/>
+
+  <!-- 柄：短而微弯，不要卷成问号 -->
+  <path d="M504 262 C498 224 508 198 534 190"
+        stroke="#BC8250" stroke-width="34" stroke-linecap="round" fill="none"/>
+
+  <!-- 果身 -->
+  <path d="M326 470 C326 706 404 838 512 838 C620 838 698 706 698 470 Z" fill="url(#body)"/>
+  <!-- 果身高光：贴着左缘的一道光，别切出硬三角 -->
+  <path d="M372 486 C372 654 400 754 444 812 C414 742 396 640 396 486 Z"
+        fill="#FFFFFF" opacity="0.2"/>
+
   <!-- 帽 -->
-  <path d="M300 560 C300 436 394 348 512 348 C630 348 724 436 724 560 Z" fill="#8A6547"/>
-  <rect x="272" y="524" width="480" height="60" rx="30" fill="#7E5C40"/>
+  <path d="M286 484 C286 348 388 258 512 258 C636 258 738 348 738 484 Z" fill="url(#cap)"/>
+  <!-- 帽沿 -->
+  <rect x="262" y="446" width="500" height="70" rx="35" fill="#C08B58"/>
   <!-- 帽高光 -->
-  <ellipse cx="420" cy="430" rx="52" ry="24" fill="#A9805C" transform="rotate(-24 420 430)"/>
-  <!-- 柄 -->
-  <rect x="490" y="288" width="44" height="92" rx="22" fill="#7E5C40" transform="rotate(8 512 334)"/>
+  <ellipse cx="412" cy="352" rx="62" ry="27" fill="#FFFFFF" opacity="0.3"
+           transform="rotate(-26 412 352)"/>
+
   <!-- 脸 -->
-  <circle cx="452" cy="668" r="15" fill="#4A3A28"/>
-  <circle cx="572" cy="668" r="15" fill="#4A3A28"/>
-  <path d="M480 704 Q512 730 544 704" stroke="#4A3A28" stroke-width="11" stroke-linecap="round" fill="none"/>
-  <circle cx="424" cy="702" r="17" fill="#E2A88A" opacity="0.55"/>
-  <circle cx="600" cy="702" r="17" fill="#E2A88A" opacity="0.55"/>
+  <circle cx="446" cy="606" r="19" fill="#6B4F35"/>
+  <circle cx="578" cy="606" r="19" fill="#6B4F35"/>
+  <circle cx="452" cy="599" r="6.5" fill="#FFFFFF" opacity="0.92"/>
+  <circle cx="584" cy="599" r="6.5" fill="#FFFFFF" opacity="0.92"/>
+  <path d="M478 648 Q512 680 546 648" stroke="#6B4F35" stroke-width="13"
+        stroke-linecap="round" fill="none"/>
+  <ellipse cx="400" cy="644" rx="24" ry="17" fill="#F5A48C" opacity="0.5"/>
+  <ellipse cx="624" cy="644" rx="24" ry="17" fill="#F5A48C" opacity="0.5"/>
 </svg>

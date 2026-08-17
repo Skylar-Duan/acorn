@@ -8,7 +8,7 @@ import "../styles/overlays.css";
 
 const MAX_SHOWN = 20;
 
-/** 跳到任务平时住的视图：已完成回日志，逾期/今天回「今天」，再按清单/计划/随时/收件箱归位 */
+/** 跳到任务平时住的视图：已完成回日志，逾期/今天回「今天」，再按清单/计划/随时/随手记归位 */
 function goHome(t: Task) {
   if (t.done) {
     navigate("logbook");
@@ -17,7 +17,7 @@ function goHome(t: Task) {
   } else if (t.listId) {
     navigate("list", { listId: t.listId });
   } else if (t.due) {
-    // 未来日期且无清单：家在「计划」——送去收件箱会落进空视图
+    // 未来日期且无清单：家在「计划」——送去随手记会落进空视图
     navigate("upcoming");
   } else {
     navigate("inbox");

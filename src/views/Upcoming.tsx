@@ -5,7 +5,6 @@ import { addDays, cmpYMD, formatShort, fromYMD, todayYMD } from "../core/dates";
 import { openRows, rowDue, sortRows, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
-import QuickAddBar from "../components/QuickAddBar";
 
 const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -77,7 +76,6 @@ export default function Upcoming() {
         <h1>计划</h1>
         <span className="sub">接下来的日子</span>
       </div>
-      <QuickAddBar placeholder="记一条带日期的…如「下周三 和李哥对需求」" />
       <div className="view-body">
         {dayGroups.map((g) => (
           <Fragment key={g.date}>

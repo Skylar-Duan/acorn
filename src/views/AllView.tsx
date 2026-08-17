@@ -5,7 +5,6 @@ import type { DateRow } from "../core/store";
 import { openRows, rowDue, sortRows, updateSettings, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
-import QuickAddBar from "../components/QuickAddBar";
 import "../styles/allview.css";
 
 const SORT_OPTIONS = [
@@ -70,7 +69,6 @@ export default function AllView() {
           ))}
         </div>
       </div>
-      <QuickAddBar />
       <div className="view-body">
         {groups.map((g) => (
           <Fragment key={g.key}>

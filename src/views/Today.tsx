@@ -6,7 +6,6 @@ import { formatCN, todayYMD } from "../core/dates";
 import { postponeRows, tasksForToday, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
-import QuickAddBar from "../components/QuickAddBar";
 
 export default function Today() {
   const data = useApp((s) => s.data);
@@ -43,7 +42,6 @@ export default function Today() {
         <h1>今天</h1>
         <span className="sub">{formatCN(today)}</span>
       </div>
-      <QuickAddBar autoFocus defaults={{ due: today }} />
       <div className="view-body">
         {overdue.length > 0 && (
           <>

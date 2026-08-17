@@ -66,7 +66,7 @@ afterEach(() => {
 // ---------- addTask ----------
 
 describe("addTask", () => {
-  it("默认值：收件箱、无标签、无优先级、未完成、无提醒", () => {
+  it("默认值：随手记、无标签、无优先级、未完成、无提醒", () => {
     const id = addTask({ title: "买酱油" });
     const t = getTask(id);
     expect(t.title).toBe("买酱油");
@@ -308,7 +308,7 @@ describe("undo", () => {
 // ---------- 清单 ----------
 
 describe("deleteList", () => {
-  it("清单删除后其下任务回收件箱（listId=null），别的清单不受影响", () => {
+  it("清单删除后其下任务回随手记（listId=null），别的清单不受影响", () => {
     const listId = addList("临时项目", "sea");
     const inList = addTask({ title: "项目里的事", listId });
     const otherList = appStore.getState().data.lists[0].id;

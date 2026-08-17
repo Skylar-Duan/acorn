@@ -22,7 +22,7 @@ export interface Task {
   id: string;
   title: string;
   notes: string;
-  /** null = 收件箱 */
+  /** null = 随手记 */
   listId: string | null;
   tags: string[];
   /** 需求方：这件事是为谁做的（@李哥）。null = 未指定 */
@@ -148,7 +148,7 @@ export function newTask(partial: Partial<Task> & { title: string }): Task {
 }
 
 /** 数据文件载入后的兜底：老版本字段补齐、废弃字段清理（向前兼容，绝不丢数据）
- *  v1 → v2：someday 概念取消（无日期任务统一住收件箱/全部），字段直接丢弃；
+ *  v1 → v2：someday 概念取消（无日期任务统一住随手记/全部），字段直接丢弃；
  *  子任务补 due/dueTime/priority（默认继承母任务，存为 null） */
 export function migrate(raw: unknown): AppData {
   const d = (raw ?? {}) as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };

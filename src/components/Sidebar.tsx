@@ -1,5 +1,5 @@
 // 侧栏：固定入口 + 视图 + 清单 + 自动出现的需求方/标签分组。
-// 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、「收件箱」清日期、清单/需求方即归属。
+// 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、「随手记」清日期、清单/需求方即归属。
 import { useEffect, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
@@ -18,7 +18,7 @@ function Ico({ d }: { d: string }) {
 }
 
 const ICONS = {
-  inbox: "M3 13h4l2 3h6l2-3h4 M5 6h14l2 7v6H3v-6l2-7z",
+  inbox: "M3 21l3.6-.7L20 6.9a2.12 2.12 0 0 0-3-3L3.7 17.4 3 21z M14.4 6.5l3.1 3.1",
   today: "M12 8a4 4 0 100 8 4 4 0 000-8z M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1",
   upcoming: "M3 5h18v16H3z M8 3v4M16 3v4M3 10h18",
   all: "M4 6h16 M4 12h16 M4 18h10",
@@ -127,7 +127,7 @@ export default function Sidebar() {
       </div>
       <nav>
         <ul>
-          {item("inbox", "收件箱", "inbox", counts.inbox, false, (ids) => setTasksDue(ids, null))}
+          {item("inbox", "随手记", "inbox", counts.inbox, false, (ids) => setTasksDue(ids, null))}
           {item("today", "今天", "today", counts.today, true, (ids) => setTasksDue(ids, today))}
           {item("upcoming", "计划", "upcoming", counts.upcoming, false, (ids, e) => setPendingPlan({ ids, x: e.clientX, y: e.clientY }))}
           {item("all", "全部", "all", counts.all)}

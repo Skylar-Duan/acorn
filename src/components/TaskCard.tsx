@@ -253,12 +253,12 @@ export default function TaskCard({ task }: { task: Task }) {
               {list.name}
             </>
           ) : (
-            "收件箱"
+            "随手记"
           )}
         </button>
         {menu === "list" && (
           <div className="popmenu" style={{ top: "110%", left: 180 }}>
-            <button className="item" onClick={() => { updateTask(task.id, { listId: null }); setMenu(null); }}>收件箱</button>
+            <button className="item" onClick={() => { updateTask(task.id, { listId: null }); setMenu(null); }}>随手记</button>
             {lists.map((l) => (
               <button key={l.id} className="item" onClick={() => { updateTask(task.id, { listId: l.id }); setMenu(null); }}>
                 <span style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${l.color})`, display: "inline-block" }} />

@@ -6,6 +6,7 @@
   --serif: "LXGW WenKai Lite", "LXGW WenKai", "KaiTi", "楷体", serif;
   --sans: "Segoe UI", "Microsoft YaHei", "微软雅黑", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
+  --side-w: 232px;
   --r-sm: 7px; --r-md: 10px; --r-lg: 14px;
   --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 15.5px;
   --fs-title: 26px; --fs-h2: 17px;
@@ -19,7 +20,12 @@ body {
   font-family: var(--sans);
   font-size: var(--fs-md);
   color: var(--ink);
-  background: var(--bg);
+  /* 底纸三层：噪点纸纹 + 右上与左下两团极淡的主题色光晕 + 底色 */
+  background-color: var(--bg);
+  background-image:
+    var(--paper),
+    radial-gradient(118% 76% at 88% -10%, var(--accent-soft), transparent 60%),
+    radial-gradient(86% 60% at -10% 110%, var(--accent-soft), transparent 64%);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   user-select: none;
@@ -34,6 +40,9 @@ a { color: var(--accent); }
 ::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* 大块「纸」也带上同一层颗粒：卡片、弹窗、输入条——近看有纸纹，远看只是不那么塑料 */
+.modal, .task-card, .set-section, .quick-add { background-image: var(--paper); }
 
 /* 标题（霞鹜文楷） */
 .serif { font-family: var(--serif); }

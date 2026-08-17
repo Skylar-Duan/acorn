@@ -465,7 +465,7 @@ export function setListColor(id: string, color: string) {
   mutate((d) => ({ ...d, lists: d.lists.map((l) => (l.id === id ? { ...l, color } : l)) }));
 }
 
-/** 删除清单：其下任务回收件箱；正看着这张清单时把视图也带走，防止悬空 */
+/** 删除清单：其下任务回随手记；正看着这张清单时把视图也带走，防止悬空 */
 export function deleteList(id: string) {
   mutate(
     (d) => ({
@@ -473,7 +473,7 @@ export function deleteList(id: string) {
       lists: d.lists.filter((l) => l.id !== id),
       tasks: d.tasks.map((t) => (t.listId === id ? { ...t, listId: null } : t)),
     }),
-    { toast: "清单已删除，任务已移回收件箱" },
+    { toast: "清单已删除，任务已移回随手记" },
   );
   const ui = appStore.getState().ui;
   if (ui.view === "list" && ui.listId === id) navigate("inbox");

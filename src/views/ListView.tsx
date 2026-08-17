@@ -1,4 +1,5 @@
-// 通用列表视图：收件箱 / 某清单 / 某需求方 / 某标签 / 日志 / 回收站 共用。
+// 通用列表视图：随手记（无日期无归属的）/ 某清单 / 某需求方 / 某标签 / 日志 / 回收站 共用。
+// 「随手记」是全应用的记录入口：打字用语法，不想背语法就用下面那排按钮。
 import { Fragment, useMemo } from "react";
 import type { Task } from "../core/model";
 import { cmpYMD, todayYMD } from "../core/dates";
@@ -30,7 +31,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
     switch (kind) {
       case "inbox":
         return {
-          title: "收件箱", sub: "还没安排日期、没归类的想法",
+          title: "随手记", sub: "想到就记，日期和归属可以待会儿再说",
           tasks: sortTasks(alive.filter((t) => !t.done && !t.listId && !t.due), sortMode),
           showAdd: true, defaults: {}, fade: true,
         };
@@ -134,7 +135,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
         )}
       </div>
-      {showAdd && <QuickAddBar defaults={defaults} />}
+      {showAdd && <QuickAddBar defaults={defaults} withPickers={kind === "inbox"} autoFocus={kind === "inbox"} />}
       <div className="view-body">
         {groups.map((g, gi) => (
           <Fragment key={gi}>
@@ -163,7 +164,10 @@ export default function ListView({ kind }: { kind: ListKind }) {
         {tasks.length === 0 && (
           <div className="empty">
             <span className="glyph">🍂</span>
-            {kind === "trash" ? "回收站是空的" : kind === "logbook" ? "还没有完成记录" : "空空如也"}
+            {kind === "trash" ? "回收站是空的"
+              : kind === "logbook" ? "还没有完成记录"
+              : kind === "inbox" ? "想到什么，就在上面记一条"
+              : "空空如也"}
           </div>
         )}
       </div>

@@ -68,8 +68,8 @@ export function addedByDay(
 }
 
 /**
- * 按清单统计。收件箱固定第一行（id=null），其余清单按 order 升序，全零也保留；
- * 引用了已不存在清单的任务并入收件箱。
+ * 按清单统计。随手记固定第一行（id=null），其余清单按 order 升序，全零也保留；
+ * 引用了已不存在清单的任务并入随手记。
  */
 export function byList(
   tasks: Task[],
@@ -78,7 +78,7 @@ export function byList(
   endYMD: string,
 ): { id: string | null; name: string; done: number; open: number }[] {
   const rows = new Map<string | null, { id: string | null; name: string; done: number; open: number }>();
-  rows.set(null, { id: null, name: "收件箱", done: 0, open: 0 });
+  rows.set(null, { id: null, name: "随手记", done: 0, open: 0 });
   for (const l of [...lists].sort((a, b) => a.order - b.order)) {
     rows.set(l.id, { id: l.id, name: l.name, done: 0, open: 0 });
   }
@@ -157,7 +157,7 @@ export function weeklyReview(
   const doneThisWeek = live.filter((t): t is Task & { doneAt: string } => isDoneInRange(t, ws, we));
 
   const listName = (listId: string | null): string =>
-    listId === null ? "收件箱" : (lists.find((l) => l.id === listId)?.name ?? "收件箱");
+    listId === null ? "随手记" : (lists.find((l) => l.id === listId)?.name ?? "随手记");
 
   const groups = new Map<string, Task[]>();
   for (const t of doneThisWeek) {

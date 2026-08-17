@@ -11,12 +11,25 @@ use tauri::{
     AppHandle, Emitter, Manager, State,
 };
 
-const DEFAULT_DATA_DIR: &str = r"S:\AI\Claude Code\project code\02-Gadgets\acorn\userdata";
+const APP_ID: &str = "com.cdpandas.acorn";
 const BACKUP_KEEP: usize = 30;
 
 struct DataDir(Mutex<PathBuf>);
 
-// ---------- 配置（数据目录指针存在本机 AppData，数据本体在 S 盘） ----------
+// ---------- 配置（数据目录指针存在本机 AppData，数据本体在指针指向的地方） ----------
+
+/// 默认数据目录：本机应用数据区 `%APPDATA%\com.cdpandas.acorn\userdata`。
+/// 想让数据随移动硬盘 / 网盘走，去设置里换文件夹——指针写进 config.json，优先级高于此处。
+fn default_data_dir() -> PathBuf {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        return PathBuf::from(appdata).join(APP_ID).join("userdata");
+    }
+    // 没有 APPDATA 的极端环境：退到可执行文件旁边，保证一定有个能写的地方
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("userdata")))
+        .unwrap_or_else(|| PathBuf::from("userdata"))
+}
 
 fn config_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("config.json"))
@@ -27,7 +40,7 @@ fn config_path(app: &AppHandle) -> Option<PathBuf> {
 /// 路径与 app_config_dir 一致：%APPDATA%\com.cdpandas.acorn\config.json
 fn read_configured_dir_early() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let p = PathBuf::from(appdata).join("com.cdpandas.acorn").join("config.json");
+        let p = PathBuf::from(appdata).join(APP_ID).join("config.json");
         if let Ok(s) = fs::read_to_string(&p) {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
                 if let Some(d) = v.get("dataDir").and_then(|x| x.as_str()) {
@@ -38,7 +51,7 @@ fn read_configured_dir_early() -> PathBuf {
             }
         }
     }
-    PathBuf::from(DEFAULT_DATA_DIR)
+    default_data_dir()
 }
 
 fn persist_configured_dir(app: &AppHandle, dir: &Path) -> Result<(), String> {

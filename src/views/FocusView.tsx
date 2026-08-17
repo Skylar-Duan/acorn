@@ -42,7 +42,7 @@ export default function FocusView() {
   // 暂停约定：endsAt 为 null 且这一轮还在 → 视为暂停
   const paused = active && !focus.running;
 
-  // 候选任务：今天未完成（逾期置前，母任务本身）+ 收件箱前 10 条（去掉与今天重复的）
+  // 候选任务：今天未完成（逾期置前，母任务本身）+ 随手记前 10 条（去掉与今天重复的）
   const { todayTasks, inbox } = useMemo(() => {
     const { overdue, todays } = tasksForToday(data, today);
     const tt = [...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task);
@@ -107,7 +107,7 @@ export default function FocusView() {
                   </optgroup>
                 )}
                 {inbox.length > 0 && (
-                  <optgroup label="收件箱">
+                  <optgroup label="随手记">
                     {inbox.map((t) => (
                       <option key={t.id} value={t.id}>{t.title || "（未命名）"}</option>
                     ))}

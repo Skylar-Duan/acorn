@@ -10,15 +10,16 @@ import {
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
+import ThemeScene from "../components/ThemeScene";
 import "../styles/settings.css";
 
-const THEMES: { id: ThemeName; name: string }[] = [
-  { id: "forest", name: "森林" },
-  { id: "ocean", name: "海洋" },
-  { id: "night", name: "星空" },
-  { id: "desert", name: "沙漠" },
-  { id: "snow", name: "雪山" },
-  { id: "polar", name: "南极" },
+const THEMES: { id: ThemeName; name: string; note: string }[] = [
+  { id: "forest", name: "森林", note: "晨雾里的针叶林" },
+  { id: "ocean", name: "海洋", note: "退潮后的浅滩" },
+  { id: "night", name: "星空", note: "暮色与远光" },
+  { id: "desert", name: "沙漠", note: "落日下的沙丘" },
+  { id: "snow", name: "雪山", note: "清晨的冰川" },
+  { id: "polar", name: "南极", note: "极昼的冰面" },
 ];
 
 const MODES: { id: AppSettings["mode"]; name: string }[] = [
@@ -46,7 +47,7 @@ function csvCell(v: string): string {
 
 function buildCsv(d: AppData): string {
   const listName = (id: string | null) =>
-    id ? d.lists.find((l) => l.id === id)?.name ?? "" : "收件箱";
+    id ? d.lists.find((l) => l.id === id)?.name ?? "" : "随手记";
   const head = "标题,清单,需求方,标签,优先级,日期,时间,状态,完成时刻";
   const rows = aliveTasks(d).map((t) =>
     [
@@ -71,7 +72,7 @@ function buildMarkdown(d: AppData): string {
   const alive = aliveTasks(d);
   const groups: { name: string; items: Task[] }[] = [];
   const inbox = alive.filter((t) => !t.listId);
-  if (inbox.length) groups.push({ name: "收件箱", items: inbox });
+  if (inbox.length) groups.push({ name: "随手记", items: inbox });
   for (const l of [...d.lists].sort((a, b) => a.order - b.order)) {
     const items = alive.filter((t) => t.listId === l.id);
     if (items.length) groups.push({ name: l.name, items });
@@ -260,7 +261,7 @@ export default function Settings() {
         {/* ---------- 外观 ---------- */}
         <div className="set-section">
           <h2>外观</h2>
-          <div className="set-desc">六款自然主题，随季节心情换。</div>
+          <div className="set-desc">六款自然主题，随季节心情换。每款都有自己的一幅画，淡淡地垫在任务下面。</div>
           <div className="set-themes">
             {THEMES.map((t) => (
               <button
@@ -269,10 +270,11 @@ export default function Settings() {
                 onClick={() => updateSettings({ theme: t.id })}
               >
                 <span className="set-swatch" data-theme={t.id} data-mode={swatchMode}>
-                  <span className="set-sw-bg" />
+                  <ThemeScene theme={t.id} variant="card" />
                   <span className="set-sw-accent" />
                 </span>
                 <span className="set-theme-name">{t.name}</span>
+                <span className="set-theme-note">{t.note}</span>
               </button>
             ))}
           </div>

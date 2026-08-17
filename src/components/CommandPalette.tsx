@@ -15,7 +15,7 @@ interface Command {
 
 // [视图, 图标, 名称, 说明]
 const NAV: [ViewId, string, string, string][] = [
-  ["inbox", "📥", "收件箱", "未整理的任务"],
+  ["inbox", "✍️", "随手记", "记一条 · 还没安排的都在这"],
   ["today", "🌞", "今天", "今日安排与逾期"],
   ["upcoming", "🗓", "计划", "未来的日程"],
   ["all", "🗂", "全部", "所有未完成一览"],

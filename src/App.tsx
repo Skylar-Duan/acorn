@@ -13,6 +13,7 @@ import Settings from "./views/Settings";
 import CommandPalette from "./components/CommandPalette";
 import SearchOverlay from "./components/SearchOverlay";
 import ContextMenu from "./components/ContextMenu";
+import ThemeScene from "./components/ThemeScene";
 import {
   clearSelection, completeTask, deleteTasks, dismissToast, expandTask,
   navigate, postponeTasks, setPaletteOpen, setSearchOpen, setSelection,
@@ -42,6 +43,7 @@ export default function App() {
   const paletteOpen = useApp((s) => s.ui.paletteOpen);
   const searchOpen = useApp((s) => s.ui.searchOpen);
   const lists = useApp((s) => s.data.lists);
+  const theme = useApp((s) => s.data.settings.theme);
   const [bulkListMenu, setBulkListMenu] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -153,7 +155,7 @@ export default function App() {
       <div className="center-note">
         <span className="big">数据打不开</span>
         <span>{loadError}</span>
-        <span>最常见的原因是 S 盘没插。插好后点重试，或去设置换个数据文件夹。</span>
+        <span>数据文件夹现在不可用。若数据放在移动硬盘或网盘上，接好后点重试；也可以去设置换一个文件夹。</span>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn primary" onClick={() => location.reload()}>重试</button>
           <button className="btn" onClick={() => navigate("settings")}>打开设置</button>
@@ -164,6 +166,7 @@ export default function App() {
 
   return (
     <div className="shell">
+      <ThemeScene theme={theme} />
       <Sidebar />
       {body}
 
@@ -186,7 +189,7 @@ export default function App() {
             <button className="btn ghost" onClick={() => setBulkListMenu(!bulkListMenu)}>移到清单</button>
             {bulkListMenu && (
               <div className="popmenu" style={{ bottom: "130%", left: 0 }}>
-                <button className="item" onClick={() => { setTasksList(selectedIds, null); setBulkListMenu(false); }}>收件箱</button>
+                <button className="item" onClick={() => { setTasksList(selectedIds, null); setBulkListMenu(false); }}>随手记</button>
                 {lists.map((l) => (
                   <button key={l.id} className="item" onClick={() => { setTasksList(selectedIds, l.id); setBulkListMenu(false); }}>
                     <span style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${l.color})`, display: "inline-block" }} />

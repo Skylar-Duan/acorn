@@ -312,7 +312,7 @@ function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {
           <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
             <button className="ctx-item" onClick={() => run(() => setTasksList(ids, null))}>
               <span className="ctx-dot" style={{ background: "var(--ink-3)" }} />
-              收件箱
+              随手记
             </button>
             {lists.map((l) => (
               <button key={l.id} className="ctx-item" onClick={() => run(() => setTasksList(ids, l.id))}>

@@ -135,3 +135,16 @@
   --list-clay: #CE8A6D; --list-moss: #96AE81; --list-sea: #82AFC3;
   --list-sand: #C9A876; --list-slate: #99A6B2; --list-plum: #BC93AE;
 }
+
+/* ---------- 纸纹与风景水印 ----------
+   --paper 是一块可无缝平铺的噪点（SVG feTurbulence，浅色模式撒墨点、深色模式撒白点），
+   铺在窗口与侧栏底纸上，近看有纸的颗粒，远看只是不那么"塑料"。
+   --scene-a 是底部风景水印的总透明度（画本身见 ThemeScene.tsx，颜色取自各主题 token）。*/
+[data-mode="light"] {
+  --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='p' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .85 0 0 0 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)' opacity='.09'/%3E%3C/svg%3E");
+  --scene-a: .22;
+}
+[data-mode="dark"] {
+  --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='p' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .85 0 0 0 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)' opacity='.055'/%3E%3C/svg%3E");
+  --scene-a: .24;
+}
