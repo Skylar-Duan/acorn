@@ -1,0 +1,137 @@
+/* 基础：排版尺度、重置、共用元件。主题变量见 themes.css */
+
+@import "lxgw-wenkai-lite-webfont/style.css";
+
+:root {
+  --serif: "LXGW WenKai Lite", "LXGW WenKai", "KaiTi", "楷体", serif;
+  --sans: "Segoe UI", "Microsoft YaHei", "微软雅黑", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+  --r-sm: 7px; --r-md: 10px; --r-lg: 14px;
+  --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 15.5px;
+  --fs-title: 26px; --fs-h2: 17px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--sans);
+  font-size: var(--fs-md);
+  color: var(--ink);
+  background: var(--bg);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+input, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
+input, textarea { user-select: text; }
+button { cursor: pointer; background: none; border: none; }
+a { color: var(--accent); }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-3); border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 标题（霞鹜文楷） */
+.serif { font-family: var(--serif); }
+
+/* 通用小签 */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); color: var(--ink-2);
+  border: 1px solid var(--hair); background: var(--bg);
+  border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+}
+.pill.hot { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.pill.warn { color: var(--warn); }
+
+/* 需求方徽章：首字圆徽 + 名字 */
+.who-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); color: var(--ink-2); white-space: nowrap;
+}
+.who-badge .avatar {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600;
+}
+
+/* 按钮 */
+.btn {
+  border-radius: var(--r-sm); padding: 6px 14px; font-size: var(--fs-sm);
+  color: var(--ink-2); border: 1px solid var(--hair); background: var(--card);
+  transition: background .12s, color .12s;
+}
+.btn:hover { color: var(--ink); background: var(--bg); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--accent-soft); color: var(--accent); }
+.btn.danger:hover { color: #C0564A; border-color: #C0564A; background: transparent; }
+
+kbd {
+  border: 1px solid var(--hair); background: var(--card); border-radius: 4px;
+  padding: 1px 6px; font-family: var(--sans); font-size: 10.5px; color: var(--ink-2);
+}
+
+/* 输入框 */
+.input {
+  width: 100%; border: 1px solid var(--hair); background: var(--card);
+  border-radius: var(--r-sm); padding: 7px 11px; outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 弹层 */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .25);
+  display: flex; align-items: flex-start; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg);
+  box-shadow: var(--shadow); margin-top: 12vh; min-width: 480px; max-width: 640px;
+  overflow: hidden;
+}
+
+/* 撤销 toast */
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  background: var(--ink); color: var(--bg);
+  border-radius: 999px; padding: 9px 18px; font-size: var(--fs-sm);
+  display: flex; align-items: center; gap: 14px; z-index: 200;
+  box-shadow: var(--shadow); animation: toast-in .18s ease-out;
+}
+.toast button { color: inherit; font-weight: 600; opacity: .9; }
+.toast button:hover { opacity: 1; text-decoration: underline; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* 勾选圆圈 */
+.cb {
+  width: 17px; height: 17px; border: 1.6px solid var(--ink-3); border-radius: 50%;
+  flex: none; position: relative; background: transparent; padding: 0;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.cb:hover { border-color: var(--accent); transform: scale(1.08); }
+.cb.done { background: var(--ok); border-color: var(--ok); }
+.cb.done::after {
+  content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px;
+  border: solid var(--card); border-width: 0 1.8px 1.8px 0; transform: rotate(40deg);
+}
+
+/* 优先级旗标（行左侧细条） */
+.flag { width: 4px; height: 16px; border-radius: 3px; flex: none; background: transparent; }
+.flag.p3 { background: #C0564A; }
+.flag.p2 { background: var(--warn); }
+.flag.p1 { background: var(--ink-3); }
+
+/* 空状态 */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--ink-3); padding: 64px 0; font-size: var(--fs-sm);
+}
+.empty .glyph { font-size: 34px; opacity: .5; }

@@ -1,0 +1,137 @@
+/* 六款自然主题 × 深浅双模式。
+   应用方式：<html data-theme="forest" data-mode="light">
+   命名约定：
+   --bg 窗口底纸 · --bg-side 侧栏 · --card 卡片 · --ink 墨 · --ink-2 淡墨 · --ink-3 极淡
+   --hair 发丝线 · --accent 强调 · --accent-soft 强调底 · --on-accent 强调色上的前景
+   --ok 完成 · --warn 逾期/顺延 · --shadow 大投影 · --shadow-sm 小投影
+   清单色（跨主题一致，仅按明暗微调）：--list-clay/moss/sea/sand/slate/plum */
+
+/* ---------- 森林（默认）：晨雾里的针叶林 ---------- */
+[data-theme="forest"][data-mode="light"] {
+  --bg: #F4F3EB; --bg-side: #EDECE1; --card: #FDFCF7;
+  --ink: #2E3129; --ink-2: #6C7263; --ink-3: #A2A795;
+  --hair: #DFDDCE;
+  --accent: #66875A; --accent-soft: #E4EADD; --on-accent: #FDFCF7;
+  --ok: #66875A; --warn: #A8852E;
+  --shadow: 0 18px 48px rgba(62, 74, 52, .14), 0 2px 8px rgba(62, 74, 52, .07);
+  --shadow-sm: 0 1px 4px rgba(62, 74, 52, .08);
+}
+[data-theme="forest"][data-mode="dark"] {
+  --bg: #20241E; --bg-side: #1A1D18; --card: #292E26;
+  --ink: #E2E4D8; --ink-2: #A0A692; --ink-3: #666C5B;
+  --hair: #363B31;
+  --accent: #92B283; --accent-soft: #34402E; --on-accent: #1A1D18;
+  --ok: #92B283; --warn: #C9A054;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+}
+
+/* ---------- 海洋：退潮后的浅滩 ---------- */
+[data-theme="ocean"][data-mode="light"] {
+  --bg: #F1F4F2; --bg-side: #E9EEEC; --card: #FBFDFC;
+  --ink: #293234; --ink-2: #64737a; --ink-3: #9AA8AD;
+  --hair: #D9E1DF;
+  --accent: #56879B; --accent-soft: #DFEAEE; --on-accent: #FBFDFC;
+  --ok: #629489; --warn: #A8852E;
+  --shadow: 0 18px 48px rgba(43, 66, 76, .13), 0 2px 8px rgba(43, 66, 76, .07);
+  --shadow-sm: 0 1px 4px rgba(43, 66, 76, .08);
+}
+[data-theme="ocean"][data-mode="dark"] {
+  --bg: #1B2225; --bg-side: #161C1F; --card: #232C30;
+  --ink: #DCE4E4; --ink-2: #93A5AA; --ink-3: #5B6B70;
+  --hair: #2F3A3E;
+  --accent: #83AFC2; --accent-soft: #293A42; --on-accent: #161C1F;
+  --ok: #85B3A8; --warn: #C9A054;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+}
+
+/* ---------- 星空：暮色与远光 ---------- */
+[data-theme="night"][data-mode="light"] {
+  --bg: #F2F2F6; --bg-side: #EBEBF1; --card: #FCFCFE;
+  --ink: #2C2E3A; --ink-2: #6B6E82; --ink-3: #A1A4B5;
+  --hair: #DDDEE8;
+  --accent: #6D77A8; --accent-soft: #E4E6F1; --on-accent: #FCFCFE;
+  --ok: #6D9679; --warn: #A8852E;
+  --shadow: 0 18px 48px rgba(53, 57, 84, .14), 0 2px 8px rgba(53, 57, 84, .07);
+  --shadow-sm: 0 1px 4px rgba(53, 57, 84, .08);
+}
+[data-theme="night"][data-mode="dark"] {
+  --bg: #1B1D27; --bg-side: #15161F; --card: #242633;
+  --ink: #DEDFE8; --ink-2: #9CA0B8; --ink-3: #5E6178;
+  --hair: #303344;
+  --accent: #98A3D4; --accent-soft: #2E3350; --on-accent: #15161F;
+  --ok: #8FB89B; --warn: #C9A054;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .35);
+}
+
+/* ---------- 沙漠：落日下的沙丘 ---------- */
+[data-theme="desert"][data-mode="light"] {
+  --bg: #F7F2E7; --bg-side: #F0EADC; --card: #FEFBF4;
+  --ink: #363026; --ink-2: #7B7160; --ink-3: #B0A692;
+  --hair: #E5DCC8;
+  --accent: #AC8253; --accent-soft: #F0E5D4; --on-accent: #FEFBF4;
+  --ok: #7C9268; --warn: #A8742E;
+  --shadow: 0 18px 48px rgba(84, 66, 40, .14), 0 2px 8px rgba(84, 66, 40, .07);
+  --shadow-sm: 0 1px 4px rgba(84, 66, 40, .08);
+}
+[data-theme="desert"][data-mode="dark"] {
+  --bg: #26211A; --bg-side: #1F1B15; --card: #302A21;
+  --ink: #E8E1D2; --ink-2: #AC9F88; --ink-3: #6D6252;
+  --hair: #3D362B;
+  --accent: #C9A876; --accent-soft: #423826; --on-accent: #1F1B15;
+  --ok: #9AAE85; --warn: #C9A054;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+}
+
+/* ---------- 雪山：清晨的冰川 ---------- */
+[data-theme="snow"][data-mode="light"] {
+  --bg: #F4F6F8; --bg-side: #EDF0F3; --card: #FCFDFE;
+  --ink: #2B3138; --ink-2: #67717C; --ink-3: #9DA7B2;
+  --hair: #DCE2E8;
+  --accent: #74909F; --accent-soft: #E4EBEF; --on-accent: #FCFDFE;
+  --ok: #6D9679; --warn: #A8852E;
+  --shadow: 0 18px 48px rgba(48, 62, 76, .13), 0 2px 8px rgba(48, 62, 76, .06);
+  --shadow-sm: 0 1px 4px rgba(48, 62, 76, .08);
+}
+[data-theme="snow"][data-mode="dark"] {
+  --bg: #1D2126; --bg-side: #171B1F; --card: #262B31;
+  --ink: #DFE3E7; --ink-2: #98A4AF; --ink-3: #5C6771;
+  --hair: #323942;
+  --accent: #93ABC0; --accent-soft: #2C3846; --on-accent: #171B1F;
+  --ok: #8FB89B; --warn: #C9A054;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+}
+
+/* ---------- 南极：极昼的冰面 ---------- */
+[data-theme="polar"][data-mode="light"] {
+  --bg: #F0F5F5; --bg-side: #E8EFEF; --card: #FBFEFE;
+  --ink: #263335; --ink-2: #5F7478; --ink-3: #96A9AC;
+  --hair: #D6E2E2;
+  --accent: #579CA2; --accent-soft: #DEEDEE; --on-accent: #FBFEFE;
+  --ok: #629489; --warn: #A8852E;
+  --shadow: 0 18px 48px rgba(38, 71, 74, .13), 0 2px 8px rgba(38, 71, 74, .06);
+  --shadow-sm: 0 1px 4px rgba(38, 71, 74, .08);
+}
+[data-theme="polar"][data-mode="dark"] {
+  --bg: #172123; --bg-side: #121B1D; --card: #1F2B2D;
+  --ink: #D9E4E4; --ink-2: #8FA8AA; --ink-3: #566A6C;
+  --hair: #2A3A3C;
+  --accent: #7FBFC4; --accent-soft: #24393B; --on-accent: #121B1D;
+  --ok: #85B3A8; --warn: #C9A054;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+}
+
+/* ---------- 清单色（浅色模式） ---------- */
+[data-mode="light"] {
+  --list-clay: #B4664A; --list-moss: #71885E; --list-sea: #5A8CA0;
+  --list-sand: #B08D57; --list-slate: #75828E; --list-plum: #9A6E8C;
+}
+[data-mode="dark"] {
+  --list-clay: #CE8A6D; --list-moss: #96AE81; --list-sea: #82AFC3;
+  --list-sand: #C9A876; --list-slate: #99A6B2; --list-plum: #BC93AE;
+}

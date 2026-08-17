@@ -1,0 +1,21 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 底：暖纸色圆角方 -->
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="#F1EFE3"/>
+  <!-- 身体 -->
+  <path d="M320 552 C320 724 404 862 512 882 C620 862 704 724 704 552 Z" fill="#C99A63"/>
+  <!-- 身体高光 -->
+  <path d="M360 580 C364 690 404 790 452 830 C400 760 372 660 372 580 Z" fill="#D9B080" opacity="0.7"/>
+  <!-- 帽 -->
+  <path d="M300 560 C300 436 394 348 512 348 C630 348 724 436 724 560 Z" fill="#8A6547"/>
+  <rect x="272" y="524" width="480" height="60" rx="30" fill="#7E5C40"/>
+  <!-- 帽高光 -->
+  <ellipse cx="420" cy="430" rx="52" ry="24" fill="#A9805C" transform="rotate(-24 420 430)"/>
+  <!-- 柄 -->
+  <rect x="490" y="288" width="44" height="92" rx="22" fill="#7E5C40" transform="rotate(8 512 334)"/>
+  <!-- 脸 -->
+  <circle cx="452" cy="668" r="15" fill="#4A3A28"/>
+  <circle cx="572" cy="668" r="15" fill="#4A3A28"/>
+  <path d="M480 704 Q512 730 544 704" stroke="#4A3A28" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <circle cx="424" cy="702" r="17" fill="#E2A88A" opacity="0.55"/>
+  <circle cx="600" cy="702" r="17" fill="#E2A88A" opacity="0.55"/>
+</svg>
