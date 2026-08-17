@@ -22,8 +22,12 @@ fn config_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("config.json"))
 }
 
-fn read_configured_dir(app: &AppHandle) -> PathBuf {
-    if let Some(p) = config_path(app) {
+/// 不依赖 AppHandle 的配置读取：状态必须在任何窗口创建前就绪
+/// （webview 的 JS 可能抢在 setup 钩子前发起 invoke，见 v1.0 竞态修复）。
+/// 路径与 app_config_dir 一致：%APPDATA%\com.cdpandas.acorn\config.json
+fn read_configured_dir_early() -> PathBuf {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let p = PathBuf::from(appdata).join("com.cdpandas.acorn").join("config.json");
         if let Ok(s) = fs::read_to_string(&p) {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
                 if let Some(d) = v.get("dataDir").and_then(|x| x.as_str()) {
@@ -318,6 +322,9 @@ fn show_quickadd(app: &AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
+        // 状态注册必须在 Builder 层：配置里声明的窗口先于 setup 钩子加载 JS，
+        // 首个 invoke 到达时 setup 可能还没跑完
+        .manage(DataDir(Mutex::new(read_configured_dir_early())))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main(app);
         }))
@@ -329,9 +336,6 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
-            let dir = read_configured_dir(app.handle());
-            app.manage(DataDir(Mutex::new(dir)));
-
             let show = MenuItem::with_id(app, "show", "打开橡果", true, None::<&str>)?;
             let quick = MenuItem::with_id(app, "quick", "随手记一条", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

@@ -164,7 +164,14 @@ export function dismissToast() {
 
 export async function initStore(): Promise<void> {
   try {
-    const loadedData = await persist.loadData();
+    let loadedData: AppData | null;
+    try {
+      loadedData = await persist.loadData();
+    } catch (first) {
+      // 瞬时抖动（移动硬盘唤醒等）重试一次再放弃
+      await new Promise((r) => setTimeout(r, 800));
+      loadedData = await persist.loadData();
+    }
     const data = loadedData ?? defaultData();
     // 回收站 30 天自动清理
     const cutoff = Date.now() - 30 * 86400000;
