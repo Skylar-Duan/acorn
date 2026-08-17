@@ -1,0 +1,81 @@
+/* 日历视图（前缀 .cal-）：整月网格 + 拖拽改期 + 双击补记。通用布局见 app.css */
+
+/* 头部：年月（serif）与切月按钮 */
+.cal-ym { font-family: var(--serif); font-size: 15px; color: var(--ink-2); }
+.cal-nav { align-self: center; display: flex; align-items: center; gap: 4px; }
+.cal-nav button {
+  min-width: 28px; height: 26px; padding: 0 9px;
+  border-radius: var(--r-sm); color: var(--ink-2); font-size: var(--fs-sm);
+  transition: background .1s, color .1s;
+}
+.cal-nav button:hover { background: var(--card); color: var(--accent); }
+.cal-nav .arr { font-size: 16px; line-height: 1; }
+
+/* 撑满主区：列头 + 网格 + 底部详情卡 */
+.view-body.cal-body { display: flex; flex-direction: column; overflow: hidden; padding: 4px 2px 18px; }
+.cal-week {
+  flex: none; display: grid; grid-template-columns: repeat(7, 1fr);
+  padding: 4px 1px 7px; font-size: var(--fs-xs); letter-spacing: 1px;
+  color: var(--ink-3); font-weight: 600;
+}
+.cal-week span { text-align: center; }
+
+.cal-grid {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr;
+  gap: 1px; background: var(--hair);
+  border: 1px solid var(--hair); border-radius: var(--r-md); overflow: hidden;
+}
+
+/* 日格 */
+.cal-cell {
+  min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--card); padding: 6px 7px;
+  transition: background .12s, box-shadow .12s;
+}
+.cal-cell.dim { background: var(--bg); }
+.cal-cell.dim .cal-num { color: var(--ink-3); }
+.cal-cell.dim .cal-task { opacity: .55; }
+.cal-cell.cal-dropping { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+.cal-head { flex: none; display: flex; align-items: center; justify-content: space-between; }
+.cal-num {
+  width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-size: 13px; color: var(--ink-2);
+  border-radius: 50%; font-variant-numeric: tabular-nums;
+}
+.cal-num.today { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+/* 当日完成数：一枚绿点 + 数字 */
+.cal-done {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+}
+.cal-done-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+
+/* 任务小条目：优先级色边 + 截断标题 */
+.cal-task {
+  flex: none; display: flex; align-items: center; gap: 5px;
+  padding: 2px 5px; border-radius: 5px;
+  font-size: var(--fs-xs); color: var(--ink); line-height: 1.4;
+  background: var(--bg); cursor: default;
+  transition: background .1s, color .1s;
+}
+.cal-task:hover { background: var(--accent-soft); color: var(--accent); }
+.cal-task .flag { width: 3px; height: 11px; border-radius: 2px; }
+.cal-task .cal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-more { flex: none; font-size: 10.5px; color: var(--ink-3); padding: 0 5px; }
+
+/* 双击空白处弹出的补记小输入 */
+.cal-quick { flex: none; }
+.cal-quick input {
+  width: 100%; border: 1px solid var(--accent); background: var(--card);
+  border-radius: 5px; padding: 2px 6px; outline: none;
+  font-size: var(--fs-xs); color: var(--ink);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.cal-quick input::placeholder { color: var(--ink-3); }
+
+/* 网格下方的展开卡 */
+.cal-detail { flex: none; max-height: 45%; overflow-y: auto; margin-top: 8px; }

@@ -1,0 +1,111 @@
+/* 统计视图专属样式（StatsView.tsx），前缀 .stats-。图全部纯 CSS，无图表库。 */
+
+.stats-body { display: flex; flex-direction: column; gap: 28px; padding-top: 14px; }
+
+/* ---------- 三枚数字卡 ---------- */
+.stats-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.stats-card {
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 15px 18px 13px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.stats-num {
+  font-family: var(--serif); font-size: 30px; font-weight: 600; color: var(--ink);
+  font-variant-numeric: tabular-nums; line-height: 1.15;
+}
+.stats-num em {
+  font-style: normal; font-family: var(--sans); font-weight: 400;
+  font-size: var(--fs-sm); color: var(--ink-2); margin-left: 5px;
+}
+.stats-label { font-size: var(--fs-xs); color: var(--ink-2); letter-spacing: 1px; }
+
+/* ---------- 小节标题（与 group-head 同气质） ---------- */
+.stats-sec-head {
+  font-size: 11.5px; letter-spacing: 1.5px; color: var(--ink-3); font-weight: 600;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.stats-sec-sub { font-weight: 400; letter-spacing: 0; }
+
+/* ---------- 完成热力图：列=周、行=周一~周日 ---------- */
+.stats-hm { display: flex; gap: 8px; align-items: flex-start; }
+.stats-hm-days {
+  display: grid; grid-template-rows: repeat(7, 13px); row-gap: 3px;
+  font-size: 10px; color: var(--ink-3);
+}
+.stats-hm-days span { line-height: 13px; }
+.stats-hm-days span:nth-child(2) { grid-row: 4; }
+.stats-hm-days span:nth-child(3) { grid-row: 7; }
+.stats-hm-grid {
+  display: grid; grid-template-rows: repeat(7, 13px); grid-auto-flow: column;
+  grid-auto-columns: 13px; gap: 3px;
+}
+.stats-hm-cell {
+  width: 13px; height: 13px; border-radius: 3px;
+  background: color-mix(in srgb, var(--hair) 55%, transparent);
+}
+/* --ok 四档透明度 */
+.stats-hm-cell.l1 { background: color-mix(in srgb, var(--ok) 28%, transparent); }
+.stats-hm-cell.l2 { background: color-mix(in srgb, var(--ok) 48%, transparent); }
+.stats-hm-cell.l3 { background: color-mix(in srgb, var(--ok) 72%, transparent); }
+.stats-hm-cell.l4 { background: var(--ok); }
+.stats-hm-cell.future { background: transparent; }
+.stats-hm-legend {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 400; letter-spacing: 0;
+}
+.stats-hm-legend .stats-hm-cell { width: 10px; height: 10px; }
+
+/* ---------- 最近 14 天完成趋势 ---------- */
+.stats-trend { display: flex; gap: 8px; max-width: 560px; }
+.stats-trend-col {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+}
+.stats-trend-track {
+  height: 96px; width: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px;
+}
+.stats-trend-val { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.stats-trend-bar {
+  width: 62%; max-width: 18px; border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--ok) 80%, transparent);
+}
+.stats-trend-bar.zero { height: 2px; border-radius: 1px; background: var(--hair); }
+.stats-trend-day { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* ---------- 分布两栏 ---------- */
+.stats-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+.stats-dist { display: flex; flex-direction: column; gap: 8px; }
+.stats-dist-row { display: grid; grid-template-columns: 118px 1fr 26px; gap: 10px; align-items: center; }
+.stats-dist-name {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden;
+}
+.stats-dist-nm { overflow: hidden; text-overflow: ellipsis; }
+.stats-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.stats-dist-track {
+  display: block; height: 8px; border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--hair) 55%, transparent);
+}
+.stats-dist-fill {
+  display: block; height: 100%; border-radius: 999px;
+  background: var(--accent); transition: width .25s ease;
+}
+.stats-dist-num {
+  font-size: var(--fs-xs); color: var(--ink-3); text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.stats-none { color: var(--ink-3); font-size: var(--fs-sm); padding: 16px 0; }
+
+/* ---------- 每周回顾卡 ---------- */
+.stats-week {
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm); padding: 17px 20px;
+  display: flex; align-items: center; gap: 16px; margin-bottom: 6px;
+}
+.stats-week-info { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.stats-week-titlerow { display: flex; align-items: baseline; gap: 10px; }
+.stats-week-title { font-family: var(--serif); font-size: var(--fs-h2); font-weight: 600; }
+.stats-week-range { font-size: var(--fs-xs); color: var(--ink-3); }
+.stats-week-sum { font-size: var(--fs-sm); color: var(--ink-2); }
+.stats-week > .btn { margin-left: auto; flex: none; }

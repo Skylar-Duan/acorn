@@ -1,0 +1,112 @@
+/* 设置视图（前缀 .set-）：分节卡片，纸上调旋钮。主题变量见 themes.css */
+
+.set-body { max-width: 660px; }
+
+/* ---------- 分节卡片 ---------- */
+.set-section {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 20px 14px;
+  margin: 14px 0;
+}
+.set-section > h2 {
+  font-family: var(--serif);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.set-desc { font-size: var(--fs-sm); color: var(--ink-3); }
+
+/* 行：左标签右控件，行间发丝线 */
+.set-row { display: flex; align-items: center; gap: 12px; padding: 10px 0 8px; }
+.set-row + .set-row { border-top: 1px solid var(--hair); }
+.set-row-label { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-md); color: var(--ink); }
+.set-hint { font-size: var(--fs-xs); color: var(--ink-3); }
+.set-ctl { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+.set-suffix { font-size: var(--fs-sm); color: var(--ink-2); }
+
+/* ---------- 主题色卡 ---------- */
+.set-themes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 12px 0;
+}
+.set-theme-card {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--bg); padding: 9px 12px;
+  transition: border-color .12s, box-shadow .12s;
+}
+.set-theme-card:hover { border-color: var(--ink-3); }
+.set-theme-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.set-theme-name { font-size: var(--fs-sm); color: var(--ink); }
+.set-theme-card.on .set-theme-name { color: var(--accent); font-weight: 600; }
+
+/* 色卡内两枚小方块：借 data-theme/data-mode 让变量落到对应主题 */
+.set-swatch { display: inline-flex; gap: 4px; flex: none; }
+.set-swatch span { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--hair); }
+.set-swatch .set-sw-bg { background: var(--bg); }
+.set-swatch .set-sw-accent { background: var(--accent); border-color: transparent; }
+
+/* ---------- 分段控件 ---------- */
+.set-seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--bg); border: 1px solid var(--hair); border-radius: 999px;
+}
+.set-seg button {
+  border-radius: 999px; padding: 4px 12px;
+  font-size: var(--fs-sm); color: var(--ink-2);
+  transition: background .12s, color .12s;
+}
+.set-seg button:hover { color: var(--ink); }
+.set-seg button.on { background: var(--card); color: var(--accent); font-weight: 600; box-shadow: var(--shadow-sm); }
+
+/* ---------- 小开关 ---------- */
+.set-switch {
+  width: 38px; height: 22px; border-radius: 999px;
+  background: var(--hair); position: relative; flex: none; padding: 0;
+  transition: background .15s;
+}
+.set-switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--card); box-shadow: var(--shadow-sm);
+  transition: left .15s;
+}
+.set-switch.on { background: var(--accent); }
+.set-switch.on::after { left: 19px; }
+
+/* ---------- 数据 ---------- */
+.set-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-3); }
+.set-dot.ok { background: var(--ok); }
+.set-dot.bad { background: #C0564A; } /* 危险红与 base.css 保持一字不差（暂无 token） */
+.set-path {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-2);
+  word-break: break-all; user-select: text;
+}
+
+.set-backups { margin-top: 4px; }
+.set-backup-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 2px; border-top: 1px solid var(--hair);
+  font-size: var(--fs-sm);
+}
+.set-backup-name { font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink); }
+.set-backup-size { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.set-empty { font-size: var(--fs-sm); color: var(--ink-3); padding: 10px 0 4px; }
+
+/* ---------- 导出与导入 ---------- */
+.set-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.set-flex { flex: 1; }
+
+/* 快捷键输入框 */
+.set-shortcut { width: 170px; text-align: center; font-family: var(--mono); font-size: var(--fs-sm); }
+
+/* ---------- 关于 ---------- */
+.set-about { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 24px 20px; }
+.set-about-brand { font-family: var(--serif); font-size: 20px; letter-spacing: 2px; color: var(--ink); }
+.set-about-line { font-size: var(--fs-sm); color: var(--ink-2); }

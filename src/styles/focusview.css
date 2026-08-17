@@ -1,0 +1,122 @@
+/* 专注页：开始卡与大计时器。前缀 .fv-（约定见 app.css 顶部注释） */
+
+/* 舞台：占满剩余空间，内容居中呼吸 */
+.fv-body { display: flex; }
+.fv-stage { margin: auto; display: flex; flex-direction: column; align-items: center; }
+
+/* ---------- 开始卡 ---------- */
+.fv-card {
+  width: 420px;
+  max-width: 92%;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  padding: 30px 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.fv-lead {
+  font-family: var(--serif);
+  font-size: 19px;
+  color: var(--ink);
+  text-align: center;
+}
+.fv-select { cursor: pointer; }
+
+/* 时长按钮组 */
+.fv-mins { display: flex; gap: 8px; }
+.fv-min {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.fv-min:hover { border-color: var(--accent); color: var(--accent); }
+.fv-min.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.fv-start {
+  border-radius: var(--r-md);
+  padding: 12px 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--on-accent);
+  transition: filter .12s;
+}
+.fv-start:hover { filter: brightness(1.06); }
+
+/* ---------- 专注中 ---------- */
+.fv-run { gap: 14px; }
+.fv-timer {
+  font-size: 84px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+}
+.fv-timer.fv-paused {
+  font-family: var(--serif);
+  font-size: 56px;
+  letter-spacing: 10px;
+  color: var(--ink-3);
+}
+.fv-task {
+  font-family: var(--serif);
+  font-size: 17px;
+  color: var(--ink-2);
+  max-width: 440px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fv-round { font-size: var(--fs-xs); color: var(--ink-3); }
+.fv-ctrl { display: flex; gap: 10px; margin-top: 10px; }
+
+/* ---------- 页底：今日记录 ---------- */
+.fv-log {
+  flex: none;
+  border-top: 1px solid var(--hair);
+  padding: 10px 4px 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.fv-log-head {
+  font-size: 11.5px;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.fv-log-head .fv-sum {
+  margin-left: auto;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.fv-log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+.fv-log-row .fv-at { color: var(--ink-3); font-variant-numeric: tabular-nums; flex: none; }
+.fv-log-row .fv-dur { color: var(--accent); font-variant-numeric: tabular-nums; flex: none; }
+.fv-log-row .fv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fv-log-empty { font-size: var(--fs-sm); color: var(--ink-3); padding: 6px 2px; }

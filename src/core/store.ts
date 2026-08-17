@@ -5,7 +5,7 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { AppData, List, Priority, RepeatRule, Settings, Task } from "./model";
 import { defaultData, newId, newTask } from "./model";
-import { addDays, cmpYMD, todayYMD, toLocalDT } from "./dates";
+import { addDays, cmpYMD, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
@@ -95,14 +95,16 @@ export async function flushSave(): Promise<void> {
 
 // ---------- 变更入口 ----------
 
-/** 所有写操作的唯一入口：快照进撤销栈 → 应用变更 → 计划落盘 */
+/** 所有写操作的唯一入口：应用变更 → 快照进撤销栈 → 计划落盘。无实际变更时什么都不做 */
 function mutate(fn: (d: AppData) => AppData, opts?: { toast?: string; skipUndo?: boolean }) {
   const cur = appStore.getState().data;
+  const next = fn(cur);
+  if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘
   if (!opts?.skipUndo) {
     undoStack.push(cur);
     if (undoStack.length > UNDO_CAP) undoStack.shift();
   }
-  appStore.setState({ data: fn(cur), undoDepth: undoStack.length });
+  appStore.setState({ data: next, undoDepth: undoStack.length });
   if (opts?.toast) showToast(opts.toast, !opts?.skipUndo);
   scheduleSave();
 }
@@ -110,7 +112,13 @@ function mutate(fn: (d: AppData) => AppData, opts?: { toast?: string; skipUndo?:
 export function undo() {
   const prev = undoStack.pop();
   if (!prev) return;
-  appStore.setState({ data: prev, undoDepth: undoStack.length, ui: { ...appStore.getState().ui, toast: null } });
+  // sessions 与 settings 不属于可撤销数据（专注记录/偏好不该被连带回滚），从当前状态嫁接
+  const cur = appStore.getState().data;
+  appStore.setState({
+    data: { ...prev, sessions: cur.sessions, settings: cur.settings },
+    undoDepth: undoStack.length,
+    ui: { ...appStore.getState().ui, toast: null },
+  });
   scheduleSave();
 }
 
@@ -135,6 +143,7 @@ export async function initStore(): Promise<void> {
     data.tasks = data.tasks.filter(
       (t) => !t.deletedAt || new Date(t.deletedAt).getTime() > cutoff,
     );
+    undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
     appStore.setState({ data, loaded: true, loadError: null });
     if (loadedData == null) await persist.saveData(data);
     await persist.ensureDailyBackup();
@@ -207,7 +216,7 @@ export function completeTask(id: string) {
     if (t.repeat && t.due) {
       const doneCopy: Task = {
         ...t, id: newId(), repeat: null, done: true, doneAt: nowIso,
-        subtasks: t.subtasks.map((s) => ({ ...s })),
+        subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
       };
       const nd = nextOccurrence(t.repeat, t.due);
       const advanced: Task = {
@@ -447,7 +456,8 @@ export function tasksForToday(d: AppData, today = todayYMD()): { overdue: Task[]
     .filter((t) => !t.done && t.due === today)
     .sort(byPriorityThenOrder);
   const doneToday = alive
-    .filter((t) => t.done && t.doneAt && t.doneAt.slice(0, 10) === today)
+    // doneAt 是 UTC ISO，必须转回本地日期再归日，否则本地 0-8 点完成的会归到昨天
+    .filter((t) => t.done && t.doneAt && toYMD(new Date(t.doneAt)) === today)
     .sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : -1));
   return { overdue, todays, doneToday };
 }
