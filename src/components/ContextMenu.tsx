@@ -4,8 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Priority, Task } from "../core/model";
 import { addDays, dayOfWeek, todayYMD } from "../core/dates";
 import {
-  closeCtxMenu, completeTask, deleteTasks, postponeTasks, setTasksDue,
-  setTasksList, showToast, uncompleteTask, updateTask, useApp,
+  closeCtxMenu, completeTask, deleteTasks, postponeRows, postponeTasks,
+  removeSubtask, setTasksDue, setTasksList, showToast, uncompleteTask,
+  updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
 import "../styles/contextmenu.css";
@@ -18,7 +19,124 @@ export default function ContextMenu() {
   const ctx = useApp((s) => s.ui.ctxMenu);
   if (!ctx) return null;
   // 每次打开都重挂载，内部状态（子菜单/输入框/定位）不残留
+  if (ctx.sub) {
+    return <SubRowMenu key={`${ctx.x},${ctx.y},${ctx.sub.subId}`} x={ctx.x} y={ctx.y} taskId={ctx.sub.taskId} subId={ctx.sub.subId} />;
+  }
   return <Menu key={`${ctx.x},${ctx.y},${ctx.ids.join("|")}`} x={ctx.x} y={ctx.y} ids={ctx.ids} />;
+}
+
+/** 子任务行的右键菜单：作用对象是子任务本身，绝不打到母任务上 */
+function SubRowMenu({ x, y, taskId, subId }: { x: number; y: number; taskId: string; subId: string }) {
+  const data = useApp((s) => s.data);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+  const [subOpen, setSubOpen] = useState<"date" | "priority" | null>(null);
+
+  const task = data.tasks.find((t) => t.id === taskId && !t.deletedAt);
+  const sub = task?.subtasks.find((s) => s.id === subId);
+  const gone = !task || !sub;
+
+  useEffect(() => {
+    if (gone) closeCtxMenu();
+  }, [gone]);
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    let left = x, top = y;
+    if (left + el.offsetWidth > window.innerWidth - 8) left = Math.max(8, left - el.offsetWidth);
+    if (top + el.offsetHeight > window.innerHeight - 8) top = Math.max(8, top - el.offsetHeight);
+    setPos({ left, top });
+  }, [x, y]);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) closeCtxMenu();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeCtxMenu();
+    }
+    function onWheel() {
+      closeCtxMenu();
+    }
+    document.addEventListener("mousedown", onDown, true);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("wheel", onWheel, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
+  if (gone) return null;
+  const today = todayYMD();
+  const run = (fn: () => void) => {
+    fn();
+    closeCtxMenu();
+  };
+
+  return (
+    <div className="ctx-menu" ref={menuRef} style={{ left: pos.left, top: pos.top }} onContextMenu={(e) => e.preventDefault()}>
+      <div className="ctx-count">子任务 · {task.title.slice(0, 12)}</div>
+      <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { done: !sub.done }))}>
+        {sub.done ? "标记未完成" : "完成子任务"}
+      </button>
+      <div className="ctx-sep" />
+      <button className="ctx-item" onClick={() => run(() => postponeRows([{ task, sub }]))}>
+        推到明天
+      </button>
+      <div
+        className={`ctx-subwrap${subOpen === "date" ? " open" : ""}`}
+        onMouseEnter={() => setSubOpen("date")}
+        onMouseLeave={() => setSubOpen(null)}
+      >
+        <button className="ctx-item">安排日期<span className="ctx-caret">▸</span></button>
+        {subOpen === "date" && (
+          <div className="ctx-submenu">
+            <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { due: today }))}>今天</button>
+            <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { due: addDays(today, 1) }))}>明天</button>
+            <div className="ctx-sep" />
+            <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { due: null, dueTime: null }))}>继承母任务</button>
+          </div>
+        )}
+      </div>
+      <div
+        className={`ctx-subwrap${subOpen === "priority" ? " open" : ""}`}
+        onMouseEnter={() => setSubOpen("priority")}
+        onMouseLeave={() => setSubOpen(null)}
+      >
+        <button className="ctx-item">优先级<span className="ctx-caret">▸</span></button>
+        {subOpen === "priority" && (
+          <div className="ctx-submenu">
+            {([3, 2, 1, 0] as Priority[]).map((p) => (
+              <button key={p} className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { priority: p }))}>
+                <span className={`flag p${p}`} />
+                {PRIORITY_LABEL[p]}
+              </button>
+            ))}
+            <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { priority: null }))}>继承母任务</button>
+          </div>
+        )}
+      </div>
+      <div className="ctx-sep" />
+      <button
+        className="ctx-item"
+        onClick={() => {
+          void navigator.clipboard.writeText(sub.title).then(
+            () => showToast("已复制", false),
+            () => showToast("复制失败", false),
+          );
+          closeCtxMenu();
+        }}
+      >
+        复制标题
+      </button>
+      <button className="ctx-item ctx-danger" onClick={() => run(() => removeSubtask(taskId, subId))}>
+        删除子任务
+      </button>
+    </div>
+  );
 }
 
 function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {

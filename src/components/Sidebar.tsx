@@ -1,6 +1,6 @@
 // 侧栏：固定入口 + 视图 + 清单 + 自动出现的需求方/标签分组。
 // 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、「收件箱」清日期、清单/需求方即归属。
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
   addList, aliveTasks, allTags, allWho, navigate, openRows, setTasksDue,
@@ -29,9 +29,10 @@ const ICONS = {
   stats: "M4 20V10 M10 20V4 M16 20v-9 M21 20H3",
 } as const;
 
-/** 从拖拽事件里取任务 id（TaskRow onDragStart 放进去的） */
-function draggedTaskId(e: React.DragEvent): string | null {
-  return e.dataTransfer.getData("text/acorn-task") || null;
+/** 从拖拽事件里取任务 id 组（TaskRow onDragStart 放进去的，多选拖拽是逗号串） */
+function draggedTaskIds(e: React.DragEvent): string[] {
+  const raw = e.dataTransfer.getData("text/acorn-task");
+  return raw ? raw.split(",").filter(Boolean) : [];
 }
 
 export default function Sidebar() {
@@ -43,8 +44,8 @@ export default function Sidebar() {
   const loadError = useApp((s) => s.loadError);
   const [addingList, setAddingList] = useState(false);
   const [dropHint, setDropHint] = useState<string | null>(null);
-  /** 拖到「计划」后待定日期的任务 */
-  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
+  /** 拖到「计划」后待定日期的任务组 + 弹层位置（落点处） */
+  const [pendingPlan, setPendingPlan] = useState<{ ids: string[]; x: number; y: number } | null>(null);
 
   const today = todayYMD();
   const open = aliveTasks(data).filter((t) => !t.done);
@@ -64,7 +65,7 @@ export default function Sidebar() {
   const whoList = allWho(data);
   const tagList = allTags(data);
 
-  function dropProps(key: string, onDrop: (taskId: string) => void) {
+  function dropProps(key: string, onDrop: (taskIds: string[], e: React.DragEvent) => void) {
     return {
       onDragOver: (e: React.DragEvent) => {
         if (e.dataTransfer.types.includes("text/acorn-task")) {
@@ -76,11 +77,28 @@ export default function Sidebar() {
       onDrop: (e: React.DragEvent) => {
         e.preventDefault();
         setDropHint(null);
-        const id = draggedTaskId(e);
-        if (id) onDrop(id);
+        const ids = draggedTaskIds(e);
+        if (ids.length) onDrop(ids, e);
       },
     };
   }
+
+  // 「计划」弹层：Esc / 点弹层外关闭
+  useEffect(() => {
+    if (!pendingPlan) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPendingPlan(null);
+    }
+    function onDoc(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest(".side-plan-pop")) setPendingPlan(null);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDoc);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDoc);
+    };
+  }, [pendingPlan]);
 
   const item = (
     id: ViewId,
@@ -88,7 +106,7 @@ export default function Sidebar() {
     icon: keyof typeof ICONS,
     n?: number,
     hot?: boolean,
-    drop?: (taskId: string) => void,
+    drop?: (taskIds: string[], e: React.DragEvent) => void,
   ) => (
     <li
       className={`${view === id ? "on" : ""}${dropHint === id ? " dropping" : ""}`}
@@ -109,23 +127,28 @@ export default function Sidebar() {
       </div>
       <nav>
         <ul>
-          {item("inbox", "收件箱", "inbox", counts.inbox, false, (id) => setTasksDue([id], null))}
-          {item("today", "今天", "today", counts.today, true, (id) => setTasksDue([id], today))}
-          {item("upcoming", "计划", "upcoming", counts.upcoming, false, (id) => setPendingPlan(id))}
+          {item("inbox", "收件箱", "inbox", counts.inbox, false, (ids) => setTasksDue(ids, null))}
+          {item("today", "今天", "today", counts.today, true, (ids) => setTasksDue(ids, today))}
+          {item("upcoming", "计划", "upcoming", counts.upcoming, false, (ids, e) => setPendingPlan({ ids, x: e.clientX, y: e.clientY }))}
           {item("all", "全部", "all", counts.all)}
           {item("logbook", "日志", "logbook")}
         </ul>
         {pendingPlan && (
-          <div className="popmenu" style={{ left: 200, top: 120, position: "fixed" }}>
-            <div style={{ fontSize: 12, color: "var(--ink-2)", padding: "4px 10px" }}>安排到哪天？</div>
-            <button className="item" onClick={() => { setTasksDue([pendingPlan], addDays(today, 1)); setPendingPlan(null); }}>明天</button>
-            <button className="item" onClick={() => { const wd = dayOfWeek(today); setTasksDue([pendingPlan], addDays(today, wd === 0 ? 1 : 8 - wd)); setPendingPlan(null); }}>下周一</button>
+          <div
+            className="popmenu side-plan-pop"
+            style={{ left: Math.min(pendingPlan.x, window.innerWidth - 220), top: Math.min(pendingPlan.y, window.innerHeight - 220), position: "fixed" }}
+          >
+            <div style={{ fontSize: 12, color: "var(--ink-2)", padding: "4px 10px" }}>
+              安排到哪天？{pendingPlan.ids.length > 1 ? `（${pendingPlan.ids.length} 项）` : ""}
+            </div>
+            <button className="item" onClick={() => { setTasksDue(pendingPlan.ids, addDays(today, 1)); setPendingPlan(null); }}>明天</button>
+            <button className="item" onClick={() => { const wd = dayOfWeek(today); setTasksDue(pendingPlan.ids, addDays(today, wd === 0 ? 1 : 8 - wd)); setPendingPlan(null); }}>下周一</button>
             <input
               className="inline"
               type="date"
               onChange={(e) => {
                 if (e.target.value) {
-                  setTasksDue([pendingPlan], e.target.value);
+                  setTasksDue(pendingPlan.ids, e.target.value);
                   setPendingPlan(null);
                 }
               }}
@@ -152,7 +175,7 @@ export default function Sidebar() {
                 key={l.id}
                 className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}`}
                 onClick={() => navigate("list", { listId: l.id })}
-                {...dropProps(`list-${l.id}`, (id) => setTasksList([id], l.id))}
+                {...dropProps(`list-${l.id}`, (ids) => setTasksList(ids, l.id))}
               >
                 <span className="dot" style={{ background: `var(--list-${l.color})` }} />
                 {l.name}
@@ -189,7 +212,7 @@ export default function Sidebar() {
                   key={who}
                   className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}`}
                   onClick={() => navigate("who", { who })}
-                  {...dropProps(`who-${who}`, (id) => updateTask(id, { who }))}
+                  {...dropProps(`who-${who}`, (ids) => ids.forEach((id) => updateTask(id, { who })))}
                 >
                   <span
                     className="dot"

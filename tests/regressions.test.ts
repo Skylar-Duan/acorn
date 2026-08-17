@@ -1,9 +1,10 @@
-// 审查修复的回归测试：提醒复活（高危#1）、专注切换结算、无操作不压撤销栈
+// 审查修复的回归测试：提醒复活、专注切换结算、无操作不压撤销栈、
+// v1.1 复审修复（子任务行顺延 / 清日期连带清时间 / 循环补追赶）
 import { beforeEach, describe, expect, it } from "vitest";
 import { defaultData, newTask } from "../src/core/model";
 import { addDays, todayYMD, toLocalDT } from "../src/core/dates";
 import {
-  appStore, completeTask, postponeTasks, setTasksDue, undo, updateTask,
+  appStore, completeTask, postponeRows, postponeTasks, setTasksDue, undo, updateTask,
 } from "../src/core/store";
 
 function reset(tasks: ReturnType<typeof newTask>[] = []) {
@@ -92,5 +93,61 @@ describe("无操作不压撤销栈", () => {
     const before = appStore.getState().undoDepth;
     completeTask(t.id);
     expect(appStore.getState().undoDepth).toBe(before);
+  });
+});
+
+describe("v1.1 复审修复", () => {
+  const today = todayYMD();
+
+  it("postponeRows：子任务行推子任务日期，母任务原地不动", () => {
+    const t = newTask({
+      title: "母",
+      due: addDays(today, 5),
+      subtasks: [{ id: "s1", title: "子", done: false, due: addDays(today, -1), dueTime: null, priority: null }],
+    });
+    reset([t]);
+    postponeRows([{ task: t, sub: t.subtasks[0] }]);
+    const after = appStore.getState().data.tasks.find((x) => x.id === t.id)!;
+    expect(after.due).toBe(addDays(today, 5)); // 母任务没被误推
+    expect(after.postponeCount).toBe(0);
+    expect(after.subtasks[0].due).toBe(addDays(today, 1)); // 逾期子任务从今天起推明天
+  });
+
+  it("postponeRows：母行与子行混合各推各的", () => {
+    const t = newTask({
+      title: "母逾期",
+      due: addDays(today, -2),
+      subtasks: [{ id: "s1", title: "子", done: false, due: addDays(today, -1), dueTime: null, priority: null }],
+    });
+    reset([t]);
+    postponeRows([{ task: t, sub: null }, { task: t, sub: t.subtasks[0] }]);
+    const after = appStore.getState().data.tasks.find((x) => x.id === t.id)!;
+    expect(after.due).toBe(addDays(today, 1));
+    expect(after.subtasks[0].due).toBe(addDays(today, 1));
+  });
+
+  it("setTasksDue(null) 连带清 dueTime，重新排期不复活幻影提醒", () => {
+    const t = newTask({ title: "x", due: today, dueTime: "09:00", reminder: null });
+    reset([t]);
+    setTasksDue([t.id], null);
+    let after = appStore.getState().data.tasks.find((x) => x.id === t.id)!;
+    expect(after.dueTime).toBeNull();
+    setTasksDue([t.id], addDays(today, 1));
+    after = appStore.getState().data.tasks.find((x) => x.id === t.id)!;
+    expect(after.reminder).toBeNull(); // 没有残留时间 → 不再凭空长提醒
+  });
+
+  it("严重逾期的每日循环任务完成后直接追到明天，不再逐天爬行", () => {
+    const t = newTask({
+      title: "每日站会",
+      due: addDays(today, -10),
+      dueTime: "09:00",
+      repeat: { kind: "daily", every: 1 },
+    });
+    reset([t]);
+    completeTask(t.id);
+    const after = appStore.getState().data.tasks.find((x) => x.id === t.id)!;
+    expect(after.due).toBe(addDays(today, 1)); // 锚点取今天
+    expect(after.reminder).toBe(toLocalDT(addDays(today, 1), "09:00")); // 提醒在未来，不会立刻响
   });
 });

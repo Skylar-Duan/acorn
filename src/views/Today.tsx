@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import type { DateRow } from "../core/store";
 import { formatCN, todayYMD } from "../core/dates";
-import { postponeTasks, tasksForToday, useApp } from "../core/store";
+import { postponeRows, tasksForToday, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 import QuickAddBar from "../components/QuickAddBar";
@@ -20,15 +20,22 @@ export default function Today() {
   const total = todays.length + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
 
-  const renderRow = (r: DateRow) => (
-    <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
-      {!r.sub && expandedId === r.task.id ? (
-        <TaskCard task={r.task} />
-      ) : (
-        <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />
-      )}
-    </Fragment>
-  );
+  // 展开卡的落点：母任务行处展开；母任务行不在本视图时（只有子任务行到期），
+  // 卡片落在该任务的第一个子任务行上，避免「点了没反应」
+  const motherVisible = new Set([...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task.id));
+  const cardRendered = new Set<string>();
+  const renderRow = (r: DateRow) => {
+    const wantCard =
+      expandedId === r.task.id &&
+      (!r.sub || !motherVisible.has(r.task.id)) &&
+      !cardRendered.has(r.task.id);
+    if (wantCard) cardRendered.add(r.task.id);
+    return (
+      <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
+        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />}
+      </Fragment>
+    );
+  };
 
   return (
     <section className="main">
@@ -42,7 +49,7 @@ export default function Today() {
           <>
             <div className="group-head warn">
               逾期 {overdue.length}
-              <button className="act" onClick={() => postponeTasks([...new Set(overdue.map((r) => r.task.id))])}>
+              <button className="act" onClick={() => postponeRows(overdue)}>
                 全部推到明天 →
               </button>
             </div>

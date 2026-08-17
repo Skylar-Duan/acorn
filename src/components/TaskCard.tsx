@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { LIST_COLORS } from "../core/model";
-import { addDays, formatShort, todayYMD } from "../core/dates";
+import { addDays, dayOfWeek, formatShort, todayYMD } from "../core/dates";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import type { ParseResult } from "../core/parse";
 import {
@@ -56,12 +56,15 @@ export default function TaskCard({ task }: { task: Task }) {
   }
 
   function commitDraft() {
-    updateTask(task.id, { due: draftDue || null, dueTime: draftTime || null });
+    // 只填了时间没填日期 → 落到今天，不允许「有时间无日期」的悬空状态
+    const due = draftDue || (draftTime ? today : null);
+    updateTask(task.id, { due, dueTime: draftTime || null });
     setMenu(null);
   }
 
+  /** 快捷按钮：改日期，但弹层里刚填的时间要带上（没填则保留任务原时间） */
   function setDue(d: string | null) {
-    updateTask(task.id, { due: d });
+    updateTask(task.id, { due: d, dueTime: d ? draftTime || task.dueTime : null });
     setMenu(null);
   }
 
@@ -82,7 +85,11 @@ export default function TaskCard({ task }: { task: Task }) {
     const patch: Partial<Task> = {};
     if (kinds.has("date")) patch.due = p.due;
     if (kinds.has("time")) patch.dueTime = p.dueTime;
-    if (kinds.has("repeat")) patch.repeat = p.repeat;
+    if (kinds.has("repeat")) {
+      patch.repeat = p.repeat;
+      // 只写「每周一」没写日期：任务本来无日期时要带上首个落点，否则循环永不触发
+      if (!kinds.has("date") && !task.due && p.due) patch.due = p.due;
+    }
     if (kinds.has("priority")) patch.priority = p.priority;
     if (kinds.has("who")) patch.who = p.who;
     if (kinds.has("list") && p.listName) patch.listId = ensureListId(p.listName);
@@ -92,8 +99,11 @@ export default function TaskCard({ task }: { task: Task }) {
     setQuick("");
   }
 
+  // 循环菜单的「每周X/每月X号」按任务自己的日期取形；「下周一」必须按今天算
   const wd = task.due ? new Date(task.due).getDay() : new Date().getDay();
   const dom = task.due ? Number(task.due.slice(8, 10)) : new Date().getDate();
+  const todayWd = dayOfWeek(today);
+  const nextMonday = addDays(today, todayWd === 0 ? 1 : 8 - todayWd);
 
   return (
     <div className="task-card" ref={cardRef}>
@@ -201,7 +211,7 @@ export default function TaskCard({ task }: { task: Task }) {
           <div className="popmenu" style={{ top: "110%", left: 0 }}>
             <button className="item" onClick={() => setDue(today)}>今天</button>
             <button className="item" onClick={() => setDue(addDays(today, 1))}>明天</button>
-            <button className="item" onClick={() => setDue(addDays(today, 7 - (wd === 0 ? 7 : wd) + 1))}>下周一</button>
+            <button className="item" onClick={() => setDue(nextMonday)}>下周一</button>
             <div className="sep" />
             {/* 草稿态：随便翻月翻时间，点「确定」才生效 */}
             <input className="inline" type="date" value={draftDue} onChange={(e) => setDraftDue(e.target.value)} />

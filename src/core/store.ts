@@ -27,8 +27,8 @@ export interface UIState {
   searchOpen: boolean;
   paletteOpen: boolean;
   toast: { msg: string; undoable: boolean; key: number } | null;
-  /** 自定义右键菜单：null = 关闭 */
-  ctxMenu: { x: number; y: number; ids: string[] } | null;
+  /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义 */
+  ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null } | null;
 }
 
 export interface FocusState {
@@ -245,7 +245,10 @@ export function updateTask(id: string, patch: Partial<Task>) {
         if (next.dueTime) next.reminder = toLocalDT(next.due, next.dueTime);
         else if (t.reminder) next.reminder = toLocalDT(next.due, t.reminder.slice(11));
       }
-      if (patch.due === null) next.reminder = null;
+      if (patch.due === null) {
+        next.reminder = null;
+        if (patch.dueTime === undefined) next.dueTime = null; // 清日期连带清时间（除非显式另给）
+      }
       // 清掉时间点 → 挂在那个时间上的提醒一并清（否则提醒会隐形残留、无处取消）
       if (patch.dueTime === null && patch.reminder === undefined) next.reminder = null;
       return next;
@@ -264,7 +267,10 @@ export function completeTask(id: string) {
         ...t, id: newId(), repeat: null, done: true, doneAt: nowIso,
         subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
       };
-      const nd = nextOccurrence(t.repeat, t.due);
+      // 严重逾期的循环任务补追赶：锚点取 max(旧 due, 今天)，新落点必在未来，
+      // 否则完成一次只前进一步、且会立刻生成过去时刻的提醒再响一次
+      const anchor = cmpYMD(t.due, todayYMD()) > 0 ? t.due : todayYMD();
+      const nd = nextOccurrence(t.repeat, anchor);
       const advanced: Task = {
         ...t,
         due: nd,
@@ -313,6 +319,41 @@ export function purgeTrash() {
   mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => !t.deletedAt) }), { toast: "回收站已清空" });
 }
 
+/** 按行顺延：母任务行推母任务，子任务行推子任务自己的日期（逾期区「全部推到明天」用） */
+export function postponeRows(rows: DateRow[], days = 1) {
+  const today = todayYMD();
+  const taskIds = rows.filter((r) => !r.sub).map((r) => r.task.id);
+  const subs = rows.filter((r) => r.sub != null);
+  mutate(
+    (d) => ({
+      ...d,
+      tasks: d.tasks.map((t) => {
+        const subHits = subs.filter((r) => r.task.id === t.id);
+        let next = t;
+        if (taskIds.includes(t.id)) {
+          const base = t.due && cmpYMD(t.due, today) > 0 ? t.due : today;
+          const nd = addDays(base, days);
+          next = { ...next, due: nd, postponeCount: t.postponeCount + 1, reminder: regenReminder(t, nd) };
+        }
+        if (subHits.length) {
+          next = {
+            ...next,
+            subtasks: next.subtasks.map((s) => {
+              const hit = subHits.find((r) => r.sub!.id === s.id);
+              if (!hit || !s.due) return s;
+              const base = cmpYMD(s.due, today) > 0 ? s.due : today;
+              return { ...s, due: addDays(base, days) };
+            }),
+          };
+        }
+        return next;
+      }),
+    }),
+    { toast: rows.length > 1 ? `已顺延 ${rows.length} 项` : "推到明天" },
+  );
+  clearSelection();
+}
+
 /** 推到明天（逾期任务推到今天之后的明天） */
 export function postponeTasks(ids: string[], days = 1) {
   const today = todayYMD();
@@ -352,6 +393,8 @@ export function setTasksDue(ids: string[], due: string | null) {
       const postpone = t.due && due && cmpYMD(due, t.due) > 0 ? 1 : 0;
       return {
         ...t, due,
+        // 清日期必须连带清时间：残留的 dueTime 会在下次排期时把提醒从隐形状态复活
+        dueTime: due ? t.dueTime : null,
         postponeCount: t.postponeCount + postpone,
         reminder: due ? regenReminder(t, due) : null,
       };
@@ -503,9 +546,9 @@ export function setFocusState(patch: Partial<FocusState>) {
   appStore.setState({ focus: { ...appStore.getState().focus, ...patch } });
 }
 
-export function openCtxMenu(x: number, y: number, ids: string[]) {
+export function openCtxMenu(x: number, y: number, ids: string[], sub?: { taskId: string; subId: string } | null) {
   const ui = appStore.getState().ui;
-  appStore.setState({ ui: { ...ui, ctxMenu: { x, y, ids } } });
+  appStore.setState({ ui: { ...ui, ctxMenu: { x, y, ids, sub: sub ?? null } } });
 }
 
 export function closeCtxMenu() {

@@ -36,15 +36,21 @@ export default function AllView() {
   const orderedIds = allRows.filter((r) => r.sub === null).map((r) => r.task.id);
   const openCount = orderedIds.length;
 
-  const renderRow = (r: DateRow) => (
-    <Fragment key={r.sub ? `${r.task.id}/${r.sub.id}` : r.task.id}>
-      {expandedId === r.task.id && r.sub === null ? (
-        <TaskCard task={r.task} />
-      ) : (
-        <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />
-      )}
-    </Fragment>
-  );
+  // 母任务行不可见时展开卡落在第一个子行上（与今天/计划视图行为一致）
+  const motherVisible = new Set(allRows.filter((r) => !r.sub).map((r) => r.task.id));
+  const cardRendered = new Set<string>();
+  const renderRow = (r: DateRow) => {
+    const wantCard =
+      expandedId === r.task.id &&
+      (!r.sub || !motherVisible.has(r.task.id)) &&
+      !cardRendered.has(r.task.id);
+    if (wantCard) cardRendered.add(r.task.id);
+    return (
+      <Fragment key={r.sub ? `${r.task.id}/${r.sub.id}` : r.task.id}>
+        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />}
+      </Fragment>
+    );
+  };
 
   return (
     <section className="main">

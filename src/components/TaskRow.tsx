@@ -6,7 +6,7 @@ import { formatShort, todayYMD, cmpYMD } from "../core/dates";
 import { describeRepeat } from "../core/recur";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
-  toggleSubtask, openCtxMenu,
+  updateSubtask, openCtxMenu,
 } from "../core/store";
 
 export function WhoBadge({ who }: { who: string }) {
@@ -50,18 +50,19 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
     e.stopPropagation();
     if (leaving) return; // 完成动画播放中，重复点击不能把循环任务推进两轮
     if (sub) {
+      // 用幂等置位而非 toggle：950ms 动画窗口内用户可能已在展开卡片里改过状态
       if (sub.done) {
-        toggleSubtask(task.id, sub.id);
+        updateSubtask(task.id, sub.id, { done: false });
         return;
       }
       if (fadeOnDone) {
         setLeaving(true);
         setTimeout(() => {
-          toggleSubtask(task.id, sub.id);
+          updateSubtask(task.id, sub.id, { done: true });
           setLeaving(false);
         }, 950);
       } else {
-        toggleSubtask(task.id, sub.id);
+        updateSubtask(task.id, sub.id, { done: true });
       }
       return;
     }
@@ -105,6 +106,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
   function onCtx(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (sub) {
+      // 子任务行：菜单作用于子任务本身，不能打到整个母任务上
+      openCtxMenu(e.clientX, e.clientY, [task.id], { taskId: task.id, subId: sub.id });
+      return;
+    }
     // 右键落在多选集合上时保留多选，否则只对当前行
     const ids = selected && selectedIds.length > 1 ? selectedIds : [task.id];
     openCtxMenu(e.clientX, e.clientY, ids);
@@ -120,7 +126,9 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
       draggable={!sub}
       onDragStart={(e) => {
         if (sub) return;
-        e.dataTransfer.setData("text/acorn-task", task.id);
+        // 拖的是多选中的一行 → 整组一起走
+        const ids = selected && selectedIds.length > 1 ? selectedIds : [task.id];
+        e.dataTransfer.setData("text/acorn-task", ids.join(","));
         e.dataTransfer.effectAllowed = "move";
       }}
       data-task-id={sub ? undefined : task.id}

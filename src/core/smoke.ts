@@ -5,7 +5,7 @@ import { addDays, todayYMD } from "./dates";
 import { parseQuickAdd } from "./parse";
 import { nextOccurrence } from "./recur";
 import * as persist from "./persist";
-import { addTask, appStore, completeTask, flushSave } from "./store";
+import { addTask, appStore, completeTask, flushSave, requestSave } from "./store";
 
 interface Step { name: string; pass: boolean; detail?: string }
 
@@ -51,6 +51,16 @@ export async function maybeRunSmoke(): Promise<boolean> {
 
     const backups = await persist.listBackups();
     check("每日备份", backups.length >= 1, `${backups.length} 份`);
+
+    // 清理现场：冒烟任务不能留在用户的真实数据里（含完成副本），清完再落盘
+    const s2 = appStore.getState();
+    appStore.setState({
+      data: { ...s2.data, tasks: s2.data.tasks.filter((t) => !t.title.startsWith(stamp)) },
+    });
+    requestSave();
+    await flushSave();
+    const cleaned = await persist.loadData();
+    check("冒烟数据清理", !!cleaned && !cleaned.tasks.some((t) => t.title.startsWith(stamp)));
   } catch (e) {
     check("异常", false, String(e));
   }

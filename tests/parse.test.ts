@@ -677,3 +677,42 @@ describe("指令词「提醒我」清理", () => {
     expect(r.title).toBe("写提醒事项模板");
   });
 });
+
+describe("v1.1 复审修复：边界不吞正文", () => {
+  it("「前端」不被单字「前」后缀吞首字", () => {
+    const r = p("明天前端联调");
+    expect(r.due).toBe("2026-08-22");
+    expect(r.title).toBe("前端联调");
+  });
+
+  it("日期后紧跟「前」且成词尾时仍然吞掉", () => {
+    const r = p("明天前 交接文档");
+    expect(r.due).toBe("2026-08-22");
+    expect(r.title).toBe("交接文档");
+  });
+
+  it("#标签止步于 /：「#紧要/工作」标签只取紧要（/清单需空格隔开，保护 8/20 与 URL）", () => {
+    const r = p("开会 #紧要/工作");
+    expect(r.tags).toEqual(["紧要"]);
+    expect(r.listName).toBeNull();
+    const r2 = p("开会 #紧要 /工作");
+    expect(r2.tags).toEqual(["紧要"]);
+    expect(r2.listName).toBe("工作");
+  });
+
+  it("正文里的比分不被吞成日期：「比分3-2 复盘」", () => {
+    const r = p("比分3-2 复盘");
+    expect(r.due).toBeNull();
+    expect(r.title).toBe("比分3-2 复盘");
+  });
+
+  it("正文里的分数不被吞成日期：「完成了3/4 汇报」", () => {
+    const r = p("完成了3/4 汇报");
+    expect(r.due).toBeNull();
+    expect(r.title).toBe("完成了3/4 汇报");
+  });
+
+  it("行首 MM/DD 仍然生效", () => {
+    expect(p("12/31 年终总结").due).toBe("2026-12-31");
+  });
+});

@@ -55,15 +55,21 @@ export default function Upcoming() {
     }));
   }, [future, today]);
 
-  const renderRow = (r: DateRow) => (
-    <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
-      {!r.sub && expandedId === r.task.id ? (
-        <TaskCard task={r.task} />
-      ) : (
-        <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />
-      )}
-    </Fragment>
-  );
+  // 母任务行不可见时，展开卡落在该任务第一个子任务行上
+  const motherVisible = new Set(future.filter((r) => !r.sub).map((r) => r.task.id));
+  const cardRendered = new Set<string>();
+  const renderRow = (r: DateRow) => {
+    const wantCard =
+      expandedId === r.task.id &&
+      (!r.sub || !motherVisible.has(r.task.id)) &&
+      !cardRendered.has(r.task.id);
+    if (wantCard) cardRendered.add(r.task.id);
+    return (
+      <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
+        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />}
+      </Fragment>
+    );
+  };
 
   return (
     <section className="main">

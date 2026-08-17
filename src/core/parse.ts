@@ -108,10 +108,11 @@ function firstOccurrence(rule: RepeatRule, today: string): string {
 // ---------- 正则(共享实例,scan 内每次重置 lastIndex) ----------
 
 const RE = {
-  tag: /#([^\s#@!！]+)/g,
+  // 字符类统一排斥 / ——否则「#紧要/工作」会整体吞成一个标签,清单丢失
+  tag: /#([^\s#@/!！]+)/g,
   // '/' 必须在行首或空白之后,防止误吞 8/20 这类日期
   list: /(?<!\S)\/([^\s#@/!！]+)/g,
-  who: /@([^\s#@!！]+)/g,
+  who: /@([^\s#@/!！]+)/g,
   prioWord: /[!！](高|中|低)/g,
   prioBang: /[!！]+/g,
   repWorkday: /每个?工作日/g,
@@ -123,8 +124,9 @@ const RE = {
   monthDay: new RegExp(`(?<!\\d)(${NUM})月(${NUM})[日号]`, "g"),
   monthEndN: new RegExp(`(?<!\\d)(${NUM})月底`, "g"),
   monthPart: /月底|月初|月中|年底/g,
-  mmDd: /(?<![\d-])(\d{1,2})-(\d{1,2})(?![\d-])/g,
-  mmSlashDd: /(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g,
+  // 与 RE.list 同款左边界:必须在行首或空白后,防止「比分3-2」「得了3/4」这类正文被吞成日期
+  mmDd: /(?<!\S)(\d{1,2})-(\d{1,2})(?![\d-])/g,
+  mmSlashDd: /(?<!\S)(\d{1,2})\/(\d{1,2})(?![\d/])/g,
   relWord: /大后天|后天|明天|今晚|今天/g,
   otherWeek: /([上下本])(?:周|星期)([一二三四五六日天])/g,
   weekday: /(?:周|星期)([一二三四五六日天])/g,
@@ -186,7 +188,13 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
       if (t === null) continue;
       if (eatDeadline) {
         const suf = DEADLINE.find((w) => input.startsWith(w, b));
-        if (suf !== undefined && free(b, b + suf.length)) b += suf.length;
+        if (suf !== undefined && free(b, b + suf.length)) {
+          // 单字「前」只在词尾（后面是空白/行尾/token 符号）才算语气词，
+          // 否则会吞掉「前端」「前台」这类内容词的首字
+          const after = input[b + suf.length];
+          const atBoundary = after === undefined || /[\s#@/!！]/.test(after);
+          if (suf !== "前" || atBoundary) b += suf.length;
+        }
       }
       for (let i = a; i < b; i++) consumed[i] = true;
       tokens.push({ start: a, chip: t.chip, apply: t.apply });
