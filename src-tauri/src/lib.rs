@@ -69,6 +69,13 @@ fn get_data_dir(state: State<DataDir>) -> String {
 fn set_data_dir(app: AppHandle, state: State<DataDir>, dir: String) -> Result<(), String> {
     let p = PathBuf::from(&dir);
     fs::create_dir_all(&p).map_err(|e| format!("无法创建目录：{e}"))?;
+    // 新目录还没有数据而旧目录有 → 把数据带过去（不带走旧备份，旧目录原样保留当兜底）
+    let old = state.0.lock().unwrap().clone();
+    let old_file = data_file(&old);
+    let new_file = data_file(&p);
+    if old_file.exists() && !new_file.exists() && old != p {
+        fs::copy(&old_file, &new_file).map_err(|e| format!("迁移数据失败：{e}"))?;
+    }
     persist_configured_dir(&app, &p)?;
     *state.0.lock().unwrap() = p;
     Ok(())
@@ -108,7 +115,26 @@ fn load_data(state: State<DataDir>) -> Result<Option<String>, String> {
     }
 
     match fs::read_to_string(&file) {
-        Ok(s) => Ok(Some(s)),
+        Ok(s) if valid_json(&s) => Ok(Some(s)),
+        Ok(_) => {
+            // 正文损坏：把坏文件改名留证，依次尝试 .old → 最新备份
+            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+            let _ = fs::rename(&file, dir.join(format!("data.json.corrupt-{stamp}")));
+            if old.exists() && fs::read_to_string(&old).map(|s| valid_json(&s)).unwrap_or(false) {
+                fs::rename(&old, &file).map_err(|e| e.to_string())?;
+                return fs::read_to_string(&file).map(Some).map_err(|e| e.to_string());
+            }
+            let newest = list_backups(state);
+            if let Some(b) = newest.first() {
+                let content = fs::read_to_string(dir.join("backups").join(&b.name))
+                    .map_err(|e| e.to_string())?;
+                if valid_json(&content) {
+                    fs::write(&file, &content).map_err(|e| e.to_string())?;
+                    return Ok(Some(content));
+                }
+            }
+            Err("数据文件已损坏，且没有可用的恢复副本（损坏文件已改名保留在数据目录）".into())
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(format!("读取数据失败：{e}")),
     }
@@ -131,8 +157,13 @@ fn save_data(state: State<DataDir>, json: String) -> Result<(), String> {
     let tmp = dir.join("data.json.tmp");
     let old = dir.join("data.json.old");
 
-    fs::write(&tmp, json.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
-    // 读回校验，确保临时文件完整落盘后才动正文
+    {
+        use std::io::Write;
+        let mut f = fs::File::create(&tmp).map_err(|e| format!("写入失败：{e}"))?;
+        f.write_all(json.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
+        // fsync：确保字节真的落到盘上（尤其是可随时拔走的移动硬盘）再动正文
+        f.sync_all().map_err(|e| format!("落盘失败：{e}"))?;
+    }
     let back = fs::read_to_string(&tmp).map_err(|e| e.to_string())?;
     if back != json {
         return Err("写入校验失败".into());
@@ -293,7 +324,6 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,

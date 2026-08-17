@@ -5,7 +5,7 @@ import { migrate } from "../core/model";
 import { pad2, todayYMD, toYMD } from "../core/dates";
 import { aliveTasks, navigate, showToast, updateSettings, useApp } from "../core/store";
 import {
-  dataStatus, inTauri, listBackups, readTextFile, restoreBackup,
+  dataStatus, getDataDir, inTauri, listBackups, readTextFile, restoreBackup,
   saveData, setDataDir, writeTextFile,
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
@@ -225,11 +225,24 @@ export default function Settings() {
         showToast("这个文件不是有效的 JSON", false);
         return;
       }
-      const ok = await dlg.ask("导入将覆盖当前全部数据，无法撤销。确定继续吗？", {
-        title: "导入数据",
-        kind: "warning",
-      });
+      // 基本形状校验：至少得像一份任务数据，防止随手选错文件整库清空
+      const shape = parsed as Partial<AppData> | null;
+      if (!shape || typeof shape !== "object" || !Array.isArray(shape.tasks)) {
+        showToast("这个文件不是橡果的数据（缺少任务列表），已取消", false);
+        return;
+      }
+      const ok = await dlg.ask(
+        `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件含 ${shape.tasks.length} 条任务。确定继续吗？`,
+        { title: "导入数据", kind: "warning" },
+      );
       if (!ok) return;
+      // 冲掉在途的防抖写入，再把当前数据留一份 pre-import 备份，最后写入导入内容
+      const { flushSave, appStore } = await import("../core/store");
+      await flushSave();
+      const dir = await getDataDir();
+      const now = new Date();
+      const stamp = `${toYMD(now).replace(/-/g, "")}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+      await writeTextFile(`${dir}\\backups\\pre-import-${stamp}.json`, JSON.stringify(appStore.getState().data)).catch(() => {});
       await saveData(migrate(parsed));
       location.reload();
     } catch (e) {

@@ -32,7 +32,6 @@
     "dialog:allow-ask",
     "autostart:allow-enable",
     "autostart:allow-disable",
-    "autostart:allow-is-enabled",
-    "opener:default"
+    "autostart:allow-is-enabled"
   ]
 }

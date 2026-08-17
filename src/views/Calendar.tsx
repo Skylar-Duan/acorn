@@ -155,7 +155,7 @@ export default function Calendar() {
                       value={quickText}
                       onChange={(e) => setQuickText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") submitQuick();
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) submitQuick();
                         if (e.key === "Escape") setQuickYmd(null);
                       }}
                       onBlur={() => setQuickYmd(null)}

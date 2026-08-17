@@ -6,7 +6,10 @@ import { inTauri } from "./persist";
 
 let tick: ReturnType<typeof setInterval> | null = null;
 let pausedRemainMs: number | null = null;
-let startedAtMs = 0;
+/** 当前连续运行段的起点（暂停会结束一段，继续开新一段） */
+let segStartMs = 0;
+/** 已结束的运行段累计毫秒（真实专注时间 = accumulated + 当前段） */
+let accumulatedMs = 0;
 
 interface FocusBroadcast {
   title: string;
@@ -38,10 +41,13 @@ async function showFocusWindow() {
   if (!w) return;
   const mon = await currentMonitor().catch(() => null);
   if (mon) {
+    // 多显示器：必须叠加显示器自身的原点偏移，否则副屏上会定位到主屏甚至屏外
+    const ox = mon.position.x / mon.scaleFactor;
+    const oy = mon.position.y / mon.scaleFactor;
     const sw = mon.size.width / mon.scaleFactor;
     const sh = mon.size.height / mon.scaleFactor;
     const { LogicalPosition } = await import("@tauri-apps/api/dpi");
-    await w.setPosition(new LogicalPosition(Math.round(sw - 320), Math.round(sh - 170)));
+    await w.setPosition(new LogicalPosition(Math.round(ox + sw - 320), Math.round(oy + sh - 170)));
   }
   await w.show();
 }
@@ -53,10 +59,25 @@ async function hideFocusWindow() {
   await w?.hide();
 }
 
+/** 真实已专注毫秒：不含暂停；当前段封顶到 endsAt（合盖睡过头不算专注） */
+function earnedMs(): number {
+  const s = appStore.getState().focus;
+  let ms = accumulatedMs;
+  if (s.running && s.endsAt) {
+    ms += Math.max(0, Math.min(Date.now(), s.endsAt) - segStartMs);
+  }
+  return ms;
+}
+
 export async function startFocus(taskId: string | null, minutes?: number) {
+  // 已有一轮在跑/暂停：先按「手动停止」结算掉，已专注的分钟不丢
+  const prev = appStore.getState().focus;
+  if (prev.running || prev.totalMinutes > 0) await stopFocus(true);
+
   const s = appStore.getState();
   const min = minutes ?? s.data.settings.focusMinutesDefault;
-  startedAtMs = Date.now();
+  segStartMs = Date.now();
+  accumulatedMs = 0;
   pausedRemainMs = null;
   setFocusState({ taskId, running: true, endsAt: Date.now() + min * 60000, totalMinutes: min });
   if (tick) clearInterval(tick);
@@ -69,26 +90,29 @@ export async function pauseFocus() {
   const s = appStore.getState().focus;
   if (!s.running || !s.endsAt) return;
   pausedRemainMs = Math.max(0, s.endsAt - Date.now());
+  accumulatedMs += Math.max(0, Math.min(Date.now(), s.endsAt) - segStartMs);
   setFocusState({ running: false, endsAt: null });
   await broadcast();
 }
 
 export async function resumeFocus() {
   if (pausedRemainMs == null) return;
+  segStartMs = Date.now();
   setFocusState({ running: true, endsAt: Date.now() + pausedRemainMs });
   pausedRemainMs = null;
   await broadcast();
 }
 
-/** 手动停止：已专注的分钟数照记（≥1 分钟才记） */
+/** 手动停止：真实专注的分钟数照记（≥1 分钟才记；暂停与睡眠时间不算） */
 export async function stopFocus(log = true) {
   const s = appStore.getState().focus;
   if (tick) { clearInterval(tick); tick = null; }
-  const elapsedMin = Math.floor((Date.now() - startedAtMs) / 60000);
-  if (log && s.taskId !== undefined && elapsedMin >= 1) {
+  const elapsedMin = Math.floor(earnedMs() / 60000);
+  if (log && elapsedMin >= 1) {
     logFocus(s.taskId, Math.min(elapsedMin, s.totalMinutes));
   }
   pausedRemainMs = null;
+  accumulatedMs = 0;
   setFocusState({ taskId: null, running: false, endsAt: null, totalMinutes: 0 });
   await hideFocusWindow();
 }
@@ -98,10 +122,13 @@ async function onTick() {
   if (!s.running || !s.endsAt) return;
   if (Date.now() >= s.endsAt) {
     if (tick) { clearInterval(tick); tick = null; }
-    logFocus(s.taskId, s.totalMinutes);
-    showToast(`🍅 专注 ${s.totalMinutes} 分钟完成`, false);
-    void notifyDone(s.totalMinutes);
+    // 按真实运行时间记（正常跑完 = totalMinutes；中途睡过去的只记睡前部分）
+    const earned = Math.min(Math.round(earnedMs() / 60000), s.totalMinutes);
+    if (earned >= 1) logFocus(s.taskId, earned);
+    showToast(`🍅 专注 ${earned} 分钟完成`, false);
+    void notifyDone(earned);
     pausedRemainMs = null;
+    accumulatedMs = 0;
     setFocusState({ taskId: null, running: false, endsAt: null, totalMinutes: 0 });
     await hideFocusWindow();
     return;

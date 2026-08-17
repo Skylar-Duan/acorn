@@ -2,10 +2,11 @@
 // 然后清掉 reminder（循环任务完成时会随新落点重新带上提醒）。
 
 import { appStore, requestSave, showToast } from "./store";
-import { nowLocalDT } from "./dates";
-import { inTauri } from "./persist";
+import { nowLocalDT, todayYMD } from "./dates";
+import { ensureDailyBackup, inTauri } from "./persist";
 
 let timer: ReturnType<typeof setInterval> | null = null;
+let lastBackupDay = "";
 
 async function fire(title: string, body: string) {
   if (inTauri) {
@@ -26,6 +27,12 @@ async function fire(title: string, body: string) {
 function sweep() {
   const s = appStore.getState();
   if (!s.loaded) return;
+  // 托盘常驻可能几十天不重启：跨天时在这里补每日备份
+  const today = todayYMD();
+  if (today !== lastBackupDay) {
+    lastBackupDay = today;
+    void ensureDailyBackup().catch(() => {});
+  }
   const now = nowLocalDT();
   const dueOnes = s.data.tasks.filter(
     (t) => !t.done && !t.deletedAt && t.reminder && t.reminder <= now,

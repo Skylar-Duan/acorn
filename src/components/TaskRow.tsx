@@ -38,6 +38,7 @@ export default function TaskRow({ task, orderedIds, hideList, fadeOnDone = true 
 
   function onCheck(e: React.MouseEvent) {
     e.stopPropagation();
+    if (leaving) return; // 完成动画播放中，重复点击不能把循环任务推进两轮
     if (task.done) {
       uncompleteTask(task.id);
       return;

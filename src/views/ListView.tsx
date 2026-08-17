@@ -71,8 +71,6 @@ export default function ListView({ kind }: { kind: ListKind }) {
     }
   }, [data, kind, listId, who, tag, list]);
 
-  const orderedIds = tasks.map((t) => t.id);
-
   // 清单/需求方视图：按日期分组展示更有章法
   const groups: { label: string; items: Task[] }[] = useMemo(() => {
     if (kind === "logbook" || kind === "trash") return [{ label: "", items: tasks }];
@@ -87,6 +85,9 @@ export default function ListView({ kind }: { kind: ListKind }) {
     if (nodate.length) out.push({ label: kind === "anytime" ? "" : "未安排", items: nodate });
     return out.length ? out : [{ label: "", items: [] }];
   }, [tasks, kind, today]);
+
+  // shift 连选的顺序必须与实际渲染顺序（分组后）一致，否则会圈中范围外的任务
+  const orderedIds = useMemo(() => groups.flatMap((g) => g.items.map((t) => t.id)), [groups]);
 
   return (
     <section className="main">
@@ -104,6 +105,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
               onBlur={(e) => {
                 const v = e.currentTarget.textContent?.trim();
                 if (v && v !== list.name) renameList(list.id, v);
+                else if (!v) e.currentTarget.textContent = list.name; // 清空不生效，还原显示
               }}
             >
               {list.name}

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { todayYMD, cmpYMD } from "../core/dates";
 import {
-  addList, aliveTasks, allWho, navigate, useApp, type ViewId,
+  addList, aliveTasks, allTags, allWho, navigate, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import iconUrl from "../../src-tauri/icons/32x32.png";
@@ -46,6 +46,8 @@ export default function Sidebar() {
     anytime: open.filter((t) => t.someday).length,
   };
   const whoList = allWho(data);
+  const tagList = allTags(data);
+  const curTag = useApp((s) => s.ui.tag);
 
   const item = (id: ViewId, label: string, icon: keyof typeof ICONS, n?: number, hot?: boolean) => (
     <li className={view === id ? "on" : ""} onClick={() => navigate(id)}>
@@ -103,7 +105,7 @@ export default function Sidebar() {
                 placeholder="清单名，回车创建"
                 style={{ padding: "3px 8px", fontSize: 13 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                     const v = (e.target as HTMLInputElement).value.trim();
                     if (v) addList(v, LIST_COLORS[data.lists.length % LIST_COLORS.length]);
                     setAddingList(false);
@@ -136,6 +138,24 @@ export default function Sidebar() {
                     {who.slice(0, 1)}
                   </span>
                   {who}
+                  {n > 0 && <span className="n">{n}</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {tagList.length > 0 && (
+          <>
+            <div className="group-title">标签</div>
+            <ul>
+              {tagList.map(({ tag, open: n }) => (
+                <li
+                  key={tag}
+                  className={view === "tag" && curTag === tag ? "on" : ""}
+                  onClick={() => navigate("tag", { tag })}
+                >
+                  <span style={{ color: "var(--ink-3)", fontSize: 12, width: 8, textAlign: "center" }}>#</span>
+                  {tag}
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
               ))}

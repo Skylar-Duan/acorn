@@ -63,7 +63,7 @@ export default function TaskCard({ task }: { task: Task }) {
           value={task.title}
           placeholder="任务标题"
           onChange={(e) => updateTask(task.id, { title: e.target.value })}
-          onKeyDown={(e) => e.key === "Enter" && expandTask(null)}
+          onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && expandTask(null)}
         />
       </div>
 
@@ -99,7 +99,7 @@ export default function TaskCard({ task }: { task: Task }) {
             value={newSub}
             onChange={(e) => setNewSub(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && newSub.trim()) {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing && newSub.trim()) {
                 addSubtask(task.id, newSub.trim());
                 setNewSub("");
               }
@@ -195,7 +195,7 @@ export default function TaskCard({ task }: { task: Task }) {
               placeholder="这事是为谁做的？回车确定"
               defaultValue={task.who ?? ""}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   const v = (e.target as HTMLInputElement).value.trim();
                   updateTask(task.id, { who: v || null });
                   setMenu(null);
@@ -233,7 +233,7 @@ export default function TaskCard({ task }: { task: Task }) {
               placeholder="多个用空格分开，回车确定"
               defaultValue={task.tags.join(" ")}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   const v = (e.target as HTMLInputElement).value.trim();
                   updateTask(task.id, { tags: v ? v.split(/\s+/) : [] });
                   setMenu(null);

@@ -49,8 +49,14 @@ void (async () => {
       });
     });
     await listen<AddTaskInput & { listName?: string | null }>("quickadd:submit", (e) => {
+      const s = appStore.getState();
+      // 数据没加载成功时不接收——此时任何写入都会拿空库覆盖磁盘真数据
+      if (!s.loaded || s.loadError) {
+        showToast("数据尚未就绪（S 盘没插？），这条没有收下", false);
+        return;
+      }
       const { listName, ...input } = e.payload;
-      const listId = listName ? appStore.getState().data.lists.find((l) => l.name === listName)?.id ?? null : null;
+      const listId = listName ? s.data.lists.find((l) => l.name === listName)?.id ?? null : null;
       addTask({ ...input, listId });
       showToast("已收下 🌰", false);
     });

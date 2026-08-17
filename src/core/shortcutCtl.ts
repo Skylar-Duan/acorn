@@ -15,21 +15,25 @@ async function showQuickAdd() {
   await emitTo("quickadd", "quickadd:show", {});
 }
 
-export async function applyQuickAddShortcut(next?: string): Promise<void> {
-  if (!inTauri) return;
+/** 注册/更换全局快捷键。先注册新键、成功才注销旧键——失败时旧键保持可用并把设置回滚 */
+export async function applyQuickAddShortcut(next?: string): Promise<boolean> {
+  if (!inTauri) return true;
   const want = next ?? appStore.getState().data.settings.quickAddShortcut;
+  if (current === want) return true;
   try {
     const gs = await import("@tauri-apps/plugin-global-shortcut");
-    if (current && current !== want) {
-      await gs.unregister(current).catch(() => {});
-      current = null;
-    }
-    if (current === want) return;
     await gs.register(want, (e) => {
       if (e.state === "Pressed") void showQuickAdd();
     });
+    if (current) await gs.unregister(current).catch(() => {});
     current = want;
-  } catch (err) {
-    showToast(`全局快捷键 ${want} 注册失败（可能被占用）`, false);
+    return true;
+  } catch {
+    showToast(`快捷键 ${want} 注册失败（可能被占用），保持原设置`, false);
+    if (current) {
+      const { updateSettings } = await import("./store");
+      updateSettings({ quickAddShortcut: current });
+    }
+    return false;
   }
 }

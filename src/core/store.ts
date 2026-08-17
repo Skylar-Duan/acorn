@@ -5,7 +5,7 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { AppData, List, Priority, RepeatRule, Settings, Task } from "./model";
 import { defaultData, newId, newTask } from "./model";
-import { addDays, cmpYMD, todayYMD, toLocalDT, toYMD } from "./dates";
+import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
@@ -69,13 +69,29 @@ export function useApp<T>(selector: (s: AppState) => T): T {
 
 // ---------- 落盘 ----------
 
+let inflightSave: Promise<void> | null = null;
+
+function doSave(): Promise<void> {
+  const s = appStore.getState();
+  // 数据没加载成功时绝不落盘——否则会拿默认空库覆盖磁盘上的真数据
+  if (!s.loaded || s.loadError) return Promise.resolve();
+  const p = persist
+    .saveData(s.data)
+    .catch((e) => {
+      showToast(`保存失败：${String(e)}`, false);
+    })
+    .finally(() => {
+      if (inflightSave === p) inflightSave = null;
+    });
+  inflightSave = p;
+  return p;
+}
+
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    void persist.saveData(appStore.getState().data).catch((e) => {
-      showToast(`保存失败：${String(e)}`, false);
-    });
+    void doSave();
   }, 400);
 }
 
@@ -84,13 +100,14 @@ export function requestSave() {
   scheduleSave();
 }
 
-/** 立即把待存的数据写掉（退出前、窗口隐藏前调用） */
+/** 立即把待存的数据写掉（退出前调用）。等在途写入一起结束，避免退出竞态 */
 export async function flushSave(): Promise<void> {
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
-    await persist.saveData(appStore.getState().data);
+    await doSave();
   }
+  if (inflightSave) await inflightSave;
 }
 
 // ---------- 变更入口 ----------
@@ -112,10 +129,21 @@ function mutate(fn: (d: AppData) => AppData, opts?: { toast?: string; skipUndo?:
 export function undo() {
   const prev = undoStack.pop();
   if (!prev) return;
-  // sessions 与 settings 不属于可撤销数据（专注记录/偏好不该被连带回滚），从当前状态嫁接
+  // sessions 与 settings 不属于可撤销数据（专注记录/偏好不该被连带回滚），从当前状态嫁接。
+  // 逐任务再嫁接两样：已消费的过期提醒不复活（否则撤销会重复轰炸）、focusMinutes 取两边较大值
   const cur = appStore.getState().data;
+  const now = nowLocalDT();
+  const curById = new Map(cur.tasks.map((t) => [t.id, t]));
+  const tasks = prev.tasks.map((pt) => {
+    const ct = curById.get(pt.id);
+    if (!ct) return pt;
+    const patched = { ...pt };
+    if (ct.reminder === null && pt.reminder && pt.reminder <= now) patched.reminder = null;
+    if (ct.focusMinutes > pt.focusMinutes) patched.focusMinutes = ct.focusMinutes;
+    return patched;
+  });
   appStore.setState({
-    data: { ...prev, sessions: cur.sessions, settings: cur.settings },
+    data: { ...prev, tasks, sessions: cur.sessions, settings: cur.settings },
     undoDepth: undoStack.length,
     ui: { ...appStore.getState().ui, toast: null },
   });
@@ -167,6 +195,14 @@ export interface AddTaskInput {
   someday?: boolean;
 }
 
+/** 日期变化后提醒的再生规则：dueTime 是第一来源（响过而被清空的提醒随新日期复活），
+ *  没有 dueTime 才沿用旧提醒的钟点 */
+function regenReminder(t: Task, newDue: string): string | null {
+  if (t.dueTime) return toLocalDT(newDue, t.dueTime);
+  if (t.reminder) return toLocalDT(newDue, t.reminder.slice(11));
+  return null;
+}
+
 export function addTask(input: AddTaskInput): string {
   const t = newTask({
     ...input,
@@ -202,6 +238,8 @@ export function updateTask(id: string, patch: Partial<Task>) {
         else if (t.reminder) next.reminder = toLocalDT(next.due, t.reminder.slice(11));
       }
       if (patch.due === null) next.reminder = null;
+      // 清掉时间点 → 挂在那个时间上的提醒一并清（否则提醒会隐形残留、无处取消）
+      if (patch.dueTime === null && patch.reminder === undefined) next.reminder = null;
       return next;
     }),
   }));
@@ -222,7 +260,8 @@ export function completeTask(id: string) {
       const advanced: Task = {
         ...t,
         due: nd,
-        reminder: t.reminder ? toLocalDT(nd, t.reminder.slice(11)) : null,
+        // dueTime 优先再生提醒：响过的提醒（已被 sweep 清成 null）要在新落点复活
+        reminder: regenReminder(t, nd),
         subtasks: t.subtasks.map((s) => ({ ...s, done: false })),
         postponeCount: 0,
       };
@@ -279,7 +318,7 @@ export function postponeTasks(ids: string[], days = 1) {
           ...t,
           due: nd,
           postponeCount: t.postponeCount + 1,
-          reminder: t.reminder ? toLocalDT(nd, t.reminder.slice(11)) : null,
+          reminder: regenReminder(t, nd),
         };
       }),
     }),
@@ -305,7 +344,7 @@ export function setTasksDue(ids: string[], due: string | null) {
       return {
         ...t, due, someday: due ? false : t.someday,
         postponeCount: t.postponeCount + postpone,
-        reminder: due && t.reminder ? toLocalDT(due, t.reminder.slice(11)) : due ? t.reminder : null,
+        reminder: due ? regenReminder(t, due) : null,
       };
     }),
   }));
@@ -362,7 +401,7 @@ export function setListColor(id: string, color: string) {
   mutate((d) => ({ ...d, lists: d.lists.map((l) => (l.id === id ? { ...l, color } : l)) }));
 }
 
-/** 删除清单：其下任务回收件箱 */
+/** 删除清单：其下任务回收件箱；正看着这张清单时把视图也带走，防止悬空 */
 export function deleteList(id: string) {
   mutate(
     (d) => ({
@@ -372,6 +411,8 @@ export function deleteList(id: string) {
     }),
     { toast: "清单已删除，任务已移回收件箱" },
   );
+  const ui = appStore.getState().ui;
+  if (ui.view === "list" && ui.listId === id) navigate("inbox");
 }
 
 // ---------- 专注 ----------

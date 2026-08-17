@@ -26,10 +26,13 @@ export default function QuickAddBar({ defaults, placeholder, autoFocus, onAdded 
 
   function submit() {
     if (!parsed || !parsed.title.trim()) return;
+    // defaults.listId 可能指向一张刚被删除的清单，落库前验一遍存在性
+    const defaultListId =
+      defaults?.listId && lists.some((l) => l.id === defaults.listId) ? defaults.listId : null;
     const listId =
       parsed.listName != null
         ? lists.find((l) => l.name === parsed.listName)?.id ?? null
-        : defaults?.listId ?? null;
+        : defaultListId;
     const id = addTask({
       title: parsed.title.trim(),
       listId,
