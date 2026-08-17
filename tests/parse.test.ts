@@ -466,3 +466,32 @@ describe("组合与标题清理", () => {
     expect(r.chips).toEqual([]);
   });
 });
+
+describe("指令词「提醒我」清理", () => {
+  it("时间后缀的「提醒我」不留在标题里", () => {
+    const r = p("给妈妈订火车票 20点提醒我");
+    expect(r.title).toBe("给妈妈订火车票");
+    expect(r.dueTime).toBe("20:00");
+  });
+
+  it("句首「提醒我」+时间", () => {
+    const r = p("8点提醒我买菜");
+    expect(r.title).toBe("买菜");
+    expect(r.dueTime).toBe("08:00");
+  });
+
+  it("日期后独立的「提醒」也清理", () => {
+    const r = p("明天 交材料 提醒");
+    expect(r.title).toBe("交材料");
+  });
+
+  it("没识别出时间/日期时不动「提醒」二字", () => {
+    const r = p("整理提醒事项清单");
+    expect(r.title).toBe("整理提醒事项清单");
+  });
+
+  it("内容词「提醒事项」不受影响", () => {
+    const r = p("明天 写提醒事项模板");
+    expect(r.title).toBe("写提醒事项模板");
+  });
+});

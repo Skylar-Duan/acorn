@@ -83,7 +83,7 @@
 .view-head h1 { font-family: var(--serif); font-size: var(--fs-title); font-weight: 600; }
 .view-head .sub { color: var(--ink-2); font-size: 13px; }
 .view-head .spacer { flex: 1; }
-.view-body { flex: 1; overflow-y: auto; padding: 4px 2px 30px; margin-top: 6px; }
+.view-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px 30px; margin-top: 6px; }
 
 /* ---------- 任务组 ---------- */
 .group-head {

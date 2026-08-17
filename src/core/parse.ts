@@ -465,6 +465,15 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
   let title = "";
   for (let i = 0; i < input.length; i++) if (!consumed[i]) title += input[i];
   title = title.replace(/\s+/g, " ").trim();
+  // 识别出时间/日期后，「20点提醒我」这类说法残留的"提醒(我)"是指令词不是内容，去掉。
+  // 只删两种安全形态：独立成词的"提醒/提醒我"、句首的"提醒我"——"写提醒事项"这类内容词不动
+  if (st.dueTime !== null || st.dateSet) {
+    title = title
+      .replace(/(?:^|\s)提醒我?(?=\s|$)/g, " ")
+      .replace(/^提醒我/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
 
   return {
     title,
