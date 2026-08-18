@@ -80,6 +80,13 @@ export interface Settings {
   sortMode: "time" | "priority";
 }
 
+/** 应用版本号（构建时由 package.json 注入；测试环境没有这个宏时退到 dev） */
+export const APP_VERSION: string =
+  typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+
+/** 当前数据模型版本。导入导出、以后的服务器同步都以它为准（见 transfer.ts） */
+export const DATA_VERSION = 2;
+
 export interface AppData {
   version: 2;
   lists: List[];

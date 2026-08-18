@@ -1,7 +1,8 @@
 // 设置：外观 / 数据 / 导出导入 / 行为 / 回收站 / 关于。分节卡片，一屏调完。
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
-import { migrate } from "../core/model";
+import { APP_VERSION } from "../core/model";
+import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
 import { aliveTasks, navigate, showToast, updateSettings, useApp } from "../core/store";
 import {
@@ -196,7 +197,7 @@ export default function Settings() {
   async function exportAs(kind: "json" | "csv" | "md") {
     try {
       const meta = {
-        json: { name: "JSON", ext: "json", make: () => JSON.stringify(data, null, 2) },
+        json: { name: "JSON", ext: "json", make: () => toJsonFile(data, APP_VERSION) },
         csv: { name: "CSV", ext: "csv", make: () => buildCsv(data) },
         md: { name: "Markdown", ext: "md", make: () => buildMarkdown(data) },
       }[kind];
@@ -226,14 +227,15 @@ export default function Settings() {
         showToast("这个文件不是有效的 JSON", false);
         return;
       }
-      // 基本形状校验：至少得像一份任务数据，防止随手选错文件整库清空
-      const shape = parsed as Partial<AppData> | null;
-      if (!shape || typeof shape !== "object" || !Array.isArray(shape.tasks)) {
-        showToast("这个文件不是橡果的数据（缺少任务列表），已取消", false);
+      // 统一口径解包（新式信封 / 老式裸数据都认），防止随手选错文件整库清空
+      const res = unpack(parsed);
+      if (!res.ok) {
+        showToast(`${res.error}，已取消`, false);
         return;
       }
+      const from = res.appVersion ? `由 v${res.appVersion} 导出` : "旧版格式";
       const ok = await dlg.ask(
-        `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件含 ${shape.tasks.length} 条任务。确定继续吗？`,
+        `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件${from}，含 ${res.data.tasks.length} 条任务。确定继续吗？`,
         { title: "导入数据", kind: "warning" },
       );
       if (!ok) return;
@@ -244,7 +246,7 @@ export default function Settings() {
       const now = new Date();
       const stamp = `${toYMD(now).replace(/-/g, "")}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
       await writeTextFile(`${dir}\\backups\\pre-import-${stamp}.json`, JSON.stringify(appStore.getState().data)).catch(() => {});
-      await saveData(migrate(parsed));
+      await saveData(res.data);
       location.reload();
     } catch (e) {
       showToast(`导入失败：${String(e)}`, false);
@@ -424,7 +426,7 @@ export default function Settings() {
         {/* ---------- 关于 ---------- */}
         <div className="set-section set-about">
           <span className="set-about-brand">橡果 Acorn</span>
-          <span className="set-about-line">v1.0.0 · 温暖纸感的待办工具 · 数据只存在你自己的盘上。</span>
+          <span className="set-about-line">v{APP_VERSION} · 温暖纸感的待办工具 · 数据只存在你自己的盘上。</span>
         </div>
       </div>
     </section>

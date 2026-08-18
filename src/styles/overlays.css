@@ -1,6 +1,39 @@
 /* 浮层两件：命令面板（.cp-）与全局搜索（.so-）。
    遮罩与卡片外壳复用 base.css 的 .overlay / .modal，这里只补内部。 */
 
+/* ---------- 找回数据 .rescue ---------- */
+.modal.rescue { min-width: 560px; max-width: 680px; }
+.rescue-head { padding: 20px 22px 12px; }
+.rescue-head h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+.rescue-head p { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+.rescue-list { padding: 4px 14px 6px; max-height: 46vh; overflow-y: auto; }
+.rescue-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 11px 12px; border-radius: var(--r-md); border: 1px solid var(--hair);
+  background: var(--bg); margin-bottom: 8px; transition: border-color .12s, background .12s;
+}
+.rescue-item:hover { border-color: var(--accent); background: var(--accent-soft); }
+.rescue-item:disabled { opacity: .5; }
+.rescue-n {
+  flex: none; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.rescue-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rescue-meta b { font-size: var(--fs-sm); font-weight: 600; }
+.rescue-path {
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rescue-time { font-size: var(--fs-xs); color: var(--ink-3); }
+.rescue-go { flex: none; font-size: var(--fs-sm); color: var(--accent); font-weight: 600; }
+.rescue-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px 16px; border-top: 1px solid var(--hair);
+}
+.rescue-foot .set-hint { flex: 1; }
+
 /* ---------- 命令面板 .cp- ---------- */
 .cp-modal { animation: card-in .16s ease-out; }
 .cp-input {

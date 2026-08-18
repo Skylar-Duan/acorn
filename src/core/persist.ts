@@ -60,6 +60,19 @@ export async function restoreBackup(name: string): Promise<void> {
   await inv("restore_backup", { name });
 }
 
+export interface DataCandidate {
+  dir: string;
+  tasks: number;
+  lists: number;
+  modified: string;
+}
+
+/** 扫一遍数据可能待着的地方（指针丢了、换了机器、装机工具把指针写歪了都靠它兜底） */
+export async function findDataCandidates(): Promise<DataCandidate[]> {
+  if (!inTauri) return [];
+  return inv<DataCandidate[]>("find_data_candidates");
+}
+
 export async function getDataDir(): Promise<string> {
   if (!inTauri) return "(浏览器)";
   return inv<string>("get_data_dir");

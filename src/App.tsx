@@ -14,6 +14,7 @@ import CommandPalette from "./components/CommandPalette";
 import SearchOverlay from "./components/SearchOverlay";
 import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
+import DataRescue from "./components/DataRescue";
 import {
   clearSelection, completeTask, deleteTasks, dismissToast, expandTask,
   navigate, postponeTasks, setPaletteOpen, setSearchOpen, setSelection,
@@ -170,6 +171,7 @@ export default function App() {
       <Sidebar />
       {body}
 
+      <DataRescue />
       {paletteOpen && <CommandPalette />}
       {searchOpen && <SearchOverlay />}
       <ContextMenu />

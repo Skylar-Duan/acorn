@@ -43,6 +43,8 @@ interface AppState {
   data: AppData;
   loaded: boolean;
   loadError: string | null;
+  /** 当前数据是空的，但别处找到了有内容的数据文件夹——由用户拍板要不要用（null = 没这回事） */
+  rescue: persist.DataCandidate[] | null;
   ui: UIState;
   focus: FocusState;
   undoDepth: number;
@@ -57,6 +59,7 @@ export const appStore = createStore<AppState>(() => ({
   data: defaultData(),
   loaded: false,
   loadError: null,
+  rescue: null,
   ui: {
     view: "today", listId: null, who: null, tag: null,
     expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
@@ -183,11 +186,34 @@ export async function initStore(): Promise<void> {
     );
     undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
     appStore.setState({ data, loaded: true, loadError: null });
+
+    // 这里空空如也的时候，先别急着建一本空账本落盘——指针指歪 / 换了机器 / 数据在另一个
+    // 文件夹时，那本空账本会盖在真数据前面，让人以为数据没了。先去别处找找，找到就让用户选。
+    if (data.tasks.length === 0) {
+      const found = (await persist.findDataCandidates().catch(() => []))
+        .filter((c) => c.tasks > 0);
+      if (found.length) {
+        appStore.setState({ rescue: found });
+        return; // 用户拍板前不写盘、不做备份
+      }
+    }
     if (loadedData == null) await persist.saveData(data);
     await persist.ensureDailyBackup();
   } catch (e) {
     appStore.setState({ loaded: true, loadError: String(e) });
   }
+}
+
+/** 用户在「找回数据」屏做了选择：接管某个文件夹，或坚持从空的开始 */
+export async function resolveRescue(dir: string | null): Promise<void> {
+  if (dir) {
+    await persist.setDataDir(dir); // 目标已有数据时不会被覆盖，只改指针
+    location.reload();
+    return;
+  }
+  appStore.setState({ rescue: null });
+  await persist.saveData(appStore.getState().data);
+  await persist.ensureDailyBackup();
 }
 
 // ---------- 任务动作 ----------

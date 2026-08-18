@@ -35,31 +35,148 @@ fn config_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("config.json"))
 }
 
+/// 读一份 JSON 配置。**必须容忍 BOM**——记事本、PowerShell 的 `-Encoding utf8`
+/// 写出来的文件都带 BOM，serde 直接解析失败，指路条就这么「人间蒸发」过一次。
+fn read_json_file(path: &Path) -> Option<serde_json::Value> {
+    parse_json(&fs::read_to_string(path).ok()?)
+}
+
+fn parse_json(s: &str) -> Option<serde_json::Value> {
+    serde_json::from_str(s.trim_start_matches('\u{feff}').trim()).ok()
+}
+
+/// 从配置内容里取 dataDir 指针（纯函数，好测）
+fn parse_pointer(s: &str) -> Option<PathBuf> {
+    let d = parse_json(s)?.get("dataDir")?.as_str()?.to_string();
+    if d.trim().is_empty() { None } else { Some(PathBuf::from(d)) }
+}
+
+/// 从一份 config.json 里读出 dataDir 指针
+fn read_pointer(config: &Path) -> Option<PathBuf> {
+    parse_pointer(&fs::read_to_string(config).ok()?)
+}
+
 /// 不依赖 AppHandle 的配置读取：状态必须在任何窗口创建前就绪
 /// （webview 的 JS 可能抢在 setup 钩子前发起 invoke，见 v1.0 竞态修复）。
 /// 路径与 app_config_dir 一致：%APPDATA%\com.cdpandas.acorn\config.json
 fn read_configured_dir_early() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let p = PathBuf::from(appdata).join(APP_ID).join("config.json");
-        if let Ok(s) = fs::read_to_string(&p) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
-                if let Some(d) = v.get("dataDir").and_then(|x| x.as_str()) {
-                    if !d.is_empty() {
-                        return PathBuf::from(d);
-                    }
-                }
-            }
+        if let Some(d) = read_pointer(&PathBuf::from(appdata).join(APP_ID).join("config.json")) {
+            return d;
         }
     }
     default_data_dir()
 }
 
+// ---------- 找回数据：指针丢了也不能让用户以为数据没了 ----------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataCandidate {
+    dir: String,
+    /// 未删除的任务条数
+    tasks: usize,
+    lists: usize,
+    /// 'YYYY-MM-DD HH:MM'
+    modified: String,
+}
+
+/// 所有「数据可能待着」的地方。顺序不重要，前端按任务数与时间给用户挑。
+/// 这里要尽量宽：指针文件可能被装机工具写进了某个应用沙箱的镜像目录（真实发生过），
+/// 用户也可能自己把数据放在了移动硬盘上再换机器。
+fn candidate_dirs(current: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = vec![current.to_path_buf(), default_data_dir()];
+
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let base = PathBuf::from(&appdata).join(APP_ID);
+        out.push(base.join("userdata"));
+        // 曾经用过的目录（每次换文件夹都会记一笔）
+        if let Some(v) = read_json_file(&base.join("config.json")) {
+            if let Some(arr) = v.get("recentDirs").and_then(|x| x.as_array()) {
+                out.extend(arr.iter().filter_map(|x| x.as_str()).map(PathBuf::from));
+            }
+        }
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        out.push(PathBuf::from(&local).join(APP_ID).join("userdata"));
+        // 沙箱化进程（MSIX 应用容器）写出来的镜像：指针和数据都可能只存在于这里
+        if let Ok(rd) = fs::read_dir(PathBuf::from(&local).join("Packages")) {
+            for e in rd.flatten().take(400) {
+                let base = e.path().join("LocalCache").join("Roaming").join(APP_ID);
+                if let Some(d) = read_pointer(&base.join("config.json")) {
+                    out.push(d);
+                }
+                out.push(base.join("userdata"));
+            }
+        }
+    }
+    // 便携用法：数据放在 exe 旁边
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(p) = exe.parent() {
+            out.push(p.join("userdata"));
+        }
+    }
+    out
+}
+
+/// 扫一遍候选目录，返回「确实有内容」的那些（当前目录也在内，前端好做对比）
+#[tauri::command]
+fn find_data_candidates(state: State<DataDir>) -> Vec<DataCandidate> {
+    let current = state.0.lock().unwrap().clone();
+    let mut seen: Vec<PathBuf> = vec![];
+    let mut out: Vec<DataCandidate> = vec![];
+
+    for dir in candidate_dirs(&current) {
+        let canon = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        if seen.contains(&canon) {
+            continue;
+        }
+        seen.push(canon);
+
+        let file = data_file(&dir);
+        let Ok(s) = fs::read_to_string(&file) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) else { continue };
+        let tasks = v
+            .get("tasks")
+            .and_then(|x| x.as_array())
+            .map(|a| a.iter().filter(|t| t.get("deletedAt").map_or(true, |d| d.is_null())).count())
+            .unwrap_or(0);
+        if tasks == 0 {
+            continue; // 空库不值得推荐
+        }
+        let lists = v.get("lists").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0);
+        let modified = fs::metadata(&file)
+            .and_then(|m| m.modified())
+            .map(|t| {
+                let dt: chrono::DateTime<chrono::Local> = t.into();
+                dt.format("%Y-%m-%d %H:%M").to_string()
+            })
+            .unwrap_or_default();
+        out.push(DataCandidate { dir: dir.to_string_lossy().to_string(), tasks, lists, modified });
+    }
+    out.sort_by(|a, b| b.tasks.cmp(&a.tasks));
+    out
+}
+
+/// 写指针，并把用过的目录记进 recentDirs（最多 8 条）——指针万一丢了还能靠它找回来
 fn persist_configured_dir(app: &AppHandle, dir: &Path) -> Result<(), String> {
     let p = config_path(app).ok_or("no config dir")?;
     if let Some(parent) = p.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let json = serde_json::json!({ "dataDir": dir.to_string_lossy() });
+    let here = dir.to_string_lossy().to_string();
+    let mut recent: Vec<String> = read_json_file(&p)
+        .and_then(|v| {
+            v.get("recentDirs")
+                .and_then(|x| x.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        })
+        .unwrap_or_default();
+    recent.retain(|d| d != &here);
+    recent.insert(0, here.clone());
+    recent.truncate(8);
+
+    let json = serde_json::json!({ "dataDir": here, "recentDirs": recent });
     fs::write(&p, json.to_string()).map_err(|e| e.to_string())
 }
 
@@ -403,6 +520,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_data_dir,
             set_data_dir,
+            find_data_candidates,
             data_status,
             load_data,
             save_data,
@@ -417,4 +535,29 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running acorn");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pointer_tolerates_bom_and_junk() {
+        let want = PathBuf::from("D:/acorn/userdata");
+        let plain = r#"{"dataDir":"D:/acorn/userdata"}"#;
+        assert_eq!(parse_pointer(plain), Some(want.clone()));
+        // 记事本 / PowerShell -Encoding utf8 写出来的带 BOM 版本，必须照样能读
+        assert_eq!(parse_pointer(&format!("\u{feff}{plain}")), Some(want.clone()));
+        assert_eq!(parse_pointer(&format!("  \n{plain}\n ")), Some(want));
+        assert_eq!(parse_pointer(r#"{"dataDir":""}"#), None);
+        assert_eq!(parse_pointer(r#"{"other":1}"#), None);
+        assert_eq!(parse_pointer("不是 JSON"), None);
+    }
+
+    #[test]
+    fn default_dir_has_no_hardcoded_author_path() {
+        let d = default_data_dir().to_string_lossy().to_string();
+        assert!(d.ends_with("userdata"), "{d}");
+        assert!(!d.contains("02-Gadgets"), "默认路径泄露了作者目录：{d}");
+    }
 }
