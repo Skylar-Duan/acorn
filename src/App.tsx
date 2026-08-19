@@ -28,11 +28,13 @@ function inEditable(): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || (el as HTMLElement).isContentEditable;
 }
 
-/** 屏幕上当前可见任务行的 id（DOM 顺序即视觉顺序） */
+/** 屏幕上当前可见任务行的 id（DOM 顺序即视觉顺序）。
+ *  有子任务的事被拆成好几行、共用同一个任务 id，去重后方向键才是一件事一停 */
 function visibleTaskIds(): string[] {
-  return [...document.querySelectorAll<HTMLElement>(".task-row[data-task-id]")].map(
+  const ids = [...document.querySelectorAll<HTMLElement>(".task-row[data-task-id]")].map(
     (el) => el.dataset.taskId!,
   );
+  return [...new Set(ids)];
 }
 
 export default function App() {

@@ -1,8 +1,9 @@
 // 全部：未完成事项总览。按日期分四段（逾期/今天/接下来/未安排），排序偏好全局共用。
+// 有子任务的事在这里被拆成一行一个子任务，各自按（继承或自填的）日期与重要性排。
 import { Fragment, useMemo } from "react";
 import { cmpYMD, todayYMD } from "../core/dates";
 import type { DateRow } from "../core/store";
-import { openRows, rowDue, sortRows, updateSettings, useApp } from "../core/store";
+import { openRows, rowDue, rowTaskIds, sortRows, updateSettings, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 import "../styles/allview.css";
@@ -31,22 +32,23 @@ export default function AllView() {
   }, [data, sortMode, today]);
 
   const allRows = groups.flatMap((g) => g.rows);
-  // shift 连选只在母任务行之间进行，子任务行不参与
-  const orderedIds = allRows.filter((r) => r.sub === null).map((r) => r.task.id);
-  const openCount = orderedIds.length;
+  // 连选按「件」走：一件事拆成几行也只占一个连选位
+  const orderedIds = rowTaskIds(allRows);
+  const openCount = allRows.length;
 
   // 母任务行不可见时展开卡落在第一个子行上（与今天/计划视图行为一致）
   const motherVisible = new Set(allRows.filter((r) => !r.sub).map((r) => r.task.id));
   const cardRendered = new Set<string>();
-  const renderRow = (r: DateRow) => {
+  const renderRow = (r: DateRow, i: number, arr: DateRow[]) => {
     const wantCard =
       expandedId === r.task.id &&
       (!r.sub || !motherVisible.has(r.task.id)) &&
       !cardRendered.has(r.task.id);
     if (wantCard) cardRendered.add(r.task.id);
+    const bundled = !!r.sub && i > 0 && arr[i - 1].task.id === r.task.id;
     return (
       <Fragment key={r.sub ? `${r.task.id}/${r.sub.id}` : r.task.id}>
-        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />}
+        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} bundled={bundled} />}
       </Fragment>
     );
   };

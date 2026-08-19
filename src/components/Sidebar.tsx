@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
-  addList, aliveTasks, allTags, allWho, navigate, openRows, setTasksDue,
-  setTasksList, updateTask, useApp, type ViewId,
+  addList, aliveTasks, allTags, allWho, navigate, openRows, rowDue, setTasksDue,
+  setTasksList, updateSubtask, updateTask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import iconUrl from "../../src-tauri/icons/32x32.png";
@@ -35,6 +35,22 @@ function draggedTaskIds(e: React.DragEvent): string[] {
   return raw ? raw.split(",").filter(Boolean) : [];
 }
 
+/** 拖的是不是一条子任务行。是的话改日期只该改这一条，不能把整件事挪走 */
+function draggedSub(e: React.DragEvent): { taskId: string; subId: string } | null {
+  const raw = e.dataTransfer.getData("text/acorn-sub");
+  if (!raw) return null;
+  const [taskId, subId] = raw.split(":");
+  return taskId && subId ? { taskId, subId } : null;
+}
+
+/** 拖拽落点统一改期：子任务行只动自己，母任务行（可能多选）整组走。
+ *  子任务被拖回「随手记」= 放弃自己的日期，重新跟着母任务走 */
+function dropDue(e: React.DragEvent, ids: string[], due: string | null) {
+  const s = draggedSub(e);
+  if (s) updateSubtask(s.taskId, s.subId, due ? { due } : { due: null, dueTime: null });
+  else setTasksDue(ids, due);
+}
+
 export default function Sidebar() {
   const view = useApp((s) => s.ui.view);
   const curList = useApp((s) => s.ui.listId);
@@ -44,23 +60,33 @@ export default function Sidebar() {
   const loadError = useApp((s) => s.loadError);
   const [addingList, setAddingList] = useState(false);
   const [dropHint, setDropHint] = useState<string | null>(null);
-  /** 拖到「计划」后待定日期的任务组 + 弹层位置（落点处） */
-  const [pendingPlan, setPendingPlan] = useState<{ ids: string[]; x: number; y: number } | null>(null);
+  /** 拖到「计划」后待定日期的任务组 + 弹层位置（落点处）。sub 非空 = 拖的是一条子任务行，只改它 */
+  const [pendingPlan, setPendingPlan] = useState<
+    { ids: string[]; sub: { taskId: string; subId: string } | null; x: number; y: number } | null
+  >(null);
+  /** 弹层里选定日期后的落点：跟拖拽落点同一套口径 */
+  const planTo = (due: string) => {
+    if (!pendingPlan) return;
+    if (pendingPlan.sub) updateSubtask(pendingPlan.sub.taskId, pendingPlan.sub.subId, { due });
+    else setTasksDue(pendingPlan.ids, due);
+    setPendingPlan(null);
+  };
 
   const today = todayYMD();
   const open = aliveTasks(data).filter((t) => !t.done);
   const rows = openRows(data);
+  // 计数按「行」算，跟点进去实际看到的条数对得上（有子任务的事已经拆成一行一个子任务）
   const counts = {
     inbox: open.filter((t) => !t.listId && !t.due).length,
     today: rows.filter((r) => {
-      const due = r.sub ? r.sub.due ?? null : r.task.due;
+      const due = rowDue(r);
       return due && cmpYMD(due, today) <= 0;
     }).length,
     upcoming: rows.filter((r) => {
-      const due = r.sub ? r.sub.due ?? null : r.task.due;
+      const due = rowDue(r);
       return due && cmpYMD(due, today) > 0;
     }).length,
-    all: open.length,
+    all: rows.length,
   };
   const whoList = allWho(data);
   const tagList = allTags(data);
@@ -127,9 +153,11 @@ export default function Sidebar() {
       </div>
       <nav>
         <ul>
-          {item("inbox", "随手记", "inbox", counts.inbox, false, (ids) => setTasksDue(ids, null))}
-          {item("today", "今天", "today", counts.today, true, (ids) => setTasksDue(ids, today))}
-          {item("upcoming", "计划", "upcoming", counts.upcoming, false, (ids, e) => setPendingPlan({ ids, x: e.clientX, y: e.clientY }))}
+          {item("inbox", "随手记", "inbox", counts.inbox, false, (ids, e) => dropDue(e, ids, null))}
+          {item("today", "今天", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
+          {item("upcoming", "计划", "upcoming", counts.upcoming, false, (ids, e) =>
+            setPendingPlan({ ids, sub: draggedSub(e), x: e.clientX, y: e.clientY }),
+          )}
           {item("all", "全部", "all", counts.all)}
           {item("logbook", "日志", "logbook")}
         </ul>
@@ -139,18 +167,16 @@ export default function Sidebar() {
             style={{ left: Math.min(pendingPlan.x, window.innerWidth - 220), top: Math.min(pendingPlan.y, window.innerHeight - 220), position: "fixed" }}
           >
             <div style={{ fontSize: 12, color: "var(--ink-2)", padding: "4px 10px" }}>
-              安排到哪天？{pendingPlan.ids.length > 1 ? `（${pendingPlan.ids.length} 项）` : ""}
+              安排到哪天？
+              {pendingPlan.sub ? "（这条子任务）" : pendingPlan.ids.length > 1 ? `（${pendingPlan.ids.length} 项）` : ""}
             </div>
-            <button className="item" onClick={() => { setTasksDue(pendingPlan.ids, addDays(today, 1)); setPendingPlan(null); }}>明天</button>
-            <button className="item" onClick={() => { const wd = dayOfWeek(today); setTasksDue(pendingPlan.ids, addDays(today, wd === 0 ? 1 : 8 - wd)); setPendingPlan(null); }}>下周一</button>
+            <button className="item" onClick={() => planTo(addDays(today, 1))}>明天</button>
+            <button className="item" onClick={() => { const wd = dayOfWeek(today); planTo(addDays(today, wd === 0 ? 1 : 8 - wd)); }}>下周一</button>
             <input
               className="inline"
               type="date"
               onChange={(e) => {
-                if (e.target.value) {
-                  setTasksDue(pendingPlan.ids, e.target.value);
-                  setPendingPlan(null);
-                }
+                if (e.target.value) planTo(e.target.value);
               }}
             />
             <button className="item" onClick={() => setPendingPlan(null)}>取消</button>

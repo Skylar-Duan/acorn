@@ -345,7 +345,8 @@ export function purgeTrash() {
   mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => !t.deletedAt) }), { toast: "回收站已清空" });
 }
 
-/** 按行顺延：母任务行推母任务，子任务行推子任务自己的日期（逾期区「全部推到明天」用） */
+/** 按行顺延：母任务行推母任务，子任务行只推这一条子任务（日期继承母任务的会就地落成自己的）。
+ *  逾期区「全部推到明天」与子任务行右键都走这里 */
 export function postponeRows(rows: DateRow[], days = 1) {
   const today = todayYMD();
   const taskIds = rows.filter((r) => !r.sub).map((r) => r.task.id);
@@ -366,9 +367,17 @@ export function postponeRows(rows: DateRow[], days = 1) {
             ...next,
             subtasks: next.subtasks.map((s) => {
               const hit = subHits.find((r) => r.sub!.id === s.id);
-              if (!hit || !s.due) return s;
-              const base = cmpYMD(s.due, today) > 0 ? s.due : today;
-              return { ...s, due: addDays(base, days) };
+              if (!hit) return s;
+              // 继承母任务日期的子任务也推得动：把继承来的日期先落成自己的，再往后挪，
+              // 这样只有被推的那条子任务滑走，同一件事的其他子任务原地不动
+              const own = s.due != null;
+              const from = own ? s.due! : t.due;
+              const base = from && cmpYMD(from, today) > 0 ? from : today;
+              return {
+                ...s,
+                due: addDays(base, days),
+                dueTime: own ? s.dueTime ?? null : s.dueTime ?? t.dueTime,
+              };
             }),
           };
         }
@@ -588,40 +597,65 @@ export function aliveTasks(d: AppData): Task[] {
   return d.tasks.filter((t) => !t.deletedAt);
 }
 
-/** 日期视图的统一行：母任务本身，或带自己日期的子任务（sub 非 null 时） */
+/** 日期视图的统一行：母任务本身，或它的某个未完成子任务（sub 非 null 时） */
 export interface DateRow {
   task: Task;
   sub: Subtask | null;
 }
 
+/** 行的有效日期。子任务没填日期 = 继承母任务的（用户口径：默认等于母任务截止日期） */
 export function rowDue(r: DateRow): string | null {
-  return r.sub ? r.sub.due ?? null : r.task.due;
+  return r.sub ? r.sub.due ?? r.task.due : r.task.due;
 }
 
+/** 行的有效时间。子任务自己排了别的日子就不再继承母任务的钟点——那个钟点是给母任务那天的 */
 export function rowTime(r: DateRow): string | null {
-  return r.sub ? r.sub.dueTime ?? null : r.task.dueTime;
+  if (!r.sub) return r.task.dueTime;
+  if (r.sub.due) return r.sub.dueTime ?? null;
+  return r.sub.dueTime ?? r.task.dueTime;
 }
 
+/** 行的有效重要性。子任务没填 = 继承母任务 */
 export function rowPriority(r: DateRow): Priority {
   return r.sub ? r.sub.priority ?? r.task.priority : r.task.priority;
 }
 
-/** 所有会出现在日期/总览视图里的未完成行：未完成母任务 + 有自己日期的未完成子任务 */
+/** 未完成的事在日期/总览视图里怎么占行。
+ *  用户口径：「有子任务的把重要级和截止日期挪到子任务，默认等于母任务，总任务排序时分开排」——
+ *  所以有未完成子任务的任务**分拆**成一行一个子任务（母任务行收起，子任务行自带「母 › 子」前缀），
+ *  子任务各自按继承或自填的日期/重要性独立参与排序；子任务全做完后母任务行才回来收尾。 */
 export function openRows(d: AppData): DateRow[] {
   const rows: DateRow[] = [];
   for (const t of aliveTasks(d)) {
     if (t.done) continue;
-    rows.push({ task: t, sub: null });
-    for (const s of t.subtasks) {
-      if (!s.done && s.due) rows.push({ task: t, sub: s });
+    const openSubs = t.subtasks.filter((s) => !s.done);
+    if (openSubs.length === 0) {
+      rows.push({ task: t, sub: null });
+      continue;
     }
+    for (const s of openSubs) rows.push({ task: t, sub: s });
   }
   return rows;
+}
+
+/** 一批行里涉及的任务 id，按出现顺序去重。分拆后一件事会占好几行，
+ *  但「选中 / 键盘上下 / 计数到底有几件事」都必须按件算，不能按行算 */
+export function rowTaskIds(rows: DateRow[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    if (seen.has(r.task.id)) continue;
+    seen.add(r.task.id);
+    out.push(r.task.id);
+  }
+  return out;
 }
 
 /** 排序：time = 时间优先（同时间按重要性）；priority = 重要性优先（同级按时间）。无日期的都排最后 */
 export function sortRows(rows: DateRow[], mode: "time" | "priority"): DateRow[] {
   const key = (r: DateRow) => `${rowDue(r) ?? "9999-99-99"}T${rowTime(r) ?? "99:99"}`;
+  // 同一件事的几个子任务行挤在一起时，按它们在任务里的先后排，不然顺序看运气
+  const subIdx = (r: DateRow) => (r.sub ? r.task.subtasks.findIndex((s) => s.id === r.sub!.id) : -1);
   return [...rows].sort((a, b) => {
     if (mode === "priority") {
       if (rowPriority(a) !== rowPriority(b)) return rowPriority(b) - rowPriority(a);
@@ -632,7 +666,8 @@ export function sortRows(rows: DateRow[], mode: "time" | "priority"): DateRow[] 
       if (ka !== kb) return ka < kb ? -1 : 1;
       if (rowPriority(a) !== rowPriority(b)) return rowPriority(b) - rowPriority(a);
     }
-    return a.task.order - b.task.order;
+    if (a.task.order !== b.task.order) return a.task.order - b.task.order;
+    return subIdx(a) - subIdx(b);
   });
 }
 

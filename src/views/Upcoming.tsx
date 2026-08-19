@@ -2,7 +2,7 @@
 import { Fragment, useMemo } from "react";
 import type { DateRow } from "../core/store";
 import { addDays, cmpYMD, formatShort, fromYMD, todayYMD } from "../core/dates";
-import { openRows, rowDue, sortRows, useApp } from "../core/store";
+import { openRows, rowDue, rowTaskIds, sortRows, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 
@@ -26,7 +26,7 @@ export default function Upcoming() {
     [data, today, mode],
   );
 
-  const orderedIds = future.filter((r) => !r.sub).map((r) => r.task.id);
+  const orderedIds = rowTaskIds(future);
 
   const dayGroups = useMemo(() => {
     const out: { label: string; date: string; items: DateRow[] }[] = [];
@@ -57,15 +57,16 @@ export default function Upcoming() {
   // 母任务行不可见时，展开卡落在该任务第一个子任务行上
   const motherVisible = new Set(future.filter((r) => !r.sub).map((r) => r.task.id));
   const cardRendered = new Set<string>();
-  const renderRow = (r: DateRow) => {
+  const renderRow = (r: DateRow, i: number, arr: DateRow[]) => {
     const wantCard =
       expandedId === r.task.id &&
       (!r.sub || !motherVisible.has(r.task.id)) &&
       !cardRendered.has(r.task.id);
     if (wantCard) cardRendered.add(r.task.id);
+    const bundled = !!r.sub && i > 0 && arr[i - 1].task.id === r.task.id;
     return (
       <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
-        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />}
+        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} bundled={bundled} />}
       </Fragment>
     );
   };

@@ -1,12 +1,14 @@
 // 任务行：一行看清一件事。点击行展开为 TaskCard；勾选有停留动画。
-// sub 非 null 时是「子任务行」——显示 母任务 › 子任务，勾选只勾子任务（日期视图里带自己日期的子任务单独成行）。
+// sub 非 null 时是「子任务行」——显示 母任务 › 子任务，勾选只勾子任务。
+// 有未完成子任务的任务在日期/总览视图里被分拆成若干子任务行（母任务行收起），
+// 日期/重要性没单独设的子任务显示的是继承自母任务的那份（口径统一走 store 的 row* 系列）。
 import { useRef, useState } from "react";
 import type { Subtask, Task } from "../core/model";
 import { formatShort, todayYMD, cmpYMD } from "../core/dates";
 import { describeRepeat } from "../core/recur";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
-  updateSubtask, openCtxMenu,
+  updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority,
 } from "../core/store";
 
 export function WhoBadge({ who }: { who: string }) {
@@ -26,11 +28,13 @@ export interface TaskRowProps {
   orderedIds: string[];
   /** 隐藏所属清单标签（清单视图里冗余） */
   hideList?: boolean;
+  /** 紧挨着上一行、属于同一件事的子任务行：需求方/清单只由这一束的头一行交代，不逐行重复 */
+  bundled?: boolean;
   /** 完成后是否播放淡出（今天/清单视图 true；日志视图 false） */
   fadeOnDone?: boolean;
 }
 
-export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOnDone = true }: TaskRowProps) {
+export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true }: TaskRowProps) {
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -39,9 +43,13 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
 
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   const today = todayYMD();
-  const due = sub ? sub.due ?? null : task.due;
-  const dueTime = sub ? sub.dueTime ?? null : task.dueTime;
-  const priority = sub ? sub.priority ?? task.priority : task.priority;
+  const row = { task, sub };
+  const due = rowDue(row);
+  const dueTime = rowTime(row);
+  const priority = rowPriority(row);
+  // 子任务没单独设日期/重要性时，这行显示的是母任务那份——改母任务会连带动，鼠标停上去说明白
+  const dueInherited = !!sub && sub.due == null && task.due != null;
+  const prioInherited = !!sub && sub.priority == null;
   const isDone = sub ? sub.done : task.done;
   const overdue = !isDone && !!due && cmpYMD(due, today) < 0;
   const subDone = task.subtasks.filter((s) => s.done).length;
@@ -82,14 +90,16 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
     }
   }
 
+  // 多选按「件」不按「行」：分拆出来的子任务行也能 Ctrl/Shift 连选，选中的是它那件母任务，
+  // 否则一旦任务都有子任务、母任务行全收起，多选就整个用不了了
   function onRowClick(e: React.MouseEvent) {
-    if (!sub && (e.ctrlKey || e.metaKey)) {
+    if (e.ctrlKey || e.metaKey) {
       const next = selected ? selectedIds.filter((i) => i !== task.id) : [...selectedIds, task.id];
       anchor.current = task.id;
       setSelection(next);
       return;
     }
-    if (!sub && e.shiftKey && selectedIds.length) {
+    if (e.shiftKey && selectedIds.length) {
       const last = anchor.current ?? selectedIds[selectedIds.length - 1];
       const a = orderedIds.indexOf(last);
       const b = orderedIds.indexOf(task.id);
@@ -120,20 +130,27 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
 
   return (
     <div
-      className={`task-row${willDone ? " done-row" : ""}${leaving ? " leaving" : ""}${selected && !sub ? " selected" : ""}`}
+      className={`task-row${willDone ? " done-row" : ""}${leaving ? " leaving" : ""}${selected ? " selected" : ""}`}
       onClick={onRowClick}
       onContextMenu={onCtx}
-      draggable={!sub}
+      draggable
       onDragStart={(e) => {
-        if (sub) return;
+        // 子任务行也能拖：额外带上子任务身份，拖到「今天/计划」时只挪这一条，
+        // 拖到清单/需求方仍然是整件事换归属（归属本来就是任务级的）
+        if (sub) {
+          e.dataTransfer.setData("text/acorn-sub", `${task.id}:${sub.id}`);
+          e.dataTransfer.setData("text/acorn-task", task.id);
+          e.dataTransfer.effectAllowed = "move";
+          return;
+        }
         // 拖的是多选中的一行 → 整组一起走
         const ids = selected && selectedIds.length > 1 ? selectedIds : [task.id];
         e.dataTransfer.setData("text/acorn-task", ids.join(","));
         e.dataTransfer.effectAllowed = "move";
       }}
-      data-task-id={sub ? undefined : task.id}
+      data-task-id={task.id}
     >
-      <span className={`flag p${priority}`} />
+      <span className={`flag p${priority}`} title={prioInherited ? "重要性继承自母任务" : undefined} />
       <button className={`cb${willDone ? " done" : ""}`} onClick={onCheck} title={isDone ? "标记未完成" : "完成"} />
       {sub ? (
         <span className="title">
@@ -144,11 +161,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
         <span className="title">{task.title || "（未命名）"}</span>
       )}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
-        {task.who && <WhoBadge who={task.who} />}
+        {task.who && !bundled && <WhoBadge who={task.who} />}
         {!sub && task.tags.map((t) => (
           <span key={t}># {t}</span>
         ))}
-        {!hideList && list && (
+        {!hideList && !bundled && list && (
           <span className="list-tag">
             <span className="dot" style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${list.color})`, display: "inline-block" }} />
             {list.name}
@@ -166,7 +183,10 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, fadeOn
           </span>
         )}
         {due && (
-          <span className={overdue ? "overdue" : undefined}>
+          <span
+            className={overdue ? "overdue" : undefined}
+            title={dueInherited ? "日期继承自母任务，改母任务会一起动" : undefined}
+          >
             {formatShort(due)}
             {dueTime ? ` ${dueTime}` : ""}
           </span>

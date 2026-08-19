@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import type { DateRow } from "../core/store";
 import { formatCN, todayYMD } from "../core/dates";
-import { postponeRows, tasksForToday, useApp } from "../core/store";
+import { postponeRows, rowTaskIds, tasksForToday, useApp } from "../core/store";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 
@@ -14,24 +14,26 @@ export default function Today() {
   const today = todayYMD();
 
   const { overdue, todays, doneToday } = tasksForToday(data, today);
-  const orderedIds = [...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task.id);
+  const orderedIds = rowTaskIds([...overdue, ...todays]);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
-  const total = todays.length + doneToday.length;
+  // 底部进度按「件」算不按「行」算：一件事拆成 3 个子任务时，做掉 1 个不该让分母也跟着缩水
+  const total = rowTaskIds(todays).length + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
 
   // 展开卡的落点：母任务行处展开；母任务行不在本视图时（只有子任务行到期），
   // 卡片落在该任务的第一个子任务行上，避免「点了没反应」
   const motherVisible = new Set([...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task.id));
   const cardRendered = new Set<string>();
-  const renderRow = (r: DateRow) => {
+  const renderRow = (r: DateRow, i: number, arr: DateRow[]) => {
     const wantCard =
       expandedId === r.task.id &&
       (!r.sub || !motherVisible.has(r.task.id)) &&
       !cardRendered.has(r.task.id);
     if (wantCard) cardRendered.add(r.task.id);
+    const bundled = !!r.sub && i > 0 && arr[i - 1].task.id === r.task.id;
     return (
       <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
-        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} />}
+        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} bundled={bundled} />}
       </Fragment>
     );
   };
