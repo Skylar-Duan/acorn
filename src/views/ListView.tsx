@@ -4,8 +4,8 @@ import { Fragment, useMemo } from "react";
 import type { Task } from "../core/model";
 import { cmpYMD, todayYMD } from "../core/dates";
 import {
-  aliveTasks, deleteList, purgeTrash, renameList,
-  restoreTask, setListColor, sortTasks, useApp,
+  aliveTasks, deleteList, purgeTask, purgeTrash, renameList,
+  restoreTask, setListColor, sortTasks, trashDaysLeft, useApp,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import TaskRow from "../components/TaskRow";
@@ -44,8 +44,8 @@ export default function ListView({ kind }: { kind: ListKind }) {
       case "who":
         return {
           title: who ?? "需求方", sub: `为 TA 做的所有事`,
-          tasks: sortTasks(alive.filter((t) => !t.done && t.who === who), sortMode),
-          showAdd: true, defaults: { who }, fade: true,
+          tasks: sortTasks(alive.filter((t) => !t.done && who !== null && t.who.includes(who)), sortMode),
+          showAdd: true, defaults: { who: who ? [who] : [] }, fade: true,
         };
       case "tag":
         return {
@@ -144,9 +144,17 @@ export default function ListView({ kind }: { kind: ListKind }) {
               kind === "trash" ? (
                 <div key={t.id} className="task-row">
                   <span className={`flag p${t.priority}`} />
-                  <span className="title" style={{ color: "var(--ink-2)" }}>{t.title}</span>
+                  <span className="title" style={{ color: "var(--ink-2)" }}>{t.title || "（未命名）"}</span>
                   <span className="meta">
+                    {t.deletedAt && (
+                      <span title={`删除于 ${t.deletedAt.slice(0, 10)}`}>
+                        还剩 {trashDaysLeft(t.deletedAt)} 天
+                      </span>
+                    )}
                     <button className="btn ghost" onClick={() => restoreTask(t.id)}>恢复</button>
+                    <button className="btn ghost" title="不等 30 天，现在就清掉这一条" onClick={() => purgeTask(t.id)}>
+                      彻底删除
+                    </button>
                   </span>
                 </div>
               ) : (

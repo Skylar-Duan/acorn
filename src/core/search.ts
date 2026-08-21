@@ -36,7 +36,7 @@ function wordScore(task: Task, listName: string | null, word: string): number {
   if (idx >= 0) return W_TITLE_SUB + (idx === 0 ? W_TITLE_PREFIX_BONUS : 0);
   if (isSubsequence(word, title)) return W_TITLE_SUBSEQ;
   const metaHit =
-    (task.who !== null && task.who.toLowerCase().includes(word)) ||
+    task.who.some((w) => w.toLowerCase().includes(word)) ||
     task.tags.some((t) => t.toLowerCase().includes(word)) ||
     (listName !== null && listName.toLowerCase().includes(word));
   if (metaHit) return W_META_SUB;

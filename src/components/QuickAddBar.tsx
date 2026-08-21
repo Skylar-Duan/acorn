@@ -12,7 +12,7 @@ import SyntaxInput from "./SyntaxInput";
 
 export interface QuickAddBarProps {
   /** 视图上下文默认值：如清单视图里默认加进该清单 */
-  defaults?: { listId?: string | null; who?: string | null; due?: string | null };
+  defaults?: { listId?: string | null; who?: string[]; due?: string | null };
   placeholder?: string;
   autoFocus?: boolean;
   /** 挂出「点着选」的一排按钮 */
@@ -23,12 +23,13 @@ export interface QuickAddBarProps {
 interface Picks {
   due: string | null;
   listId: string | null;
-  who: string | null;
+  /** 需求方可以点好几个 */
+  who: string[];
   priority: Priority;
   repeat: RepeatRule | null;
 }
 
-const EMPTY: Picks = { due: null, listId: null, who: null, priority: 0, repeat: null };
+const EMPTY: Picks = { due: null, listId: null, who: [], priority: 0, repeat: null };
 
 const PRIO_NAME = ["不标", "低", "中", "高"] as const;
 
@@ -117,7 +118,8 @@ export default function QuickAddBar({
       title: parsed.title.trim(),
       listId,
       tags: parsed.tags,
-      who: parsed.who ?? pick.who ?? defaults?.who ?? null,
+      // 打字写了 @谁 就以打字为准；没写才用点选的，再没有才用视图默认（在某人名下新建）
+      who: parsed.who.length ? parsed.who : pick.who.length ? pick.who : defaults?.who ?? [],
       priority: parsed.priority || pick.priority,
       due: parsed.due ?? pick.due ?? defaults?.due ?? null,
       dueTime: parsed.dueTime,
@@ -127,7 +129,7 @@ export default function QuickAddBar({
     onAdded?.(id);
   }
 
-  const picked = pick.due || pick.listId || pick.who || pick.priority || pick.repeat;
+  const picked = pick.due || pick.listId || pick.who.length || pick.priority || pick.repeat;
   const pickedList = lists.find((l) => l.id === pick.listId);
 
   return (
@@ -187,20 +189,40 @@ export default function QuickAddBar({
             ))}
           </Pick>
 
-          <Pick menu={menu} setMenu={setMenu} id="who" on={!!pick.who} label={<>👤 {pick.who ?? "需求方"}</>}>
-            <button className="item" onClick={() => { setPick({ ...pick, who: null }); setMenu(null); }}>不指定</button>
-            {whoNames.map((w) => (
-              <button key={w} className="item" onClick={() => { setPick({ ...pick, who: w }); setMenu(null); }}>{w}</button>
-            ))}
+          {/* 需求方可以点好几个：点一下选中、再点一下取消，菜单不关，选完点别处收起 */}
+          <Pick
+            menu={menu}
+            setMenu={setMenu}
+            id="who"
+            on={pick.who.length > 0}
+            label={<>👤 {pick.who.length ? pick.who.join("、") : "需求方"}</>}
+          >
+            <button className="item" onClick={() => { setPick({ ...pick, who: [] }); setMenu(null); }}>不指定</button>
+            {whoNames.map((w) => {
+              const on = pick.who.includes(w);
+              return (
+                <button
+                  key={w}
+                  className="item"
+                  onClick={() =>
+                    setPick({ ...pick, who: on ? pick.who.filter((x) => x !== w) : [...pick.who, w] })
+                  }
+                >
+                  <span style={{ width: 12, color: "var(--accent)" }}>{on ? "✓" : ""}</span>
+                  {w}
+                </button>
+              );
+            })}
             <div className="sep" />
             <input
               className="inline"
               placeholder="新需求方，回车确定"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                  const v = (e.target as HTMLInputElement).value.trim();
-                  if (v) setPick({ ...pick, who: v });
-                  setMenu(null);
+                  const el = e.target as HTMLInputElement;
+                  const v = el.value.trim();
+                  if (v && !pick.who.includes(v)) setPick({ ...pick, who: [...pick.who, v] });
+                  el.value = ""; // 接着加下一个
                 }
               }}
             />

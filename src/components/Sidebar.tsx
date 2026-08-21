@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
-  addList, aliveTasks, allTags, allWho, navigate, openRows, rowDue, setTasksDue,
-  setTasksList, updateSubtask, updateTask, useApp, type ViewId,
+  addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, navigate, openRows, removeSubtask,
+  rowDue, setTasksDue, setTasksList, updateSubtask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import iconUrl from "../../src-tauri/icons/32x32.png";
@@ -27,6 +27,7 @@ const ICONS = {
   quadrant: "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
   focus: "M12 5a8 8 0 100 16 8 8 0 000-16z M12 9v4l3 2 M9 2h6",
   stats: "M4 20V10 M10 20V4 M16 20v-9 M21 20H3",
+  trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6",
 } as const;
 
 /** 从拖拽事件里取任务 id 组（TaskRow onDragStart 放进去的，多选拖拽是逗号串） */
@@ -87,6 +88,7 @@ export default function Sidebar() {
       return due && cmpYMD(due, today) > 0;
     }).length,
     all: rows.length,
+    trash: data.tasks.filter((t) => t.deletedAt).length,
   };
   const whoList = allWho(data);
   const tagList = allTags(data);
@@ -188,6 +190,12 @@ export default function Sidebar() {
           {item("quadrant", "四象限", "quadrant")}
           {item("focus", "专注", "focus")}
           {item("stats", "统计", "stats")}
+          {/* 回收站：删掉的事在这儿待 30 天。也是拖拽落点——拖过来就是删掉（还能撤销、还能在这里恢复） */}
+          {item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
+            const s = draggedSub(e);
+            if (s) removeSubtask(s.taskId, s.subId);
+            else deleteTasks(ids);
+          })}
         </ul>
         <div className="group-title">
           清单
@@ -238,7 +246,7 @@ export default function Sidebar() {
                   key={who}
                   className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}`}
                   onClick={() => navigate("who", { who })}
-                  {...dropProps(`who-${who}`, (ids) => ids.forEach((id) => updateTask(id, { who })))}
+                  {...dropProps(`who-${who}`, (ids) => addTasksWho(ids, who))}
                 >
                   <span
                     className="dot"

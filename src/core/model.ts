@@ -25,8 +25,8 @@ export interface Task {
   /** null = 随手记 */
   listId: string | null;
   tags: string[];
-  /** 需求方：这件事是为谁做的（@李哥）。null = 未指定 */
-  who: string | null;
+  /** 需求方：这件事是为谁做的（@李哥 @张总，可以多个）。空数组 = 未指定 */
+  who: string[];
   priority: Priority;
   /** 截止/安排日期 'YYYY-MM-DD'；null = 未安排 */
   due: string | null;
@@ -85,10 +85,10 @@ export const APP_VERSION: string =
   typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 /** 当前数据模型版本。导入导出、以后的服务器同步都以它为准（见 transfer.ts） */
-export const DATA_VERSION = 2;
+export const DATA_VERSION = 3;
 
 export interface AppData {
-  version: 2;
+  version: 3;
   lists: List[];
   tasks: Task[];
   sessions: FocusSession[];
@@ -119,7 +119,7 @@ export function defaultSettings(): Settings {
 
 export function defaultData(): AppData {
   return {
-    version: 2,
+    version: 3,
     lists: [
       { id: newId(), name: "工作", color: "clay", order: 0 },
       { id: newId(), name: "生活", color: "moss", order: 1 },
@@ -136,7 +136,7 @@ export function newTask(partial: Partial<Task> & { title: string }): Task {
     notes: "",
     listId: null,
     tags: [],
-    who: null,
+    who: [],
     priority: 0,
     due: null,
     dueTime: null,
@@ -154,9 +154,24 @@ export function newTask(partial: Partial<Task> & { title: string }): Task {
   };
 }
 
+/** 需求方字段归一：老数据是单个字符串（或 null），新数据是数组。
+ *  去重、去空白、丢空串——保证 who 永远是一个干净的字符串数组 */
+export function normalizeWho(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const name = item.trim();
+    if (name === "" || out.includes(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+
 /** 数据文件载入后的兜底：老版本字段补齐、废弃字段清理（向前兼容，绝不丢数据）
  *  v1 → v2：someday 概念取消（无日期任务统一住随手记/全部），字段直接丢弃；
- *  子任务补 due/dueTime/priority（默认继承母任务，存为 null） */
+ *  子任务补 due/dueTime/priority（默认继承母任务，存为 null）
+ *  v2 → v3：需求方从单个人改成可以多个（`who: "李哥"` → `who: ["李哥"]`） */
 export function migrate(raw: unknown): AppData {
   const d = (raw ?? {}) as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };
   const base = defaultData();
@@ -166,6 +181,7 @@ export function migrate(raw: unknown): AppData {
     const { someday: _dropped, ...rest } = merged;
     return {
       ...rest,
+      who: normalizeWho((rest as { who?: unknown }).who),
       subtasks: (rest.subtasks ?? []).map((s) => ({
         due: null,
         dueTime: null,
@@ -175,7 +191,7 @@ export function migrate(raw: unknown): AppData {
     };
   });
   return {
-    version: 2,
+    version: 3,
     lists: Array.isArray(d.lists) && d.lists.length ? (d.lists as List[]) : base.lists,
     tasks,
     sessions: Array.isArray(d.sessions) ? (d.sessions as FocusSession[]) : [],

@@ -62,7 +62,7 @@ describe("searchTasks · 命中域与权重", () => {
   });
 
   it("需求方 who 子串命中，得 30 分", () => {
-    const tasks = [mk({ title: "对账", who: "@李哥" })];
+    const tasks = [mk({ title: "对账", who: ["@李哥"] })];
     const hits = searchTasks(tasks, LISTS, "李哥");
     expect(hits).toHaveLength(1);
     expect(hits[0].score).toBe(30);
@@ -167,7 +167,7 @@ describe("searchTasks · 过滤与排序", () => {
   it("整体权重排序：标题 > 需求方 > 备注", () => {
     const tasks = [
       mk({ title: "别的事", notes: "问问李哥" }),
-      mk({ title: "对账", who: "@李哥" }),
+      mk({ title: "对账", who: ["@李哥"] }),
       mk({ title: "找李哥吃饭" }),
     ];
     expect(titles(searchTasks(tasks, LISTS, "李哥"))).toEqual([

@@ -22,6 +22,8 @@ export interface SyntaxInputProps {
   autoFocus?: boolean;
   /** 是否显示解析 chips，默认 true */
   showChips?: boolean;
+  /** 不认这几类要素（子任务行用：没有清单/标签/需求方/循环）。被关掉的类别也不弹补全 */
+  skip?: ParseChip["kind"][];
   inputStyle?: CSSProperties;
 }
 
@@ -63,7 +65,7 @@ interface DropMatch {
 
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
-  placeholder, autoFocus, showChips = true, inputStyle,
+  placeholder, autoFocus, showChips = true, skip, inputStyle,
 }: SyntaxInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [caret, setCaret] = useState(0);
@@ -73,9 +75,12 @@ export default function SyntaxInput({
   /** 接受补全后待恢复的光标位置（受控 value 更新落地后再设） */
   const pendingCaret = useRef<number | null>(null);
 
+  // props 传数组每次渲染都是新引用，序列化成串当依赖，免得每次打字都重算
+  const skipKey = (skip ?? []).join(",");
   const parsed = useMemo(
-    () => parseQuickAdd(value, { now: new Date(), listNames: lists }),
-    [value, lists],
+    () => parseQuickAdd(value, { now: new Date(), listNames: lists, skip }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [value, lists, skipKey],
   );
 
   const drop = useMemo<DropMatch | null>(() => {
@@ -83,11 +88,14 @@ export default function SyntaxInput({
     if (m === null) return null;
     const trigger = m[1] as Trigger;
     const prefix = m[2];
+    // 这一类根本不认，就别弹补全了（子任务行里的 # @ / 就是普通字符）
+    if (skip?.includes(TRIGGER_KIND[trigger])) return null;
     const source = trigger === "#" ? tags : trigger === "@" ? whos : lists;
     const items = pickCandidates(source, prefix);
     if (items.length === 0) return null;
     return { trigger, start: caret - prefix.length - 1, end: caret, prefix, items };
-  }, [value, caret, tags, whos, lists]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, caret, tags, whos, lists, skipKey]);
 
   const dropKey = drop === null ? null : `${drop.trigger}${drop.start}:${drop.prefix}`;
   const open = drop !== null && dropKey !== dismissedKey;

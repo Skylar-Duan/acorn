@@ -42,7 +42,7 @@ export async function maybeRunSmoke(): Promise<boolean> {
     check(
       "中文解析",
       p.due === addDays(today, 1) && p.dueTime === "15:00" && p.listName === "工作" &&
-        p.who === "李哥" && p.priority === 3 && p.tags.includes("紧要"),
+        p.who.join() === "李哥" && p.priority === 3 && p.tags.includes("紧要"),
       JSON.stringify(p),
     );
 

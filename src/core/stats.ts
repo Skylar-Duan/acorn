@@ -94,7 +94,8 @@ export function byList(
   return [...rows.values()];
 }
 
-/** 按需求方统计：只含（未删除任务里）出现过 who 的，按 done 降序，平局按名字稳定排 */
+/** 按需求方统计：只含（未删除任务里）出现过 who 的，按 done 降序，平局按名字稳定排。
+ *  一件事挂了几个人就在几个人名下各算一次——「这件事和谁有关」的口径，不是把工作量切开分 */
 export function byWho(
   tasks: Task[],
   startYMD: string,
@@ -102,16 +103,18 @@ export function byWho(
 ): { who: string; done: number; open: number }[] {
   const rows = new Map<string, { who: string; done: number; open: number }>();
   for (const t of tasks) {
-    if (t.who === null || t.deletedAt !== null) continue;
-    let row = rows.get(t.who);
-    if (!row) {
-      row = { who: t.who, done: 0, open: 0 };
-      rows.set(t.who, row);
-    }
-    if (t.done) {
-      if (isDoneInRange(t, startYMD, endYMD)) row.done++;
-    } else {
-      row.open++;
+    if (t.deletedAt !== null) continue;
+    for (const w of t.who) {
+      let row = rows.get(w);
+      if (!row) {
+        row = { who: w, done: 0, open: 0 };
+        rows.set(w, row);
+      }
+      if (t.done) {
+        if (isDoneInRange(t, startYMD, endYMD)) row.done++;
+      } else {
+        row.open++;
+      }
     }
   }
   return [...rows.values()].sort((a, b) => b.done - a.done || cmpStr(a.who, b.who));
@@ -176,7 +179,7 @@ export function weeklyReview(
 
   const whoCount = new Map<string, number>();
   for (const t of doneThisWeek) {
-    if (t.who !== null) whoCount.set(t.who, (whoCount.get(t.who) ?? 0) + 1);
+    for (const w of t.who) whoCount.set(w, (whoCount.get(w) ?? 0) + 1);
   }
   const perWho = [...whoCount.entries()]
     .map(([who, done]) => ({ who, done }))

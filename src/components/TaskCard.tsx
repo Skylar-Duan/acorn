@@ -7,9 +7,11 @@ import { LIST_COLORS } from "../core/model";
 import { addDays, dayOfWeek, formatShort, todayYMD } from "../core/dates";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import type { ParseResult } from "../core/parse";
+import { parseSubtaskInput, SUBTASK_SKIP } from "../core/parse";
 import {
-  addList, addSubtask, allTags, allWho, completeTask, deleteTasks, expandTask,
-  removeSubtask, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
+  addList, addSubtask, addTasksWho, allTags, allWho, completeTask, deleteTasks, expandTask,
+  removeSubtask, removeTaskWho, setTasksWho, toggleSubtask, uncompleteTask, updateSubtask,
+  updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
 import SyntaxInput from "./SyntaxInput";
@@ -73,6 +75,20 @@ export default function TaskCard({ task }: { task: Task }) {
     setMenu(null);
   }
 
+  /** 子任务输入框回车：把「明天 15点 !高 画趋势图」拆成标题 + 它自己的日期/时间/重要性。
+   *  没写日期/重要性就还是继承母任务（存 null）。加完输入框清空，接着敲下一条 */
+  function addSubFromInput() {
+    const r = parseSubtaskInput(newSub, new Date());
+    const title = r.title.trim();
+    if (!title) return;
+    addSubtask(task.id, title, {
+      due: r.due,
+      dueTime: r.dueTime,
+      priority: r.priority || null,
+    });
+    setNewSub("");
+  }
+
   function ensureListId(name: string): string {
     const hit = lists.find((l) => l.name === name) ?? lists.find((l) => l.name.startsWith(name));
     if (hit) return hit.id;
@@ -91,7 +107,8 @@ export default function TaskCard({ task }: { task: Task }) {
       if (!kinds.has("date") && !task.due && p.due) patch.due = p.due;
     }
     if (kinds.has("priority")) patch.priority = p.priority;
-    if (kinds.has("who")) patch.who = p.who;
+    // 快捷改里写 @某人 是「再加一个人」，跟标签同一口径；要摘人去上面的需求方胶囊点 ×
+    if (kinds.has("who")) patch.who = [...new Set([...task.who, ...p.who])];
     if (kinds.has("list") && p.listName) patch.listId = ensureListId(p.listName);
     if (kinds.has("tag")) patch.tags = [...new Set([...task.tags, ...p.tags])];
     if (p.title.trim()) patch.title = p.title.trim();
@@ -145,18 +162,25 @@ export default function TaskCard({ task }: { task: Task }) {
             <button
               className="pill"
               style={{ padding: "1px 8px", fontSize: 11 }}
-              title="子任务日期（默认继承母任务）"
+              title={s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}
               onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "date" ? null : { id: s.id, kind: "date" })}
             >
-              {s.due ? formatShort(s.due) : "📅"}
+              {/* 继承来的日期也照样显示，只是淡一点——一眼看得出这条到底哪天要做 */}
+              {s.due ? formatShort(s.due) : task.due ? <span style={{ opacity: 0.5 }}>{formatShort(task.due)}</span> : "📅"}
             </button>
             <button
               className="pill"
               style={{ padding: "1px 8px", fontSize: 11 }}
-              title="子任务优先级（默认继承母任务）"
+              title={s.priority != null ? "这条子任务自己的重要性" : "跟着母任务走，点一下可以单独设"}
               onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "prio" ? null : { id: s.id, kind: "prio" })}
             >
-              ⚑ {s.priority != null ? PRIORITY_LABEL[s.priority] : "继承"}
+              {/* 继承母任务的整体淡一档：一眼分得出「自己设的」还是「跟着母任务」 */}
+              <span className={`flag p${s.priority ?? task.priority}`} style={{ opacity: s.priority == null ? 0.5 : 1 }} />
+              {s.priority != null ? (
+                PRIORITY_LABEL[s.priority]
+              ) : (
+                <span style={{ opacity: 0.5 }}>{PRIORITY_LABEL[task.priority]}</span>
+              )}
             </button>
             <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务">×</button>
             {subMenu?.id === s.id && subMenu.kind === "date" && (
@@ -185,19 +209,20 @@ export default function TaskCard({ task }: { task: Task }) {
             )}
           </div>
         ))}
+        {/* 子任务也能一句话记全：「明天 15点 !高 画趋势图」。
+            清单/标签/需求方归母任务管，在这儿写就是普通文字，不会被吃掉 */}
         <div className="sub-row">
           <span className="sb" style={{ opacity: 0.35 }} />
-          <input
-            type="text"
-            placeholder="＋ 子任务，回车添加"
+          <SyntaxInput
             value={newSub}
-            onChange={(e) => setNewSub(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing && newSub.trim()) {
-                addSubtask(task.id, newSub.trim());
-                setNewSub("");
-              }
-            }}
+            onChange={setNewSub}
+            onSubmit={addSubFromInput}
+            placeholder="＋ 子任务，回车添加（可以写「明天 !高」）"
+            lists={[]}
+            tags={[]}
+            whos={[]}
+            skip={SUBTASK_SKIP}
+            inputStyle={{ fontSize: 13 }}
           />
         </div>
       </div>
@@ -268,26 +293,34 @@ export default function TaskCard({ task }: { task: Task }) {
           </div>
         )}
 
-        {/* 需求方 */}
-        <button className={`pill${task.who ? " hot" : ""}`} onClick={() => setMenu(menu === "who" ? null : "who")}>
-          ＠ {task.who ?? "需求方"}
+        {/* 需求方：一件事可以挂好几个人，挂了谁就一人一行，点 × 摘掉 */}
+        <button className={`pill${task.who.length ? " hot" : ""}`} onClick={() => setMenu(menu === "who" ? null : "who")}>
+          ＠ {task.who.length ? task.who.join("、") : "需求方"}
         </button>
         {menu === "who" && (
           <div className="popmenu" style={{ top: "110%", left: 250 }}>
+            {task.who.map((w) => (
+              <button key={w} className="item" title="点一下摘掉 TA" onClick={() => removeTaskWho(task.id, w)}>
+                ＠ {w}
+                <span style={{ marginLeft: "auto", color: "var(--ink-3)" }}>×</span>
+              </button>
+            ))}
+            {task.who.length > 0 && <div className="sep" />}
             <input
               className="inline"
               autoFocus
-              placeholder="这事是为谁做的？回车确定"
-              defaultValue={task.who ?? ""}
+              placeholder={task.who.length ? "再加一个人，回车确定" : "这事是为谁做的？回车确定"}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                  const v = (e.target as HTMLInputElement).value.trim();
-                  updateTask(task.id, { who: v || null });
-                  setMenu(null);
+                  const el = e.target as HTMLInputElement;
+                  addTasksWho([task.id], el.value);
+                  el.value = ""; // 留在原地接着加下一个，不用重开菜单
                 }
               }}
             />
-            {task.who && <button className="item" onClick={() => { updateTask(task.id, { who: null }); setMenu(null); }}>清除</button>}
+            {task.who.length > 0 && (
+              <button className="item" onClick={() => { setTasksWho([task.id], []); setMenu(null); }}>全部清除</button>
+            )}
           </div>
         )}
 

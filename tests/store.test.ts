@@ -72,7 +72,7 @@ describe("addTask", () => {
     expect(t.title).toBe("买酱油");
     expect(t.listId).toBeNull();
     expect(t.tags).toEqual([]);
-    expect(t.who).toBeNull();
+    expect(t.who).toEqual([]);
     expect(t.priority).toBe(0);
     expect(t.due).toBeNull();
     expect(t.dueTime).toBeNull();
@@ -391,12 +391,12 @@ describe("logFocus", () => {
 
 describe("派生查询", () => {
   it("allWho：只计未完成、排除已删除、按 open 降序；已完成的保留条目但计 0", () => {
-    addTask({ title: "1", who: "李哥" });
-    addTask({ title: "2", who: "李哥" });
-    const done = addTask({ title: "3", who: "李哥" });
+    addTask({ title: "1", who: ["李哥"] });
+    addTask({ title: "2", who: ["李哥"] });
+    const done = addTask({ title: "3", who: ["李哥"] });
     completeTask(done);
-    addTask({ title: "4", who: "王姐" });
-    const del = addTask({ title: "5", who: "赵总" });
+    addTask({ title: "4", who: ["王姐"] });
+    const del = addTask({ title: "5", who: ["赵总"] });
     deleteTasks([del]);
     addTask({ title: "6" }); // 无 who 不进列表
     expect(allWho(appStore.getState().data)).toEqual([

@@ -8,7 +8,7 @@ import { pack, toJsonFile, unpack, TRANSFER_APP } from "../src/core/transfer";
 function sample(): AppData {
   const d = defaultData();
   d.tasks = [
-    newTask({ title: "交周报", due: "2026-08-20", dueTime: "15:00", priority: 3, tags: ["汇报"], who: "李哥" }),
+    newTask({ title: "交周报", due: "2026-08-20", dueTime: "15:00", priority: 3, tags: ["汇报"], who: ["李哥"] }),
     newTask({ title: "带自己日期的子任务", subtasks: [{ id: "s1", title: "先列提纲", done: false, due: "2026-08-19", dueTime: null, priority: 2 }] }),
     newTask({ title: "回收站里的", deletedAt: new Date("2026-08-10T00:00:00Z").toISOString() }),
   ];

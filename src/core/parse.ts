@@ -29,7 +29,8 @@ export interface ParseResult {
   repeat: RepeatRule | null;
   listName: string | null;
   tags: string[];
-  who: string | null;
+  /** 需求方，可以有多个（@李哥 @张总）；没写就是空数组 */
+  who: string[];
   priority: Priority;
   chips: ParseChip[];
 }
@@ -143,8 +144,17 @@ const DEADLINE = ["之前", "以前", "前"];
 
 // ---------- 主入口 ----------
 
-export function parseQuickAdd(input: string, opts: { now: Date; listNames: string[] }): ParseResult {
+export interface ParseOpts {
+  now: Date;
+  listNames: string[];
+  /** 不认这几类要素（认不了的地方用，比如子任务没有清单/标签/需求方）。
+   *  被关掉的那类原文照留在标题里，不会被悄悄吃掉 */
+  skip?: ParseChip["kind"][];
+}
+
+export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   const today = todayYMD(opts.now);
+  const skip = new Set<ParseChip["kind"]>(opts.skip ?? []);
   const consumed: boolean[] = new Array<boolean>(input.length).fill(false);
 
   const st = {
@@ -154,7 +164,7 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     dueTime: null as string | null,
     repeat: null as RepeatRule | null,
     priority: 0 as Priority,
-    who: null as string | null,
+    who: [] as string[],
     listName: null as string | null,
     tags: [] as string[],
   };
@@ -186,6 +196,7 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
       if (!free(a, b)) continue;
       const t = on(m);
       if (t === null) continue;
+      if (skip.has(t.chip.kind)) continue; // 关掉的类别：不认、不吃字，原文留给标题
       if (eatDeadline) {
         const suf = DEADLINE.find((w) => input.startsWith(w, b));
         if (suf !== undefined && free(b, b + suf.length)) {
@@ -271,28 +282,32 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
   };
 
   // ---- 1. #标签(只管标签,取到空白或下一个 #@! 为止) ----
-  scan(RE.tag, (m) => {
-    const name = m[1];
-    st.tags.push(name);
-    return { chip: { kind: "tag", text: name }, apply: () => {} };
-  });
+  // 这三类(标签/清单/需求方)在扫描回调里就写了 st,所以要在外层拦,不能只靠 scan 里的 skip
+  if (!skip.has("tag"))
+    scan(RE.tag, (m) => {
+      const name = m[1];
+      st.tags.push(name);
+      return { chip: { kind: "tag", text: name }, apply: () => {} };
+    });
 
   // ---- 2. /清单(先精确后前缀,都不中原样返回交由调用方新建;扫描序即出现序,覆盖实现「最后一个生效」) ----
-  scan(RE.list, (m) => {
-    const name = m[1];
-    const hit =
-      opts.listNames.find((n) => n === name) ?? opts.listNames.find((n) => n.startsWith(name));
-    const final = hit ?? name;
-    st.listName = final;
-    return { chip: { kind: "list", text: final }, apply: () => {} };
-  });
+  if (!skip.has("list"))
+    scan(RE.list, (m) => {
+      const name = m[1];
+      const hit =
+        opts.listNames.find((n) => n === name) ?? opts.listNames.find((n) => n.startsWith(name));
+      const final = hit ?? name;
+      st.listName = final;
+      return { chip: { kind: "list", text: final }, apply: () => {} };
+    });
 
-  // ---- 3. @人(同一正则扫描顺序即出现顺序,直接覆盖实现「最后一个生效」) ----
-  scan(RE.who, (m) => {
-    const name = m[1];
-    st.who = name;
-    return { chip: { kind: "who", text: name }, apply: () => {} };
-  });
+  // ---- 3. @人(可以写多个,像标签一样累加;重复的同一个人只算一次) ----
+  if (!skip.has("who"))
+    scan(RE.who, (m) => {
+      const name = m[1];
+      if (!st.who.includes(name)) st.who.push(name);
+      return { chip: { kind: "who", text: name }, apply: () => {} };
+    });
 
   // ---- 4. 优先级(带字形式) ----
   scan(RE.prioWord, (m) => {
@@ -607,4 +622,16 @@ export function parseQuickAdd(input: string, opts: { now: Date; listNames: strin
     priority: st.priority,
     chips: tokens.map((t) => t.chip),
   };
+}
+
+/** 子任务能带的只有日期 / 时间 / 重要性——清单、标签、需求方、循环都归母任务管,
+ *  所以那几类在子任务行里不认,原文照留在标题里(打 #紧要 就真的叫「#紧要」)。
+ *  「每周一」这类循环词不认之后会剩个光杆「每」/「每月」,识别出日期时顺手扫掉。 */
+export const SUBTASK_SKIP: ParseChip["kind"][] = ["tag", "list", "who", "repeat"];
+
+export function parseSubtaskInput(input: string, now: Date, listNames: string[] = []): ParseResult {
+  const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP });
+  if (r.due === null && r.dueTime === null) return r;
+  const title = r.title.replace(/(?:^|\s)每月?(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  return { ...r, title };
 }

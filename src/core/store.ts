@@ -4,7 +4,7 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task } from "./model";
-import { defaultData, newId, newTask } from "./model";
+import { defaultData, newId, newTask, normalizeWho } from "./model";
 import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
@@ -222,7 +222,7 @@ export interface AddTaskInput {
   title: string;
   listId?: string | null;
   tags?: string[];
-  who?: string | null;
+  who?: string[];
   priority?: Priority;
   due?: string | null;
   dueTime?: string | null;
@@ -243,7 +243,7 @@ export function addTask(input: AddTaskInput): string {
     ...input,
     listId: input.listId ?? null,
     tags: input.tags ?? [],
-    who: input.who ?? null,
+    who: normalizeWho(input.who),
     priority: input.priority ?? 0,
     due: input.due ?? null,
     dueTime: input.dueTime ?? null,
@@ -345,6 +345,19 @@ export function purgeTrash() {
   mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => !t.deletedAt) }), { toast: "回收站已清空" });
 }
 
+/** 从回收站里彻底删掉一条（仍进撤销栈，手滑了 Ctrl+Z 还能回来） */
+export function purgeTask(id: string) {
+  mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id || !t.deletedAt) }), {
+    toast: "已彻底删除",
+  });
+}
+
+/** 回收站里这条还剩几天被自动清掉（0 = 今天就到期） */
+export function trashDaysLeft(deletedAt: string, now = Date.now()): number {
+  const gone = new Date(deletedAt).getTime() + 30 * 86400000;
+  return Math.max(0, Math.ceil((gone - now) / 86400000));
+}
+
 /** 按行顺延：母任务行推母任务，子任务行只推这一条子任务（日期继承母任务的会就地落成自己的）。
  *  逾期区「全部推到明天」与子任务行右键都走这里 */
 export function postponeRows(rows: DateRow[], days = 1) {
@@ -412,6 +425,37 @@ export function postponeTasks(ids: string[], days = 1) {
   clearSelection();
 }
 
+/** 整组换需求方（右键批量改用这个：给几个人就是几个人，原来的清掉） */
+export function setTasksWho(ids: string[], who: string[]) {
+  const next = normalizeWho(who);
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) => (ids.includes(t.id) ? { ...t, who: next } : t)),
+  }));
+  clearSelection();
+}
+
+/** 追加一个需求方（拖到侧栏某人名下用这个：是「也归 TA」，不是「只归 TA」） */
+export function addTasksWho(ids: string[], name: string) {
+  const who = name.trim();
+  if (!who) return;
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) =>
+      ids.includes(t.id) && !t.who.includes(who) ? { ...t, who: [...t.who, who] } : t,
+    ),
+  }));
+  clearSelection();
+}
+
+/** 从一件事上摘掉某个需求方 */
+export function removeTaskWho(id: string, name: string) {
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) => (t.id === id ? { ...t, who: t.who.filter((w) => w !== name) } : t)),
+  }));
+}
+
 export function setTasksList(ids: string[], listId: string | null) {
   mutate((d) => ({
     ...d,
@@ -440,12 +484,25 @@ export function setTasksDue(ids: string[], due: string | null) {
 
 // ---------- 子任务 ----------
 
-export function addSubtask(taskId: string, title: string) {
+/** 加一条子任务。extra 用来一次性带上它自己的日期/时间/重要性
+ *  （子任务输入框认「明天 15点 !高」这类写法，解析结果就从这里进来）。
+ *  不给 = null = 继承母任务 */
+export function addSubtask(
+  taskId: string,
+  title: string,
+  extra?: { due?: string | null; dueTime?: string | null; priority?: Priority | null },
+) {
+  const sub: Subtask = {
+    id: newId(),
+    title,
+    done: false,
+    due: extra?.due ?? null,
+    dueTime: extra?.dueTime ?? null,
+    priority: extra?.priority ?? null,
+  };
   mutate((d) => ({
     ...d,
-    tasks: d.tasks.map((t) =>
-      t.id === taskId ? { ...t, subtasks: [...t.subtasks, { id: newId(), title, done: false }] } : t,
-    ),
+    tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, sub] } : t)),
   }));
 }
 
@@ -697,16 +754,15 @@ export function sortTasks(tasks: Task[], mode: "time" | "priority"): Task[] {
   return sortRows(tasks.map((t) => ({ task: t, sub: null })), mode).map((r) => r.task);
 }
 
-/** 需求方列表（按未完成任务数降序） */
+/** 需求方列表（按未完成任务数降序）。一件事挂了几个人，就在这几个人名下各算一次 */
 export function allWho(d: AppData): { who: string; open: number }[] {
   const map = new Map<string, number>();
   for (const t of aliveTasks(d)) {
-    if (!t.who) continue;
-    map.set(t.who, (map.get(t.who) ?? 0) + (t.done ? 0 : 1));
+    for (const w of t.who) map.set(w, (map.get(w) ?? 0) + (t.done ? 0 : 1));
   }
   return [...map.entries()]
     .map(([who, open]) => ({ who, open }))
-    .sort((a, b) => b.open - a.open);
+    .sort((a, b) => b.open - a.open || (a.who < b.who ? -1 : a.who > b.who ? 1 : 0));
 }
 
 export function allTags(d: AppData): { tag: string; open: number }[] {

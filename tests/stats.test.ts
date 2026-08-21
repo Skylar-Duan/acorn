@@ -152,13 +152,13 @@ describe("byList", () => {
 
 describe("byWho", () => {
   const tasks: Task[] = [
-    task({ title: "a", who: "李哥", done: true, doneAt: isoLocal(2026, 8, 11) }),
-    task({ title: "b", who: "李哥", done: true, doneAt: isoLocal(2026, 8, 12) }),
-    task({ title: "c", who: "李哥", done: false }),
-    task({ title: "d", who: "王姐", done: true, doneAt: isoLocal(2026, 8, 13) }),
-    task({ title: "e", who: "王姐", done: true, doneAt: isoLocal(2026, 8, 1) }), // 区间外
+    task({ title: "a", who: ["李哥"], done: true, doneAt: isoLocal(2026, 8, 11) }),
+    task({ title: "b", who: ["李哥"], done: true, doneAt: isoLocal(2026, 8, 12) }),
+    task({ title: "c", who: ["李哥"], done: false }),
+    task({ title: "d", who: ["王姐"], done: true, doneAt: isoLocal(2026, 8, 13) }),
+    task({ title: "e", who: ["王姐"], done: true, doneAt: isoLocal(2026, 8, 1) }), // 区间外
     task({ title: "无需求方", done: true, doneAt: isoLocal(2026, 8, 11) }),
-    task({ title: "只在回收站", who: "赵总", done: false, deletedAt: isoLocal(2026, 8, 12) }),
+    task({ title: "只在回收站", who: ["赵总"], done: false, deletedAt: isoLocal(2026, 8, 12) }),
   ];
 
   it("只含出现过需求方的任务，按 done 降序", () => {
@@ -199,7 +199,7 @@ describe("focusByDay", () => {
 
 describe("weeklyReview", () => {
   const tasks: Task[] = [
-    task({ title: "完成A", listId: "L1", who: "李哥", done: true, doneAt: isoLocal(2026, 8, 11, 10) }),
+    task({ title: "完成A", listId: "L1", who: ["李哥"], done: true, doneAt: isoLocal(2026, 8, 11, 10) }),
     task({ title: "完成B", listId: "L1", done: true, doneAt: isoLocal(2026, 8, 12, 15) }),
     task({ title: "完成C", listId: null, done: true, doneAt: isoLocal(2026, 8, 16, 23) }),
     task({ title: "上周完成", listId: "L1", done: true, doneAt: isoLocal(2026, 8, 9, 10) }),
@@ -288,7 +288,7 @@ describe("weeklyReview", () => {
 
 describe("exportWeekMarkdown", () => {
   const tasks: Task[] = [
-    task({ title: "写周报", listId: "L1", who: "李哥", done: true, doneAt: isoLocal(2026, 8, 11, 10) }),
+    task({ title: "写周报", listId: "L1", who: ["李哥"], done: true, doneAt: isoLocal(2026, 8, 11, 10) }),
     task({ title: "修 bug", listId: "L1", done: true, doneAt: isoLocal(2026, 8, 12, 15) }),
     task({ title: "买猫粮", listId: "L2", done: true, doneAt: isoLocal(2026, 8, 13, 20) }),
     task({ title: "报销单", due: "2026-08-12", done: false }),

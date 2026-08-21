@@ -161,7 +161,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         <span className="title">{task.title || "（未命名）"}</span>
       )}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
-        {task.who && !bundled && <WhoBadge who={task.who} />}
+        {!bundled && task.who.map((w) => <WhoBadge key={w} who={w} />)}
         {!sub && task.tags.map((t) => (
           <span key={t}># {t}</span>
         ))}

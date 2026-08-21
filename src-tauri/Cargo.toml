@@ -1,6 +1,6 @@
 [package]
 name = "acorn"
-version = "1.3.0"
+version = "1.4.0"
 description = "橡果 Acorn · 温暖纸感的待办工具"
 authors = ["cdpandas"]
 edition = "2021"

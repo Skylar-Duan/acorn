@@ -54,7 +54,7 @@ function buildCsv(d: AppData): string {
     [
       t.title,
       listName(t.listId),
-      t.who ?? "",
+      t.who.join(" "),
       t.tags.join(" "),
       PRIORITY_LABEL[t.priority],
       t.due ?? "",

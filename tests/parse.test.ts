@@ -497,20 +497,34 @@ describe("清单(/)", () => {
 describe("@人", () => {
   it("@李哥", () => {
     const r = p("@李哥 汇报进展");
-    expect(r.who).toBe("李哥");
+    expect(r.who).toEqual(["李哥"]);
     expect(r.title).toBe("汇报进展");
     expect(r.chips[0]).toEqual({ kind: "who", text: "李哥" });
   });
 
-  it("多个 @:最后一个生效,chips 保留全部", () => {
+  it("多个 @:按出现顺序全都算上,chips 保留全部", () => {
     const r = p("@张三 @李四 沟通");
-    expect(r.who).toBe("李四");
+    expect(r.who).toEqual(["张三", "李四"]);
+    expect(r.title).toBe("沟通");
     expect(r.chips.filter((c) => c.kind === "who")).toHaveLength(2);
+  });
+
+  it("同一个人写两遍只算一次", () => {
+    const r = p("@张三 对账 @张三");
+    expect(r.who).toEqual(["张三"]);
+    expect(r.title).toBe("对账");
+  });
+
+  it("三个人也认,顺序按写的先后", () => {
+    const r = p("@王姐 @李哥 @张总 季度复盘 !高");
+    expect(r.who).toEqual(["王姐", "李哥", "张总"]);
+    expect(r.priority).toBe(3);
+    expect(r.title).toBe("季度复盘");
   });
 
   it("@ 取到下一个 ! 符号为止:@李哥!高", () => {
     const r = p("跟进合同@李哥!高");
-    expect(r.who).toBe("李哥");
+    expect(r.who).toEqual(["李哥"]);
     expect(r.priority).toBe(3);
     expect(r.title).toBe("跟进合同");
   });
@@ -590,7 +604,7 @@ describe("组合与标题清理", () => {
     expect(r.due).toBe("2026-08-21"); // now 为周五 → 今天
     expect(r.dueTime).toBe("15:00");
     expect(r.listName).toBe("工作");
-    expect(r.who).toBe("李哥");
+    expect(r.who).toEqual(["李哥"]);
     expect(r.priority).toBe(3);
     expect(r.repeat).toBeNull();
     expect(r.title).toBe("提交周报");
@@ -616,7 +630,7 @@ describe("组合与标题清理", () => {
     const r = p("明天上午11点@王姐 对账 /生活");
     expect(r.due).toBe("2026-08-22");
     expect(r.dueTime).toBe("11:00");
-    expect(r.who).toBe("王姐");
+    expect(r.who).toEqual(["王姐"]);
     expect(r.listName).toBe("生活");
     expect(r.title).toBe("对账");
   });
@@ -643,7 +657,7 @@ describe("组合与标题清理", () => {
     expect(r.repeat).toBeNull();
     expect(r.listName).toBeNull();
     expect(r.tags).toEqual([]);
-    expect(r.who).toBeNull();
+    expect(r.who).toEqual([]);
     expect(r.priority).toBe(0);
     expect(r.chips).toEqual([]);
   });

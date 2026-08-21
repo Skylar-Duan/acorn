@@ -5,7 +5,7 @@ import type { Priority, Task } from "../core/model";
 import { addDays, dayOfWeek, todayYMD } from "../core/dates";
 import {
   closeCtxMenu, completeTask, deleteTasks, postponeRows, postponeTasks,
-  removeSubtask, setTasksDue, setTasksList, showToast, uncompleteTask,
+  removeSubtask, setTasksDue, setTasksList, setTasksWho, showToast, uncompleteTask,
   updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
@@ -224,8 +224,9 @@ function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {
   const w = dayOfWeek(today);
   const nextMonday = addDays(today, w === 0 ? 1 : 8 - w);
   const lists = [...data.lists].sort((a, b) => a.order - b.order);
-  // 多选且需求方不一致时输入框从空开始
-  const whoDefault = tasks.every((t) => t.who === tasks[0].who) ? tasks[0].who ?? "" : "";
+  // 多选且需求方不一致时输入框从空开始。多个人用空格隔开
+  const whoKey = (t: Task) => t.who.join(" ");
+  const whoDefault = tasks.every((t) => whoKey(t) === whoKey(tasks[0])) ? whoKey(tasks[0]) : "";
 
   return (
     <div
@@ -329,12 +330,12 @@ function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {
         <input
           className="ctx-input"
           autoFocus
-          placeholder="这事是为谁做的？回车确定"
+          placeholder="为谁做的？多个人用空格隔开，回车确定"
           defaultValue={whoDefault}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-              const v = (e.target as HTMLInputElement).value.trim();
-              run(() => ids.forEach((id) => updateTask(id, { who: v || null })));
+              const names = (e.target as HTMLInputElement).value.split(/[\s,，、@]+/);
+              run(() => setTasksWho(ids, names));
             }
           }}
         />
