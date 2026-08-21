@@ -91,33 +91,12 @@ for cand in "${CLAUDE_CONFIG_DIR:-}/api_keys.env" \
 done
 [ -n "$KEYS" ] || { echo "找不到 api_keys.env，先确认 S 盘挂上了"; exit 1; }
 
-# 只取需要的四个键，直接管道进 ssh；不落中间文件、不打印
-{
-  grep -E '^(SMTP_HOST|SMTP_PORT|SMTP_USER|SMTP_PASSWORD)=' "$KEYS" || true
-} | "${SSH[@]}" bash -s <<'REMOTE'
-set -euo pipefail
-umask 077
-SMTP_BLOCK="$(cat)"
-if [ -z "$SMTP_BLOCK" ]; then
-  echo "!! api_keys.env 里没有 SMTP_* —— 验证码将发不出去" >&2
-fi
-# JWT 密钥只生成一次：重新生成会把所有人登出
-if [ -f /etc/acorn-sync/env ] && grep -q '^ACORN_JWT_SECRET=' /etc/acorn-sync/env; then
-  JWT_LINE="$(grep '^ACORN_JWT_SECRET=' /etc/acorn-sync/env)"
-else
-  JWT_LINE="ACORN_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n=+/' )"
-fi
-{
-  echo "$JWT_LINE"
-  echo "$SMTP_BLOCK"
-  echo "ACORN_MAIL_FROM=noreply@cdpandas.com"
-  echo "ACORN_MAIL_FROM_NAME=橡果 Acorn"
-  echo "ACORN_DB=/var/lib/acorn-sync/acorn.db"
-} > /etc/acorn-sync/env
-chown root:root /etc/acorn-sync/env
-chmod 600 /etc/acorn-sync/env
-echo "已写入 /etc/acorn-sync/env（$(wc -l < /etc/acorn-sync/env) 行，权限 $(stat -c %a /etc/acorn-sync/env)）"
-REMOTE
+# 写 env 的脚本先传上去，再把 SMTP 那几行从管道喂给它。
+# 不能写成 `ssh bash -s <<EOF` 里内联一段——heredoc 和管道会抢同一个 stdin，
+# 脚本后半段会被 $(cat) 吞掉（2026-08-21 踩过）。
+"${SCP[@]}" "$HERE/write-env.sh" "$HOST:/tmp/acorn-write-env.sh"
+grep -E '^(SMTP_HOST|SMTP_PORT|SMTP_USER|SMTP_PASSWORD)=' "$KEYS" \
+  | "${SSH[@]}" 'bash /tmp/acorn-write-env.sh; rc=$?; rm -f /tmp/acorn-write-env.sh; exit $rc'
 
 # ---------- 4. systemd ----------
 say "安装并启动服务"
