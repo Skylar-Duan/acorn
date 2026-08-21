@@ -48,6 +48,9 @@ export interface Task {
   focusMinutes: number;
   /** 非 null = 在回收站，值为删除时刻 ISO */
   deletedAt: string | null;
+  /** 最后一次改动时刻 ISO。云同步靠它判断「两台设备都改过同一件事时该听谁的」——
+   *  谁改得晚听谁的。每次经 mutate() 真正变过的任务都会重新盖这个戳 */
+  updatedAt: string;
 }
 
 export interface List {
@@ -56,6 +59,15 @@ export interface List {
   /** 主题色 token 名之一，见 themes.css 的 --list-*，如 'clay' | 'moss' | 'sea' | 'sand' | 'slate' | 'plum' */
   color: string;
   order: number;
+  /** 同 Task.updatedAt */
+  updatedAt: string;
+}
+
+/** 墓碑：被彻底删掉（不是进回收站）的任务/清单 id + 删除时刻。
+ *  没有它，另一台设备同步过来会把已经清干净的东西又拉回来。保留 180 天后自行清掉 */
+export interface Tombstone {
+  id: string;
+  at: string;
 }
 
 export interface FocusSession {
@@ -84,16 +96,21 @@ export interface Settings {
 export const APP_VERSION: string =
   typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
-/** 当前数据模型版本。导入导出、以后的服务器同步都以它为准（见 transfer.ts） */
-export const DATA_VERSION = 3;
+/** 当前数据模型版本。导入导出、服务器同步都以它为准（见 transfer.ts / cloud.ts） */
+export const DATA_VERSION = 4;
 
 export interface AppData {
-  version: 3;
+  version: 4;
   lists: List[];
   tasks: Task[];
   sessions: FocusSession[];
   settings: Settings;
+  /** 彻底删掉的东西的墓碑（见 Tombstone）。不参与界面，只为云同步不把死人拉回来 */
+  graveyard: Tombstone[];
 }
+
+/** 墓碑保留多久。比回收站的 30 天长得多——只要还有设备可能揣着旧副本，就不能忘 */
+export const TOMBSTONE_DAYS = 180;
 
 // ---------- 构造 ----------
 
@@ -118,21 +135,24 @@ export function defaultSettings(): Settings {
 }
 
 export function defaultData(): AppData {
+  const at = new Date().toISOString();
   return {
-    version: 3,
+    version: 4,
     lists: [
-      { id: newId(), name: "工作", color: "clay", order: 0 },
-      { id: newId(), name: "生活", color: "moss", order: 1 },
+      { id: newId(), name: "工作", color: "clay", order: 0, updatedAt: at },
+      { id: newId(), name: "生活", color: "moss", order: 1, updatedAt: at },
     ],
     tasks: [],
     sessions: [],
     settings: defaultSettings(),
+    graveyard: [],
   };
 }
 
 export function newTask(partial: Partial<Task> & { title: string }): Task {
   return {
     id: newId(),
+    updatedAt: new Date().toISOString(),
     notes: "",
     listId: null,
     tags: [],
@@ -171,17 +191,22 @@ export function normalizeWho(v: unknown): string[] {
 /** 数据文件载入后的兜底：老版本字段补齐、废弃字段清理（向前兼容，绝不丢数据）
  *  v1 → v2：someday 概念取消（无日期任务统一住随手记/全部），字段直接丢弃；
  *  子任务补 due/dueTime/priority（默认继承母任务，存为 null）
- *  v2 → v3：需求方从单个人改成可以多个（`who: "李哥"` → `who: ["李哥"]`） */
+ *  v2 → v3：需求方从单个人改成可以多个（`who: "李哥"` → `who: ["李哥"]`）
+ *  v3 → v4：每条任务/清单补 updatedAt（云同步判先后用），补空墓碑表。
+ *           老数据没有这个戳，就拿创建时刻顶上——比拿「现在」老实：
+ *           拿现在会让本机所有旧任务显得比云端新，第一次同步就把云端盖掉 */
 export function migrate(raw: unknown): AppData {
   const d = (raw ?? {}) as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };
   const base = defaultData();
   const settings = { ...defaultSettings(), ...(d.settings ?? {}) };
+  const epoch = new Date(0).toISOString();
   const tasks = (Array.isArray(d.tasks) ? d.tasks : []).map((t) => {
     const merged = { ...newTask({ title: "" }), ...t } as Task & { someday?: boolean };
     const { someday: _dropped, ...rest } = merged;
     return {
       ...rest,
       who: normalizeWho((rest as { who?: unknown }).who),
+      updatedAt: typeof rest.updatedAt === "string" && rest.updatedAt ? rest.updatedAt : rest.createdAt,
       subtasks: (rest.subtasks ?? []).map((s) => ({
         due: null,
         dueTime: null,
@@ -190,11 +215,34 @@ export function migrate(raw: unknown): AppData {
       })),
     };
   });
+  const lists = (Array.isArray(d.lists) && d.lists.length ? (d.lists as List[]) : base.lists).map(
+    (l) => ({ ...l, updatedAt: typeof l.updatedAt === "string" && l.updatedAt ? l.updatedAt : epoch }),
+  );
+  const graveyard = (Array.isArray(d.graveyard) ? d.graveyard : [])
+    .filter(
+      (g): g is Tombstone =>
+        !!g && typeof (g as Tombstone).id === "string" && typeof (g as Tombstone).at === "string",
+    )
+    .map((g) => ({ id: g.id, at: g.at }));
   return {
-    version: 3,
-    lists: Array.isArray(d.lists) && d.lists.length ? (d.lists as List[]) : base.lists,
+    version: 4,
+    lists,
     tasks,
     sessions: Array.isArray(d.sessions) ? (d.sessions as FocusSession[]) : [],
     settings,
+    graveyard: pruneGraveyard(graveyard),
   };
+}
+
+/** 太老的墓碑清掉——所有设备早就同步过了，再留着只是白占地方 */
+export function pruneGraveyard(graves: Tombstone[], now = Date.now()): Tombstone[] {
+  const cutoff = now - TOMBSTONE_DAYS * 86400000;
+  const seen = new Map<string, string>();
+  for (const g of graves) {
+    const at = new Date(g.at).getTime();
+    if (!Number.isFinite(at) || at < cutoff) continue;
+    const prev = seen.get(g.id);
+    if (prev === undefined || prev < g.at) seen.set(g.id, g.at);
+  }
+  return [...seen.entries()].map(([id, at]) => ({ id, at }));
 }

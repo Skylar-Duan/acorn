@@ -5,6 +5,7 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task } from "./model";
 import { defaultData, newId, newTask, normalizeWho } from "./model";
+import { bury } from "./merge";
 import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
@@ -118,10 +119,39 @@ export async function flushSave(): Promise<void> {
 
 // ---------- 变更入口 ----------
 
-/** 所有写操作的唯一入口：应用变更 → 快照进撤销栈 → 计划落盘。无实际变更时什么都不做 */
+/** 给云同步盖的「最后改动时刻」戳。
+ *  先比对象身份（绝大多数没动的任务是同一个对象，一比就过），身份不同再比内容——
+ *  撤销这类操作会重建对象但内容可能没变，只比身份会把整库都标成「刚改过」，
+ *  那样第一次同步就会拿本机盖掉云端。 */
+function stampChanged<T extends { id: string; updatedAt: string }>(
+  prev: T[],
+  next: T[],
+  at: string,
+): T[] {
+  const prevById = new Map(prev.map((x) => [x.id, x]));
+  let touched = false;
+  const out = next.map((x) => {
+    const old = prevById.get(x.id);
+    if (old === x) return x;
+    if (old !== undefined && JSON.stringify(old) === JSON.stringify(x)) return old;
+    touched = true;
+    return { ...x, updatedAt: at };
+  });
+  return touched || out.length !== prev.length ? out : next;
+}
+
+function stamp(prev: AppData, next: AppData): AppData {
+  const at = new Date().toISOString();
+  const tasks = next.tasks === prev.tasks ? next.tasks : stampChanged(prev.tasks, next.tasks, at);
+  const lists = next.lists === prev.lists ? next.lists : stampChanged(prev.lists, next.lists, at);
+  if (tasks === next.tasks && lists === next.lists) return next;
+  return { ...next, tasks, lists };
+}
+
+/** 所有写操作的唯一入口：应用变更 → 盖改动时刻 → 快照进撤销栈 → 计划落盘。无实际变更时什么都不做 */
 function mutate(fn: (d: AppData) => AppData, opts?: { toast?: string; skipUndo?: boolean }) {
   const cur = appStore.getState().data;
-  const next = fn(cur);
+  const next = stamp(cur, fn(cur));
   if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘
   if (!opts?.skipUndo) {
     undoStack.push(cur);
@@ -143,16 +173,38 @@ export function undo() {
   const tasks = prev.tasks.map((pt) => {
     const ct = curById.get(pt.id);
     if (!ct) return pt;
-    const patched = { ...pt };
-    if (ct.reminder === null && pt.reminder && pt.reminder <= now) patched.reminder = null;
-    if (ct.focusMinutes > pt.focusMinutes) patched.focusMinutes = ct.focusMinutes;
-    return patched;
+    const reminder = ct.reminder === null && pt.reminder && pt.reminder <= now ? null : pt.reminder;
+    const focusMinutes = ct.focusMinutes > pt.focusMinutes ? ct.focusMinutes : pt.focusMinutes;
+    // 两样都不用改就把原对象原样还回去——保住对象身份，stamp 才认得出「这条没动过」
+    if (reminder === pt.reminder && focusMinutes === pt.focusMinutes) return pt;
+    return { ...pt, reminder, focusMinutes };
+  });
+  // 撤销也是一次改动，被撤回来的那些条要重新盖时刻戳，
+  // 否则同步时云端那份「更新」的会把撤销效果又推回来
+  const restored = stamp(cur, {
+    ...prev,
+    tasks,
+    sessions: cur.sessions,
+    settings: cur.settings,
+    graveyard: cur.graveyard,
   });
   appStore.setState({
-    data: { ...prev, tasks, sessions: cur.sessions, settings: cur.settings },
+    data: restored,
     undoDepth: undoStack.length,
     ui: { ...appStore.getState().ui, toast: null },
   });
+  scheduleSave();
+}
+
+/** 云同步合并完的结果装回来。
+ *  **不走 mutate**：合并结果里每条的「最后改动时刻」是算好的，再盖一次戳会把整库
+ *  标成本机刚改过，下一轮同步就拿本机盖掉别的设备。
+ *  撤销栈一并清掉——「撤销」一次同步没有意义，还会把别的设备刚删的东西拉回来。 */
+export function applyRemoteData(data: AppData) {
+  const cur = appStore.getState().data;
+  if (data === cur) return;
+  undoStack = [];
+  appStore.setState({ data, undoDepth: 0 });
   scheduleSave();
 }
 
@@ -179,11 +231,15 @@ export async function initStore(): Promise<void> {
       loadedData = await persist.loadData();
     }
     const data = loadedData ?? defaultData();
-    // 回收站 30 天自动清理
+    // 回收站 30 天自动清理。清掉的同样立墓碑，否则另一台设备同步过来会把它们又拉回来
     const cutoff = Date.now() - 30 * 86400000;
-    data.tasks = data.tasks.filter(
-      (t) => !t.deletedAt || new Date(t.deletedAt).getTime() > cutoff,
+    const expired = data.tasks.filter(
+      (t) => t.deletedAt && new Date(t.deletedAt).getTime() <= cutoff,
     );
+    if (expired.length) {
+      data.tasks = data.tasks.filter((t) => !expired.includes(t));
+      data.graveyard = bury(data.graveyard, expired.map((t) => t.id), new Date().toISOString());
+    }
     undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
     appStore.setState({ data, loaded: true, loadError: null });
 
@@ -342,14 +398,32 @@ export function restoreTask(id: string) {
 }
 
 export function purgeTrash() {
-  mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => !t.deletedAt) }), { toast: "回收站已清空" });
+  const at = new Date().toISOString();
+  mutate(
+    (d) => ({
+      ...d,
+      tasks: d.tasks.filter((t) => !t.deletedAt),
+      graveyard: bury(d.graveyard, d.tasks.filter((t) => t.deletedAt).map((t) => t.id), at),
+    }),
+    { toast: "回收站已清空" },
+  );
 }
 
 /** 从回收站里彻底删掉一条（仍进撤销栈，手滑了 Ctrl+Z 还能回来） */
 export function purgeTask(id: string) {
-  mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id || !t.deletedAt) }), {
-    toast: "已彻底删除",
-  });
+  const at = new Date().toISOString();
+  mutate(
+    (d) => {
+      const hit = d.tasks.find((t) => t.id === id && t.deletedAt);
+      if (!hit) return d;
+      return {
+        ...d,
+        tasks: d.tasks.filter((t) => t.id !== id),
+        graveyard: bury(d.graveyard, [id], at),
+      };
+    },
+    { toast: "已彻底删除" },
+  );
 }
 
 /** 回收站里这条还剩几天被自动清掉（0 = 今天就到期） */
@@ -544,7 +618,7 @@ export function addList(name: string, color: string): string {
   const id = newId();
   mutate((d) => ({
     ...d,
-    lists: [...d.lists, { id, name, color, order: d.lists.length }],
+    lists: [...d.lists, { id, name, color, order: d.lists.length, updatedAt: new Date().toISOString() }],
   }));
   return id;
 }
@@ -559,11 +633,13 @@ export function setListColor(id: string, color: string) {
 
 /** 删除清单：其下任务回随手记；正看着这张清单时把视图也带走，防止悬空 */
 export function deleteList(id: string) {
+  const at = new Date().toISOString();
   mutate(
     (d) => ({
       ...d,
       lists: d.lists.filter((l) => l.id !== id),
       tasks: d.tasks.map((t) => (t.listId === id ? { ...t, listId: null } : t)),
+      graveyard: bury(d.graveyard, [id], at),
     }),
     { toast: "清单已删除，任务已移回随手记" },
   );

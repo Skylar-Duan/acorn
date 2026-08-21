@@ -5,3 +5,9 @@ src-tauri/target/
 src-tauri/gen/
 *.log
 .DS_Store
+
+# 服务端本地产物
+server/**/__pycache__/
+server/*.db
+server/*.db-*
+server/.venv/

@@ -1,4 +1,4 @@
-// 设置：外观 / 数据 / 导出导入 / 行为 / 回收站 / 关于。分节卡片，一屏调完。
+// 设置：外观 / 云账号 / 数据 / 导出导入 / 行为 / 回收站 / 关于。分节卡片，一屏调完。
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
 import { APP_VERSION } from "../core/model";
@@ -12,6 +12,7 @@ import {
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
 import ThemeScene from "../components/ThemeScene";
+import AccountPanel from "../components/AccountPanel";
 import "../styles/settings.css";
 
 const THEMES: { id: ThemeName; name: string; note: string }[] = [
@@ -84,7 +85,9 @@ function buildMarkdown(d: AppData): string {
     for (const t of g.items) {
       const meta = [
         t.due ? `${t.due}${t.dueTime ? " " + t.dueTime : ""}` : "",
-        t.who ? `@${t.who}` : "",
+        // 需求方可能有好几个，一人一个 @；一个都没有时这里必须是空串
+        // （空数组是真值，写成 t.who ? ... 会导出出一个光杆「@」）
+        ...t.who.map((w) => `@${w}`),
         ...t.tags.map((x) => `#${x}`),
       ]
         .filter(Boolean)
@@ -296,6 +299,15 @@ export default function Settings() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ---------- 云账号 ---------- */}
+        <div className="set-section">
+          <h2>云账号</h2>
+          <div className="set-desc">
+            登录后手机和电脑看到的是同一份事。两边都改过同一件事时，以改得晚的那次为准。
+          </div>
+          <AccountPanel />
         </div>
 
         {/* ---------- 数据 ---------- */}

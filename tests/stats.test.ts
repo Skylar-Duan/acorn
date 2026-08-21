@@ -32,8 +32,8 @@ function task(p: Partial<Task> & { title: string }): Task {
 }
 
 const LISTS: List[] = [
-  { id: "L2", name: "生活", color: "moss", order: 1 },
-  { id: "L1", name: "工作", color: "clay", order: 0 },
+  { id: "L2", name: "生活", color: "moss", order: 1, updatedAt: "2026-01-01T00:00:00.000Z" },
+  { id: "L1", name: "工作", color: "clay", order: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
 ];
 
 // 2026-08-10 是周一，2026-08-16 是周日

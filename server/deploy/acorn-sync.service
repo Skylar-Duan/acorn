@@ -1,0 +1,29 @@
+[Unit]
+Description=Acorn 橡果云同步服务
+After=network.target
+
+[Service]
+Type=simple
+User=acorn
+Group=acorn
+WorkingDirectory=/var/www/acorn-sync
+# 凭据只在这里（chmod 600，属主 root）：JWT 密钥、SMTP 口令
+EnvironmentFile=/etc/acorn-sync/env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=ACORN_DB=/var/lib/acorn-sync/acorn.db
+# 只听本机回环，外网一律经 nginx 进来（TLS、限速、真实 IP 都在那层做）
+ExecStart=/var/www/acorn-sync/.venv/bin/python -m uvicorn app.main:app \
+  --host 127.0.0.1 --port 8021 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=3
+
+# 收紧权限：除了自己的数据目录，别的地方一概只读
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/acorn-sync
+
+[Install]
+WantedBy=multi-user.target

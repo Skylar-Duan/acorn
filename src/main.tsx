@@ -4,7 +4,7 @@ import App from "./App";
 import "./styles/themes.css";
 import "./styles/base.css";
 import "./styles/app.css";
-import { addList, addTask, allTags, allWho, appStore, flushSave, initStore, showToast } from "./core/store";
+import { addList, addTask, allTags, allWho, appStore, initStore, showToast } from "./core/store";
 import { LIST_COLORS } from "./core/model";
 import { startThemeSync } from "./core/themeCtl";
 import { startReminderLoop } from "./core/reminders";
@@ -12,6 +12,7 @@ import { wireFocusCommands } from "./core/focusCtl";
 import { applyQuickAddShortcut } from "./core/shortcutCtl";
 import { inTauri } from "./core/persist";
 import { maybeRunSmoke } from "./core/smoke";
+import { flushSync, initSync } from "./core/syncCtl";
 import type { AddTaskInput } from "./core/store";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -29,13 +30,14 @@ void (async () => {
   startReminderLoop();
   await wireFocusCommands();
   await applyQuickAddShortcut();
+  void initSync(); // 有登录态就恢复出来顺手同步一轮；没有就什么都不做，绝不阻塞启动
 
   if (inTauri) {
     const { listen, emitTo } = await import("@tauri-apps/api/event");
 
     // 托盘「退出」：先冲掉未落盘数据再真正退出
     await listen("app:quit", async () => {
-      await flushSave();
+      await flushSync(); // 落盘 + 尽力推一把（最多等 3 秒，推不上去也照常退出）
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("exit_app");
     });

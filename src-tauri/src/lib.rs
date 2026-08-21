@@ -402,6 +402,44 @@ fn restore_backup(state: State<DataDir>, name: String) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- 云账号凭据 ----------
+//
+// 登录令牌**不能**放进 data.json：那份是要整份传上云、也会被导出成文件给人看的。
+// 单独放 auth.json，跟 config.json 一样待在本机配置目录，永远不参与同步、不参与导出。
+
+fn auth_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("auth.json"))
+}
+
+#[tauri::command]
+fn load_auth(app: AppHandle) -> Option<String> {
+    let p = auth_path(&app)?;
+    fs::read_to_string(p).ok()
+}
+
+#[tauri::command]
+fn save_auth(app: AppHandle, json: Option<String>) -> Result<(), String> {
+    let p = auth_path(&app).ok_or("找不到配置目录")?;
+    match json {
+        // 退出登录：把文件删掉，不留半份
+        None => {
+            if p.exists() {
+                fs::remove_file(&p).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        Some(text) => {
+            if let Some(dir) = p.parent() {
+                fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            }
+            // 先写临时文件再改名：写一半断电也不会留下半个坏令牌
+            let tmp = p.with_extension("json.tmp");
+            fs::write(&tmp, text.as_bytes()).map_err(|e| e.to_string())?;
+            fs::rename(&tmp, &p).map_err(|e| e.to_string())
+        }
+    }
+}
+
 // ---------- 冒烟自检 ----------
 
 #[tauri::command]
@@ -527,6 +565,8 @@ pub fn run() {
             ensure_daily_backup,
             list_backups,
             restore_backup,
+            load_auth,
+            save_auth,
             is_smoke,
             write_smoke_report,
             exit_app,

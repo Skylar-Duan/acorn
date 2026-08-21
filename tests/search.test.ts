@@ -10,8 +10,8 @@ function mk(partial: Partial<Task> & { title: string }): Task {
 }
 
 const LISTS: List[] = [
-  { id: "l-work", name: "工作", color: "clay", order: 0 },
-  { id: "l-life", name: "Life stuff", color: "moss", order: 1 },
+  { id: "l-work", name: "工作", color: "clay", order: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
+  { id: "l-life", name: "Life stuff", color: "moss", order: 1, updatedAt: "2026-01-01T00:00:00.000Z" },
 ];
 
 function titles(hits: SearchHit[]): string[] {

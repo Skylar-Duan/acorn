@@ -116,3 +116,22 @@
 .set-about { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 24px 20px; }
 .set-about-brand { font-family: var(--serif); font-size: 20px; letter-spacing: 2px; color: var(--ink); }
 .set-about-line { font-size: var(--fs-sm); color: var(--ink-2); }
+
+
+/* ---------- 云账号 ---------- */
+.set-row.col { flex-direction: column; align-items: stretch; gap: 10px; }
+.acct-line { display: flex; align-items: center; gap: 9px; font-size: var(--fs-md); }
+.acct-line .hint, .set-row.col .hint { font-size: var(--fs-sm); color: var(--ink-3); line-height: 1.7; }
+.acct-line .spacer { margin-left: auto; }
+.acct-dot {
+  width: 18px; height: 18px; border-radius: 999px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; background: var(--accent-soft); color: var(--accent);
+}
+.acct-dot.syncing { background: var(--accent-soft); color: var(--accent); }
+.acct-dot.error { background: rgba(192, 86, 74, .15); color: #C0564A; }
+.acct-dot.off { background: var(--hair); color: var(--ink-3); }
+.acct-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.acct-form .input { flex: 1 1 190px; min-width: 150px; }
+.acct-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.acct-err { font-size: var(--fs-sm); color: #C0564A; line-height: 1.7; }
