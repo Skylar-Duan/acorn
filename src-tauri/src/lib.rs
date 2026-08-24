@@ -458,6 +458,29 @@ fn save_auth(app: AppHandle, json: Option<String>) -> Result<(), String> {
     }
 }
 
+// ---------- 下载的安装包 ----------
+
+/// 把下下来的安装包写进应用缓存目录，返回落地路径。
+///
+/// 为什么是**缓存**目录而不是数据目录：Tauri 生成的安卓工程里已经声明了 FileProvider，
+/// 它的 file_paths.xml 覆盖 cache-path，所以放这儿才能把 content:// 交给系统安装器；
+/// 而且装完这个文件就没用了，本来就该待在能被系统随时回收的地方。
+#[tauri::command]
+fn save_download(app: AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    // 只收纯文件名，不许带路径分隔符——否则可以写到目录外面去
+    if name.is_empty() || name.contains(['/', '\\', ':']) || name.contains("..") {
+        return Err("文件名不合法".into());
+    }
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(&name);
+    // 先写临时文件再改名：下到一半断电，不会留下一个「看起来完整」的坏包
+    let tmp = path.with_extension("part");
+    fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 // ---------- 冒烟自检 ----------
 
 #[tauri::command]
@@ -555,7 +578,9 @@ pub fn run() {
         // 首个 invoke 到达时 setup 可能还没跑完
         .manage(DataDir(Mutex::new(read_configured_dir_early())))
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_dialog::init());
+        .plugin(tauri_plugin_dialog::init())
+        // 「用系统方式打开」。安卓上靠它把下好的 APK 交给系统安装器
+        .plugin(tauri_plugin_opener::init());
 
     // 单实例 / 全局快捷键 / 开机自启：手机上没有这些概念，装了也起不来
     #[cfg(desktop)]
@@ -624,6 +649,7 @@ pub fn run() {
             restore_backup,
             load_auth,
             save_auth,
+            save_download,
             is_smoke,
             write_smoke_report,
             exit_app,

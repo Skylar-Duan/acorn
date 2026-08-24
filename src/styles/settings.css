@@ -135,3 +135,35 @@
 .acct-form .input { flex: 1 1 190px; min-width: 150px; }
 .acct-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .acct-err { font-size: var(--fs-sm); color: #C0564A; line-height: 1.7; }
+
+
+/* ---------- 版本更新（手机） ---------- */
+.up-notes {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  padding: 9px 11px;
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: inherit;
+}
+.up-progress { display: flex; flex-direction: column; gap: 6px; }
+.up-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hair);
+  overflow: hidden;
+}
+.up-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width .2s ease-out;
+}

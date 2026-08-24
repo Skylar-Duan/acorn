@@ -17,6 +17,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
@@ -329,7 +330,12 @@ def delete_account(user: CurrentUser) -> dict:
 def pull(user: CurrentUser) -> dict:
     vault = db.get_vault(int(user["id"]))
     data = json.loads(vault["data"]) if vault["data"] else None
-    return {"rev": int(vault["rev"]), "data": data, "updatedAt": vault["updated_at"]}
+    return {
+        "rev": int(vault["rev"]),
+        "data": data,
+        "updatedAt": vault["updated_at"],
+        "schema": int(vault["schema"] or 0),
+    }
 
 
 @app.put("/api/sync")
@@ -337,11 +343,24 @@ def push(body: PushIn, user: CurrentUser) -> dict:
     schema = body.data.get("schema")
     if not isinstance(schema, int) or schema < MIN_SCHEMA:
         raise bad(400, "old_client", "这个版本的橡果太旧了，升级后再同步")
+
+    # 旧客户端不许把新数据按老格式盖回来。桌面版会跑在手机版前面，手机上那份旧橡果
+    # 如果把新版模型的数据按自己认识的样子理解一遍再推上来，新版本才有的东西就没了。
+    # 客户端那边也会拒绝（见 cloud.ts 的 unpackRemote），这里是第二道闸。
+    vault = db.get_vault(int(user["id"]))
+    stored = int(vault["schema"] or 0)
+    if schema < stored:
+        raise bad(
+            409,
+            "client_too_old",
+            f"云端的数据是更新版本的橡果存的（数据版本 {stored}，这台设备是 {schema}）。"
+            f"先升级这台设备上的橡果，升级前不会同步，本地数据一条都不会动。",
+        )
     payload = json.dumps(body.data, ensure_ascii=False, separators=(",", ":"))
     if len(payload.encode("utf-8")) > settings.max_vault_bytes:
         raise bad(413, "too_big", "数据太大了，同步不了")
 
-    rev = db.put_vault(int(user["id"]), body.base_rev, payload, (body.device or "")[:64])
+    rev = db.put_vault(int(user["id"]), body.base_rev, payload, (body.device or "")[:64], schema)
     if rev is None:
         # 别的设备先推过了：把最新那版原样退回去，客户端合并完再推一次
         vault = db.get_vault(int(user["id"]))
@@ -356,6 +375,40 @@ def push(body: PushIn, user: CurrentUser) -> dict:
         )
     db.touch(int(user["id"]))
     return {"rev": rev, "updatedAt": now_iso()}
+
+
+# ---------- 安卓自动更新 ----------
+#
+# 手机上不该让人「去网页点点点」找安装包。App 自己问一句「有没有新版」，
+# 有就自己下、自己拉起安装。这里只负责回答那一句问话。
+#
+# 清单文件由 deploy/publish-apk.sh 写到 <public_dir>/android/latest.json，
+# 安装包本身由 nginx 从同一个目录静态伺服（/download/android/xxx.apk）。
+
+
+@app.get("/api/android/latest")
+def android_latest() -> dict:
+    """最新安卓版是什么。没发过就回 available=false，客户端安静地什么都不做。"""
+    path = Path(settings.public_dir) / "android" / "latest.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"available": False}
+    if not isinstance(raw, dict) or not raw.get("version") or not raw.get("file"):
+        return {"available": False}
+    return {
+        "available": True,
+        "version": str(raw["version"]),
+        # 数据模型版本：客户端拿它判断「这次更新是不是为了读懂云端那份新数据」
+        "schema": int(raw.get("schema") or 0),
+        "url": f"{settings.download_base}/android/{raw['file']}",
+        "size": int(raw.get("size") or 0),
+        "sha256": str(raw.get("sha256") or ""),
+        "notes": str(raw.get("notes") or ""),
+        "publishedAt": str(raw.get("publishedAt") or ""),
+        # 备用方案：万一 App 内安装那条路走不通，让用户能自己去下
+        "pageUrl": str(raw.get("pageUrl") or ""),
+    }
 
 
 # ---------- 收尾 ----------

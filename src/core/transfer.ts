@@ -3,6 +3,10 @@
 //
 // 信封长这样：{ app:"acorn", schema:2, appVersion:"1.2.1", exportedAt:"…", data:{…} }
 // 老版本导出的是**裸的 AppData**（没有信封），必须继续认——不然用户去年的备份就废了。
+//
+// 反过来那一头同样要认真：**比本机新的数据不许硬吃**。桌面版会跑在手机版前面，
+// 手机上那份旧橡果如果把 v6 的数据按 v5 理解着填回去，新版本才有的东西就被悄悄抹掉了。
+// 所以 unpack 只负责把「这份比我新」这个事实报上来（tooNew），由调用方拒绝或明确问用户。
 
 import type { AppData } from "./model";
 import { DATA_VERSION, migrate } from "./model";
@@ -37,6 +41,12 @@ export interface UnpackOk {
   kind: "envelope" | "bare";
   /** 信封里带的应用版本（老式为 null） */
   appVersion: string | null;
+  /** 这份数据的模型版本（老式裸数据按 1 算） */
+  schema: number;
+  /** **这份数据比本机新**：里面有本机这个版本还不认识的东西。
+   *  调用方必须当回事——同步要直接拒绝并提示升级，导入要明确问过用户。
+   *  绝不能装作看懂了照老格式填进去，那会把新版本才有的东西悄悄抹掉。 */
+  tooNew: boolean;
 }
 export interface UnpackErr {
   ok: false;
@@ -57,11 +67,34 @@ export function unpack(raw: unknown): UnpackOk | UnpackErr {
     if (!looksLikeData(env.data)) {
       return { ok: false, error: "这份文件是橡果的信封，但里面没有任务列表" };
     }
-    // schema 比本机新：仍然尝试迁移（migrate 只补不删），但要让调用方能提示用户
-    return { ok: true, data: migrate(env.data), kind: "envelope", appVersion: env.appVersion ?? null };
+    // 信封上的 schema 是权威；没写就看数据里的 version，再没有就当最老的
+    const schema =
+      typeof env.schema === "number"
+        ? env.schema
+        : typeof (env.data as { version?: unknown }).version === "number"
+          ? (env.data as { version: number }).version
+          : 1;
+    return {
+      ok: true,
+      data: migrate(env.data),
+      kind: "envelope",
+      appVersion: env.appVersion ?? null,
+      schema,
+      tooNew: schema > DATA_VERSION,
+    };
   }
   if (looksLikeData(raw)) {
-    return { ok: true, data: migrate(raw), kind: "bare", appVersion: null };
+    const schema = typeof (raw as { version?: unknown }).version === "number"
+      ? (raw as { version: number }).version
+      : 1;
+    return {
+      ok: true,
+      data: migrate(raw),
+      kind: "bare",
+      appVersion: null,
+      schema,
+      tooNew: schema > DATA_VERSION,
+    };
   }
   return { ok: false, error: "这个文件不是橡果的数据（缺少任务列表）" };
 }

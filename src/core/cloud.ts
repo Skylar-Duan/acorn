@@ -18,6 +18,9 @@ export const API_BASE: string =
   (import.meta.env?.VITE_ACORN_API as string | undefined)?.replace(/\/+$/, "") ||
   "https://acorn.cdpandas.com";
 
+/** 这台设备认得的数据版本。比它新的数据一律拒绝处理 */
+export const CLIENT_SCHEMA = DATA_VERSION;
+
 const AUTH_LS_KEY = "acorn-auth";
 const SYNC_TIMEOUT_MS = 20000;
 
@@ -206,11 +209,23 @@ export function deviceName(): string {
   return `${os} · 橡果 ${APP_VERSION}`;
 }
 
-/** 把服务器上那份解开成 AppData；解不开就当云端还没有数据（绝不拿坏数据去合并） */
+/** 把服务器上那份解开成 AppData。
+ *  · 解不开 → 当云端还没有数据（绝不拿坏数据去合并）
+ *  · **比本机新 → 直接抛错**，不合并也不推。桌面版会跑在手机版前面，旧客户端把新数据
+ *    按自己认识的格式理解一遍再推回去，新版本才有的东西就被悄悄抹掉了。宁可不同步。 */
 function unpackRemote(raw: unknown): AppData | null {
   if (raw == null) return null;
   const r = unpack(raw);
-  return r.ok ? r.data : null;
+  if (!r.ok) return null;
+  if (r.tooNew) {
+    throw new ApiError(
+      0,
+      "client_too_old",
+      `云端的数据是更新版本的橡果存的（数据版本 ${r.schema}，这台设备只认到 ${CLIENT_SCHEMA}）。` +
+        `先把这台设备上的橡果升级，升级前不会同步——本地照常用，一条都不会动。`,
+    );
+  }
+  return r.data;
 }
 
 export interface SyncOutcome {
@@ -276,5 +291,3 @@ export async function syncOnce(session: Session, local: AppData): Promise<SyncOu
   throw new ApiError(409, "busy", "另一台设备正在频繁同步，稍后再试");
 }
 
-/** 客户端的数据版本，服务器用它挡住太旧的客户端往上写 */
-export const CLIENT_SCHEMA = DATA_VERSION;

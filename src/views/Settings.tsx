@@ -1,7 +1,7 @@
 // 设置：外观 / 云账号 / 数据 / 导出导入 / 行为 / 回收站 / 关于。分节卡片，一屏调完。
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
-import { APP_VERSION } from "../core/model";
+import { APP_VERSION, DATA_VERSION } from "../core/model";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
 import { aliveTasks, navigate, showToast, updateSettings, useApp } from "../core/store";
@@ -14,6 +14,8 @@ import { applyQuickAddShortcut } from "../core/shortcutCtl";
 import { hasDesktopFeatures } from "../core/platform";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
+import UpdatePanel from "../components/UpdatePanel";
+import { updaterSupported } from "../core/updater";
 import "../styles/settings.css";
 
 const THEMES: { id: ThemeName; name: string; note: string }[] = [
@@ -238,8 +240,14 @@ export default function Settings() {
         return;
       }
       const from = res.appVersion ? `由 v${res.appVersion} 导出` : "旧版格式";
+      // 文件比本机新：这台橡果读不全它。**不能装作看懂**——照老格式填进来，
+      // 新版本才有的东西（比如习惯的打卡记录）会被悄悄抹掉。把代价说清楚，由用户拍板
+      const warn = res.tooNew
+        ? `\n\n⚠️ 这份文件是更新版本的橡果导出的（数据版本 ${res.schema}，这台设备只认到 ${DATA_VERSION}）。` +
+          `导进来的话，新版本才有的东西会丢。建议先把这台设备上的橡果升级再导。`
+        : "";
       const ok = await dlg.ask(
-        `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件${from}，含 ${res.data.tasks.length} 条任务。确定继续吗？`,
+        `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件${from}，含 ${res.data.tasks.length} 条任务。${warn}\n\n确定继续吗？`,
         { title: "导入数据", kind: "warning" },
       );
       if (!ok) return;
@@ -310,6 +318,15 @@ export default function Settings() {
           </div>
           <AccountPanel />
         </div>
+
+        {/* ---------- 版本更新（只有手机上有；桌面走安装包） ---------- */}
+        {updaterSupported && (
+          <div className="set-section">
+            <h2>版本更新</h2>
+            <div className="set-desc">新版本在这儿直接下、直接装，不用去网页找。</div>
+            <UpdatePanel />
+          </div>
+        )}
 
         {/* ---------- 数据 ---------- */}
         <div className="set-section">

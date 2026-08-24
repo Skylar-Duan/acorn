@@ -16,6 +16,8 @@ interface SyncStore {
   message: string;
   /** 有没有攒着还没同步上去的改动 */
   dirty: boolean;
+  /** 云端数据比这台设备新，同步已停摆——只有升级才能解除，重试没用 */
+  needsUpgrade: boolean;
 }
 
 export const syncStore = createStore<SyncStore>(() => ({
@@ -23,6 +25,7 @@ export const syncStore = createStore<SyncStore>(() => ({
   phase: "off",
   message: "没登录，数据只存在这台设备上",
   dirty: false,
+  needsUpgrade: false,
 }));
 
 export function useSync<T>(selector: (s: SyncStore) => T): T {
@@ -72,7 +75,7 @@ export async function initSync(): Promise<void> {
 /** 登录 / 注册验证成功后调：存下登录态，立刻把两边并起来 */
 export async function adoptSession(session: Session): Promise<void> {
   await cloud.saveSession(session);
-  set({ session, phase: "idle", message: idleMessage(session), dirty: false });
+  set({ session, phase: "idle", message: idleMessage(session), dirty: false, needsUpgrade: false });
   watchData();
   await syncNow();
 }
@@ -85,13 +88,15 @@ export async function signOut(): Promise<void> {
   }
   stopWatching();
   await cloud.saveSession(null);
-  set({ session: null, phase: "off", message: idleMessage(null), dirty: false });
+  set({ session: null, phase: "off", message: idleMessage(null), dirty: false, needsUpgrade: false });
 }
 
 /** 立刻同步一轮。同一时间只会有一轮在跑，重复调用等同一个 promise */
 export function syncNow(): Promise<void> {
   if (running) return running;
-  const session = syncStore.getState().session;
+  const st = syncStore.getState();
+  if (st.needsUpgrade) return Promise.resolve(); // 版本不够，同步已停摆
+  const session = st.session;
   if (!session) return Promise.resolve();
   const state = appStore.getState();
   if (!state.loaded || state.loadError) return Promise.resolve(); // 数据都没读好，别往云上推
@@ -121,6 +126,12 @@ export function syncNow(): Promise<void> {
       });
     } catch (e) {
       const err = e as cloud.ApiError;
+      if (err?.slug === "client_too_old") {
+        // 不重试、不再自动同步：这不是网络抖动，重试一百次也一样。
+        // 本地数据一个字不动，用户照常用，等升级完重启就恢复。
+        set({ phase: "error", needsUpgrade: true, message: err.message });
+        return;
+      }
       if (err?.needsLogin) {
         // 令牌过期或密码改过：断开登录态，但**本机数据一个字都不动**
         await cloud.saveSession(null);
@@ -145,7 +156,8 @@ export function syncNow(): Promise<void> {
 
 /** 数据变过就排一次同步（静置 QUIET_MS 后真发） */
 export function requestSync(): void {
-  if (!syncStore.getState().session) return;
+  const st = syncStore.getState();
+  if (!st.session || st.needsUpgrade) return;
   set({ dirty: true });
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(() => {

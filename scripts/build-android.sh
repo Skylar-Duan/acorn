@@ -47,6 +47,32 @@ for a in "$@"; do
   esac
 done
 
+GEN_SRC="$HERE/src-tauri/gen/android"
+if [ ! -d "$GEN_SRC" ]; then
+  echo "=== 首次：生成安卓工程"
+  (cd "$HERE" && npx tauri android init)
+fi
+
+# gen/ 是可再生的（不入库），所以每次都把我们需要的那点定制**幂等地**打回去。
+# 目前只有一处：允许 App 自己拉起安装器装新版（App 内更新那条路要用）。
+MANIFEST="$GEN_SRC/app/src/main/AndroidManifest.xml"
+if [ -f "$MANIFEST" ] && ! grep -q "REQUEST_INSTALL_PACKAGES" "$MANIFEST"; then
+  echo "=== 给 AndroidManifest 补上「允许安装应用」权限"
+  python - "$MANIFEST" <<'PY'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+anchor = '<uses-permission android:name="android.permission.INTERNET" />'
+add = (anchor + "\n"
+       "    <!-- App 内更新：下完新版直接交给系统安装器，不用让人去浏览器翻下载目录 -->\n"
+       '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />')
+if anchor not in s:
+    raise SystemExit("AndroidManifest 里找不到 INTERNET 那行，权限没打上")
+io.open(p, "w", encoding="utf-8", newline="").write(s.replace(anchor, add, 1))
+print("  已补上 REQUEST_INSTALL_PACKAGES")
+PY
+fi
+
 echo "=== 镜像到 NTFS：$MIRROR"
 mkdir -p "$MIRROR"
 # robocopy 的退出码 0-7 都算成功（8 起才是真错），所以要手动放行

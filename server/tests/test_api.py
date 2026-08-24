@@ -243,7 +243,8 @@ def test_me_requires_token():
 def test_push_pull_roundtrip():
     token = signup("sync1@example.com")
     r = client.get("/api/sync", headers=auth(token))
-    assert r.status_code == 200 and r.json() == {"rev": 0, "data": None, "updatedAt": None}
+    assert r.status_code == 200
+    assert r.json() == {"rev": 0, "data": None, "updatedAt": None, "schema": 0}
 
     payload = dict(DATA, data={"tasks": [{"id": "t1", "title": "买猫粮"}], "lists": []})
     r = client.put("/api/sync", json={"base_rev": 0, "data": payload, "device": "win-书房"}, headers=auth(token))
@@ -266,6 +267,31 @@ def test_push_conflict_returns_latest():
     # 拿最新版本号重推就成功
     r = client.put("/api/sync", json={"base_rev": body["rev"], "data": DATA}, headers=auth(token))
     assert r.status_code == 200 and r.json()["rev"] == 2
+
+
+def test_older_client_cannot_overwrite_newer_data():
+    """桌面版会跑在手机版前面。手机上那份旧橡果**不许**把新版模型的数据按老格式盖回来——
+    盖回来就等于把新版本才有的东西（比如习惯）悄悄抹掉。"""
+    token = signup("schema@example.com")
+    newer = dict(DATA, schema=9, data={"version": 9, "tasks": [{"id": "t1", "title": "新版才有的东西"}]})
+    r = client.put("/api/sync", json={"base_rev": 0, "data": newer}, headers=auth(token))
+    assert r.status_code == 200, r.text
+
+    older = dict(DATA, schema=3, data={"version": 3, "tasks": []})
+    r = client.put("/api/sync", json={"base_rev": 1, "data": older}, headers=auth(token))
+    assert r.status_code == 409 and r.json()["error"] == "client_too_old", r.text
+
+    # 而且云端那份必须原封不动
+    r = client.get("/api/sync", headers=auth(token))
+    assert r.json()["schema"] == 9
+    assert r.json()["data"]["data"]["tasks"][0]["title"] == "新版才有的东西"
+
+
+def test_same_schema_still_allowed():
+    """同版本当然照推不误，别把正常同步也拦了。"""
+    token = signup("schema2@example.com")
+    assert client.put("/api/sync", json={"base_rev": 0, "data": DATA}, headers=auth(token)).status_code == 200
+    assert client.put("/api/sync", json={"base_rev": 1, "data": DATA}, headers=auth(token)).status_code == 200
 
 
 def test_old_client_rejected():

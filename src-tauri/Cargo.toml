@@ -1,6 +1,6 @@
 [package]
 name = "acorn"
-version = "1.6.0"
+version = "1.7.0"
 description = "橡果 Acorn · 温暖纸感的待办工具"
 authors = ["cdpandas"]
 edition = "2021"
@@ -19,6 +19,8 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
+# 拉起「用系统方式打开这个文件/链接」。安卓上用它把下好的 APK 交给系统安装器
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

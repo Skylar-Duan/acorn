@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS vaults (
   rev        INTEGER NOT NULL DEFAULT 0,        -- 每次成功推送 +1，用来发现「有人先我一步」
   data       TEXT,                              -- 一整份 AppData 的 JSON（信封格式）
   updated_at TEXT,
-  device     TEXT
+  device     TEXT,
+  -- 这份数据是第几版模型存的。**只升不降**：旧客户端不许把新数据按老格式盖回来
+  schema     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS hits (
@@ -93,6 +95,10 @@ class Database:
 
     def init_schema(self) -> None:
         self.conn.executescript(SCHEMA)
+        # 老库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加字段
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(vaults)")}
+        if "schema" not in cols:
+            self.conn.execute("ALTER TABLE vaults ADD COLUMN schema INTEGER NOT NULL DEFAULT 0")
         self.conn.commit()
 
     @contextmanager
@@ -192,13 +198,19 @@ class Database:
             ).fetchone()
         return row
 
-    def put_vault(self, user_id: int, base_rev: int, data_json: str, device: str) -> int | None:
-        """乐观锁：base_rev 必须等于库里当前 rev，否则说明别的设备先推过，返回 None。"""
+    def put_vault(
+        self, user_id: int, base_rev: int, data_json: str, device: str, schema: int
+    ) -> int | None:
+        """乐观锁：base_rev 必须等于库里当前 rev，否则说明别的设备先推过，返回 None。
+
+        schema 取 max(旧, 新)：一旦有设备用新版模型存过，就再也不会被记成老版本。
+        """
         with self.tx() as c:
             cur = c.execute(
-                "UPDATE vaults SET rev = rev + 1, data = ?, updated_at = ?, device = ?"
+                "UPDATE vaults SET rev = rev + 1, data = ?, updated_at = ?, device = ?,"
+                " schema = MAX(schema, ?)"
                 " WHERE user_id = ? AND rev = ?",
-                (data_json, now_iso(), device, user_id, base_rev),
+                (data_json, now_iso(), device, schema, user_id, base_rev),
             )
             if cur.rowcount == 0:
                 return None
