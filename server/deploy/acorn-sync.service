@@ -12,7 +12,7 @@ EnvironmentFile=/etc/acorn-sync/env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONIOENCODING=utf-8
 Environment=ACORN_DB=/var/lib/acorn-sync/acorn.db
-Environment=ACORN_PUBLIC_DIR=/var/lib/acorn-sync/public
+Environment=ACORN_PUBLIC_DIR=/var/www/acorn-public
 # 只听本机回环，外网一律经 nginx 进来（TLS、限速、真实 IP 都在那层做）
 ExecStart=/var/www/acorn-sync/.venv/bin/python -m uvicorn app.main:app \
   --host 127.0.0.1 --port 8021 --proxy-headers --forwarded-allow-ips 127.0.0.1

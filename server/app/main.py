@@ -392,7 +392,12 @@ def android_latest() -> dict:
     path = Path(settings.public_dir) / "android" / "latest.json"
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        return {"available": False}  # 还没发过包，正常情况
+    except (OSError, ValueError) as exc:
+        # 清单在但读不了/解不开：这是配置事故，不能静默——静默的话表现成
+        # 「明明发了包却查不到更新」，很难查（编码写歪过一次）
+        log.error("安卓版本清单读不了 %s: %s", path, exc)
         return {"available": False}
     if not isinstance(raw, dict) or not raw.get("version") or not raw.get("file"):
         return {"available": False}

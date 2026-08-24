@@ -58,7 +58,9 @@ say "服务器上建用户、目录、虚拟环境"
 "${SSH[@]}" bash -s <<'REMOTE'
 set -euo pipefail
 id acorn >/dev/null 2>&1 || useradd --system --home /var/www/acorn-sync --shell /usr/sbin/nologin acorn
-mkdir -p /var/www/acorn-sync /var/lib/acorn-sync /etc/acorn-sync
+mkdir -p /var/www/acorn-sync /var/lib/acorn-sync /etc/acorn-sync /var/www/acorn-public/android
+# 公开目录（安卓安装包 + 版本清单）：nginx 要读得到，所以 755 且不在 acorn 的私有目录里
+chmod 755 /var/www/acorn-public
 chown -R acorn:acorn /var/lib/acorn-sync
 chmod 750 /var/lib/acorn-sync
 REMOTE
@@ -104,7 +106,10 @@ say "安装并启动服务"
 "${SSH[@]}" bash -s <<'REMOTE'
 set -euo pipefail
 systemctl daemon-reload
-systemctl enable --now acorn-sync
+systemctl enable acorn-sync
+# 必须是 restart 不能是 `enable --now`：服务已经在跑时 --now 什么都不做，
+# 新推上来的代码根本不会生效（2026-08-24 踩过，接口 404 查了半天）
+systemctl restart acorn-sync
 sleep 2
 systemctl is-active acorn-sync
 curl -s -m 5 http://127.0.0.1:8021/api/health; echo

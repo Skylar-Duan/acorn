@@ -19,7 +19,7 @@ NOTES_FILE="${2:-}"
 
 HOST="${ACORN_DEPLOY_HOST:-root@47.85.52.202}"
 SSH_KEY="${ACORN_SSH_KEY:-/s/AI/Claude Code/claude-home/resources/ssh/id_ed25519}"
-REMOTE_DIR="/var/lib/acorn-sync/public/android"
+REMOTE_DIR="/var/www/acorn-public/android"
 KEEP=3
 
 SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$HOST")
@@ -33,23 +33,30 @@ SIZE="$(stat -c %s "$APK")"
 SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
 NOTES=""
 [ -n "$NOTES_FILE" ] && [ -f "$NOTES_FILE" ] && NOTES="$(cat "$NOTES_FILE")"
+# 这个包认的数据模型版本，直接从代码里抠——客户端拿它判断「这次是不是非升不可」
+SCHEMA="$(sed -n 's/^export const DATA_VERSION = \([0-9][0-9]*\);.*/\1/p' "$(dirname "$0")/../../src/core/model.ts" | head -1)"
+[ -n "$SCHEMA" ] || { echo "从 model.ts 里读不出 DATA_VERSION"; exit 1; }
 
 echo "=== 要发的包"
-echo "  $NAME  版本 $VER  $((SIZE / 1048576)) MB"
+echo "  $NAME  版本 $VER  数据模型 v$SCHEMA  $((SIZE / 1048576)) MB"
 echo "  sha256 $SHA"
 
 echo "=== 上传"
-"${SSH[@]}" "mkdir -p '$REMOTE_DIR' && chown -R acorn:acorn /var/lib/acorn-sync/public"
+"${SSH[@]}" "mkdir -p '$REMOTE_DIR' && chmod 755 /var/www/acorn-public"
 "${SCP[@]}" "$APK" "$HOST:$REMOTE_DIR/$NAME"
 
 echo "=== 写版本清单"
-# 清单用 python 生成：更新说明里有中文和换行，shell 拼 JSON 迟早出事
-python - "$NAME" "$VER" "$SIZE" "$SHA" "$NOTES" > /tmp/acorn-latest.json <<'PY'
-import json, sys, datetime
-name, ver, size, sha, notes = sys.argv[1:6]
-print(json.dumps({
+# 清单用 python 生成：更新说明里有中文和换行，shell 拼 JSON 迟早出事。
+# **必须让 python 自己写文件，不能重定向 stdout**：Windows 上 stdout 走的是控制台
+# 代码页（GBK），中文会被写成非 UTF-8 字节，服务端 read_text 直接 UnicodeDecodeError，
+# 表现成「发了包但查不到更新」（2026-08-24 踩过）。
+python - "$NAME" "$VER" "$SIZE" "$SHA" "$NOTES" "$SCHEMA" /tmp/acorn-latest.json <<'PY'
+import json, sys, datetime, io
+name, ver, size, sha, notes, schema, out = sys.argv[1:8]
+io.open(out, "w", encoding="utf-8").write(json.dumps({
     "file": name,
     "version": ver,
+    "schema": int(schema),
     "size": int(size),
     "sha256": sha,
     "notes": notes,
@@ -58,6 +65,8 @@ print(json.dumps({
     "pageUrl": "https://github.com/Skylar-Duan/acorn/releases/latest",
 }, ensure_ascii=False, indent=2))
 PY
+# 写完自己验一遍是不是合法 UTF-8，不合法当场停，别推一份服务端读不了的清单上去
+python -c "import io,json,sys; json.load(io.open(sys.argv[1],encoding='utf-8')); print('  清单是合法 UTF-8 JSON')" /tmp/acorn-latest.json
 "${SCP[@]}" /tmp/acorn-latest.json "$HOST:$REMOTE_DIR/latest.json"
 rm -f /tmp/acorn-latest.json
 
@@ -69,8 +78,7 @@ ls -1t *.apk 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
   echo "  删掉 \$old"
   rm -f -- "\$old"
 done
-chown -R acorn:acorn /var/lib/acorn-sync/public
-chmod -R a+rX /var/lib/acorn-sync/public
+chmod -R a+rX /var/www/acorn-public
 ls -1 *.apk
 REMOTE
 
