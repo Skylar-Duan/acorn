@@ -24,6 +24,7 @@ struct DataDir(Mutex<PathBuf>);
 
 /// 默认数据目录：本机应用数据区 `%APPDATA%\com.cdpandas.acorn\userdata`。
 /// 想让数据随移动硬盘 / 网盘走，去设置里换文件夹——指针写进 config.json，优先级高于此处。
+#[cfg(not(target_os = "android"))]
 fn default_data_dir() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
         return PathBuf::from(appdata).join(APP_ID).join("userdata");
@@ -33,6 +34,17 @@ fn default_data_dir() -> PathBuf {
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("userdata")))
         .unwrap_or_else(|| PathBuf::from("userdata"))
+}
+
+/// 安卓的数据目录：应用私有目录，只有本应用能读写，卸载即清。
+///
+/// **不能走上面那套**：安卓没有 APPDATA 环境变量，`current_exe()` 拿到的是
+/// `/system/bin/app_process64`，往它旁边写必然失败——App 一启动就是「数据打不开」。
+/// `/data/data/<包名>/files` 是安卓的标准位置，现代安卓上它等价于 `/data/user/0/<包名>/files`；
+/// 真实路径在 setup 里还会用 Tauri 的 app_data_dir() 再校准一次（多用户 / 工作资料场景）。
+#[cfg(target_os = "android")]
+fn default_data_dir() -> PathBuf {
+    PathBuf::from(format!("/data/data/{APP_ID}/files/userdata"))
 }
 
 fn config_path(app: &AppHandle) -> Option<PathBuf> {
@@ -64,6 +76,8 @@ fn read_pointer(config: &Path) -> Option<PathBuf> {
 /// （webview 的 JS 可能抢在 setup 钩子前发起 invoke，见 v1.0 竞态修复）。
 /// 路径与 app_config_dir 一致：%APPDATA%\com.cdpandas.acorn\config.json
 fn read_configured_dir_early() -> PathBuf {
+    // 安卓没有「换数据文件夹」这回事（设置里已经藏掉了），也没有 APPDATA，直接用私有目录
+    #[cfg(not(target_os = "android"))]
     if let Ok(appdata) = std::env::var("APPDATA") {
         if let Some(d) = read_pointer(&PathBuf::from(appdata).join(APP_ID).join("config.json")) {
             return d;
@@ -560,6 +574,18 @@ pub fn run() {
             // 托盘只在桌面建
             #[cfg(desktop)]
             setup_tray(_app.handle())?;
+            // 安卓：拿 Tauri 算出来的真实私有目录校准一次。
+            // 上面用的是标准路径 /data/data/<包名>/files，绝大多数机器就是它；
+            // 多用户 / 工作资料的机器上真实路径是 /data/user/<N>/<包名>/files，这里纠正过来
+            #[cfg(target_os = "android")]
+            if let Ok(dir) = _app.path().app_data_dir() {
+                let real = dir.join("userdata");
+                let state: State<DataDir> = _app.state();
+                let mut cur = state.0.lock().unwrap();
+                if *cur != real {
+                    *cur = real;
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

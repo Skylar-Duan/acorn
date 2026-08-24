@@ -10,6 +10,8 @@
 ## 功能一览
 
 - **随手记（统一记录入口）**：两种记法并排给——**打字**用中文自然语言（明天 / 周五 / 下周三 / 8月20日 / 十月底之前 / 每周一三五 / 下午3点…，配 `/清单`（不存在自动新建）`#标签` `@需求方` `!高`，全角半角与 `！！！` 都认，输入时自动补全已有项）；**不想背语法**就用下面一排按钮点着选日期 / 清单 / 需求方 / 重要性 / 重复，选中会一直生效，方便连记好几条
+- **习惯**：重复着做的事单独一个分类，一个圈点一下就是打卡；连续多少次、本周七格、整月日历、最长连续、近 30 天完成率；忘了可以补打任意一天。习惯**不会逾期**，也不混进今天/计划
+- **侧栏折叠**：常驻 随手记 / 今天 / 习惯 / 计划 / 全部；其余视图收进「更多」；清单、需求方、标签各列 3 个，多的点开。展开状态存本机，不同步
 - **视图**：随手记 · 今天（逾期置顶）· 计划 · 全部（总览 + 排序切换：按时间/按重要性，排到子任务这一级）· 日志 · 日历 · 四象限 · 专注 · 统计 · 回收站（侧栏常驻，写着每条还剩几天，可单条恢复 / 彻底删除，任务拖过去即删）
 - **需求方维度**：每件事记录「为谁做」，**一件事可以挂好几个人**（`@李哥 @王姐`），侧栏按人聚合、每人名下都看得到，统计页看各需求方工作量
 - **任务**：备注、循环、到点系统通知提醒、顺延计数
@@ -25,6 +27,7 @@
 ## 数据存哪
 
 默认在本机 `%APPDATA%\com.cdpandas.acorn\userdata\`，装完开箱即用。
+安卓上是应用私有目录 `/data/data/com.cdpandas.acorn/files/userdata`（手机上没有「换文件夹」，跨端靠云账号）。
 设置页可把数据文件夹换到移动硬盘 / 网盘（换电脑打开是同一份任务；指针存 `%APPDATA%\com.cdpandas.acorn\config.json`，并记录用过的位置，数据本体不动）。
 
 **不会让你以为数据丢了**：启动时如果数据文件夹是空的，橡果会先扫一遍数据可能待着的地方（默认目录、用过的目录、exe 旁边、被沙箱化的镜像目录），找到有内容的就列出来让你选——**你不点，它什么都不写**。选定的文件夹当下不可用时（硬盘没接等）会友好提示并可重试，不会闪退、不会悄悄新建空数据覆盖。
@@ -38,7 +41,20 @@ npm install
 npm run dev          # tauri dev（需要 Rust + VS C++ 工具链；Rust 若不在 PATH：$env:Path += ";$env:USERPROFILE\.cargo\bin"）
 npm test             # vitest 单元测试（解析/循环/统计/搜索/store）
 npm run build        # 打 NSIS 安装包 → src-tauri/target/release/bundle/nsis/
+bash scripts/build-android.sh   # 打安卓 APK → src-tauri/target/release/bundle/android/
 ```
+
+**打安卓包有两道坎，脚本里都绕过去了**（换机器要先装 JDK 17 + Android SDK 34 + NDK 27 +
+`rustup target add aarch64-linux-android` 等四个目标）：
+
+1. **S 盘是 exFAT，不支持符号链接**。Tauri 要用符号链接把编译好的 `.so` 放进 `jniLibs/`，
+   在 exFAT 上直接 `IO error: 函数不正确`。脚本先把工程镜像到 C 盘（NTFS）再打。
+2. **Windows 默认不允许普通用户建符号链接**（要开「开发者模式」）。到 NTFS 上照样卡。
+   脚本改成：让 Tauri 编完 Rust，然后手动把 `.so` 拷进 `jniLibs/`，再直接
+   `gradlew assembleArm64Release -x rustBuildArm64Release`。
+
+出来的 release APK 是未签名的，脚本用安卓官方 debug 密钥签好（口令固定 `android`，公开约定值）。
+**上架商店要换成你自己的正式密钥**——那把钥匙丢了就再也无法更新已上架的应用，得你本人生成保管。
 
 冒烟自检：`$env:ACORN_SMOKE="1"` 启动应用 → 自动跑「建任务→完成→落盘→重读校验」并写 `userdata/smoke-report.json` 后退出。
 
@@ -53,16 +69,19 @@ src/
 │  ├─ recur.ts      循环任务下次日期引擎
 │  ├─ stats.ts      统计聚合与每周回顾
 │  ├─ search.ts     搜索排序
+│  ├─ habits.ts     习惯：今天该不该做、连续多少次、本周七格、月历、完成率（纯函数）
+│  ├─ platform.ts   跑在桌面还是手机（决定托盘/快捷键/多窗口这些开不开）
 │  ├─ merge.ts      两台设备各改各的怎么合（云同步的心脏，纯函数）
 │  ├─ cloud.ts      云端接口客户端 + 一轮同步的流程
 │  ├─ syncCtl.ts    同步调度（什么时候同步、失败了显示成什么样）
 │  ├─ store.ts      zustand 状态中枢（唯一写入口 mutate：撤销栈 + 改动时刻戳 + 防抖落盘）
 │  └─ persist.ts    存取桥（Tauri 命令 / 浏览器 localStorage 兜底）
 server/             云同步服务（FastAPI + SQLite，独立部署，见 server/README.md）
-├─ views/           今天 · 计划 · 通用列表 · 日历 · 四象限 · 专注 · 统计 · 设置
+├─ views/           今天 · 计划 · 通用列表 · 习惯 · 日历 · 四象限 · 专注 · 统计 · 设置
 ├─ components/      TaskRow · TaskCard · QuickAddBar · Sidebar · 命令面板 · 搜索
 └─ windows/         快速添加浮窗 · 专注迷你浮窗（独立 webview，数据经主窗落库）
 src-tauri/          Rust：原子写 + 崩溃恢复 + 每日备份轮换 + 托盘 + 单实例
+                    （托盘/单实例/全局快捷键/开机自启都在 #[cfg(desktop)] 里，安卓不编）
 ```
 
 关键设计：
