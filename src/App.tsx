@@ -49,6 +49,8 @@ export default function App() {
   const lists = useApp((s) => s.data.lists);
   const theme = useApp((s) => s.data.settings.theme);
   const [bulkListMenu, setBulkListMenu] = useState(false);
+  /** 窄屏（手机 / 把窗口拖窄）时侧栏收成抽屉，这里记它开没开 */
+  const [drawer, setDrawer] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // toast 自动消散
@@ -124,6 +126,7 @@ export default function App() {
         e.preventDefault();
         deleteTasks(selectedIds);
       } else if (e.key === "Escape") {
+        setDrawer(false);
         clearSelection();
         expandTask(null);
       }
@@ -131,6 +134,9 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [selectedIds]);
+
+  // 换了视图就把抽屉收起来——手机上点完一项还挡着半屏很烦
+  useEffect(() => setDrawer(false), [view]);
 
   const body = useMemo(() => {
     switch (view) {
@@ -170,9 +176,12 @@ export default function App() {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell${drawer ? " drawer-open" : ""}`}>
       <ThemeScene theme={theme} />
-      <Sidebar />
+      {/* 窄屏才出现：点开左边的抽屉。宽屏由 CSS 藏起来 */}
+      <button className="drawer-btn" title="菜单" onClick={() => setDrawer(true)}>☰</button>
+      <Sidebar drawerOpen={drawer} onNavigate={() => setDrawer(false)} />
+      {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
       {body}
 
       <DataRescue />

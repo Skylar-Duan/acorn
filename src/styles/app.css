@@ -355,3 +355,88 @@
 }
 .side .side-more:hover { color: var(--accent); background: var(--accent-soft); }
 .side .side-more-txt { padding-left: 2px; }
+
+/* ---------- 窄屏 / 手机：侧栏收成抽屉 ---------- */
+/* 760px 是分界：低于它按一只手拿着手机来排版。安卓 App 走的就是这一套。 */
+
+.drawer-btn { display: none; }
+.drawer-scrim { display: none; }
+
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+
+  /* 侧栏浮在内容之上，默认推到屏幕外；.open 才滑进来 */
+  .side {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 300px);
+    z-index: 90;
+    transform: translateX(-102%);
+    transition: transform .22s cubic-bezier(.2, .8, .3, 1);
+    box-shadow: none;
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  .side.open { transform: none; box-shadow: 0 0 40px rgba(0, 0, 0, .22); }
+  /* 标题栏拖动是桌面窗口的事，手机上会吃掉点击 */
+  .side .brand { -webkit-app-region: none; }
+
+  .drawer-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 89;
+    background: rgba(0, 0, 0, .32);
+    animation: scrim-in .18s ease-out;
+  }
+  @keyframes scrim-in { from { opacity: 0; } }
+
+  /* ☰：固定在左上角，压在内容上方 */
+  .drawer-btn {
+    display: block;
+    position: fixed;
+    left: 8px;
+    top: max(8px, env(safe-area-inset-top));
+    z-index: 88;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--r-sm);
+    font-size: 17px;
+    line-height: 1;
+    color: var(--ink-2);
+    background: var(--card);
+    border: 1px solid var(--hair);
+    box-shadow: var(--shadow-sm);
+  }
+  .shell.drawer-open .drawer-btn { display: none; }
+
+  /* 内容区给 ☰ 让出位置，四周留窄一点 */
+  .main { padding: max(10px, env(safe-area-inset-top)) 12px 0; }
+  .view-head { padding-left: 46px; flex-wrap: wrap; row-gap: 2px; }
+  .view-head h1 { font-size: 21px; }
+  .theme-scene { left: 0; max-height: 40vh; }
+
+  /* 点得着：手指不是鼠标 */
+  .side nav li { padding: 10px 12px; font-size: 15px; }
+  .task-row { padding-top: 9px; padding-bottom: 9px; }
+  .task-row .cb, .task-card .cb { width: 20px; height: 20px; }
+  .task-row .meta { gap: 6px; font-size: 11px; }
+  .btn { padding: 7px 12px; }
+
+  /* 任务行：标题占满一行，需求方/清单/日期这些落到第二行。
+     不这么做的话标题会被右边一串徽标挤成「季度复盘会材料 › …」 */
+  .task-row { flex-wrap: wrap; row-gap: 2px; }
+  .task-row .title { flex: 1 1 auto; min-width: 0; }
+  .task-row .meta { flex: 1 0 100%; margin-left: 30px; justify-content: flex-start; }
+
+  /* 键盘快捷键提示在手机上是废话 */
+  .kbd-hint { display: none; }
+
+  /* 一行放不下的横排改成能横向滑动，而不是把页面撑宽 */
+  .quick-add.tall .qa-picks { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .quick-add.tall .qa-picks::-webkit-scrollbar { display: none; }
+  .bulk-bar { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .toast { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
+}

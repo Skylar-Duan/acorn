@@ -11,6 +11,7 @@ import { startReminderLoop } from "./core/reminders";
 import { wireFocusCommands } from "./core/focusCtl";
 import { applyQuickAddShortcut } from "./core/shortcutCtl";
 import { inTauri } from "./core/persist";
+import { hasDesktopFeatures, isMobile } from "./core/platform";
 import { maybeRunSmoke } from "./core/smoke";
 import { flushSync, initSync } from "./core/syncCtl";
 import type { AddTaskInput } from "./core/store";
@@ -28,11 +29,26 @@ void (async () => {
   if (await maybeRunSmoke()) return; // 冒烟模式：跑完自检直接退出
 
   startReminderLoop();
-  await wireFocusCommands();
-  await applyQuickAddShortcut();
   void initSync(); // 有登录态就恢复出来顺手同步一轮；没有就什么都不做，绝不阻塞启动
 
-  if (inTauri) {
+  // 专注浮窗和全局快捷键都要「第二个窗口 / 系统级热键」，手机上都没有，
+  // 硬调会在启动最早期抛错，把整个 App 卡在白屏
+  if (hasDesktopFeatures) {
+    await wireFocusCommands();
+    await applyQuickAddShortcut();
+  }
+
+  // 手机上没有「退出」这个动作——系统随时可能在后台把 App 干掉。
+  // 所以一切进后台就立刻落盘 + 尽力同步，不能等下次启动
+  if (isMobile) {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") void flushSync();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", () => void flushSync());
+  }
+
+  if (inTauri && hasDesktopFeatures) {
     const { listen, emitTo } = await import("@tauri-apps/api/event");
 
     // 托盘「退出」：先冲掉未落盘数据再真正退出

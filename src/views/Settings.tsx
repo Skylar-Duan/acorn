@@ -11,6 +11,7 @@ import {
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
+import { hasDesktopFeatures } from "../core/platform";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
 import "../styles/settings.css";
@@ -320,7 +321,7 @@ export default function Settings() {
               title={status ? (status.dirOk ? "文件夹正常" : "文件夹不可用") : "正在检查"}
             />
             <span className="set-path">{status ? status.dir : "正在检查…"}</span>
-            {inTauri && (
+            {inTauri && hasDesktopFeatures && (
               <div className="set-ctl">
                 <button className="btn" onClick={() => void changeDir()}>更换文件夹</button>
               </div>
@@ -355,6 +356,8 @@ export default function Settings() {
         {/* ---------- 导出与导入 ---------- */}
         <div className="set-section">
           <h2>导出与导入</h2>
+          {hasDesktopFeatures ? (
+            <>
           <div className="set-desc">导出成通用格式随身带走；导入会整体替换现有数据。</div>
           <div className="set-actions">
             <button className="btn" onClick={() => void exportAs("json")}>导出 JSON</button>
@@ -363,11 +366,19 @@ export default function Settings() {
             <span className="set-flex" />
             <button className="btn" onClick={() => void importJson()}>导入 JSON…</button>
           </div>
+            </>
+          ) : (
+            <div className="set-desc">
+              手机上不做文件导出——搬数据请用上面的「云账号」，登录同一个账号，
+              电脑和手机看到的就是同一份。
+            </div>
+          )}
         </div>
 
         {/* ---------- 行为 ---------- */}
         <div className="set-section">
           <h2>行为</h2>
+          {hasDesktopFeatures && (
           <div className="set-row">
             <div className="set-row-label">
               全局快捷键
@@ -385,7 +396,8 @@ export default function Settings() {
               />
             </div>
           </div>
-          {inTauri && (
+          )}
+          {inTauri && hasDesktopFeatures && (
             <div className="set-row">
               <div className="set-row-label">
                 开机自启

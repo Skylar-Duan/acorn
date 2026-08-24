@@ -86,7 +86,9 @@ function dropDue(e: React.DragEvent, ids: string[], due: string | null) {
   else setTasksDue(ids, due);
 }
 
-export default function Sidebar() {
+export default function Sidebar(
+  { drawerOpen = false, onNavigate }: { drawerOpen?: boolean; onNavigate?: () => void } = {},
+) {
   const view = useApp((s) => s.ui.view);
   const curList = useApp((s) => s.ui.listId);
   const curWho = useApp((s) => s.ui.who);
@@ -199,7 +201,7 @@ export default function Sidebar() {
   ) => (
     <li
       className={`${view === id ? "on" : ""}${dropHint === id ? " dropping" : ""}`}
-      onClick={() => navigate(id)}
+      onClick={() => { navigate(id); onNavigate?.(); }}
       {...(drop ? dropProps(id, drop) : {})}
     >
       <Ico d={ICONS[icon]} />
@@ -209,7 +211,7 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="side">
+    <aside className={`side${drawerOpen ? " open" : ""}`}>
       <div className="brand">
         <img src={iconUrl} alt="" />
         橡果
@@ -276,7 +278,7 @@ export default function Sidebar() {
               <li
                 key={l.id}
                 className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}`}
-                onClick={() => navigate("list", { listId: l.id })}
+                onClick={() => { navigate("list", { listId: l.id }); onNavigate?.(); }}
                 {...dropProps(`list-${l.id}`, (ids) => setTasksList(ids, l.id))}
               >
                 <span className="dot" style={{ background: `var(--list-${l.color})` }} />
@@ -314,7 +316,7 @@ export default function Sidebar() {
                 <li
                   key={who}
                   className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}`}
-                  onClick={() => navigate("who", { who })}
+                  onClick={() => { navigate("who", { who }); onNavigate?.(); }}
                   {...dropProps(`who-${who}`, (ids) => addTasksWho(ids, who))}
                 >
                   <span
@@ -343,7 +345,7 @@ export default function Sidebar() {
                 <li
                   key={tag}
                   className={view === "tag" && curTag === tag ? "on" : ""}
-                  onClick={() => navigate("tag", { tag })}
+                  onClick={() => { navigate("tag", { tag }); onNavigate?.(); }}
                 >
                   <span style={{ color: "var(--ink-3)", fontSize: 12, width: 8, textAlign: "center" }}>#</span>
                   {tag}
@@ -358,7 +360,7 @@ export default function Sidebar() {
       <div className="foot">
         {loadError ? <span className="bad" title={loadError} /> : <span className="ok" />}
         {loadError ? "数据异常" : "数据已就绪"}
-        <button className="gear" title="设置" onClick={() => navigate("settings")}>⚙</button>
+        <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
       </div>
     </aside>
   );
