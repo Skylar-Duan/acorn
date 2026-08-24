@@ -58,6 +58,42 @@ bash scripts/build-android.sh   # 打安卓 APK → src-tauri/target/release/bun
 
 冒烟自检：`$env:ACORN_SMOKE="1"` 启动应用 → 自动跑「建任务→完成→落盘→重读校验」并写 `userdata/smoke-report.json` 后退出。
 
+## 发布节奏（桌面与手机分开走）
+
+用户 2026-08-24 定的规矩，**别每改一处就同步动手机**：
+
+1. **优化先在桌面版做、在桌面版验**。桌面改完就发桌面版
+2. 每一条改动如果影响手机端，记进下面的**手机跟随清单**，先不动手机
+3. 攒够几条（或有非升不可的数据模型变更）再**统一出一次手机版**
+
+### 手机跟随清单
+
+> 攒在这儿，下次出手机版时一次做完。做完的删掉。
+
+- （空）
+
+### 版本错位时的硬规矩
+
+因为桌面会跑在手机前面，一定会出现「云端数据比手机上那份新」的时候。此时：
+
+- **不许把新数据按老格式理解一遍再存回去**——那会把新版本才有的东西悄悄抹掉，用户毫不知情
+- 客户端 `transfer.unpack` 只如实报 `schema` + `tooNew`，`cloud.unpackRemote` 遇到
+  `tooNew` 直接抛 `client_too_old`，同步整体停摆（`needsUpgrade`），本地数据一个字不动
+- 服务端第二道闸：`vaults.schema` 只升不降，推送时 schema 比库里低直接 409
+- 手机上会顺带提示「这一版必须升」并给下载按钮
+
+### 出一次手机版要做的三件事
+
+```bash
+bash scripts/build-android.sh                                   # 1. 打包
+bash server/deploy/publish-apk.sh <apk> [更新说明文件]           # 2. 发到更新服务器
+#    -> 手机上「设置 → 版本更新」就能查到、直接下、直接装
+#    3. 顺手把 APK 也传一份到 GitHub Release（备用下载）
+```
+
+`publish-apk.sh` 会自动从 `src/core/model.ts` 抠 `DATA_VERSION` 写进清单，客户端据此判断
+这次更新是不是「不升就同步不了」。
+
 ## 架构
 
 ```
