@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import Today from "./views/Today";
 import Upcoming from "./views/Upcoming";
 import ListView from "./views/ListView";
+import Habits from "./views/Habits";
 import AllView from "./views/AllView";
 import Calendar from "./views/Calendar";
 import Quadrant from "./views/Quadrant";
@@ -141,6 +142,7 @@ export default function App() {
       case "list": return <ListView kind="list" />;
       case "who": return <ListView kind="who" />;
       case "tag": return <ListView kind="tag" />;
+      case "habits": return <Habits />;
       case "trash": return <ListView kind="trash" />;
       case "calendar": return <Calendar />;
       case "quadrant": return <Quadrant />;

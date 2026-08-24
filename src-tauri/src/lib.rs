@@ -1,14 +1,18 @@
 // Rust 侧职责：数据文件的安全读写（原子替换 + 崩溃恢复）、每日备份轮换、
 // 托盘常驻、单实例。业务逻辑全部在前端，这里只做「不能丢数据」的底座。
+//
+// 安卓：托盘 / 单实例 / 全局快捷键 / 开机自启这些是桌面独有的，全部关在 #[cfg(desktop)] 里；
+// 手机上只留数据读写与通知。窗口配置走 tauri.android.conf.json（手机只有一个窗口）。
 
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State,
 };
 
 const APP_ID: &str = "com.cdpandas.acorn";
@@ -472,6 +476,7 @@ fn read_text_file(path: String) -> Result<String, String> {
 
 // ---------- 窗口与托盘 ----------
 
+#[cfg(desktop)]
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -480,6 +485,7 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+#[cfg(desktop)]
 fn show_quickadd(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("quickadd") {
         let _ = w.show();
@@ -488,59 +494,83 @@ fn show_quickadd(app: &AppHandle) {
     }
 }
 
+/// 托盘常驻：关窗收进托盘、右键菜单三件事。桌面独有。
+#[cfg(desktop)]
+fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "打开橡果", true, None::<&str>)?;
+    let quick = MenuItem::with_id(app, "quick", "随手记一条", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quick, &quit])?;
+    TrayIconBuilder::with_id("main")
+        .icon(app.default_window_icon().unwrap().clone())
+        .tooltip("橡果 Acorn")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, e| match e.id.as_ref() {
+            "show" => show_main(app),
+            "quick" => show_quickadd(app),
+            "quit" => {
+                // 让前端先把没落盘的数据冲掉；1.5 秒兜底强退
+                let _ = app.emit_to("main", "app:quit", ());
+                let h = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    h.exit(0);
+                });
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, ev| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = ev
+            {
+                show_main(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // 状态注册必须在 Builder 层：配置里声明的窗口先于 setup 钩子加载 JS，
         // 首个 invoke 到达时 setup 可能还没跑完
         .manage(DataDir(Mutex::new(read_configured_dir_early())))
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // 单实例 / 全局快捷键 / 开机自启：手机上没有这些概念，装了也起不来
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main(app);
         }))
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
-        ))
-        .setup(|app| {
-            let show = MenuItem::with_id(app, "show", "打开橡果", true, None::<&str>)?;
-            let quick = MenuItem::with_id(app, "quick", "随手记一条", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quick, &quit])?;
-            TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("橡果 Acorn")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, e| match e.id.as_ref() {
-                    "show" => show_main(app),
-                    "quick" => show_quickadd(app),
-                    "quit" => {
-                        // 让前端先把没落盘的数据冲掉；1.5 秒兜底强退
-                        let _ = app.emit_to("main", "app:quit", ());
-                        let h = app.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(std::time::Duration::from_millis(1500));
-                            h.exit(0);
-                        });
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, ev| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = ev
-                    {
-                        show_main(tray.app_handle());
-                    }
-                })
-                .build(app)?;
+        ));
+
+    builder
+        .setup(|_app| {
+            // 托盘只在桌面建
+            #[cfg(desktop)]
+            setup_tray(_app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {
+            // 手机上没有托盘也没有第二个窗口，这段整体跳过
+            #[cfg(mobile)]
+            {
+                let _ = (window, event);
+                return;
+            }
+            #[cfg(desktop)]
+            {
             // 关主窗 = 收进托盘；真正退出走托盘菜单
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -553,6 +583,7 @@ pub fn run() {
                 if let tauri::WindowEvent::Focused(false) = event {
                     let _ = window.hide();
                 }
+            }
             }
         })
         .invoke_handler(tauri::generate_handler![

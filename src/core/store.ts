@@ -3,15 +3,16 @@
 
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task } from "./model";
+import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task, TaskKind } from "./model";
 import { defaultData, newId, newTask, normalizeWho } from "./model";
 import { bury } from "./merge";
+import { doneOn, isDueOn, sortHabitsForDay, toggleCheck, DEFAULT_HABIT_REPEAT } from "./habits";
 import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
 export type ViewId =
-  | "inbox" | "today" | "upcoming" | "all" | "logbook"
+  | "inbox" | "today" | "upcoming" | "all" | "logbook" | "habits"
   | "calendar" | "quadrant" | "focus" | "stats" | "settings"
   | "list" | "who" | "tag" | "trash";
 
@@ -341,6 +342,12 @@ export function updateTask(id: string, patch: Partial<Task>) {
 /** 完成任务。循环任务：留下一条已完成副本，本体推进到下一个落点 */
 export function completeTask(id: string) {
   const nowIso = new Date().toISOString();
+  // 习惯没有「完成」这回事，勾它就是打今天的卡（再勾一次是撤销）
+  const target = appStore.getState().data.tasks.find((x) => x.id === id);
+  if (target?.kind === "habit") {
+    toggleHabitCheck(id);
+    return;
+  }
   mutate((d) => {
     const t = d.tasks.find((x) => x.id === id);
     if (!t || t.done) return d;
@@ -556,6 +563,79 @@ export function setTasksDue(ids: string[], due: string | null) {
   clearSelection();
 }
 
+// ---------- 习惯 ----------
+
+export interface AddHabitInput {
+  title: string;
+  repeat?: RepeatRule | null;
+  notes?: string;
+  priority?: Priority;
+  listId?: string | null;
+  tags?: string[];
+}
+
+/** 新建一个习惯。不给周期就是「每天」——绝大多数习惯都是每天 */
+export function addHabit(input: AddHabitInput): string {
+  const h = newTask({
+    ...input,
+    kind: "habit",
+    repeat: input.repeat ?? DEFAULT_HABIT_REPEAT,
+    // 习惯不排期、不逾期：due 一直是 null，「今天该不该做」由 repeat 现算
+    due: null,
+    dueTime: null,
+    reminder: null,
+    listId: input.listId ?? null,
+    tags: input.tags ?? [],
+    priority: input.priority ?? 0,
+    order: Date.now(),
+  });
+  mutate((d) => ({ ...d, tasks: [...d.tasks, h] }));
+  return h.id;
+}
+
+/** 打卡 / 撤销打卡。同一天再点一次就是撤销（点错了不用找地方改） */
+export function toggleHabitCheck(id: string, ymd = todayYMD()) {
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) =>
+      t.id === id && t.kind === "habit" ? { ...t, checkIns: toggleCheck(t.checkIns, ymd) } : t,
+    ),
+  }));
+}
+
+/** 改习惯的周期。习惯必须有周期，传 null 会退回「每天」 */
+export function setHabitRepeat(id: string, rule: RepeatRule | null) {
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) =>
+      t.id === id && t.kind === "habit" ? { ...t, repeat: rule ?? DEFAULT_HABIT_REPEAT } : t,
+    ),
+  }));
+}
+
+/** 普通事 ⇄ 习惯互转。转成习惯时清掉排期（习惯不逾期），转回来时清掉打卡记录 */
+export function setTaskKind(id: string, kind: TaskKind) {
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) => {
+      if (t.id !== id || t.kind === kind) return t;
+      if (kind === "habit") {
+        return {
+          ...t,
+          kind,
+          repeat: t.repeat ?? DEFAULT_HABIT_REPEAT,
+          due: null,
+          dueTime: null,
+          reminder: null,
+          done: false,
+          doneAt: null,
+        };
+      }
+      return { ...t, kind, checkIns: [] };
+    }),
+  }));
+}
+
 // ---------- 子任务 ----------
 
 /** 加一条子任务。extra 用来一次性带上它自己的日期/时间/重要性
@@ -726,8 +806,30 @@ export function closeCtxMenu() {
 
 // ---------- 派生查询（UI 共用；返回未删除任务） ----------
 
+/** 没删的**普通事**。习惯是另一个分类，不该混进今天/计划/全部/日历/四象限——
+ *  它不会逾期、也没有「做完就没了」，混进去只会把这些视图搅乱。想要习惯用 aliveHabits */
 export function aliveTasks(d: AppData): Task[] {
+  return d.tasks.filter((t) => !t.deletedAt && t.kind !== "habit");
+}
+
+/** 没删的习惯 */
+export function aliveHabits(d: AppData): Task[] {
+  return d.tasks.filter((t) => !t.deletedAt && t.kind === "habit");
+}
+
+/** 普通事 + 习惯。搜索这类「找东西」的场景用它——按名字找当然要能找到习惯 */
+export function aliveAll(d: AppData): Task[] {
   return d.tasks.filter((t) => !t.deletedAt);
+}
+
+/** 今天要打的卡（按未打卡在前排好）。今天不用做的习惯也在里面，由界面自己分区 */
+export function habitsForToday(d: AppData, today = todayYMD()): Task[] {
+  return sortHabitsForDay(aliveHabits(d), today);
+}
+
+/** 今天还欠着几个卡——侧栏「习惯」后面那个数字 */
+export function habitsOpenToday(d: AppData, today = todayYMD()): number {
+  return aliveHabits(d).filter((h) => isDueOn(h, today) && !doneOn(h, today)).length;
 }
 
 /** 日期视图的统一行：母任务本身，或它的某个未完成子任务（sub 非 null 时） */

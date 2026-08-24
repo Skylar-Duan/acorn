@@ -1,0 +1,200 @@
+/* 习惯视图。前缀 .hb-
+   视觉基调跟任务列表刻意拉开一点：打卡圈更大更圆、有一排七格小点、连续天数是暖色，
+   让人一眼知道「这屏是养成，不是待办」。颜色全部走主题 token，六套主题自动成立。 */
+
+.hb-body { padding-bottom: 40px; }
+
+/* ---------- 新建 ---------- */
+
+.hb-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  margin-bottom: 10px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+}
+.hb-add .plus { color: var(--ink-3); font-size: 15px; flex: none; }
+.hb-add-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-md);
+}
+.hb-add-input::placeholder { color: var(--ink-3); }
+/* 选择器要压过 base.css 的 `.input { width: 100% }`——不压住的话这个 select 会撑满整行，
+   把左边的输入框挤成 0 宽（第一版就是这么坏的） */
+.hb-add select.hb-add-rule {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: var(--fs-sm);
+}
+.hb-add .btn { flex: 0 0 auto; white-space: nowrap; }
+
+/* ---------- 一行一个习惯 ---------- */
+
+.hb-row {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  margin-bottom: 8px;
+  transition: border-color .12s, box-shadow .12s;
+}
+.hb-row:hover { border-color: var(--ink-3); }
+.hb-row.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.hb-row.off { opacity: .62; }
+
+.hb-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  cursor: default;
+}
+
+/* 打卡圈：这一屏的主角，做得比任务的勾选框大一圈 */
+.hb-check {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 999px;
+  border: 2px solid var(--ink-3);
+  background: transparent;
+  color: var(--on-accent);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .14s, border-color .14s, transform .1s;
+}
+.hb-check:hover { border-color: var(--accent); }
+.hb-check:active { transform: scale(.9); }
+.hb-check.on { background: var(--ok); border-color: var(--ok); }
+
+.hb-title { font-size: var(--fs-md); color: var(--ink); flex: 1; min-width: 0; }
+.hb-row.done .hb-title { color: var(--ink-2); }
+.hb-rule { font-size: var(--fs-xs); color: var(--ink-3); flex: none; }
+.hb-streak {
+  font-size: var(--fs-xs);
+  color: var(--warn);
+  font-weight: 600;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 本周七格 ---------- */
+
+.hb-week { display: flex; gap: 4px; flex: none; }
+.hb-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  padding: 0;
+  border: 1.4px solid var(--hair);
+  background: transparent;
+  transition: transform .1s;
+}
+.hb-dot:not(:disabled):hover { transform: scale(1.25); }
+.hb-dot.done { background: var(--ok); border-color: var(--ok); }
+.hb-dot.missed { border-color: var(--ink-3); background: transparent; }
+.hb-dot.todo { border-color: var(--accent); border-style: dashed; }
+.hb-dot.off { border-color: transparent; background: var(--hair); }
+.hb-dot.future { border-color: var(--hair); }
+.hb-dot.now { box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* ---------- 展开的详情 ---------- */
+
+.hb-detail {
+  border-top: 1px solid var(--hair);
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hb-stats { display: flex; flex-wrap: wrap; gap: 18px; font-size: var(--fs-sm); color: var(--ink-3); }
+.hb-stats b {
+  font-size: 17px;
+  color: var(--ink);
+  font-weight: 600;
+  margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.hb-dim { color: var(--ink-3); }
+
+/* 月历要限宽：7 列铺满整张卡的话，aspect-ratio:1 会把每格撑到一百多像素高，
+   一个月要滚三屏。320px 差不多是每格 40px，一眼能看完一个月 */
+.hb-month { max-width: 320px; }
+
+.hb-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.hb-month-head button { color: var(--ink-3); padding: 0 6px; font-size: 15px; }
+.hb-month-head button:hover:not(:disabled) { color: var(--accent); }
+.hb-month-head button:disabled { opacity: .3; }
+
+.hb-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.hb-grid-label {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  padding-bottom: 2px;
+}
+.hb-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--hair);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  transition: transform .1s;
+}
+.hb-cell:not(:disabled):hover { transform: scale(1.08); border-color: var(--accent); }
+.hb-cell.done { background: var(--ok); color: var(--card); font-weight: 600; }
+.hb-cell.missed { background: transparent; border-color: var(--hair); }
+.hb-cell.todo { background: transparent; border: 1.4px dashed var(--accent); color: var(--accent); }
+.hb-cell.off { background: transparent; color: var(--hair); }
+.hb-cell.future { background: transparent; color: var(--hair); }
+.hb-cell.now { box-shadow: 0 0 0 2px var(--accent-soft); }
+
+.hb-edit { display: flex; gap: 8px; flex-wrap: wrap; }
+.hb-edit .input { flex: 1 1 180px; min-width: 140px; width: auto; }
+.hb-edit select.input { flex: 0 0 auto; }
+.hb-notes {
+  width: 100%;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  padding: 7px 10px;
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+.hb-notes:focus { border-color: var(--accent); }
+.hb-actions { display: flex; gap: 8px; }
+
+/* 手机上：周期下拉和七格都会挤，让它们各自换行 */
+@media (max-width: 700px) {
+  .hb-head { flex-wrap: wrap; gap: 8px 10px; }
+  .hb-title { flex: 1 1 100%; order: -1; }
+  .hb-week { margin-left: auto; }
+  .hb-add { flex-wrap: wrap; }
+  .hb-add-input { flex: 1 1 100%; order: -1; }
+}

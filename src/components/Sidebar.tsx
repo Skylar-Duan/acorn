@@ -1,10 +1,14 @@
-// 侧栏：固定入口 + 视图 + 清单 + 自动出现的需求方/标签分组。
+// 侧栏：常驻五项（随手记/今天/习惯/计划/全部）+ 可展开的「更多」+ 清单/需求方/标签。
 // 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、「随手记」清日期、清单/需求方即归属。
+//
+// 为什么要折叠：加了习惯之后侧栏太长了。日志和那几个偶尔才看的视图收进「更多」，
+// 清单/需求方/标签各只列 3 个，剩下的点一下才出来。展开状态记在本机 localStorage——
+// 它是「这台机器的界面偏好」，不该跟着云同步跑到另一台设备上去。
 import { useEffect, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
-  addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, navigate, openRows, removeSubtask,
-  rowDue, setTasksDue, setTasksList, updateSubtask, useApp, type ViewId,
+  addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, habitsOpenToday, navigate,
+  openRows, removeSubtask, rowDue, setTasksDue, setTasksList, updateSubtask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import iconUrl from "../../src-tauri/icons/32x32.png";
@@ -28,7 +32,37 @@ const ICONS = {
   focus: "M12 5a8 8 0 100 16 8 8 0 000-16z M12 9v4l3 2 M9 2h6",
   stats: "M4 20V10 M10 20V4 M16 20v-9 M21 20H3",
   trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6",
+  // 习惯：循环箭头里打个勾——重复着做，做一次记一次
+  habits: "M20.5 12a8.5 8.5 0 1 1-2.6-6.1 M20.5 3.5v4h-4 M8.6 12.2l2.4 2.4 4.6-4.8",
 } as const;
+
+/** 折叠组默认只露几个 */
+const PEEK = 3;
+
+/** 侧栏的展开/收起状态。存本机、不同步——换台设备用什么样子是那台设备自己的事 */
+function useFold(key: string, initial: boolean): [boolean, () => void] {
+  const lsKey = `acorn-side-${key}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(lsKey);
+      return raw === null ? initial : raw === "1";
+    } catch {
+      return initial;
+    }
+  });
+  return [
+    open,
+    () =>
+      setOpen((v) => {
+        try {
+          localStorage.setItem(lsKey, v ? "0" : "1");
+        } catch {
+          /* 隐私模式之类存不了就算了，只是这次会话不记住 */
+        }
+        return !v;
+      }),
+  ];
+}
 
 /** 从拖拽事件里取任务 id 组（TaskRow onDragStart 放进去的，多选拖拽是逗号串） */
 function draggedTaskIds(e: React.DragEvent): string[] {
@@ -89,9 +123,36 @@ export default function Sidebar() {
     }).length,
     all: rows.length,
     trash: data.tasks.filter((t) => t.deletedAt).length,
+    habits: habitsOpenToday(data, today),
   };
   const whoList = allWho(data);
   const tagList = allTags(data);
+
+  const [moreOpen, toggleMore] = useFold("more", false);
+  const [listsOpen, toggleLists] = useFold("lists", false);
+  const [whoOpen, toggleWho] = useFold("who", false);
+  const [tagsOpen, toggleTags] = useFold("tags", false);
+
+  const lists = [...data.lists].sort((a, b) => a.order - b.order);
+  // 正看着的东西如果被折在下面，就得露出来——否则界面上没有任何地方显示「你在哪」
+  const MORE_VIEWS: ViewId[] = ["logbook", "calendar", "quadrant", "focus", "stats", "trash"];
+  const showMore = moreOpen || MORE_VIEWS.includes(view);
+  const curListHidden =
+    view === "list" && lists.findIndex((l) => l.id === curList) >= PEEK;
+  const curWhoHidden = view === "who" && whoList.findIndex((w) => w.who === curWho) >= PEEK;
+  const curTagHidden = view === "tag" && tagList.findIndex((t) => t.tag === curTag) >= PEEK;
+  const showLists = listsOpen || curListHidden || addingList;
+  const showWho = whoOpen || curWhoHidden;
+  const showTags = tagsOpen || curTagHidden;
+
+  /** 「还有 N 个 ▾ / 收起 ▴」那一行 */
+  const moreRow = (hidden: number, open: boolean, onClick: () => void) =>
+    hidden <= 0 ? null : (
+      <li className="side-more" onClick={onClick}>
+        <span className="side-more-txt">{open ? "收起" : `还有 ${hidden} 个`}</span>
+        <span className="side-caret">{open ? "▴" : "▾"}</span>
+      </li>
+    );
 
   function dropProps(key: string, onDrop: (taskIds: string[], e: React.DragEvent) => void) {
     return {
@@ -157,11 +218,11 @@ export default function Sidebar() {
         <ul>
           {item("inbox", "随手记", "inbox", counts.inbox, false, (ids, e) => dropDue(e, ids, null))}
           {item("today", "今天", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
+          {item("habits", "习惯", "habits", counts.habits, true)}
           {item("upcoming", "计划", "upcoming", counts.upcoming, false, (ids, e) =>
             setPendingPlan({ ids, sub: draggedSub(e), x: e.clientX, y: e.clientY }),
           )}
           {item("all", "全部", "all", counts.all)}
-          {item("logbook", "日志", "logbook")}
         </ul>
         {pendingPlan && (
           <div
@@ -184,25 +245,32 @@ export default function Sidebar() {
             <button className="item" onClick={() => setPendingPlan(null)}>取消</button>
           </div>
         )}
-        <div className="group-title">视图</div>
-        <ul>
-          {item("calendar", "日历", "calendar")}
-          {item("quadrant", "四象限", "quadrant")}
-          {item("focus", "专注", "focus")}
-          {item("stats", "统计", "stats")}
-          {/* 回收站：删掉的事在这儿待 30 天。也是拖拽落点——拖过来就是删掉（还能撤销、还能在这里恢复） */}
-          {item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
-            const s = draggedSub(e);
-            if (s) removeSubtask(s.taskId, s.subId);
-            else deleteTasks(ids);
-          })}
-        </ul>
+        {/* 不常用的收进这里。默认收起——加了习惯之后侧栏太长了 */}
+        <div className={`group-title fold${showMore ? " on" : ""}`} onClick={toggleMore}>
+          更多
+          <span className="side-caret">{showMore ? "▴" : "▾"}</span>
+        </div>
+        {showMore && (
+          <ul>
+            {item("logbook", "日志", "logbook")}
+            {item("calendar", "日历", "calendar")}
+            {item("quadrant", "四象限", "quadrant")}
+            {item("focus", "专注", "focus")}
+            {item("stats", "统计", "stats")}
+            {/* 回收站：删掉的事在这儿待 30 天。也是拖拽落点——拖过来就是删掉（还能撤销、还能在这里恢复） */}
+            {item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
+              const s = draggedSub(e);
+              if (s) removeSubtask(s.taskId, s.subId);
+              else deleteTasks(ids);
+            })}
+          </ul>
+        )}
         <div className="group-title">
           清单
           <button title="新建清单" onClick={() => setAddingList(true)}>＋</button>
         </div>
         <ul>
-          {[...data.lists].sort((a, b) => a.order - b.order).map((l) => {
+          {(showLists ? lists : lists.slice(0, PEEK)).map((l) => {
             const n = open.filter((t) => t.listId === l.id).length;
             return (
               <li
@@ -217,6 +285,7 @@ export default function Sidebar() {
               </li>
             );
           })}
+          {moreRow(lists.length - PEEK, showLists, toggleLists)}
           {addingList && (
             <li>
               <input
@@ -241,7 +310,7 @@ export default function Sidebar() {
           <>
             <div className="group-title">需求方</div>
             <ul>
-              {whoList.map(({ who, open: n }) => (
+              {(showWho ? whoList : whoList.slice(0, PEEK)).map(({ who, open: n }) => (
                 <li
                   key={who}
                   className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}`}
@@ -262,6 +331,7 @@ export default function Sidebar() {
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
               ))}
+              {moreRow(whoList.length - PEEK, showWho, toggleWho)}
             </ul>
           </>
         )}
@@ -269,7 +339,7 @@ export default function Sidebar() {
           <>
             <div className="group-title">标签</div>
             <ul>
-              {tagList.map(({ tag, open: n }) => (
+              {(showTags ? tagList : tagList.slice(0, PEEK)).map(({ tag, open: n }) => (
                 <li
                   key={tag}
                   className={view === "tag" && curTag === tag ? "on" : ""}
@@ -280,6 +350,7 @@ export default function Sidebar() {
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
               ))}
+              {moreRow(tagList.length - PEEK, showTags, toggleTags)}
             </ul>
           </>
         )}

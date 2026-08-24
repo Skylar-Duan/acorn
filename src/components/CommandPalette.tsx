@@ -25,6 +25,7 @@ const NAV: [ViewId, string, string, string][] = [
   ["focus", "🍅", "专注", "番茄钟"],
   ["stats", "📊", "统计", "效率回顾"],
   ["settings", "⚙", "设置", "偏好与数据"],
+  ["habits", "🔁", "习惯", "每天打卡的事"],
   ["trash", "🗑", "回收站", "已删除的任务"],
 ];
 

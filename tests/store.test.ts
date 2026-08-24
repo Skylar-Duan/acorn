@@ -28,7 +28,7 @@ import {
 } from "../src/core/store";
 import { defaultData } from "../src/core/model";
 import type { Task } from "../src/core/model";
-import { addDays, todayYMD } from "../src/core/dates";
+import { addDays, cmpYMD, dayOfWeek, todayYMD } from "../src/core/dates";
 
 const LS_KEY = "acorn-data";
 
@@ -110,7 +110,8 @@ describe("completeTask", () => {
   });
 
   it("循环任务：本体推进到下一落点、子任务重置、顺延归零、提醒跟走，另留已完成副本", () => {
-    // 2026-08-17 周一，每周一 → 下一落点 2026-08-24
+    // 落点是「今天之后的下一个周一」——严重逾期的循环任务要补追赶，锚点取 max(旧 due, 今天)。
+    // 这里**不能写死日期**：写死的话，真到了那天（比如今天正好是周一）断言就自己失效了。
     const id = addTask({
       title: "周会",
       due: "2026-08-17",
@@ -128,8 +129,10 @@ describe("completeTask", () => {
 
     const advanced = getTask(id);
     expect(advanced.done).toBe(false);
-    expect(advanced.due).toBe("2026-08-24");
-    expect(advanced.reminder).toBe("2026-08-24T09:00");
+    expect(advanced.due).not.toBeNull();
+    expect(dayOfWeek(advanced.due!)).toBe(1); // 是个周一
+    expect(cmpYMD(advanced.due!, todayYMD())).toBeGreaterThan(0); // 且必在今天之后
+    expect(advanced.reminder).toBe(`${advanced.due}T09:00`); // 提醒跟着新落点走
     expect(advanced.repeat).toEqual({ kind: "weekly", days: [1] });
     expect(advanced.subtasks).toHaveLength(1);
     expect(advanced.subtasks[0].done).toBe(false);

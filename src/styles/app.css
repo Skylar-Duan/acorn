@@ -331,3 +331,27 @@
   align-items: center; justify-content: center; color: var(--ink-2); font-size: var(--fs-md);
 }
 .center-note .big { font-family: var(--serif); font-size: 22px; color: var(--ink); }
+
+
+/* ---------- 侧栏折叠（v1.6：加了习惯之后侧栏太长） ---------- */
+
+/* 可点的分组标题：整行都能点，右边一个小箭头 */
+.side .group-title.fold {
+  display: flex;
+  align-items: center;
+  cursor: default;
+  user-select: none;
+  border-radius: var(--r-sm);
+}
+.side .group-title.fold:hover { color: var(--ink-2); }
+.side .side-caret { margin-left: auto; font-size: 9px; opacity: .7; }
+
+/* 「还有 N 个 ▾」 */
+.side .side-more {
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  display: flex;
+  align-items: center;
+}
+.side .side-more:hover { color: var(--accent); background: var(--accent-soft); }
+.side .side-more-txt { padding-left: 2px; }
