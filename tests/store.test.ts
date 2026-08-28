@@ -52,7 +52,7 @@ beforeEach(async () => {
     ui: {
       view: "today", listId: null, who: null, tag: null,
       expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
-      ctxMenu: null,
+      ctxMenu: null, foldAll: false, foldExcept: [],
     },
     focus: { taskId: null, running: false, endsAt: null, totalMinutes: 0 },
     undoDepth: 0,

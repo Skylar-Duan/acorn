@@ -428,7 +428,13 @@
   /* 任务行：标题占满一行，需求方/清单/日期这些落到第二行。
      不这么做的话标题会被右边一串徽标挤成「季度复盘会材料 › …」 */
   .task-row { flex-wrap: wrap; row-gap: 2px; }
-  .task-row .title { flex: 1 1 auto; min-width: 0; }
+  /* basis 必须是 0：写 auto 的话长标题的「天然宽度」超过剩余空间，
+     flex 容器会把它整条挪到下一行（挪到最左边，比勾选框还靠左），而不是缩短加省略号 */
+  .task-row .title { flex: 1 1 0; min-width: 0; }
+  /* 窄屏寸土寸金：小三角整体收窄，但**占位的不能不画**——
+     只去掉占位的话，有链的那行比别的行多缩一格，一列参差不齐 */
+  .chain-caret { width: 9px; }
+  .task-row { gap: 9px; }
   .task-row .meta { flex: 1 0 100%; margin-left: 30px; justify-content: flex-start; }
 
   /* 键盘快捷键提示在手机上是废话 */
@@ -440,3 +446,95 @@
   .bulk-bar { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
   .toast { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
 }
+
+/* 新增前缀备忘：.gd-（用法页 guide.css）· .chain-（子任务链）· .tc-（任务卡内部件） */
+
+/* ---------- 子任务链折叠（今天 / 计划） ---------- */
+/* 链头行左边那个小三角。不是链头的行占一个等宽空位，免得标题左边缘参差不齐 */
+.chain-caret {
+  width: 13px;
+  flex: none;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-2);
+  text-align: center;
+  transition: transform .14s ease, color .12s;
+}
+button.chain-caret:hover { color: var(--accent); }
+button.chain-caret.folded { transform: rotate(-90deg); }
+.chain-caret.ghost { visibility: hidden; }
+/* 收起时行尾的「后面还有 N 条」 */
+.task-row .meta .chain-more {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 任务卡底部的「整句改」 ----------
+   一定要看得出这是个能改的输入框：里面预填着这件事的一整句话，
+   不给外框的话它读起来就是一行说明文字，没人会去点 */
+.tc-sentence {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 2px 28px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--bg);
+  transition: border-color .12s;
+}
+.tc-sentence:focus-within { border-color: var(--accent); }
+.tc-sentence-tag {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.tc-sentence:focus-within .tc-sentence-tag { color: var(--accent); }
+.tc-restore {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+}
+.tc-restore:hover { color: var(--accent); background: var(--accent-soft); }
+
+/* 「已完成 → 更早」下面那个「还有 N 件，全部展开」 */
+.done-more {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 4px 0 10px;
+  border: 1px dashed var(--hair);
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+.done-more:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* 任务卡胶囊排里，删除键前面的那道空隙 */
+.task-card .tc-gap { flex: 1; min-width: 10px; }
+.task-card .pill.danger-pill:hover { color: #C0564A; border-color: #C0564A; }
+
+/* ---------- 侧栏里拖着换位置 ---------- */
+.side nav li.move-over { box-shadow: inset 0 2px 0 var(--accent); background: var(--accent-soft); }
+
+/* 随手记行尾的「?」：一句话怎么写 */
+.quick-add .qa-help {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--hair);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1;
+}
+.quick-add .qa-help:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }

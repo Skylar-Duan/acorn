@@ -11,9 +11,11 @@ import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
+// 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
+// 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换
 export type ViewId =
-  | "inbox" | "today" | "upcoming" | "all" | "logbook" | "habits"
-  | "calendar" | "quadrant" | "focus" | "stats" | "settings"
+  | "inbox" | "today" | "plan" | "done" | "habits"
+  | "calendar" | "focus" | "stats" | "settings" | "guide"
   | "list" | "who" | "tag" | "trash";
 
 export interface UIState {
@@ -31,6 +33,32 @@ export interface UIState {
   toast: { msg: string; undoable: boolean; key: number } | null;
   /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义 */
   ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null } | null;
+  /** 子任务链默认收起还是摊开（今天 / 计划两个视图）。收起 = 一件事只占一行「下一步」，
+   *  行尾标 +N 表示后面还有几条 */
+  foldAll: boolean;
+  /** 跟默认相反的那几件事（点了单条的小三角）。切换总开关时清空 */
+  foldExcept: string[];
+}
+
+const FOLD_KEY = "acorn-fold";
+
+function loadFold(): { foldAll: boolean; foldExcept: string[] } {
+  try {
+    const raw = localStorage.getItem(FOLD_KEY);
+    if (!raw) return { foldAll: false, foldExcept: [] };
+    const v = JSON.parse(raw) as { foldAll?: boolean; foldExcept?: string[] };
+    return { foldAll: !!v.foldAll, foldExcept: Array.isArray(v.foldExcept) ? v.foldExcept : [] };
+  } catch {
+    return { foldAll: false, foldExcept: [] };
+  }
+}
+
+function saveFold(foldAll: boolean, foldExcept: string[]) {
+  try {
+    localStorage.setItem(FOLD_KEY, JSON.stringify({ foldAll, foldExcept }));
+  } catch {
+    /* 存不了就只这次会话记得，不影响用 */
+  }
 }
 
 export interface FocusState {
@@ -63,7 +91,7 @@ export const appStore = createStore<AppState>(() => ({
   loadError: null,
   rescue: null,
   ui: {
-    view: "today", listId: null, who: null, tag: null,
+    view: "today", listId: null, who: null, tag: null, ...loadFold(),
     expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
     ctxMenu: null,
   },
@@ -375,7 +403,46 @@ export function completeTask(id: string) {
       ...d,
       tasks: d.tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso } : x)),
     };
-  });
+  }, { toast: "已完成 · 收进「已完成」了" });
+}
+
+/** 一次完成多件（Ctrl+D 多选 / 右键菜单）。
+ *  必须**一次 mutate 完成全部**：一件一次的话撤销栈里会压 N 层，
+ *  toast 上那个「撤销」只撤得回最后一件——提示说了能撤，就得真能全撤 */
+export function completeTasks(ids: string[]) {
+  if (ids.length <= 1) {
+    if (ids.length === 1) completeTask(ids[0]);
+    return;
+  }
+  const nowIso = new Date().toISOString();
+  const today = todayYMD();
+  mutate((d) => {
+    let tasks = d.tasks;
+    const extras: Task[] = [];
+    for (const id of ids) {
+      const t = tasks.find((x) => x.id === id);
+      if (!t || t.done || t.kind === "habit") continue;
+      if (t.repeat && t.due) {
+        extras.push({
+          ...t, id: newId(), repeat: null, done: true, doneAt: nowIso,
+          subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
+        });
+        const anchor = cmpYMD(t.due, today) > 0 ? t.due : today;
+        const nd = nextOccurrence(t.repeat, anchor);
+        const advanced: Task = {
+          ...t, due: nd, reminder: regenReminder(t, nd),
+          subtasks: t.subtasks.map((s) => ({ ...s, done: false, due: null, dueTime: null })),
+          postponeCount: 0,
+        };
+        tasks = tasks.map((x) => (x.id === id ? advanced : x));
+      } else {
+        tasks = tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso } : x));
+      }
+    }
+    if (tasks === d.tasks && extras.length === 0) return d;
+    return { ...d, tasks: [...tasks, ...extras] };
+  }, { toast: `已完成 ${ids.length} 件 · 收进「已完成」了` });
+  clearSelection();
 }
 
 export function uncompleteTask(id: string) {
@@ -707,6 +774,42 @@ export function renameList(id: string, name: string) {
   mutate((d) => ({ ...d, lists: d.lists.map((l) => (l.id === id ? { ...l, name } : l)) }));
 }
 
+/** 一串东西里，把 dragId 挪到 overId **前面**。
+ *  必须「先抽出再定位」：先算好目标下标再抽，往下拖时下标会因为抽走而错一格，
+ *  结果就落到目标后面去了——跟界面上画在目标上边的那条落点线对不上 */
+function moveBefore(order: string[], dragId: string, overId: string): string[] | null {
+  const next = [...order];
+  const from = next.indexOf(dragId);
+  if (from < 0 || !next.includes(overId)) return null;
+  next.splice(from, 1);
+  const to = next.indexOf(overId);
+  next.splice(to, 0, dragId);
+  return next;
+}
+
+/** 侧栏里把某张清单拖到另一张上面。整组重新编号，order 只是「第几个」不带别的含义。
+ *  清单的顺序跟着数据走（会同步到别的设备）——它是一条真记录，不是本机偏好。
+ *  **进撤销栈**：拖错了 Ctrl+Z 撤的就该是这一下，不能让它去撤上一件不相干的事 */
+export function moveList(dragId: string, overId: string) {
+  if (dragId === overId) return;
+  mutate((d) => {
+    const sorted = [...d.lists].sort((a, b) => a.order - b.order).map((l) => l.id);
+    const next = moveBefore(sorted, dragId, overId);
+    if (!next) return d;
+    const rank = new Map(next.map((id, i) => [id, i]));
+    return { ...d, lists: d.lists.map((l) => (l.order === rank.get(l.id) ? l : { ...l, order: rank.get(l.id)! })) };
+  }, { toast: "清单顺序已调整" });
+}
+
+/** 侧栏里把某个需求方拖到另一个上面。存进设置 = 每台设备各排各的（见 Settings.whoOrder）。
+ *  设置不进撤销栈也不同步，所以这一下 Ctrl+Z 撤不回来——再拖回去就是了 */
+export function moveWho(dragName: string, overName: string) {
+  if (dragName === overName) return;
+  const names = allWho(appStore.getState().data).map((w) => w.who);
+  const next = moveBefore(names, dragName, overName);
+  if (next) updateSettings({ whoOrder: next });
+}
+
 export function setListColor(id: string, color: string) {
   mutate((d) => ({ ...d, lists: d.lists.map((l) => (l.id === id ? { ...l, color } : l)) }));
 }
@@ -763,6 +866,28 @@ export function navigate(view: ViewId, extra?: { listId?: string | null; who?: s
       expandedId: null, selectedIds: [],
     },
   });
+}
+
+/** 这件事的子任务链现在是收起的吗 */
+export function isChainFolded(ui: UIState, taskId: string): boolean {
+  return ui.foldExcept.includes(taskId) ? !ui.foldAll : ui.foldAll;
+}
+
+/** 总开关：全部收起 / 全部摊开。切换时把单条的例外清掉，否则用户点完发现还有几条没听话 */
+export function setFoldAll(v: boolean) {
+  const ui = appStore.getState().ui;
+  saveFold(v, []);
+  appStore.setState({ ui: { ...ui, foldAll: v, foldExcept: [] } });
+}
+
+/** 单条的小三角：跟总开关反着来 */
+export function toggleChain(taskId: string) {
+  const ui = appStore.getState().ui;
+  const next = ui.foldExcept.includes(taskId)
+    ? ui.foldExcept.filter((x) => x !== taskId)
+    : [...ui.foldExcept, taskId];
+  saveFold(ui.foldAll, next);
+  appStore.setState({ ui: { ...ui, foldExcept: next } });
 }
 
 export function expandTask(id: string | null) {
@@ -932,15 +1057,22 @@ export function sortTasks(tasks: Task[], mode: "time" | "priority"): Task[] {
   return sortRows(tasks.map((t) => ({ task: t, sub: null })), mode).map((r) => r.task);
 }
 
-/** 需求方列表（按未完成任务数降序）。一件事挂了几个人，就在这几个人名下各算一次 */
+/** 需求方列表。一件事挂了几个人，就在这几个人名下各算一次。
+ *  排过序（侧栏拖过）就照手排的来，没排过的接在后面按未完成数降序——
+ *  否则手排完一加新任务，顺序又自己跳回去了 */
 export function allWho(d: AppData): { who: string; open: number }[] {
   const map = new Map<string, number>();
   for (const t of aliveTasks(d)) {
     for (const w of t.who) map.set(w, (map.get(w) ?? 0) + (t.done ? 0 : 1));
   }
-  return [...map.entries()]
+  const all = [...map.entries()]
     .map(([who, open]) => ({ who, open }))
     .sort((a, b) => b.open - a.open || (a.who < b.who ? -1 : a.who > b.who ? 1 : 0));
+  const order = d.settings.whoOrder ?? [];
+  if (order.length === 0) return all;
+  const rank = new Map(order.map((w, i) => [w, i]));
+  const ranked = all.filter((x) => rank.has(x.who)).sort((a, b) => rank.get(a.who)! - rank.get(b.who)!);
+  return [...ranked, ...all.filter((x) => !rank.has(x.who))];
 }
 
 export function allTags(d: AppData): { tag: string; open: number }[] {

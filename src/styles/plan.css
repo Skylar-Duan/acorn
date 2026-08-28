@@ -1,0 +1,27 @@
+/* 「计划」视图（2026-08-28 前叫「全部」）。行/组/空态等通用样式在 app.css / base.css，
+   这里只放本视图专属件。类名前缀历史上是 .all-，跟着视图一起改动静太大，留着 */
+
+/* 排序分段控件（改的是全局排序偏好，形制与设置页 .set-seg 同款） */
+.all-sort {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  align-self: center;
+}
+.all-sort button {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  transition: background .12s, color .12s;
+}
+.all-sort button:hover { color: var(--ink); }
+.all-sort button.on {
+  background: var(--card);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}

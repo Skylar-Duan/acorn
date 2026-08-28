@@ -450,6 +450,23 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* ---------- 用法 ---------- */}
+        <div className="set-section">
+          <h2>一句话记事</h2>
+          <div className="set-desc">
+            日期、清单、需求方、重要性、循环，全都能在一句话里写完。不想背也行，随手记下面那排按钮点着选。
+          </div>
+          <div className="set-row">
+            <div className="set-row-label">
+              怎么写
+              <span className="set-hint">一页举例卡片，照着抄就会</span>
+            </div>
+            <div className="set-ctl">
+              <button className="btn" onClick={() => navigate("guide")}>打开用法</button>
+            </div>
+          </div>
+        </div>
+
         {/* ---------- 回收站 ---------- */}
         <div className="set-section">
           <h2>回收站</h2>

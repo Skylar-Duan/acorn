@@ -8,17 +8,27 @@ import "../styles/overlays.css";
 
 const MAX_SHOWN = 20;
 
-/** 跳到任务平时住的视图：已完成回日志，逾期/今天回「今天」，再按清单/计划/随时/随手记归位 */
+/** 这件事在「今天」页上占不占行。
+ *  有未完成子任务的事，母任务行是收起的，占行的是子任务——子任务各自排到很远的话，
+ *  母任务写着「今天到期」也不会出现在今天页上。只看 t.due 就 navigate('today')，
+ *  用户会跳到一个什么都没有的页面 */
+function showsToday(t: Task, today: string): boolean {
+  const open = t.subtasks.filter((s) => !s.done);
+  const dues = open.length ? open.map((s) => s.due ?? t.due) : [t.due];
+  return dues.some((d) => !!d && cmpYMD(d, today) <= 0);
+}
+
+/** 跳到任务平时住的视图：做完的回「已完成」，逾期/今天回「今天」，再按清单/计划/随手记归位 */
 function goHome(t: Task) {
   if (t.done) {
-    navigate("logbook");
-  } else if (t.due && cmpYMD(t.due, todayYMD()) <= 0) {
+    navigate("done");
+  } else if (t.due && cmpYMD(t.due, todayYMD()) <= 0 && showsToday(t, todayYMD())) {
     navigate("today");
   } else if (t.listId) {
     navigate("list", { listId: t.listId });
   } else if (t.due) {
     // 未来日期且无清单：家在「计划」——送去随手记会落进空视图
-    navigate("upcoming");
+    navigate("plan");
   } else {
     navigate("inbox");
   }

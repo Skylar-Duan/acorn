@@ -7,7 +7,7 @@ import type { ParseResult } from "../core/parse";
 import type { Priority, RepeatRule } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { addDays, dayOfWeek, formatShort, todayYMD } from "../core/dates";
-import { addList, addTask, allTags, allWho, useApp } from "../core/store";
+import { addList, addTask, allTags, allWho, navigate, useApp } from "../core/store";
 import SyntaxInput from "./SyntaxInput";
 
 export interface QuickAddBarProps {
@@ -147,6 +147,7 @@ export default function QuickAddBar({
           whos={whoNames}
           showChips
         />
+        <button className="qa-help" title="一句话怎么写" onClick={() => navigate("guide")}>?</button>
       </div>
 
       {withPickers && (

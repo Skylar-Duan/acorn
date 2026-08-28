@@ -1,14 +1,18 @@
-// 侧栏：常驻五项（随手记/今天/习惯/计划/全部）+ 可展开的「更多」+ 清单/需求方/标签。
+// 侧栏：常驻五项（随手记/今天/习惯/计划/已完成）+ 可展开的「更多」+ 清单/需求方/标签。
 // 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、「随手记」清日期、清单/需求方即归属。
 //
-// 为什么要折叠：加了习惯之后侧栏太长了。日志和那几个偶尔才看的视图收进「更多」，
+// 为什么要折叠：加了习惯之后侧栏太长了。偶尔才看的视图收进「更多」，
 // 清单/需求方/标签各只列 3 个，剩下的点一下才出来。展开状态记在本机 localStorage——
 // 它是「这台机器的界面偏好」，不该跟着云同步跑到另一台设备上去。
+//
+// 清单和需求方还能**拖着换顺序**（拖清单到另一张清单上面）。清单的顺序跟数据走，
+// 需求方的顺序存在设置里（每台设备各排各的，见 Settings.whoOrder）。
 import { useEffect, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
-  addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, habitsOpenToday, navigate,
-  openRows, removeSubtask, rowDue, setTasksDue, setTasksList, updateSubtask, useApp, type ViewId,
+  addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, habitsOpenToday, moveList,
+  moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setTasksDue, setTasksList,
+  updateSubtask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import iconUrl from "../../src-tauri/icons/32x32.png";
@@ -24,11 +28,10 @@ function Ico({ d }: { d: string }) {
 const ICONS = {
   inbox: "M3 21l3.6-.7L20 6.9a2.12 2.12 0 0 0-3-3L3.7 17.4 3 21z M14.4 6.5l3.1 3.1",
   today: "M12 8a4 4 0 100 8 4 4 0 000-8z M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1",
-  upcoming: "M3 5h18v16H3z M8 3v4M16 3v4M3 10h18",
-  all: "M4 6h16 M4 12h16 M4 18h10",
-  logbook: "M4 19h16 M6 15l4-8 3 5 2-3 3 6",
+  plan: "M4 6h16 M4 12h16 M4 18h10",
+  done: "M20 6L9 17l-5-5",
+  guide: "M12 19c-2-1.4-4.2-2-7-2V5c2.8 0 5 .6 7 2 2-1.4 4.2-2 7-2v12c-2.8 0-5 .6-7 2z M12 7v12",
   calendar: "M3 5h18v16H3z M8 3v4M16 3v4M3 10h18M9 10v11M15 10v11M3 15.5h18",
-  quadrant: "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
   focus: "M12 5a8 8 0 100 16 8 8 0 000-16z M12 9v4l3 2 M9 2h6",
   stats: "M4 20V10 M10 20V4 M16 20v-9 M21 20H3",
   trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6",
@@ -86,6 +89,60 @@ function dropDue(e: React.DragEvent, ids: string[], due: string | null) {
   else setTasksDue(ids, due);
 }
 
+/** 同一个 li 上挂了两套拖拽（接任务 / 换位置），同名回调要挨个调过去，不能后者盖前者 */
+function mergeDrop(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...a, ...b };
+  for (const k of Object.keys(a)) {
+    const fa = a[k];
+    const fb = b[k];
+    if (typeof fa === "function" && typeof fb === "function") {
+      out[k] = (e: React.DragEvent) => {
+        (fa as (e: React.DragEvent) => void)(e);
+        (fb as (e: React.DragEvent) => void)(e);
+      };
+    }
+  }
+  return out;
+}
+
+/** 侧栏内部的「换位置」拖拽：清单拖清单、需求方拖需求方。
+ *  跟「任务拖到侧栏」是两套 dataTransfer 类型，互不干扰 */
+function reorderProps(
+  kind: "list" | "who",
+  self: string,
+  onDrop: (dragged: string) => void,
+  hint: { over: string | null; set: (v: string | null) => void },
+) {
+  const type = `text/acorn-${kind}-move`;
+  const key = `${kind}:${self}`;
+  return {
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.setData(type, self);
+      e.dataTransfer.effectAllowed = "move";
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(type)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (hint.over !== key) hint.set(key);
+    },
+    onDragLeave: () => hint.set(hint.over === key ? null : hint.over),
+    onDrop: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(type)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      hint.set(null);
+      const dragged = e.dataTransfer.getData(type);
+      if (dragged && dragged !== self) onDrop(dragged);
+    },
+    onDragEnd: () => hint.set(null),
+  };
+}
+
 export default function Sidebar(
   { drawerOpen = false, onNavigate }: { drawerOpen?: boolean; onNavigate?: () => void } = {},
 ) {
@@ -97,6 +154,9 @@ export default function Sidebar(
   const loadError = useApp((s) => s.loadError);
   const [addingList, setAddingList] = useState(false);
   const [dropHint, setDropHint] = useState<string | null>(null);
+  /** 侧栏内部换位置时，鼠标正悬在哪一条上（画一条落点线） */
+  const [moveOver, setMoveOver] = useState<string | null>(null);
+  const moveHint = { over: moveOver, set: setMoveOver };
   /** 拖到「计划」后待定日期的任务组 + 弹层位置（落点处）。sub 非空 = 拖的是一条子任务行，只改它 */
   const [pendingPlan, setPendingPlan] = useState<
     { ids: string[]; sub: { taskId: string; subId: string } | null; x: number; y: number } | null
@@ -119,11 +179,9 @@ export default function Sidebar(
       const due = rowDue(r);
       return due && cmpYMD(due, today) <= 0;
     }).length,
-    upcoming: rows.filter((r) => {
-      const due = rowDue(r);
-      return due && cmpYMD(due, today) > 0;
-    }).length,
-    all: rows.length,
+    // 按「件」算，跟点进去标题上那个「N 件未完成」是同一个数。
+    // 一件事拆成几行子任务时，侧栏显示 3 而视图标题显示 1 会让人以为哪儿漏了
+    plan: rowTaskIds(rows).length,
     trash: data.tasks.filter((t) => t.deletedAt).length,
     habits: habitsOpenToday(data, today),
   };
@@ -137,7 +195,7 @@ export default function Sidebar(
 
   const lists = [...data.lists].sort((a, b) => a.order - b.order);
   // 正看着的东西如果被折在下面，就得露出来——否则界面上没有任何地方显示「你在哪」
-  const MORE_VIEWS: ViewId[] = ["logbook", "calendar", "quadrant", "focus", "stats", "trash"];
+  const MORE_VIEWS: ViewId[] = ["calendar", "focus", "stats", "guide", "trash"];
   const showMore = moreOpen || MORE_VIEWS.includes(view);
   const curListHidden =
     view === "list" && lists.findIndex((l) => l.id === curList) >= PEEK;
@@ -221,10 +279,13 @@ export default function Sidebar(
           {item("inbox", "随手记", "inbox", counts.inbox, false, (ids, e) => dropDue(e, ids, null))}
           {item("today", "今天", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
           {item("habits", "习惯", "habits", counts.habits, true)}
-          {item("upcoming", "计划", "upcoming", counts.upcoming, false, (ids, e) =>
+          {/* 计划 = 所有没做完的事（原来的「全部」）。拖任务过来仍然是弹日期选择 */}
+          {item("plan", "计划", "plan", counts.plan, false, (ids, e) =>
             setPendingPlan({ ids, sub: draggedSub(e), x: e.clientX, y: e.clientY }),
           )}
-          {item("all", "全部", "all", counts.all)}
+          {/* 不挂角标：其它角标的意思都是「还欠着多少」，已完成是历史累计，
+              摆一起口径相反，而且这个数只会越来越大，看久了变成噪音 */}
+          {item("done", "已完成", "done")}
         </ul>
         {pendingPlan && (
           <div
@@ -254,11 +315,10 @@ export default function Sidebar(
         </div>
         {showMore && (
           <ul>
-            {item("logbook", "日志", "logbook")}
             {item("calendar", "日历", "calendar")}
-            {item("quadrant", "四象限", "quadrant")}
             {item("focus", "专注", "focus")}
             {item("stats", "统计", "stats")}
+            {item("guide", "用法", "guide")}
             {/* 回收站：删掉的事在这儿待 30 天。也是拖拽落点——拖过来就是删掉（还能撤销、还能在这里恢复） */}
             {item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
               const s = draggedSub(e);
@@ -277,9 +337,13 @@ export default function Sidebar(
             return (
               <li
                 key={l.id}
-                className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}`}
+                className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}${moveOver === `list:${l.id}` ? " move-over" : ""}`}
+                title="拖着可以换位置"
                 onClick={() => { navigate("list", { listId: l.id }); onNavigate?.(); }}
-                {...dropProps(`list-${l.id}`, (ids) => setTasksList(ids, l.id))}
+                {...mergeDrop(
+                  dropProps(`list-${l.id}`, (ids) => setTasksList(ids, l.id)),
+                  reorderProps("list", l.id, (dragged) => moveList(dragged, l.id), moveHint),
+                )}
               >
                 <span className="dot" style={{ background: `var(--list-${l.color})` }} />
                 {l.name}
@@ -315,9 +379,13 @@ export default function Sidebar(
               {(showWho ? whoList : whoList.slice(0, PEEK)).map(({ who, open: n }) => (
                 <li
                   key={who}
-                  className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}`}
+                  className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}${moveOver === `who:${who}` ? " move-over" : ""}`}
+                  title="拖着可以换位置"
                   onClick={() => { navigate("who", { who }); onNavigate?.(); }}
-                  {...dropProps(`who-${who}`, (ids) => addTasksWho(ids, who))}
+                  {...mergeDrop(
+                    dropProps(`who-${who}`, (ids) => addTasksWho(ids, who)),
+                    reorderProps("who", who, (dragged) => moveWho(dragged, who), moveHint),
+                  )}
                 >
                   <span
                     className="dot"

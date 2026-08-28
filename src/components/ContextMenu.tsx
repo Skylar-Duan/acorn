@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Priority, Task } from "../core/model";
 import { addDays, dayOfWeek, todayYMD } from "../core/dates";
 import {
-  closeCtxMenu, completeTask, deleteTasks, postponeRows, postponeTasks,
+  closeCtxMenu, completeTasks, deleteTasks, postponeRows, postponeTasks,
   removeSubtask, setTasksDue, setTasksList, setTasksWho, showToast, uncompleteTask,
   updateSubtask, updateTask, useApp,
 } from "../core/store";
@@ -239,7 +239,7 @@ function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {
 
       <button
         className="ctx-item"
-        onClick={() => run(() => ids.forEach((id) => (allDone ? uncompleteTask(id) : completeTask(id))))}
+        onClick={() => run(() => (allDone ? ids.forEach((id) => uncompleteTask(id)) : completeTasks(ids)))}
       >
         {allDone ? "标记未完成" : "完成"}
       </button>

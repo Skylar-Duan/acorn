@@ -30,11 +30,15 @@ export interface TaskRowProps {
   hideList?: boolean;
   /** 紧挨着上一行、属于同一件事的子任务行：需求方/清单只由这一束的头一行交代，不逐行重复 */
   bundled?: boolean;
-  /** 完成后是否播放淡出（今天/清单视图 true；日志视图 false） */
+  /** 完成后是否播放淡出（今天/清单视图 true；已完成视图 false） */
   fadeOnDone?: boolean;
+  /** 子任务链的头一行：给它一个小三角，收起时后面几条并成 +N。undefined = 这行不是链头 */
+  chain?: { folded: boolean; more: number; onToggle: () => void };
+  /** 「已完成」视图用：右边显示完成日期而不是截止日期（都做完了，还看截止日没意义） */
+  doneDate?: string | null;
 }
 
-export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true }: TaskRowProps) {
+export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate }: TaskRowProps) {
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -150,6 +154,20 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
       }}
       data-task-id={task.id}
     >
+      {chain ? (
+        <button
+          className={`chain-caret${chain.folded ? " folded" : ""}`}
+          title={chain.folded ? "摊开这件事剩下的子任务" : "只看下一步"}
+          onClick={(e) => {
+            e.stopPropagation();
+            chain.onToggle();
+          }}
+        >
+          ▾
+        </button>
+      ) : (
+        <span className="chain-caret ghost" />
+      )}
       <span className={`flag p${priority}`} title={prioInherited ? "重要性继承自母任务" : undefined} />
       <button className={`cb${willDone ? " done" : ""}`} onClick={onCheck} title={isDone ? "标记未完成" : "完成"} />
       {sub ? (
@@ -161,6 +179,9 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         <span className="title">{task.title || "（未命名）"}</span>
       )}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
+        {chain?.folded && chain.more > 0 && (
+          <span className="chain-more" title={`这件事后面还有 ${chain.more} 条待办`}>+{chain.more}</span>
+        )}
         {!bundled && task.who.map((w) => <WhoBadge key={w} who={w} />)}
         {!sub && task.tags.map((t) => (
           <span key={t}># {t}</span>
@@ -182,14 +203,18 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
             顺延×{task.postponeCount}
           </span>
         )}
-        {due && (
-          <span
-            className={overdue ? "overdue" : undefined}
-            title={dueInherited ? "日期继承自母任务，改母任务会一起动" : undefined}
-          >
-            {formatShort(due)}
-            {dueTime ? ` ${dueTime}` : ""}
-          </span>
+        {doneDate ? (
+          <span title={`完成于 ${doneDate}`}>完成 {formatShort(doneDate)}</span>
+        ) : (
+          due && (
+            <span
+              className={overdue ? "overdue" : undefined}
+              title={dueInherited ? "日期继承自母任务，改母任务会一起动" : undefined}
+            >
+              {formatShort(due)}
+              {dueTime ? ` ${dueTime}` : ""}
+            </span>
+          )
         )}
       </span>
     </div>

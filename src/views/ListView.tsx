@@ -1,4 +1,5 @@
-// 通用列表视图：随手记（无日期无归属的）/ 某清单 / 某需求方 / 某标签 / 日志 / 回收站 共用。
+// 通用列表视图：随手记（无日期无归属的）/ 某清单 / 某需求方 / 某标签 / 回收站 共用。
+// 「已完成」不在这儿——它要按完成时间分段、要显示完成日期，自成一个视图（views/Done.tsx）。
 // 「随手记」是全应用的记录入口：打字用语法，不想背语法就用下面那排按钮。
 import { Fragment, useMemo } from "react";
 import type { Task } from "../core/model";
@@ -12,7 +13,7 @@ import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 import QuickAddBar from "../components/QuickAddBar";
 
-export type ListKind = "inbox" | "list" | "who" | "tag" | "logbook" | "trash";
+export type ListKind = "inbox" | "list" | "who" | "tag" | "trash";
 
 export default function ListView({ kind }: { kind: ListKind }) {
   const data = useApp((s) => s.data);
@@ -53,12 +54,6 @@ export default function ListView({ kind }: { kind: ListKind }) {
           tasks: sortTasks(alive.filter((t) => !t.done && t.tags.includes(tag ?? "")), sortMode),
           showAdd: false, defaults: {}, fade: true,
         };
-      case "logbook":
-        return {
-          title: "日志", sub: "做完的事都在这里",
-          tasks: alive.filter((t) => t.done).sort((a, b) => ((a.doneAt ?? "") < (b.doneAt ?? "") ? 1 : -1)).slice(0, 200),
-          showAdd: false, defaults: {}, fade: false,
-        };
       case "trash":
         return {
           title: "回收站", sub: "删除的任务保留 30 天",
@@ -70,7 +65,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
 
   // 清单/需求方视图：按日期分组展示更有章法
   const groups: { label: string; items: Task[] }[] = useMemo(() => {
-    if (kind === "logbook" || kind === "trash") return [{ label: "", items: tasks }];
+    if (kind === "trash") return [{ label: "", items: tasks }];
     const overdue = tasks.filter((t) => t.due && cmpYMD(t.due, today) < 0);
     const todays = tasks.filter((t) => t.due === today);
     const later = tasks.filter((t) => t.due && cmpYMD(t.due, today) > 0);
@@ -143,6 +138,8 @@ export default function ListView({ kind }: { kind: ListKind }) {
             {g.items.map((t) =>
               kind === "trash" ? (
                 <div key={t.id} className="task-row">
+                  {/* 跟别的视图的任务行左边缘对齐（那边行首有个折叠小三角） */}
+                  <span className="chain-caret ghost" />
                   <span className={`flag p${t.priority}`} />
                   <span className="title" style={{ color: "var(--ink-2)" }}>{t.title || "（未命名）"}</span>
                   <span className="meta">
@@ -173,7 +170,6 @@ export default function ListView({ kind }: { kind: ListKind }) {
           <div className="empty">
             <span className="glyph">🍂</span>
             {kind === "trash" ? "回收站是空的"
-              : kind === "logbook" ? "还没有完成记录"
               : kind === "inbox" ? "想到什么，就在上面记一条"
               : "空空如也"}
           </div>

@@ -1,0 +1,93 @@
+/* 用法页：举例卡片。前缀 .gd-
+   手机上一列铺满、卡片大一点好点；电脑上自动铺成多列。 */
+
+.gd-body { max-width: 940px; }
+
+.gd-try {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 22px;
+}
+.gd-try-label { font-size: var(--fs-xs); color: var(--ink-3); margin-bottom: 8px; }
+.gd-try-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: var(--bg);
+}
+
+.gd-section { margin-bottom: 26px; }
+.gd-section > h2 {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.gd-lead { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.65; margin-bottom: 12px; }
+.gd-lead strong { color: var(--ink); font-weight: 600; }
+
+.gd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.gd-card {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  padding: 12px 14px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+.gd-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+/* 你打的那句：等宽字，像真的在输入框里 */
+.gd-say {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px dashed var(--hair);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  word-break: break-all;
+}
+.gd-say::before { content: "› "; color: var(--ink-3); }
+
+/* 橡果读出来的东西 */
+.gd-out { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gd-out .chip {
+  font-size: var(--fs-xs);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+.gd-title { font-size: var(--fs-sm); color: var(--ink); }
+
+.gd-note { font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.55; }
+
+@media (max-width: 760px) {
+  .gd-grid { grid-template-columns: 1fr; gap: 12px; }
+  .gd-card { padding: 14px 16px 13px; border-radius: 16px; }
+  .gd-say { font-size: 14px; padding: 9px 12px; }
+  .gd-section > h2 { font-size: 19px; }
+  /* 手机上没有 hover，改成按下去有反馈 */
+  .gd-card:hover { transform: none; box-shadow: none; border-color: var(--hair); }
+  .gd-card:active { transform: scale(.985); border-color: var(--accent); }
+}

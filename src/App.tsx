@@ -2,12 +2,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import Today from "./views/Today";
-import Upcoming from "./views/Upcoming";
 import ListView from "./views/ListView";
 import Habits from "./views/Habits";
-import AllView from "./views/AllView";
+import Plan from "./views/Plan";
+import Done from "./views/Done";
+import Guide from "./views/Guide";
 import Calendar from "./views/Calendar";
-import Quadrant from "./views/Quadrant";
 import FocusView from "./views/FocusView";
 import StatsView from "./views/StatsView";
 import Settings from "./views/Settings";
@@ -17,7 +17,7 @@ import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
 import DataRescue from "./components/DataRescue";
 import {
-  clearSelection, completeTask, deleteTasks, dismissToast, expandTask,
+  clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
   navigate, postponeTasks, setPaletteOpen, setSearchOpen, setSelection,
   setTasksList, undo, useApp,
 } from "./core/store";
@@ -95,7 +95,7 @@ export default function App() {
       }
       if (mod && /^[1-5]$/.test(e.key)) {
         e.preventDefault();
-        navigate((["inbox", "today", "upcoming", "all", "logbook"] as const)[Number(e.key) - 1]);
+        navigate((["inbox", "today", "habits", "plan", "done"] as const)[Number(e.key) - 1]);
         return;
       }
       if (inEditable()) return;
@@ -117,8 +117,8 @@ export default function App() {
         expandTask(selectedIds[0]);
       } else if (mod && e.key.toLowerCase() === "d" && selectedIds.length) {
         e.preventDefault();
-        selectedIds.forEach((id) => completeTask(id));
-        clearSelection();
+        // 走 completeTasks 一次做完：一件一次的话撤销只撤得回最后一件
+        completeTasks(selectedIds);
       } else if (mod && e.key === "ArrowRight" && selectedIds.length) {
         e.preventDefault();
         postponeTasks(selectedIds);
@@ -141,17 +141,16 @@ export default function App() {
   const body = useMemo(() => {
     switch (view) {
       case "today": return <Today />;
-      case "upcoming": return <Upcoming />;
       case "inbox": return <ListView kind="inbox" />;
-      case "all": return <AllView />;
-      case "logbook": return <ListView kind="logbook" />;
+      case "plan": return <Plan />;
+      case "done": return <Done />;
       case "list": return <ListView kind="list" />;
       case "who": return <ListView kind="who" />;
       case "tag": return <ListView kind="tag" />;
       case "habits": return <Habits />;
       case "trash": return <ListView kind="trash" />;
       case "calendar": return <Calendar />;
-      case "quadrant": return <Quadrant />;
+      case "guide": return <Guide />;
       case "focus": return <FocusView />;
       case "stats": return <StatsView />;
       case "settings": return <Settings />;

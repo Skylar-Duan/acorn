@@ -1,9 +1,9 @@
 // 今天：主战场。逾期置顶，可一键全部顺延；底部当日小结。
 // 行来自 DateRow：母任务 + 带自己日期的子任务（「母 › 子」形式）。
 import { Fragment } from "react";
-import type { DateRow } from "../core/store";
 import { formatCN, todayYMD } from "../core/dates";
 import { postponeRows, rowTaskIds, tasksForToday, useApp } from "../core/store";
+import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 
@@ -14,29 +14,18 @@ export default function Today() {
   const today = todayYMD();
 
   const { overdue, todays, doneToday } = tasksForToday(data, today);
-  const orderedIds = rowTaskIds([...overdue, ...todays]);
+  const allRows = [...overdue, ...todays];
+  const orderedIds = rowTaskIds(allRows);
+  // 折叠整页算一次（跟「计划」同一套口径），否则逾期区和今天区会各收一遍
+  const fold = useFoldPlan(allRows);
+  const anchor = cardAnchor(allRows, expandedId);
+  const overdueRows = visibleRows(overdue, fold);
+  const todayRows = visibleRows(todays, fold);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
   // 底部进度按「件」算不按「行」算：一件事拆成 3 个子任务时，做掉 1 个不该让分母也跟着缩水
   const total = rowTaskIds(todays).length + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
 
-  // 展开卡的落点：母任务行处展开；母任务行不在本视图时（只有子任务行到期），
-  // 卡片落在该任务的第一个子任务行上，避免「点了没反应」
-  const motherVisible = new Set([...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task.id));
-  const cardRendered = new Set<string>();
-  const renderRow = (r: DateRow, i: number, arr: DateRow[]) => {
-    const wantCard =
-      expandedId === r.task.id &&
-      (!r.sub || !motherVisible.has(r.task.id)) &&
-      !cardRendered.has(r.task.id);
-    if (wantCard) cardRendered.add(r.task.id);
-    const bundled = !!r.sub && i > 0 && arr[i - 1].task.id === r.task.id;
-    return (
-      <Fragment key={r.sub ? `${r.task.id}-${r.sub.id}` : r.task.id}>
-        {wantCard ? <TaskCard task={r.task} /> : <TaskRow task={r.task} sub={r.sub} orderedIds={orderedIds} bundled={bundled} />}
-      </Fragment>
-    );
-  };
 
   return (
     <section className="main">
@@ -45,7 +34,7 @@ export default function Today() {
         <span className="sub">{formatCN(today)}</span>
       </div>
       <div className="view-body">
-        {overdue.length > 0 && (
+        {overdueRows.length > 0 && (
           <>
             <div className="group-head warn">
               逾期 {overdue.length}
@@ -53,11 +42,11 @@ export default function Today() {
                 全部推到明天 →
               </button>
             </div>
-            {overdue.map(renderRow)}
+            <RowList rows={overdueRows} fold={fold} anchor={anchor} orderedIds={orderedIds} />
           </>
         )}
-        {todays.length > 0 && <div className="group-head">今天</div>}
-        {todays.map(renderRow)}
+        {todayRows.length > 0 && <div className="group-head">今天</div>}
+        <RowList rows={todayRows} fold={fold} anchor={anchor} orderedIds={orderedIds} />
         {doneToday.length > 0 && <div className="group-head">已完成 {doneToday.length}</div>}
         {doneToday.map((t) => (
           <Fragment key={t.id}>

@@ -11,3 +11,8 @@ server/**/__pycache__/
 server/*.db
 server/*.db-*
 server/.venv/
+
+# 给用户的东西（验收单 / 安装包 / 截图）——放在盘上给人看，不进代码仓库
+交付验收/
+安装包/
+界面截图/

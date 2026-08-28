@@ -1,6 +1,6 @@
 {
   "name": "acorn",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "橡果 Acorn · 温暖纸感的 Windows 待办工具",
   "type": "module",
   "private": true,

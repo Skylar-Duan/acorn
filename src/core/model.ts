@@ -101,6 +101,10 @@ export interface Settings {
   reminderDefaultTime: string; // '09:00'
   /** 列表排序：时间优先（同时间按重要性）或重要性优先 */
   sortMode: "time" | "priority";
+  /** 需求方在侧栏的手排顺序（人名，按显示先后）。没排过的人接在后面。
+   *  放在设置里 = 每台设备各排各的：需求方不是一条真实记录，只是任务上的一个名字，
+   *  给它建一张会同步的表不值当 */
+  whoOrder: string[];
 }
 
 /** 应用版本号（构建时由 package.json 注入；测试环境没有这个宏时退到 dev） */
@@ -142,6 +146,7 @@ export function defaultSettings(): Settings {
     focusMinutesDefault: 25,
     reminderDefaultTime: "09:00",
     sortMode: "time",
+    whoOrder: [],
   };
 }
 
