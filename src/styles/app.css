@@ -526,6 +526,23 @@ button.chain-caret.folded { transform: rotate(-90deg); }
 /* ---------- 侧栏里拖着换位置 ---------- */
 .side nav li.move-over { box-shadow: inset 0 2px 0 var(--accent); background: var(--accent-soft); }
 
+/* 手机上按住不放进「排序模式」：被拎起来的那一行要肉眼可见地离开队列，
+   否则手指压在上面，用户根本看不出自己已经拎住了东西 */
+.side nav li.lifted {
+  background: var(--accent-soft);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  transform: scale(1.03);
+  opacity: .95;
+  position: relative;
+  z-index: 2;
+}
+/* 排序中别让长按顺手选中文字、或弹出系统的复制菜单 */
+.side nav li.lifted, .side nav li.lifted * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* 随手记行尾的「?」：一句话怎么写 */
 .quick-add .qa-help {
   flex: none;

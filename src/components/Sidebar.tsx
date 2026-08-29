@@ -7,7 +7,9 @@
 //
 // 清单和需求方还能**拖着换顺序**（拖清单到另一张清单上面）。清单的顺序跟数据走，
 // 需求方的顺序存在设置里（每台设备各排各的，见 Settings.whoOrder）。
-import { useEffect, useState } from "react";
+// 换顺序有两套手势：鼠标走 HTML5 拖拽，手指走「按住不动进排序模式」——
+// 后者是必须的，HTML5 拖拽在触摸屏上根本不触发（见 core/touchSort.ts）。
+import { useEffect, useRef, useState } from "react";
 import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
 import {
   addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, habitsOpenToday, moveList,
@@ -15,6 +17,9 @@ import {
   updateSubtask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
+import {
+  IDLE, LONG_PRESS_MS, cancel, down, hold, move, up, type SortState,
+} from "../core/touchSort";
 import iconUrl from "../../src-tauri/icons/32x32.png";
 
 function Ico({ d }: { d: string }) {
@@ -143,6 +148,93 @@ function reorderProps(
   };
 }
 
+/** 手指版的「换位置」：按住不动一会儿进排序模式，移动改落点，抬手落位。
+ *  跟上面那套 HTML5 拖拽并存——鼠标走那套，手指走这套，靠 pointerType 分流。
+ *  时序判定（滑动算滚动 / 没到时长算点击 / 排完序吞掉那一下点击）在 core/touchSort.ts，那边有单测。 */
+function useLongPressSort(
+  kind: "list" | "who",
+  onDrop: (from: string, to: string) => void,
+  hint: { over: string | null; set: (v: string | null) => void },
+) {
+  const [st, setSt] = useState<SortState>(IDLE);
+  const timer = useRef<number | null>(null);
+  // 排完序松手时浏览器还会补一次 click，不吞掉的话「换个位置」会顺手跳进这张清单
+  const swallow = useRef(false);
+
+  function stopTimer() {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
+
+  // 排序中要把页面按住。React 的 onTouchMove 是被动监听，preventDefault 无效，
+  // 必须自己挂一个 passive:false 的原生监听，否则手指一动侧栏就滚走了。
+  useEffect(() => {
+    if (st.phase !== "sorting") return;
+    const block = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => document.removeEventListener("touchmove", block);
+  }, [st.phase]);
+
+  useEffect(() => stopTimer, []);
+
+  /** 手指底下压着的是哪一项。用实时命中测试而不是记录每行的位置——侧栏会折叠、会滚 */
+  function keyAt(x: number, y: number): string | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const row = el?.closest?.(`[data-sort^="${kind}:"]`) as HTMLElement | null;
+    const k = row?.getAttribute("data-sort");
+    return k ? k.slice(kind.length + 1) : null;
+  }
+
+  function finish(next: SortState) {
+    stopTimer();
+    setSt(next);
+    hint.set(null);
+  }
+
+  return {
+    /** 这一项现在正被拎着吗（界面上要浮起来） */
+    lifted: (self: string) => st.phase === "sorting" && st.self === self,
+    /** 刚排完序的那一下 click 要不要吞掉。读一次就复位 */
+    swallowClick: () => {
+      const v = swallow.current;
+      swallow.current = false;
+      return v;
+    },
+    props: (self: string) => ({
+      "data-sort": `${kind}:${self}`,
+      onPointerDown: (e: React.PointerEvent) => {
+        if (e.pointerType === "mouse") return; // 鼠标继续走 HTML5 拖拽那套
+        const next = down(st, self, e.clientX, e.clientY);
+        if (next === st) return;
+        swallow.current = false;
+        setSt(next);
+        // 抓住指针：手指滑出这一行之后还要继续收到 move / up
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        stopTimer();
+        timer.current = window.setTimeout(() => setSt((s) => hold(s)), LONG_PRESS_MS);
+      },
+      onPointerMove: (e: React.PointerEvent) => {
+        if (st.phase === "idle") return;
+        const next = move(st, e.clientX, e.clientY, keyAt);
+        if (next === st) return;
+        if (next.phase === "idle") stopTimer(); // 判成滚动了，计时器也得停
+        setSt(next);
+        hint.set(next.over ? `${kind}:${next.over}` : null);
+      },
+      onPointerUp: () => {
+        if (st.phase === "idle") return;
+        const r = up(st);
+        swallow.current = r.sorted;
+        finish(r.next);
+        if (r.drop) onDrop(r.drop.from, r.drop.to);
+      },
+      onPointerCancel: () => finish(cancel()),
+    }),
+  };
+}
+
 export default function Sidebar(
   { drawerOpen = false, onNavigate }: { drawerOpen?: boolean; onNavigate?: () => void } = {},
 ) {
@@ -157,6 +249,8 @@ export default function Sidebar(
   /** 侧栏内部换位置时，鼠标正悬在哪一条上（画一条落点线） */
   const [moveOver, setMoveOver] = useState<string | null>(null);
   const moveHint = { over: moveOver, set: setMoveOver };
+  const listSort = useLongPressSort("list", (from, to) => moveList(from, to), moveHint);
+  const whoSort = useLongPressSort("who", (from, to) => moveWho(from, to), moveHint);
   /** 拖到「计划」后待定日期的任务组 + 弹层位置（落点处）。sub 非空 = 拖的是一条子任务行，只改它 */
   const [pendingPlan, setPendingPlan] = useState<
     { ids: string[]; sub: { taskId: string; subId: string } | null; x: number; y: number } | null
@@ -337,9 +431,14 @@ export default function Sidebar(
             return (
               <li
                 key={l.id}
-                className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}${moveOver === `list:${l.id}` ? " move-over" : ""}`}
-                title="拖着可以换位置"
-                onClick={() => { navigate("list", { listId: l.id }); onNavigate?.(); }}
+                className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}${moveOver === `list:${l.id}` ? " move-over" : ""}${listSort.lifted(l.id) ? " lifted" : ""}`}
+                title="拖着可以换位置（手机上按住不放）"
+                onClick={() => {
+                  if (listSort.swallowClick()) return;
+                  navigate("list", { listId: l.id });
+                  onNavigate?.();
+                }}
+                {...listSort.props(l.id)}
                 {...mergeDrop(
                   dropProps(`list-${l.id}`, (ids) => setTasksList(ids, l.id)),
                   reorderProps("list", l.id, (dragged) => moveList(dragged, l.id), moveHint),
@@ -379,9 +478,14 @@ export default function Sidebar(
               {(showWho ? whoList : whoList.slice(0, PEEK)).map(({ who, open: n }) => (
                 <li
                   key={who}
-                  className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}${moveOver === `who:${who}` ? " move-over" : ""}`}
-                  title="拖着可以换位置"
-                  onClick={() => { navigate("who", { who }); onNavigate?.(); }}
+                  className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}${moveOver === `who:${who}` ? " move-over" : ""}${whoSort.lifted(who) ? " lifted" : ""}`}
+                  title="拖着可以换位置（手机上按住不放）"
+                  onClick={() => {
+                    if (whoSort.swallowClick()) return;
+                    navigate("who", { who });
+                    onNavigate?.();
+                  }}
+                  {...whoSort.props(who)}
                   {...mergeDrop(
                     dropProps(`who-${who}`, (ids) => addTasksWho(ids, who)),
                     reorderProps("who", who, (dragged) => moveWho(dragged, who), moveHint),
