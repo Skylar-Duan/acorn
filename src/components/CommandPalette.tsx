@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThemeName } from "../core/model";
 import type { ViewId } from "../core/store";
 import { navigate, setPaletteOpen, undo, updateSettings } from "../core/store";
+import { FOCUS_ENABLED } from "../core/features";
 import "../styles/overlays.css";
 
 interface Command {
@@ -15,16 +16,15 @@ interface Command {
 
 // [视图, 图标, 名称, 说明]
 const NAV: [ViewId, string, string, string][] = [
-  ["inbox", "✍️", "随手记", "记一条 · 还没安排的都在这"],
+  ["inbox", "✍️", "随手记", "没有日期、也没有归入清单的任务"],
   ["today", "🌞", "今天", "今日安排与逾期"],
-  ["plan", "🗂", "计划", "所有没做完的事（含四象限）"],
-  ["done", "✔", "已完成", "勾掉的事都在这儿"],
+  ["plan", "🗂", "计划", "全部未完成任务（含四象限）"],
+  ["done", "✔", "已完成", "已完成的任务"],
   ["calendar", "📅", "日历", "按月查看"],
   ["focus", "🍅", "专注", "番茄钟"],
-  ["stats", "📊", "统计", "效率回顾"],
-  ["guide", "📖", "用法", "一句话记事怎么写"],
+  ["stats", "📊", "统计", "完成情况回顾"],
   ["settings", "⚙", "设置", "偏好与数据"],
-  ["habits", "🔁", "习惯", "每天打卡的事"],
+  ["habits", "🔁", "习惯", "需要每天打卡的事"],
   ["trash", "🗑", "回收站", "已删除的任务"],
 ];
 
@@ -45,7 +45,8 @@ const MODES: ["light" | "dark" | "system", string, string][] = [
 ];
 
 const COMMANDS: Command[] = [
-  ...NAV.map(([view, icon, label, hint]): Command => ({
+  // 专注暂时收起（core/features.ts），跳转项跟着不出现
+  ...NAV.filter(([view]) => view !== "focus" || FOCUS_ENABLED).map(([view, icon, label, hint]): Command => ({
     id: `nav-${view}`, icon, label, hint, run: () => navigate(view),
   })),
   ...THEMES.map(([theme, icon, name, hint]): Command => ({
@@ -56,7 +57,7 @@ const COMMANDS: Command[] = [
     id: `mode-${mode}`, icon, label: name, hint: "深浅模式",
     run: () => updateSettings({ mode }),
   })),
-  { id: "undo", icon: "↩", label: "撤销上一步", hint: "撤回刚才的更改", run: () => undo() },
+  { id: "undo", icon: "↩", label: "撤销上一步", hint: "撤销最近一次更改", run: () => undo() },
 ];
 
 export default function CommandPalette() {

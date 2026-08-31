@@ -1,0 +1,21 @@
+# 行尾约定（钉死，别再翻）
+#
+# 本仓库的行尾是历史遗留的混合状态，不是失误：
+#   CRLF —— App.tsx / store.ts / model.ts / stats.ts / Settings.tsx / Sidebar.tsx /
+#           TaskCard.tsx / QuickAddBar.tsx / CommandPalette.tsx / CHANGELOG.md / README.md
+#           以及 ContextMenu.tsx、TaskRow.tsx、app.css、Today.tsx、Plan.tsx 等早期文件
+#   LF   —— server/ 下的 py 与 sh、src-tauri/src、后加的 src/core 与 tests 里的多数文件
+#
+# 强行统一翻一遍会把整个历史的 git blame 冲掉，所以这里不做归一化，
+# 只把 git 的自动转换彻底关掉：磁盘上是什么字节，入库就是什么字节。
+# 配合 core.autocrlf=false，checkout 与 commit 两个方向都不再改动行尾。
+#
+# 给后来的人（含 AI agent）：改已有文件一律用精确替换，保持该文件原有的行尾。
+# 不许「读全文 → 整体覆盖写」——那样会把整个文件的行尾冲成另一种，
+# git diff 变成全文件重写，真实改动被埋掉，git blame 一起作废。
+* -text
+
+# 下面这几类必须是 LF，否则在 Linux 服务器上直接跑不起来（#!/bin/bash\r 之类）
+*.sh text eol=lf
+server/deploy/acorn-sync.service text eol=lf
+server/deploy/proxy_params_acorn text eol=lf

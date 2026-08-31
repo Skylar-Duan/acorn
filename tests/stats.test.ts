@@ -306,7 +306,7 @@ describe("exportWeekMarkdown", () => {
   });
 
   it("完成一节：件数、按清单分组、条目落在对的组里", () => {
-    expect(md).toContain("✅ 本周完成 3 件");
+    expect(md).toContain("## 本周完成 3 件");
     expect(md).toContain("### 工作（2 件）");
     expect(md).toContain("### 生活（1 件）");
     expect(md).toContain("- 写周报");
@@ -317,18 +317,18 @@ describe("exportWeekMarkdown", () => {
   });
 
   it("未清一节含逾期天数", () => {
-    expect(md).toContain("⏳ 未清 2 件");
+    expect(md).toContain("## 未清 2 件");
     expect(md).toContain("- 报销单（逾期 4 天）");
     expect(md).toContain("- 健身计划（逾期 1 天）");
   });
 
   it("反复顺延一节含次数", () => {
-    expect(md).toContain("🔁 反复顺延");
+    expect(md).toContain("## 反复顺延");
     expect(md).toContain("健身计划（顺延 4 次");
   });
 
   it("专注合计按小时分钟展示", () => {
-    expect(md).toContain("🍅 专注合计 2 小时 5 分钟");
+    expect(md).toContain("## 专注合计 2 小时 5 分钟");
   });
 
   it("需求方一节有数据才出现", () => {
@@ -344,18 +344,18 @@ describe("exportWeekMarkdown", () => {
     const h2 = exportWeekMarkdown(
       weeklyReview([], [{ taskId: null, date: "2026-08-11", minutes: 120, startedAt: isoLocal(2026, 8, 11, 9) }], [], WS),
     );
-    expect(h2).toContain("🍅 专注合计 2 小时");
+    expect(h2).toContain("## 专注合计 2 小时");
     const m30 = exportWeekMarkdown(
       weeklyReview([], [{ taskId: null, date: "2026-08-11", minutes: 30, startedAt: isoLocal(2026, 8, 11, 9) }], [], WS),
     );
-    expect(m30).toContain("🍅 专注合计 30 分钟");
+    expect(m30).toContain("## 专注合计 30 分钟");
   });
 
   it("空周优雅兜底", () => {
     const md0 = exportWeekMarkdown(weeklyReview([], [], [], WS));
     expect(md0).toContain("8月10日");
     expect(md0).toContain("本周没有记录");
-    expect(md0).not.toContain("✅");
+    expect(md0).not.toContain("本周完成");
   });
 
   it("周到期但未逾期的未清条目不显示逾期天数", () => {

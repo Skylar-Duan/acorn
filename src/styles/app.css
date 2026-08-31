@@ -53,6 +53,19 @@
   -webkit-app-region: drag;
 }
 .side .brand img { width: 22px; height: 22px; }
+/* 设置齿轮靠右贴在标题这一行。no-drag 不能省：.brand 整块是窗口拖拽区，
+   不排除的话点击会被系统当成拖窗口吃掉——按钮看得见、按不动 */
+.side .brand .gear {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 4px;
+  padding: 2px 4px;
+  letter-spacing: 0;
+  -webkit-app-region: no-drag;
+}
+.side .brand .gear:hover { color: var(--accent); background: var(--card); }
 .side nav ul { list-style: none; }
 .side nav li {
   display: flex;
@@ -92,12 +105,14 @@
   color: var(--ink-2);
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .side .foot .ok { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
 .side .foot .bad { width: 7px; height: 7px; border-radius: 50%; background: #C0564A; flex: none; }
-.side .foot .gear { margin-left: auto; color: var(--ink-3); font-size: 14px; border-radius: 4px; padding: 0 3px; }
-.side .foot .gear:hover { color: var(--accent); background: var(--card); }
+/* 同步状态跟数据状态挤一行；侧栏窄的时候换行显示，别把字挤没了 */
+.side .foot .sep { color: var(--ink-3); }
+.side .foot .warn { color: #C0564A; font-weight: 600; }
 
 /* ---------- 主区 ---------- */
 .main {
@@ -202,6 +217,22 @@
 }
 .task-card .subs .rm { color: var(--ink-3); font-size: 13px; opacity: 0; }
 .task-card .subs .sub-row:hover .rm { opacity: 1; }
+/* 已完成子任务的折叠头。样式自己写一套，不蹭 .chain-caret / .chain-more——
+   那两个归列表行的折叠管，宽度和旋转规则会跟着串过来 */
+.task-card .subs .tc-donefold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 5px 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: left;
+  border-radius: var(--r-sm);
+  transition: color .12s, background-color .12s;
+}
+.task-card .subs .tc-donefold:hover { color: var(--accent); background: var(--accent-soft); }
+.task-card .subs .tc-donefold-caret { font-size: 9px; line-height: 1; opacity: .8; }
 .task-card .subs .rm:hover { color: #C0564A; }
 .task-card .chips { display: flex; gap: 7px; margin: 10px 0 0 28px; align-items: center; flex-wrap: wrap; }
 .task-card .chips .pill { cursor: default; }
@@ -382,6 +413,8 @@
   .side.open { transform: none; box-shadow: 0 0 40px rgba(0, 0, 0, .22); }
   /* 标题栏拖动是桌面窗口的事，手机上会吃掉点击 */
   .side .brand { -webkit-app-region: none; }
+  /* 手机上齿轮是进设置的唯一入口，按钮要够手指点（☰ 在左上角，抽屉一开就藏起来，不打架） */
+  .side .brand .gear { font-size: 17px; padding: 6px 8px; margin-right: -4px; }
 
   .drawer-scrim {
     display: block;
@@ -436,6 +469,9 @@
   .chain-caret { width: 9px; }
   .task-row { gap: 9px; }
   .task-row .meta { flex: 1 0 100%; margin-left: 30px; justify-content: flex-start; }
+
+  /* 折叠头是手指点的，12px 的一行字太薄，撑到跟任务行一个厚度 */
+  .task-card .subs .tc-donefold { padding: 10px 0; font-size: 13px; }
 
   /* 键盘快捷键提示在手机上是废话 */
   .kbd-hint { display: none; }

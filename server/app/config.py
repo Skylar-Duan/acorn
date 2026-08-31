@@ -42,7 +42,8 @@ class Settings:
     # 一份数据最大多少字节（防止有人把服务器当网盘）。5MB 够存几万条任务
     max_vault_bytes: int = _int("ACORN_MAX_VAULT_BYTES", 5 * 1024 * 1024)
 
-    # 安卓安装包与版本清单放哪（nginx 以 /download/ 静态伺服同一个目录）
+    # 安装包与版本清单放哪（android/ 是 APK，windows/ 是桌面 exe；
+    # nginx 以 /download/ 静态伺服同一个目录）
     public_dir: str = os.environ.get("ACORN_PUBLIC_DIR", "public")
     # 对外下载地址前缀，写进版本清单给客户端用
     download_base: str = os.environ.get(

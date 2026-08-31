@@ -39,7 +39,9 @@
 .cal-cell.dim .cal-task { opacity: .55; }
 .cal-cell.cal-dropping { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 
-.cal-head { flex: none; display: flex; align-items: center; justify-content: space-between; }
+.cal-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+/* 绿点和「+N」并排靠右。放这一行是因为格子固定高、超出裁掉，排在条目后面的会被整条吃掉 */
+.cal-head-right { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .cal-num {
   width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--serif); font-size: 13px; color: var(--ink-2);
@@ -65,7 +67,14 @@
 .cal-task:hover { background: var(--accent-soft); color: var(--accent); }
 .cal-task .flag { width: 3px; height: 11px; border-radius: 2px; }
 .cal-task .cal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-more { flex: none; font-size: 10.5px; color: var(--ink-3); padding: 0 5px; }
+.cal-more { flex: none; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* 做完的那条：划掉 + 降饱和，一眼跟「还欠着的」分开。
+   也没有优先级色边——都做完了，还标它多重要没意义 */
+.cal-task-done { color: var(--ink-3); background: transparent; }
+.cal-task-done .cal-title { text-decoration: line-through; }
+.cal-task-done:hover { background: var(--bg); color: var(--ink-2); }
+.cal-task-done .cal-check { flex: none; width: 9px; font-size: 9px; color: var(--ok); }
 
 /* 双击空白处弹出的补记小输入 */
 .cal-quick { flex: none; }

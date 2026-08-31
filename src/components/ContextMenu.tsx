@@ -9,6 +9,7 @@ import {
   updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
+import { FOCUS_ENABLED } from "../core/features";
 import "../styles/contextmenu.css";
 
 const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
@@ -79,6 +80,7 @@ function SubRowMenu({ x, y, taskId, subId }: { x: number; y: number; taskId: str
   return (
     <div className="ctx-menu" ref={menuRef} style={{ left: pos.left, top: pos.top }} onContextMenu={(e) => e.preventDefault()}>
       <div className="ctx-count">子任务 · {task.title.slice(0, 12)}</div>
+      {/* 完成时刻由 store.applySubPatch 统一盖/清，这里只管翻 done，别在调用点自己算时间戳 */}
       <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { done: !sub.done }))}>
         {sub.done ? "标记未完成" : "完成子任务"}
       </button>
@@ -243,7 +245,8 @@ function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {
       >
         {allDone ? "标记未完成" : "完成"}
       </button>
-      {tasks.length === 1 && !tasks[0].done && (
+      {/* 专注暂时收起，见 core/features.ts */}
+      {FOCUS_ENABLED && tasks.length === 1 && !tasks[0].done && (
         <button className="ctx-item" onClick={() => run(() => void startFocus(tasks[0].id))}>
           ▶ 开始专注
         </button>
@@ -330,7 +333,7 @@ function Menu({ x, y, ids: rawIds }: { x: number; y: number; ids: string[] }) {
         <input
           className="ctx-input"
           autoFocus
-          placeholder="为谁做的？多个人用空格隔开，回车确定"
+          placeholder="需求方，多个用空格隔开，回车确定"
           defaultValue={whoDefault}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) {

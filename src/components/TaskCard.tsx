@@ -11,10 +11,11 @@ import { parseSubtaskInput, SUBTASK_SKIP } from "../core/parse";
 import { taskToSentence } from "../core/syntax";
 import {
   addList, addSubtask, addTasksWho, allTags, allWho, completeTask, deleteTasks, expandTask,
-  removeSubtask, removeTaskWho, setTasksWho, toggleSubtask, uncompleteTask, updateSubtask,
-  updateTask, useApp,
+  foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks, SUB_DONE_PEEK, toggleSubtask,
+  uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
+import { FOCUS_ENABLED } from "../core/features";
 import SyntaxInput from "./SyntaxInput";
 
 const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
@@ -27,6 +28,10 @@ export default function TaskCard({ task }: { task: Task }) {
   const [menu, setMenu] = useState<MenuName>(null);
   const [subMenu, setSubMenu] = useState<{ id: string; kind: "date" | "prio" } | null>(null);
   const [newSub, setNewSub] = useState("");
+  /** 已完成子任务那堆展不展开。null = 还没表过态，跟自动规则走；
+   *  用不得直接存 boolean：那样刚勾掉一条子任务、已完成刚够数的时候自动规则就再也不生效了。
+   *  用户自己点过之后才锁成他选的那个 */
+  const [showDone, setShowDone] = useState<boolean | null>(null);
   /** 「整句改」输入框的草稿。null = 没动过，显示现算的那句。
    *  **必须连底稿一起记**（base）：用户在框里打了一半，又去上面点了个日期/优先级，
    *  这句底稿就过期了；不作废的话回车会拿过期的那句把刚点的改动盖回去。 */
@@ -55,14 +60,14 @@ export default function TaskCard({ task }: { task: Task }) {
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   const today = todayYMD();
 
-  // 已经做完的子任务沉到最下面（只改显示顺序，存的那份数组原样不动）。
+  // 已经做完的子任务沉到最下面，多了还要收起来（只改显示顺序，存的那份数组原样不动）。
   // 用户口径：「子任务已通过的排到最下面」——上面永远是还欠着的
-  const subsInOrder = useMemo(() => {
-    const idx = new Map(task.subtasks.map((s, i) => [s.id, i]));
-    return [...task.subtasks].sort(
-      (a, b) => Number(a.done) - Number(b.done) || idx.get(a.id)! - idx.get(b.id)!,
-    );
-  }, [task.subtasks]);
+  const { open: openSubs, done: doneSubs } = useMemo(() => splitSubtasks(task.subtasks), [task.subtasks]);
+  const autoFold = foldDoneSubs(task.subtasks);
+  // 够数才给折叠开关（只勾掉一两条时摊开就是了，不必多一行按钮）。
+  // 不够数时强制摊开：否则「先折起来、再取消勾选几条」会把已完成子任务锁成看不见又开不出来
+  const canFoldDone = doneSubs.length >= SUB_DONE_PEEK;
+  const doneShown = canFoldDone ? showDone ?? !autoFold : true;
 
   // 这件事的「一整句话」。按当前状态现算，不存旧的输入——存了迟早跟字段对不上
   const sentence = useMemo(
@@ -177,6 +182,73 @@ export default function TaskCard({ task }: { task: Task }) {
   const todayWd = dayOfWeek(today);
   const nextMonday = addDays(today, todayWd === 0 ? 1 : 8 - todayWd);
 
+  /** 一条子任务的整行。未完成那堆和已完成那堆共用它，两处长得一模一样。
+   *  写成组件体内的局部函数、不抽成外部组件：外部组件每次 render 都是个新类型，
+   *  React 会把行整个卸载重建，行里那两个 .popmenu 会在打字时闪没 */
+  function renderSub(s: Subtask) {
+    return (
+      <div key={s.id} className={`sub-row${s.done ? " done" : ""}`} style={{ position: "relative" }}>
+        <button className={`sb${s.done ? " done" : ""}`} onClick={() => toggleSubtask(task.id, s.id)} />
+        <input
+          type="text"
+          value={s.title}
+          onChange={(e) =>
+            updateSubtask(task.id, s.id, { title: e.target.value })
+          }
+        />
+        {/* 子任务自己的日期/优先级：默认继承母任务，点小签单独设 */}
+        <button
+          className="pill"
+          style={{ padding: "1px 8px", fontSize: 11 }}
+          title={s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}
+          onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "date" ? null : { id: s.id, kind: "date" })}
+        >
+          {/* 继承来的日期也照样显示，只是淡一点——一眼看得出这条到底哪天要做 */}
+          {s.due ? formatShort(s.due) : task.due ? <span style={{ opacity: 0.5 }}>{formatShort(task.due)}</span> : "📅"}
+        </button>
+        <button
+          className="pill"
+          style={{ padding: "1px 8px", fontSize: 11 }}
+          title={s.priority != null ? "这条子任务自己的重要性" : "跟着母任务走，点一下可以单独设"}
+          onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "prio" ? null : { id: s.id, kind: "prio" })}
+        >
+          {/* 继承母任务的整体淡一档：一眼分得出「自己设的」还是「跟着母任务」 */}
+          <span className={`flag p${s.priority ?? task.priority}`} style={{ opacity: s.priority == null ? 0.5 : 1 }} />
+          {s.priority != null ? (
+            PRIORITY_LABEL[s.priority]
+          ) : (
+            <span style={{ opacity: 0.5 }}>{PRIORITY_LABEL[task.priority]}</span>
+          )}
+        </button>
+        <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务">×</button>
+        {subMenu?.id === s.id && subMenu.kind === "date" && (
+          <div className="popmenu" style={{ top: "100%", right: 0 }}>
+            <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: today }); setSubMenu(null); }}>今天</button>
+            <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: addDays(today, 1) }); setSubMenu(null); }}>明天</button>
+            <input
+              className="inline"
+              type="date"
+              defaultValue={s.due ?? ""}
+              onBlur={(e) => { if (e.target.value) { updateSubtask(task.id, s.id, { due: e.target.value }); setSubMenu(null); } }}
+            />
+            <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: null, dueTime: null }); setSubMenu(null); }}>继承母任务</button>
+          </div>
+        )}
+        {subMenu?.id === s.id && subMenu.kind === "prio" && (
+          <div className="popmenu" style={{ top: "100%", right: 0 }}>
+            {([3, 2, 1, 0] as Priority[]).map((p) => (
+              <button key={p} className="item" onClick={() => { updateSubtask(task.id, s.id, { priority: p }); setSubMenu(null); }}>
+                <span className={`flag p${p}`} />
+                {PRIORITY_LABEL[p]}
+              </button>
+            ))}
+            <button className="item" onClick={() => { updateSubtask(task.id, s.id, { priority: null }); setSubMenu(null); }}>继承母任务</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="task-card" ref={cardRef}>
       <div className="row1">
@@ -205,67 +277,9 @@ export default function TaskCard({ task }: { task: Task }) {
       />
 
       <div className="subs">
-        {subsInOrder.map((s) => (
-          <div key={s.id} className={`sub-row${s.done ? " done" : ""}`} style={{ position: "relative" }}>
-            <button className={`sb${s.done ? " done" : ""}`} onClick={() => toggleSubtask(task.id, s.id)} />
-            <input
-              type="text"
-              value={s.title}
-              onChange={(e) =>
-                updateSubtask(task.id, s.id, { title: e.target.value })
-              }
-            />
-            {/* 子任务自己的日期/优先级：默认继承母任务，点小签单独设 */}
-            <button
-              className="pill"
-              style={{ padding: "1px 8px", fontSize: 11 }}
-              title={s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}
-              onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "date" ? null : { id: s.id, kind: "date" })}
-            >
-              {/* 继承来的日期也照样显示，只是淡一点——一眼看得出这条到底哪天要做 */}
-              {s.due ? formatShort(s.due) : task.due ? <span style={{ opacity: 0.5 }}>{formatShort(task.due)}</span> : "📅"}
-            </button>
-            <button
-              className="pill"
-              style={{ padding: "1px 8px", fontSize: 11 }}
-              title={s.priority != null ? "这条子任务自己的重要性" : "跟着母任务走，点一下可以单独设"}
-              onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "prio" ? null : { id: s.id, kind: "prio" })}
-            >
-              {/* 继承母任务的整体淡一档：一眼分得出「自己设的」还是「跟着母任务」 */}
-              <span className={`flag p${s.priority ?? task.priority}`} style={{ opacity: s.priority == null ? 0.5 : 1 }} />
-              {s.priority != null ? (
-                PRIORITY_LABEL[s.priority]
-              ) : (
-                <span style={{ opacity: 0.5 }}>{PRIORITY_LABEL[task.priority]}</span>
-              )}
-            </button>
-            <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务">×</button>
-            {subMenu?.id === s.id && subMenu.kind === "date" && (
-              <div className="popmenu" style={{ top: "100%", right: 0 }}>
-                <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: today }); setSubMenu(null); }}>今天</button>
-                <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: addDays(today, 1) }); setSubMenu(null); }}>明天</button>
-                <input
-                  className="inline"
-                  type="date"
-                  defaultValue={s.due ?? ""}
-                  onBlur={(e) => { if (e.target.value) { updateSubtask(task.id, s.id, { due: e.target.value }); setSubMenu(null); } }}
-                />
-                <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: null, dueTime: null }); setSubMenu(null); }}>继承母任务</button>
-              </div>
-            )}
-            {subMenu?.id === s.id && subMenu.kind === "prio" && (
-              <div className="popmenu" style={{ top: "100%", right: 0 }}>
-                {([3, 2, 1, 0] as Priority[]).map((p) => (
-                  <button key={p} className="item" onClick={() => { updateSubtask(task.id, s.id, { priority: p }); setSubMenu(null); }}>
-                    <span className={`flag p${p}`} />
-                    {PRIORITY_LABEL[p]}
-                  </button>
-                ))}
-                <button className="item" onClick={() => { updateSubtask(task.id, s.id, { priority: null }); setSubMenu(null); }}>继承母任务</button>
-              </div>
-            )}
-          </div>
-        ))}
+        {openSubs.map(renderSub)}
+
+        {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
         {/* 子任务也能一句话记全：「明天 15点 !高 画趋势图」。
             清单/标签/需求方归母任务管，在这儿写就是普通文字，不会被吃掉 */}
         <div className="sub-row">
@@ -282,6 +296,15 @@ export default function TaskCard({ task }: { task: Task }) {
             inputStyle={{ fontSize: 13 }}
           />
         </div>
+
+        {/* 阈值跟自动折叠同一个，见上面的 canFoldDone */}
+        {canFoldDone && (
+          <button className="tc-donefold" onClick={() => setShowDone(!doneShown)}>
+            {doneShown ? "收起已完成" : `显示已完成 ${doneSubs.length}`}
+            <span className="tc-donefold-caret">{doneShown ? "▴" : "▾"}</span>
+          </button>
+        )}
+        {doneShown && doneSubs.map(renderSub)}
       </div>
 
       <div className="chips" style={{ position: "relative" }}>
@@ -357,7 +380,7 @@ export default function TaskCard({ task }: { task: Task }) {
         {menu === "who" && (
           <div className="popmenu" style={{ top: "110%", left: 250 }}>
             {task.who.map((w) => (
-              <button key={w} className="item" title="点一下摘掉 TA" onClick={() => removeTaskWho(task.id, w)}>
+              <button key={w} className="item" title="移除这个需求方" onClick={() => removeTaskWho(task.id, w)}>
                 ＠ {w}
                 <span style={{ marginLeft: "auto", color: "var(--ink-3)" }}>×</span>
               </button>
@@ -366,7 +389,7 @@ export default function TaskCard({ task }: { task: Task }) {
             <input
               className="inline"
               autoFocus
-              placeholder={task.who.length ? "再加一个人，回车确定" : "这事是为谁做的？回车确定"}
+              placeholder={task.who.length ? "再加一个需求方，回车确定" : "需求方，回车确定"}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   const el = e.target as HTMLInputElement;
@@ -421,11 +444,12 @@ export default function TaskCard({ task }: { task: Task }) {
         {/* 删除跟上面那排「改属性」的胶囊隔开：它是唯一一个按下去东西会消失的键，
             挨着放迟早误点（2026-08-28 用户就问过「怎么直接消失了」） */}
         <span className="tc-gap" />
-        <button className="pill danger-pill" title="删除（可在回收站找回，也能 Ctrl+Z 撤销）" onClick={() => { expandTask(null); deleteTasks([task.id]); }}>
+        <button className="pill danger-pill" title="删除（可在回收站恢复，也可 Ctrl+Z 撤销）" onClick={() => { expandTask(null); deleteTasks([task.id]); }}>
           🗑
         </button>
 
-        {!task.done && (
+        {/* 专注暂时收起，见 core/features.ts */}
+        {FOCUS_ENABLED && !task.done && (
           <button
             className="focus-go"
             onClick={() => {
@@ -457,7 +481,7 @@ export default function TaskCard({ task }: { task: Task }) {
           inputStyle={{ fontSize: 12.5, padding: "5px 9px" }}
         />
         {sentence.safe && live !== baseText && (
-          <button className="tc-restore" title="丢掉手上这句，换回这件事现在的样子" onClick={() => setDraft(null)}>↺</button>
+          <button className="tc-restore" title="放弃当前编辑，退回这件事现在的样子" onClick={() => setDraft(null)}>↺</button>
         )}
       </div>
     </div>

@@ -1,18 +1,20 @@
 // 子任务分拆与继承：用户口径「有子任务的把重要级和截止日期挪到子任务，默认等于母任务，
 // 总任务排序时分开排」。这套规则同时管今天 / 计划 / 全部三个视图，改坏了三处一起坏。
+// 另外这里也管任务卡里那两堆的分法（splitSubtasks / foldDoneSubs）：做完的排在后面、多了默认收起。
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AppData, Priority, Subtask } from "../src/core/model";
 import { defaultData, newTask } from "../src/core/model";
-import { addDays, todayYMD } from "../src/core/dates";
+import { addDays, todayYMD, toYMD } from "../src/core/dates";
 import {
-  appStore, openRows, postponeRows, rowDue, rowPriority, rowTaskIds, rowTime,
-  sortRows, tasksForToday, undo,
+  appStore, doneRows, foldDoneSubs, openRows, postponeRows, rowDoneAt, rowDoneDay, rowDoneGuessed,
+  rowDue, rowPriority, rowTaskIds, rowTime, sortRows, splitSubtasks, SUB_DONE_PEEK, tasksForToday,
+  undo,
 } from "../src/core/store";
 
 const today = todayYMD();
 
 function sub(id: string, title: string, patch: Partial<Subtask> = {}): Subtask {
-  return { id, title, done: false, due: null, dueTime: null, priority: null, ...patch };
+  return { id, title, done: false, due: null, dueTime: null, priority: null, doneAt: null, ...patch };
 }
 
 function dataOf(...tasks: ReturnType<typeof newTask>[]): AppData {
@@ -234,5 +236,199 @@ describe("顺延：子任务行只推自己那一条", () => {
     reset([t]);
     postponeRows([{ task: t, sub: t.subtasks[0] }]);
     expect(getTask(t.id).subtasks[0].due).toBe(addDays(today, 6));
+  });
+});
+
+describe("任务卡分堆：没做完的在上，做完的收在下面", () => {
+  const subs = [
+    sub("s1", "收集数据", { done: true }),
+    sub("s2", "画趋势图"),
+    sub("s3", "对数", { done: true }),
+    sub("s4", "写结论"),
+  ];
+
+  it("两堆内部都保持原数组顺序，谁也不会自己动", () => {
+    const { open, done } = splitSubtasks(subs);
+    expect(open.map((s) => s.id)).toEqual(["s2", "s4"]);
+    expect(done.map((s) => s.id)).toEqual(["s1", "s3"]);
+  });
+
+  it("两堆接起来 = 原来「做完的沉到最下面」那个稳定排序，一条不多一条不少", () => {
+    const { open, done } = splitSubtasks(subs);
+    const idx = new Map(subs.map((s, i) => [s.id, i]));
+    const old = [...subs].sort(
+      (a, b) => Number(a.done) - Number(b.done) || idx.get(a.id)! - idx.get(b.id)!,
+    );
+    expect([...open, ...done].map((s) => s.id)).toEqual(old.map((s) => s.id));
+  });
+
+  it("没有子任务时两堆都是空的", () => {
+    expect(splitSubtasks([])).toEqual({ open: [], done: [] });
+  });
+
+  it("原数组不被改动", () => {
+    const input = [...subs];
+    splitSubtasks(input);
+    expect(input.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
+  });
+});
+
+describe("任务卡折叠：做完的攒够 3 条才默认收起", () => {
+  const done = (n: number) =>
+    Array.from({ length: n }, (_, i) => sub(`d${i}`, `做完的${i}`, { done: true }));
+
+  it("阈值就是 3", () => {
+    expect(SUB_DONE_PEEK).toBe(3);
+  });
+
+  it("差一条不收（2 条已完成 + 还有没做的）", () => {
+    expect(foldDoneSubs([...done(SUB_DONE_PEEK - 1), sub("o1", "还欠着")])).toBe(false);
+  });
+
+  it("刚好够数就收", () => {
+    expect(foldDoneSubs([...done(SUB_DONE_PEEK), sub("o1", "还欠着")])).toBe(true);
+  });
+
+  it("再多也收", () => {
+    expect(foldDoneSubs([...done(SUB_DONE_PEEK + 5), sub("o1", "还欠着")])).toBe(true);
+  });
+
+  it("全部做完就不收——不然「已完成」视图里点开卡片一条子任务都看不见", () => {
+    expect(foldDoneSubs(done(SUB_DONE_PEEK + 3))).toBe(false);
+  });
+
+  it("一条子任务都没有，谈不上收起", () => {
+    expect(foldDoneSubs([])).toBe(false);
+  });
+
+  it("一条都没做完，也没什么可收的", () => {
+    expect(foldDoneSubs([sub("o1", "甲"), sub("o2", "乙"), sub("o3", "丙")])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 「已完成」按行列（2026-08-31）。openRows 的对偶：做完的子任务各占一行，
+// 母任务勾掉了也占一行。完成日只有 rowDoneAt / rowDoneDay 这一个口径，
+// 「已完成」视图和日历的已完成桶都从这儿取，不许各写一遍。
+// ---------------------------------------------------------------------------
+
+describe("doneRows：做完的事怎么占行", () => {
+  it("母任务还欠着，做完的子任务照样各出一行——不用等整件事做完", () => {
+    const t = newTask({
+      title: "装修",
+      subtasks: [sub("s1", "量尺寸", { done: true }), sub("s2", "选瓷砖"), sub("s3", "订货", { done: true })],
+    });
+    expect(doneRows(dataOf(t)).map(label)).toEqual(["装修›量尺寸", "装修›订货"]);
+  });
+
+  it("母任务勾掉了就多出一行——那一行代表「这件事本身收尾了」", () => {
+    const t = newTask({
+      title: "装修", done: true, doneAt: "2026-08-20T02:00:00.000Z",
+      subtasks: [sub("s1", "量尺寸", { done: true })],
+    });
+    expect(doneRows(dataOf(t)).map(label)).toEqual(["装修›量尺寸", "装修"]);
+  });
+
+  it("没有子任务的事做完了就一行", () => {
+    expect(doneRows(dataOf(newTask({ title: "交税", done: true }))).map(label)).toEqual(["交税"]);
+  });
+
+  it("一条都没做完的事一行都不出", () => {
+    const t = newTask({ title: "装修", subtasks: [sub("s1", "量尺寸")] });
+    expect(doneRows(dataOf(t))).toEqual([]);
+  });
+
+  it("回收站里的和习惯都不进来（跟 openRows 同一道门 aliveTasks）", () => {
+    const trashed = newTask({ title: "删掉的", done: true, deletedAt: "2026-08-20T00:00:00.000Z" });
+    const habit = newTask({ title: "喝水", kind: "habit", done: true });
+    expect(doneRows(dataOf(trashed, habit))).toEqual([]);
+  });
+
+  it("按「件」去重后就是几件事——连选和计数都按件走", () => {
+    const t = newTask({
+      title: "装修", done: true,
+      subtasks: [sub("s1", "量尺寸", { done: true }), sub("s2", "订货", { done: true })],
+    });
+    const rows = doneRows(dataOf(t, newTask({ title: "交税", done: true })));
+    expect(rows).toHaveLength(4);
+    expect(rowTaskIds(rows)).toHaveLength(2);
+  });
+});
+
+describe("完成日：一个口径，全应用共用", () => {
+  it("子任务有自己的完成时刻就用自己的", () => {
+    const t = newTask({
+      title: "装修", done: true, doneAt: "2026-08-25T02:00:00.000Z",
+      subtasks: [sub("s1", "量尺寸", { done: true, doneAt: "2026-08-20T02:00:00.000Z" })],
+    });
+    expect(rowDoneAt({ task: t, sub: t.subtasks[0] })).toBe("2026-08-20T02:00:00.000Z");
+  });
+
+  it("老子任务没有完成时刻 → 回落到母任务的（不单开「不知道哪天」那一组）", () => {
+    const t = newTask({
+      title: "装修", done: true, doneAt: "2026-08-25T02:00:00.000Z",
+      subtasks: [sub("s1", "量尺寸", { done: true })],
+    });
+    expect(rowDoneAt({ task: t, sub: t.subtasks[0] })).toBe("2026-08-25T02:00:00.000Z");
+  });
+
+  it("母任务也没完成时刻 → 再回落到创建时刻，绝不让它从所有视图里消失", () => {
+    const t = newTask({
+      title: "装修", createdAt: "2026-01-02T00:00:00.000Z",
+      subtasks: [sub("s1", "量尺寸", { done: true })],
+    });
+    expect(rowDoneAt({ task: t, sub: t.subtasks[0] })).toBe("2026-01-02T00:00:00.000Z");
+    expect(rowDoneAt({ task: t, sub: null })).toBe("2026-01-02T00:00:00.000Z");
+  });
+
+  it("归日转本地时区：凌晨做完的算今天，不能被 UTC 拖回昨天", () => {
+    // 本地时间「今天 00:30」——直接写 UTC 字面量的话，测试换个时区就自己坏了
+    const [y, m, dd] = today.split("-").map(Number);
+    const at = new Date(y, m - 1, dd, 0, 30).toISOString();
+    const t = newTask({ title: "赶稿", done: true, doneAt: at });
+    expect(rowDoneDay({ task: t, sub: null })).toBe(today);
+  });
+
+  it("同一件事在两个视图里落同一天：日历和已完成走的是同一个函数", () => {
+    const t = newTask({
+      title: "装修", subtasks: [sub("s1", "量尺寸", { done: true, doneAt: "2026-08-20T12:00:00.000Z" })],
+    });
+    const row = doneRows(dataOf(t))[0];
+    expect(rowDoneDay(row)).toBe(toYMD(new Date(rowDoneAt(row))));
+  });
+});
+
+// 回落到创建时刻那一档纯粹是「排序总得有个位置」，不是真的完成时刻。
+// 日历要是照着它落格，用户会在什么都没做完的那天看见一条 ✓ ——凭空捏造的完成记录。
+describe("完成日是不是猜的：猜出来的日子不许当成完成记录", () => {
+  it("子任务有自己的戳 → 不是猜的", () => {
+    const t = newTask({
+      title: "装修",
+      subtasks: [sub("s1", "量尺寸", { done: true, doneAt: "2026-08-20T02:00:00.000Z" })],
+    });
+    expect(rowDoneGuessed({ task: t, sub: t.subtasks[0] })).toBe(false);
+  });
+
+  it("子任务没戳但母任务做完了 → 不是猜的（跟着母任务那天走，有据可依）", () => {
+    const t = newTask({
+      title: "装修", done: true, doneAt: "2026-08-25T02:00:00.000Z",
+      subtasks: [sub("s1", "量尺寸", { done: true })],
+    });
+    expect(rowDoneGuessed({ task: t, sub: t.subtasks[0] })).toBe(false);
+  });
+
+  it("**两边都没戳 → 就是猜的**：这类行不进日历", () => {
+    const t = newTask({
+      title: "装修", createdAt: "2026-01-02T00:00:00.000Z",
+      subtasks: [sub("s1", "量尺寸", { done: true })],
+    });
+    expect(rowDoneGuessed({ task: t, sub: t.subtasks[0] })).toBe(true);
+    // 但它照样出行——「已完成」视图还得列出来，只是不写日期
+    expect(doneRows(dataOf(t))).toHaveLength(1);
+  });
+
+  it("母任务行永远不算猜的（doneRows 只在 done=true 时才推母任务行）", () => {
+    const t = newTask({ title: "交税", done: true, doneAt: "2026-08-25T02:00:00.000Z" });
+    expect(rowDoneGuessed({ task: t, sub: null })).toBe(false);
   });
 });

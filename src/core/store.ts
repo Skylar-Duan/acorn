@@ -15,7 +15,7 @@ import * as persist from "./persist";
 // 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换
 export type ViewId =
   | "inbox" | "today" | "plan" | "done" | "habits"
-  | "calendar" | "focus" | "stats" | "settings" | "guide"
+  | "calendar" | "focus" | "stats" | "settings"
   | "list" | "who" | "tag" | "trash";
 
 export interface UIState {
@@ -73,8 +73,15 @@ interface AppState {
   data: AppData;
   loaded: boolean;
   loadError: string | null;
+  /** 磁盘上那份数据比本机新（null = 没这回事）。跟 loadError 分开：这不是「坏了」，
+   *  是「这台设备太老」，处理方式也不同——只能升级本机，重试和换文件夹都没用。
+   *  置上之后一律不写盘（见 doSave），免得用户随手改一下就把降级后的数据盖回磁盘 */
+  dataTooNew: { schema: number } | null;
   /** 当前数据是空的，但别处找到了有内容的数据文件夹——由用户拍板要不要用（null = 没这回事） */
   rescue: persist.DataCandidate[] | null;
+  /** 本机数据已经被清空（登出时的隐私路径）。置上之后一律不再落盘——
+   *  防抖写入、提醒消费的 requestSave、快速添加窗任何一条都能在删完之后再写一份回来 */
+  wiped: boolean;
   ui: UIState;
   focus: FocusState;
   undoDepth: number;
@@ -89,7 +96,9 @@ export const appStore = createStore<AppState>(() => ({
   data: defaultData(),
   loaded: false,
   loadError: null,
+  dataTooNew: null,
   rescue: null,
+  wiped: false,
   ui: {
     view: "today", listId: null, who: null, tag: null, ...loadFold(),
     expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
@@ -109,8 +118,10 @@ let inflightSave: Promise<void> | null = null;
 
 function doSave(): Promise<void> {
   const s = appStore.getState();
-  // 数据没加载成功时绝不落盘——否则会拿默认空库覆盖磁盘上的真数据
-  if (!s.loaded || s.loadError) return Promise.resolve();
+  // 数据没加载成功时绝不落盘——否则会拿默认空库覆盖磁盘上的真数据。
+  // 磁盘上那份比本机新时同理：写回去就是把新版本才有的东西抹掉。
+  // wiped：用户刚把本机这份清掉了，任何一次回写都等于白清
+  if (s.wiped || !s.loaded || s.loadError || s.dataTooNew) return Promise.resolve();
   const p = persist
     .saveData(s.data)
     .catch((e) => {
@@ -144,6 +155,27 @@ export async function flushSave(): Promise<void> {
     await doSave();
   }
   if (inflightSave) await inflightSave;
+}
+
+/** 清空撤销栈。整份数据被换掉之后必须清——不清的话 Ctrl+Z 一按就把旧的整份写回盘 */
+export function clearUndo(): void {
+  undoStack = [];
+  appStore.setState({ undoDepth: 0 });
+}
+
+/** 删本机数据之前的内存侧收尾。顺序本身就是正确性，别调换：
+ *  ① flushSave 把攒着的写完（此刻本地与云端刚比对过，写完才是「已全在云端」的那一份）
+ *  ② 冲的过程里可能又排上一次防抖，再清一遍定时器
+ *  ③ 置 wiped 闸门，从这一刻起 doSave 一律拒绝
+ *  ④ 清撤销栈：栈里躺着 50 份完整数据，撤一下就整份写回盘 */
+export async function haltPersistence(): Promise<void> {
+  await flushSave();
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  appStore.setState({ wiped: true, undoDepth: 0 });
+  undoStack = [];
 }
 
 // ---------- 变更入口 ----------
@@ -251,15 +283,38 @@ export function dismissToast() {
 
 export async function initStore(): Promise<void> {
   try {
-    let loadedData: AppData | null;
+    // 上一次「退出登录并清空本机」留下的一次性标记：这一次启动不许建默认账本。
+    // defaultData() 带两条**每次都换新 id** 的清单「工作」「生活」，一旦落盘，
+    // 用户重新登录就把它们当「本机新建的清单」推上云，云端和另一台设备各多出一对，
+    // 只能手工一条条删。空着就好，登录之后云端那份会把内容填回来。
+    const freshStart = await persist.takeFreshStart().catch(() => false);
+    let res: persist.LoadResult;
     try {
-      loadedData = await persist.loadData();
+      res = await persist.loadData();
     } catch (first) {
       // 瞬时抖动（移动硬盘唤醒等）重试一次再放弃
       await new Promise((r) => setTimeout(r, 800));
-      loadedData = await persist.loadData();
+      res = await persist.loadData();
     }
-    const data = loadedData ?? defaultData();
+    // 磁盘上那份比本机新：到此为止。不落库、不写盘、不做每日备份——
+    // 降级读进来的数据一旦被写回去，新版本才有的东西就没了，用户毫不知情
+    if (res.tooNew) {
+      // 连内存里那份也换成真正的空账本（lists/tasks 全空）。
+      // 模块初始化时的 defaultData() 带着两条**每次启动都换新 id** 的默认清单「工作」「生活」，
+      // 那不是用户的账本——数据没真正读进来之前，内存里这份谁都不代表。
+      // 将来万一又漏掉某条出口（云同步就漏过一次），推出去的至少不是两条凭空冒出来的清单
+      appStore.setState({
+        data: { ...defaultData(), lists: [], tasks: [] },
+        loaded: true,
+        dataTooNew: { schema: res.schema },
+        loadError: null,
+      });
+      return;
+    }
+    const loadedData = res.data;
+    // 刚清空过（freshStart）就用真正的空账本，跟 tooNew 那支一个写法
+    const data =
+      loadedData ?? (freshStart ? { ...defaultData(), lists: [], tasks: [] } : defaultData());
     // 回收站 30 天自动清理。清掉的同样立墓碑，否则另一台设备同步过来会把它们又拉回来
     const cutoff = Date.now() - 30 * 86400000;
     const expired = data.tasks.filter(
@@ -270,7 +325,7 @@ export async function initStore(): Promise<void> {
       data.graveyard = bury(data.graveyard, expired.map((t) => t.id), new Date().toISOString());
     }
     undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
-    appStore.setState({ data, loaded: true, loadError: null });
+    appStore.setState({ data, loaded: true, loadError: null, dataTooNew: null });
 
     // 这里空空如也的时候，先别急着建一本空账本落盘——指针指歪 / 换了机器 / 数据在另一个
     // 文件夹时，那本空账本会盖在真数据前面，让人以为数据没了。先去别处找找，找到就让用户选。
@@ -282,7 +337,8 @@ export async function initStore(): Promise<void> {
         return; // 用户拍板前不写盘、不做备份
       }
     }
-    if (loadedData == null) await persist.saveData(data);
+    // 刚清空过就连这一下落盘也跳过：盘上一个字都不该留，等登录后由云端填回来
+    if (loadedData == null && !freshStart) await persist.saveData(data);
     await persist.ensureDailyBackup();
   } catch (e) {
     appStore.setState({ loaded: true, loadError: String(e) });
@@ -393,8 +449,10 @@ export function completeTask(id: string) {
         due: nd,
         // dueTime 优先再生提醒：响过的提醒（已被 sweep 清成 null）要在新落点复活
         reminder: regenReminder(t, nd),
-        // 子任务的专属日期属于上一轮，随循环推进一并清掉（重新继承母任务）
-        subtasks: t.subtasks.map((s) => ({ ...s, done: false, due: null, dueTime: null })),
+        // 子任务的专属日期和完成时刻都属于上一轮，随循环推进一并清掉（重新继承母任务）。
+        // doneAt 跟 done 同口径：新一轮还没做，就不能挂着上一轮做完的那个时刻。
+        // 留在已完成副本（上面那条 doneCopy）里的那份原样保留，那才是历史
+        subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, due: null, dueTime: null })),
         postponeCount: 0,
       };
       return { ...d, tasks: d.tasks.map((x) => (x.id === id ? advanced : x)).concat(doneCopy) };
@@ -403,7 +461,7 @@ export function completeTask(id: string) {
       ...d,
       tasks: d.tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso } : x)),
     };
-  }, { toast: "已完成 · 收进「已完成」了" });
+  }, { toast: "已完成，移入「已完成」" });
 }
 
 /** 一次完成多件（Ctrl+D 多选 / 右键菜单）。
@@ -431,7 +489,8 @@ export function completeTasks(ids: string[]) {
         const nd = nextOccurrence(t.repeat, anchor);
         const advanced: Task = {
           ...t, due: nd, reminder: regenReminder(t, nd),
-          subtasks: t.subtasks.map((s) => ({ ...s, done: false, due: null, dueTime: null })),
+          // 跟 completeTask 单条那处逐字同口径：done/doneAt/日期一起清（两处是双胞胎，改一处必改另一处）
+          subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, due: null, dueTime: null })),
           postponeCount: 0,
         };
         tasks = tasks.map((x) => (x.id === id ? advanced : x));
@@ -441,7 +500,7 @@ export function completeTasks(ids: string[]) {
     }
     if (tasks === d.tasks && extras.length === 0) return d;
     return { ...d, tasks: [...tasks, ...extras] };
-  }, { toast: `已完成 ${ids.length} 件 · 收进「已完成」了` });
+  }, { toast: `已完成 ${ids.length} 件，移入「已完成」` });
   clearSelection();
 }
 
@@ -720,6 +779,8 @@ export function addSubtask(
     due: extra?.due ?? null,
     dueTime: extra?.dueTime ?? null,
     priority: extra?.priority ?? null,
+    // 子任务的默认值一共两处（另一处是 model.migrate 里那个字面量），加字段要一起改
+    doneAt: null,
   };
   mutate((d) => ({
     ...d,
@@ -727,24 +788,37 @@ export function addSubtask(
   }));
 }
 
+/** 给子任务打补丁：动到 done 就顺手把完成时刻盖上（勾）或清掉（取消）。
+ *  这件事必须落在这一层，不能交给调用点：勾一条子任务有三条独立的路——任务卡走 toggleSubtask，
+ *  列表行（TaskRow）和右键菜单都是直调 updateSubtask({done})。在三个调用点各写一遍迟早漏一处，
+ *  漏了就出「在卡上勾有完成日、在行上勾没有」的分裂数据。
+ *  显式带了 doneAt 的（导入回填之类）以调用方给的为准。 */
+export function applySubPatch(s: Subtask, patch: Partial<Subtask>): Subtask {
+  const next = { ...s, ...patch };
+  if (patch.done !== undefined && patch.doneAt === undefined) {
+    next.doneAt = patch.done ? new Date().toISOString() : null;
+  }
+  return next;
+}
+
 export function toggleSubtask(taskId: string, subId: string) {
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) =>
       t.id === taskId
-        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, done: !s.done } : s)) }
+        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, { done: !s.done }) : s)) }
         : t,
     ),
   }));
 }
 
-/** 子任务字段更新（自己的日期/优先级/标题） */
+/** 子任务字段更新（自己的日期/优先级/标题；带 done 时连完成时刻一起管，见 applySubPatch） */
 export function updateSubtask(taskId: string, subId: string, patch: Partial<Subtask>) {
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) =>
       t.id === taskId
-        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, ...patch } : s)) }
+        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, patch) : s)) }
         : t,
     ),
   }));
@@ -980,6 +1054,25 @@ export function rowPriority(r: DateRow): Priority {
   return r.sub ? r.sub.priority ?? r.task.priority : r.task.priority;
 }
 
+/** 已完成子任务攒到这个数，任务卡里那堆默认收起。
+ *  沿用侧栏 PEEK=3 的口径：1-2 条直接摊开，收起反而多让人点一次 */
+export const SUB_DONE_PEEK = 3;
+
+/** 任务卡里把子任务分成「还欠着的」和「做完的」两堆。
+ *  filter 保留原数组顺序，所以两堆接起来跟原先「做完的沉到最下面」的稳定排序逐条等价，
+ *  改成折叠之后视觉上不会有「东西自己动了」。只管显示，存的那份数组一个字节都不动 */
+export function splitSubtasks(subs: Subtask[]): { open: Subtask[]; done: Subtask[] } {
+  return { open: subs.filter((s) => !s.done), done: subs.filter((s) => s.done) };
+}
+
+/** 已完成那堆默不默认收起。
+ *  「还有没做完的」是必要前提：一件事整个做完之后（「已完成」视图里点开的卡片就是这样），
+ *  再折叠的话卡片里一条子任务都看不见，只剩一行「显示已完成 N」 */
+export function foldDoneSubs(subs: Subtask[]): boolean {
+  const { open, done } = splitSubtasks(subs);
+  return done.length >= SUB_DONE_PEEK && open.length > 0;
+}
+
 /** 未完成的事在日期/总览视图里怎么占行。
  *  用户口径：「有子任务的把重要级和截止日期挪到子任务，默认等于母任务，总任务排序时分开排」——
  *  所以有未完成子任务的任务**分拆**成一行一个子任务（母任务行收起，子任务行自带「母 › 子」前缀），
@@ -996,6 +1089,45 @@ export function openRows(d: AppData): DateRow[] {
     for (const s of openSubs) rows.push({ task: t, sub: s });
   }
   return rows;
+}
+
+/** 做完的事怎么占行——openRows 的对偶。
+ *  已完成的子任务各出一行（显示成「母 › 子」），母任务 done=true 时**也**出一行，
+ *  代表「这件事本身收尾了」。所以一件有子任务的事做完之后，
+ *  在「已完成」里既看得到每一步是哪天做的，也看得到收尾那一下。
+ *  母任务没做完但子任务勾了几条（很常见）同样在这里现身，不用等整件事做完。 */
+export function doneRows(d: AppData): DateRow[] {
+  const rows: DateRow[] = [];
+  for (const t of aliveTasks(d)) {
+    for (const s of t.subtasks) if (s.done) rows.push({ task: t, sub: s });
+    if (t.done) rows.push({ task: t, sub: null });
+  }
+  return rows;
+}
+
+/** 这一行是哪一刻做完的（ISO）。子任务优先用自己的完成时刻；
+ *  加 doneAt 之前就已经勾掉的老子任务没有这个戳，回落到母任务的 doneAt，
+ *  再没有就拿创建时刻顶——**这一档纯粹是为了排序有个位置**，不是真的完成时刻，
+ *  用之前先问 rowDoneGuessed：凡是猜出来的日子都不许当成完成记录展示。
+ *  **不为这批老数据单开「不知道哪天」分组**：那一组只会越攒越大，还谁也修不了它。 */
+export function rowDoneAt(r: DateRow): string {
+  return r.sub ? r.sub.doneAt ?? r.task.doneAt ?? r.task.createdAt : r.task.doneAt ?? r.task.createdAt;
+}
+
+/** 这一行的完成时刻是「猜的」还是真有。子任务自己没戳、母任务也没戳，
+ *  rowDoneAt 只能拿母任务的创建时刻顶——那天用户其实什么都没做完。
+ *  这类行的去处：日历一条都不落格（否则凭空多出完成记录，绿点数字也跟着虚高）；
+ *  「已完成」视图照旧显示（不显示用户会以为东西不见了），但排在最后一组的尾部，
+ *  且不写「完成 X月X日」——宁可不说，也不编一个日期。 */
+export function rowDoneGuessed(r: DateRow): boolean {
+  return !!r.sub && !r.sub.doneAt && !r.task.doneAt;
+}
+
+/** 这一行归到哪一天（本地 'YYYY-MM-DD'）。doneAt 存的是 UTC ISO，必须转回本地再归日，
+ *  否则本地 0-8 点做完的会归到昨天。「已完成」视图和日历的已完成桶共用这一个函数，
+ *  不许各写一遍——两处口径一旦分家，同一件事在两个页面会落在不同的日子 */
+export function rowDoneDay(r: DateRow): string {
+  return toYMD(new Date(rowDoneAt(r)));
 }
 
 /** 一批行里涉及的任务 id，按出现顺序去重。分拆后一件事会占好几行，

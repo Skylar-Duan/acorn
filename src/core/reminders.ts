@@ -39,7 +39,7 @@ function sweep() {
   );
   if (!dueOnes.length) return;
   for (const t of dueOnes) {
-    void fire("橡果 · 到点了", t.title || "有一件事到点了");
+    void fire("橡果 · 提醒", t.title || "有一条任务到时间了");
   }
   // 直接改 store（不进撤销栈——提醒消费不是用户动作）
   appStore.setState({

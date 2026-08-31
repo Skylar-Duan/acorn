@@ -62,6 +62,8 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
     e.stopPropagation();
     if (leaving) return; // 完成动画播放中，重复点击不能把循环任务推进两轮
     if (sub) {
+      // 完成时刻由 store.applySubPatch 统一盖/清（这里走的是 updateSubtask，不经 toggleSubtask），
+      // 所以下面几处都不用、也不该自己算时间戳
       // 用幂等置位而非 toggle：950ms 动画窗口内用户可能已在展开卡片里改过状态
       if (sub.done) {
         updateSubtask(task.id, sub.id, { done: false });

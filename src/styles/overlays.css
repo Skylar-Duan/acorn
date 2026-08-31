@@ -34,6 +34,39 @@
 }
 .rescue-foot .set-hint { flex: 1; }
 
+/* ---------- 开机的版本更新弹窗 .update- ----------
+   进度条与更新说明直接借 settings.css 的 .up-bar / .up-progress / .up-notes：
+   设置页是 App.tsx 静态引入的，那份样式一定在，不会出现「弹窗有框没条」。 */
+.modal.update-modal { min-width: 460px; max-width: 560px; }
+.update-head { padding: 20px 22px 10px; }
+.update-head h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+.update-head p { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+.update-required {
+  margin: 0 22px 10px; padding: 9px 11px;
+  border-radius: var(--r-sm); background: var(--accent-soft);
+  font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.75;
+}
+.update-notes { margin: 0 22px 12px; }
+.update-progress { padding: 0 22px 12px; }
+.update-note { padding: 0 22px 12px; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+.update-hint { font-size: var(--fs-xs); color: var(--ink-3); }
+.update-err {
+  padding: 0 22px 12px; font-size: var(--fs-sm); color: #C0564A; line-height: 1.7;
+}
+.update-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 12px 20px; border-top: 1px solid var(--hair);
+}
+.update-foot .spacer { flex: 1; }
+.update-tail {
+  padding: 0 22px 16px; font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.7;
+}
+
+/* 窄屏（手机）：别让 min-width 把框顶出屏幕 */
+@media (max-width: 760px) {
+  .modal.update-modal { min-width: 0; width: calc(100vw - 28px); }
+}
+
 /* ---------- 命令面板 .cp- ---------- */
 .cp-modal { animation: card-in .16s ease-out; }
 .cp-input {

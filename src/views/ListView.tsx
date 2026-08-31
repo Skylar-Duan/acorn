@@ -32,7 +32,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
     switch (kind) {
       case "inbox":
         return {
-          title: "随手记", sub: "想到就记，日期和归属可以待会儿再说",
+          title: "随手记", sub: "没有日期、也没有归入清单的任务",
           tasks: sortTasks(alive.filter((t) => !t.done && !t.listId && !t.due), sortMode),
           showAdd: true, defaults: {}, fade: true,
         };
@@ -44,7 +44,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
         };
       case "who":
         return {
-          title: who ?? "需求方", sub: `为 TA 做的所有事`,
+          title: who ?? "需求方", sub: "这个需求方名下的所有任务",
           tasks: sortTasks(alive.filter((t) => !t.done && who !== null && t.who.includes(who)), sortMode),
           showAdd: true, defaults: { who: who ? [who] : [] }, fade: true,
         };
@@ -149,7 +149,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
                       </span>
                     )}
                     <button className="btn ghost" onClick={() => restoreTask(t.id)}>恢复</button>
-                    <button className="btn ghost" title="不等 30 天，现在就清掉这一条" onClick={() => purgeTask(t.id)}>
+                    <button className="btn ghost" title="不等 30 天，立即彻底删除" onClick={() => purgeTask(t.id)}>
                       彻底删除
                     </button>
                   </span>
@@ -168,10 +168,9 @@ export default function ListView({ kind }: { kind: ListKind }) {
         ))}
         {tasks.length === 0 && (
           <div className="empty">
-            <span className="glyph">🍂</span>
-            {kind === "trash" ? "回收站是空的"
-              : kind === "inbox" ? "想到什么，就在上面记一条"
-              : "空空如也"}
+            {kind === "trash" ? "回收站是空的。"
+              : kind === "inbox" ? "还没有记录，在上面记一条。"
+              : "这里没有任务。"}
           </div>
         )}
       </div>

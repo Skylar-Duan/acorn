@@ -32,7 +32,7 @@ export async function maybeRunSmoke(): Promise<boolean> {
     check("完成任务", after.tasks.find((t) => t.id === id2)?.done === true);
 
     await flushSave();
-    const reread = await persist.loadData();
+    const reread = (await persist.loadData()).data;
     check("落盘后重读", !!reread && reread.tasks.some((t) => t.id === id1) && reread.tasks.find((t) => t.id === id2)?.done === true);
 
     const p = parseQuickAdd("明天下午3点 交周报 /工作 @李哥 #紧要 !高", {
@@ -59,7 +59,7 @@ export async function maybeRunSmoke(): Promise<boolean> {
     });
     requestSave();
     await flushSave();
-    const cleaned = await persist.loadData();
+    const cleaned = (await persist.loadData()).data;
     check("冒烟数据清理", !!cleaned && !cleaned.tasks.some((t) => t.title.startsWith(stamp)));
   } catch (e) {
     check("异常", false, String(e));

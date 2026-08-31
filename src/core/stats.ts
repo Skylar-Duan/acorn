@@ -224,11 +224,11 @@ export function exportWeekMarkdown(r: WeeklyReview): string {
     r.postponed.length === 0 &&
     r.focusMinutes === 0;
   if (isEmpty) {
-    lines.push("", "本周没有记录，好好休息也很重要。");
+    lines.push("", "本周没有记录。");
     return lines.join("\n") + "\n";
   }
 
-  lines.push("", `## ✅ 本周完成 ${r.completed.length} 件`);
+  lines.push("", `## 本周完成 ${r.completed.length} 件`);
   if (r.completed.length === 0) {
     lines.push("", "本周没有完成记录。");
   } else {
@@ -242,7 +242,7 @@ export function exportWeekMarkdown(r: WeeklyReview): string {
   }
 
   if (r.stillOpen.length > 0) {
-    lines.push("", `## ⏳ 未清 ${r.stillOpen.length} 件`);
+    lines.push("", `## 未清 ${r.stillOpen.length} 件`);
     for (const t of r.stillOpen) {
       const overdue = t.due === null ? 0 : diffDays(t.due, r.weekEnd);
       lines.push(`- ${t.title}${overdue > 0 ? `（逾期 ${overdue} 天）` : "（本周到期）"}`);
@@ -250,13 +250,16 @@ export function exportWeekMarkdown(r: WeeklyReview): string {
   }
 
   if (r.postponed.length > 0) {
-    lines.push("", "## 🔁 反复顺延");
+    lines.push("", "## 反复顺延");
     for (const t of r.postponed) {
-      lines.push(`- ${t.title}（顺延 ${t.postponeCount} 次，考虑拆小或放弃）`);
+      lines.push(`- ${t.title}（顺延 ${t.postponeCount} 次）`);
     }
   }
 
-  lines.push("", `## 🍅 专注合计 ${fmtMinutes(r.focusMinutes)}`);
+  // 专注入口收起来之后不会再有新记录，0 分钟就别在周报里占一行；历史有数据的照常输出
+  if (r.focusMinutes > 0) {
+    lines.push("", `## 专注合计 ${fmtMinutes(r.focusMinutes)}`);
+  }
 
   if (r.perWho.length > 0) {
     lines.push("", "## 按需求方");

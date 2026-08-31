@@ -18,6 +18,13 @@ use tauri::{
 const APP_ID: &str = "com.cdpandas.acorn";
 const BACKUP_KEEP: usize = 30;
 
+/// 橡果会写进 `backups/` 的文件名前缀，一共就这三种：
+/// 每日轮换 `data-YYYYMMDD.json`、覆盖前 `pre-restore-*.json`、导入前 `pre-import-*.json`。
+///
+/// **「清空本机」按这一组删**（见 is_acorn_backup_name）：那个目录不归橡果独占，
+/// 不能整个递归删掉。所以**再加一种备份就必须加进这里**，否则清空之后它会留在盘上。
+const BACKUP_PREFIXES: [&str; 3] = ["data", "pre-restore", "pre-import"];
+
 struct DataDir(Mutex<PathBuf>);
 
 // ---------- 配置（数据目录指针存在本机 AppData，数据本体在指针指向的地方） ----------
@@ -195,7 +202,22 @@ fn persist_configured_dir(app: &AppHandle, dir: &Path) -> Result<(), String> {
     recent.truncate(8);
 
     let json = serde_json::json!({ "dataDir": here, "recentDirs": recent });
-    fs::write(&p, json.to_string()).map_err(|e| e.to_string())
+    fs::write(&p, json.to_string()).map_err(|e| e.to_string())?;
+    write_datadir_hint(app, dir);
+    Ok(())
+}
+
+/// 给 NSIS 卸载钩子留的纯文本数据目录路径（`%APPDATA%\com.cdpandas.acorn\datadir.txt`）。
+///
+/// 为什么不让钩子直接读 config.json：**NSIS 没有 JSON 解析器**。
+/// 用户把数据文件夹换到别的盘之后，卸载时那份数据就在模板自带的
+/// `$APPDATA\${BUNDLEID}` / `$LOCALAPPDATA\${BUNDLEID}` 之外，钩子得知道它在哪。
+/// 不写换行——钩子那边 FileRead 一次读到底，少一道去尾的功夫。
+fn write_datadir_hint(app: &AppHandle, dir: &Path) {
+    let Some(p) = config_path(app) else { return };
+    let Some(parent) = p.parent() else { return };
+    let _ = fs::create_dir_all(parent);
+    let _ = fs::write(parent.join("datadir.txt"), dir.to_string_lossy().as_bytes());
 }
 
 // ---------- 数据文件 ----------
@@ -420,6 +442,173 @@ fn restore_backup(state: State<DataDir>, name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 把当前数据另存一份带前缀的备份，返回文件名。
+/// 覆盖类操作（从云端覆盖本机 / 导入）动手之前先留条退路。
+///
+/// **「没什么可备份的」不是错误**：本机还没有 data.json（刚清空过、换新机器、
+/// 或者登录后那一轮同步没成）时返回 Ok(None)。调用方要拿它跟「写失败」分开——
+/// 没有旧数据就没有退路可言，把这种情况报成写盘失败，会把「从云端拿回来」
+/// 这条唯一的恢复路径堵死，而且报的原因还是错的（用户的盘既没满也没只读）。
+#[tauri::command]
+fn snapshot_backup(state: State<DataDir>, prefix: String) -> Result<Option<String>, String> {
+    // 前缀要拼进文件名：只收登记过的那几个。既挡住路径穿越，也保证
+    // 「清空本机」那边按 BACKUP_PREFIXES 删的时候一定删得掉
+    if !BACKUP_PREFIXES.contains(&prefix.as_str()) {
+        return Err("未登记的备份前缀".into());
+    }
+    let dir = state.0.lock().unwrap().clone();
+    let file = data_file(&dir);
+    if !file.exists() {
+        return Ok(None);
+    }
+    let bdir = dir.join("backups");
+    fs::create_dir_all(&bdir).map_err(|e| e.to_string())?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let name = format!("{prefix}-{stamp}.json");
+    fs::copy(&file, bdir.join(&name)).map_err(|e| e.to_string())?;
+    Ok(Some(name))
+}
+
+// ---------- 清空本机（登出时的隐私路径） ----------
+
+/// 把这台设备上的橡果数据删干净。**调用方必须先确认本地那份已经在云端**，
+/// 这里只负责删得彻底。
+///
+/// 唯一的自保闸门：没有 auth.json（这台设备从没登过账号）就直接拒绝。
+/// 不能让「我只是想清个缓存」的调用，把从来没上过云的数据删掉——那是删了就没了。
+///
+/// **清的范围必须跟「找回数据」扫的范围一样宽**：candidate_dirs() 除了当前目录和
+/// recentDirs，还无条件扫默认位置、%APPDATA% / %LOCALAPPDATA% 下的 userdata、
+/// exe 旁边、沙箱镜像。只清当前目录的话，换过数据文件夹的用户在默认位置还躺着一整份
+/// 旧账本（set_data_dir 是复制过去、旧的原样留着当兜底），清完 reload 立刻被
+/// 「找到了以前的数据」原样端回来——白清一场，而且这本来是条隐私功能。
+///
+/// 范围宽就得有护栏，两道都在 purge_targets 与 purge_data_files 里：
+/// 只碰真有 data.json 的目录、只按文件名删橡果自己写出来的东西。
+/// 返回真正清过的目录，前端拿它跟确认框里列过的名单对得上。
+#[tauri::command]
+fn purge_local_data(app: AppHandle, state: State<DataDir>) -> Result<Vec<String>, String> {
+    let auth = auth_path(&app).ok_or("找不到配置目录")?;
+    if !auth.exists() {
+        return Err("这台设备没有登录过云账号，不清空本地数据".into());
+    }
+    let dir = state.0.lock().unwrap().clone();
+
+    // recentDirs 待会儿要被清掉，所以候选目录必须**在那之前**取一次，否则扫不全
+    let mut cleaned: Vec<String> = vec![];
+    for d in purge_targets(&dir) {
+        purge_data_files(&d);
+        cleaned.push(d.to_string_lossy().to_string());
+    }
+
+    // 登录令牌（连写一半留下的临时文件一起）
+    let _ = fs::remove_file(&auth);
+    let _ = fs::remove_file(auth.with_extension("json.tmp"));
+
+    // recentDirs 必须一起清。不清的话下次启动 initStore 发现任务为 0，
+    // 会扫 recentDirs 把刚删掉的目录当「找回来的数据」推荐回来——白删一场还吓人一跳。
+    // freshStart 是给下一次启动的一次性标记：别再建那本带「工作」「生活」的默认账本，
+    // 否则用户一登录就把两条新 id 的清单推上云，别的设备上各多出一对，得手工删。
+    // 标记只能放这儿，不能放 localStorage——清空的最后一步 clearLocalPrefs 会扫掉它
+    if let Some(p) = config_path(&app) {
+        let json = serde_json::json!({
+            "dataDir": dir.to_string_lossy().to_string(),
+            "recentDirs": Vec::<String>::new(),
+            "freshStart": true,
+        });
+        let _ = fs::write(&p, json.to_string());
+    }
+    Ok(cleaned)
+}
+
+/// 这一次「清空本机」会动到哪些目录。**清和确认框用的必须是同一份名单**——
+/// 用户得在按下确定之前，看得见 `D:\我的文档` 这种自己的通用文件夹也在里面。
+///
+/// 当前数据目录一定在内：那就是橡果正用着的那份。其余候选目录**只挑真有 data.json 的**——
+/// candidate_dirs 为了「找回数据」故意扫得很宽（recentDirs 里 8 个用户自选文件夹、
+/// 沙箱镜像里指针指向的任意路径），里面绝大多数根本没有橡果的东西，
+/// 少了这道护栏，「清空本机」就成了「对一堆用户自己的文件夹逐个动手」。
+fn purge_targets(current: &Path) -> Vec<PathBuf> {
+    let mut seen: Vec<PathBuf> = vec![];
+    let mut out: Vec<PathBuf> = vec![];
+    for d in candidate_dirs(current) {
+        let canon = d.canonicalize().unwrap_or_else(|_| d.clone());
+        if seen.contains(&canon) {
+            continue;
+        }
+        seen.push(canon);
+        if d == current || data_file(&d).exists() {
+            out.push(d);
+        }
+    }
+    out
+}
+
+/// 确认框要逐条列出的路径。前端在弹确认之前调一次，让用户先看见名单再决定。
+#[tauri::command]
+fn list_purge_targets(state: State<DataDir>) -> Vec<String> {
+    let dir = state.0.lock().unwrap().clone();
+    purge_targets(&dir).iter().map(|p| p.to_string_lossy().to_string()).collect()
+}
+
+/// 这个文件名是不是橡果自己写进 backups/ 的（见 BACKUP_PREFIXES）。
+/// 清空本机时按它逐个删文件，**不递归删目录**。
+fn is_acorn_backup_name(name: &str) -> bool {
+    name.ends_with(".json") && BACKUP_PREFIXES.iter().any(|p| name.starts_with(&format!("{p}-")))
+}
+
+/// 删掉某个目录里「橡果自己写出来的」那些文件。
+///
+/// **只按文件名删，绝不 RMDir 目录本身**：数据文件夹是用户拿系统文件夹选择器随便挑的
+/// 一个已有目录（set_data_dir 不追加子目录），橡果并不独占它——递归删下去会把用户
+/// 放在同一个文件夹里的其它东西一起删光。
+fn purge_data_files(dir: &Path) {
+    // 数据本体与原子写留下的中间态
+    let _ = fs::remove_file(data_file(dir));
+    let _ = fs::remove_file(dir.join("data.json.tmp"));
+    let _ = fs::remove_file(dir.join("data.json.old"));
+    if let Ok(rd) = fs::read_dir(dir) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("data.json.corrupt-") {
+                let _ = fs::remove_file(e.path());
+            }
+        }
+    }
+    // 每日备份 30 份 + pre-restore / pre-import：只在本地，云端一份都没有。
+    // **同样只按文件名删**：数据文件夹是用户随便挑的一个已有目录，backups 是个
+    // 再常见不过的目录名，remove_dir_all 下去会把用户自己放在里面的东西一起删光
+    let bdir = dir.join("backups");
+    if let Ok(rd) = fs::read_dir(&bdir) {
+        for e in rd.flatten() {
+            if is_acorn_backup_name(&e.file_name().to_string_lossy()) {
+                let _ = fs::remove_file(e.path());
+            }
+        }
+    }
+    let _ = fs::remove_dir(&bdir); // 不带 _all：还剩别人的文件就删不掉，正好该留着
+    let _ = fs::remove_file(dir.join("smoke-report.json"));
+    let _ = fs::remove_file(dir.join(".acorn-probe"));
+}
+
+/// 清空之后那一次启动的一次性标记：读到就地清掉，返回 true。
+///
+/// 前端据此用一本空账本开局（lists / tasks 全空）并跳过落盘，等用户重新登录后
+/// 由云端那份填回来。放在 Rust 侧的 config.json 而不是 localStorage——
+/// 清空的最后一步 clearLocalPrefs() 会把 `acorn-` 开头的 key 全扫掉。
+#[tauri::command]
+fn take_fresh_start(app: AppHandle) -> bool {
+    let Some(p) = config_path(&app) else { return false };
+    let Some(mut v) = read_json_file(&p) else { return false };
+    if v.get("freshStart").and_then(|x| x.as_bool()) != Some(true) {
+        return false;
+    }
+    if let Some(m) = v.as_object_mut() {
+        m.remove("freshStart");
+    }
+    let _ = fs::write(&p, v.to_string());
+    true
+}
+
 // ---------- 云账号凭据 ----------
 //
 // 登录令牌**不能**放进 data.json：那份是要整份传上云、也会被导出成文件给人看的。
@@ -465,20 +654,71 @@ fn save_auth(app: AppHandle, json: Option<String>) -> Result<(), String> {
 /// 为什么是**缓存**目录而不是数据目录：Tauri 生成的安卓工程里已经声明了 FileProvider，
 /// 它的 file_paths.xml 覆盖 cache-path，所以放这儿才能把 content:// 交给系统安装器；
 /// 而且装完这个文件就没用了，本来就该待在能被系统随时回收的地方。
-#[tauri::command]
-fn save_download(app: AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
+fn write_to_cache(app: &AppHandle, name: &str, bytes: &[u8]) -> Result<String, String> {
     // 只收纯文件名，不许带路径分隔符——否则可以写到目录外面去
     if name.is_empty() || name.contains(['/', '\\', ':']) || name.contains("..") {
         return Err("文件名不合法".into());
     }
     let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(&name);
+    let path = dir.join(name);
     // 先写临时文件再改名：下到一半断电，不会留下一个「看起来完整」的坏包
     let tmp = path.with_extension("part");
-    fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+    fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// 安卓走这条：字节按 JSON 数字数组传过来。
+///
+/// 安卓的 webview 读不了自定义协议的请求体（Tauri 自己在 ipc-protocol.js 里就是这么判的），
+/// 所以手机上只能走 JSON 这条。APK 33MB 实测能过。
+#[tauri::command]
+fn save_download(app: AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    write_to_cache(&app, &name, &bytes)
+}
+
+/// 桌面走这条：字节走原始 IPC（application/octet-stream），文件名放在请求头里。
+///
+/// 为什么另开一条：桌面安装包接近 30MB，按 JSON 数字数组序列化会膨胀成 80-100MB 的字符串，
+/// WebView2 上光是拼这个串就能把内存顶爆。原始 IPC 是等长传输，不做任何编码。
+/// 这条路在安卓上不可用（见 save_download 的说明），所以两条都得留着。
+#[tauri::command]
+fn save_download_raw(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let name = request
+        .headers()
+        .get("acorn-file-name")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => write_to_cache(&app, name, bytes),
+        _ => Err("这条命令只收原始字节".into()),
+    }
+}
+
+/// 拉起下好的安装器，**必须带 `/UPDATE`**。
+///
+/// 为什么不能用 opener 插件的 openPath：它只是让系统「打开」这个文件，递不进命令行参数，
+/// 于是新安装器的 `$UpdateMode = 0`，会照常去调旧版的 uninstaller；
+/// 卸载钩子（nsis-hooks.nsh）那一段就跑了，auth.json 被删——
+/// **每一次 App 内升级都把用户静默登出，云同步从此停摆**。
+///
+/// 带上 /UPDATE 之后，安装器在 PageLeaveReinstall 里直接走「不卸载、原地覆盖」那一支，
+/// 旧 uninstaller 压根不会启动，钩子一次都不执行。装完还登录着，同步照常。
+///
+/// 不加 `#[cfg(desktop)]`：invoke_handler 那张表是两端共用的一张。手机上装 APK 走的是
+/// 系统安装器（opener 插件），这条命令在安卓上永远不会被调到。
+#[tauri::command]
+fn run_installer(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err("安装包不见了，请重新下载".into());
+    }
+    std::process::Command::new(&p)
+        .arg("/UPDATE")
+        .spawn()
+        .map_err(|e| format!("无法启动安装程序：{e}"))?;
+    Ok(())
 }
 
 // ---------- 冒烟自检 ----------
@@ -599,6 +839,14 @@ pub fn run() {
             // 托盘只在桌面建
             #[cfg(desktop)]
             setup_tray(_app.handle())?;
+            // 每次启动刷一遍给卸载钩子看的数据目录路径。
+            // 只写文件、不碰窗口 API（在 setup 里调窗口 API 会卡死事件循环）
+            #[cfg(desktop)]
+            {
+                let state: State<DataDir> = _app.state();
+                let dir = state.0.lock().unwrap().clone();
+                write_datadir_hint(_app.handle(), &dir);
+            }
             // 安卓：拿 Tauri 算出来的真实私有目录校准一次。
             // 上面用的是标准路径 /data/data/<包名>/files，绝大多数机器就是它；
             // 多用户 / 工作资料的机器上真实路径是 /data/user/<N>/<包名>/files，这里纠正过来
@@ -635,6 +883,14 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+            // 说明窗有标题栏，点 × 只隐藏不销毁——真销毁了 getByLabel 就返回 null，
+            // 再点「打开用法」不会有任何反应
+            if window.label() == "guide" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -647,9 +903,15 @@ pub fn run() {
             ensure_daily_backup,
             list_backups,
             restore_backup,
+            snapshot_backup,
+            purge_local_data,
+            list_purge_targets,
+            take_fresh_start,
             load_auth,
             save_auth,
             save_download,
+            save_download_raw,
+            run_installer,
             is_smoke,
             write_smoke_report,
             exit_app,
@@ -675,6 +937,27 @@ mod tests {
         assert_eq!(parse_pointer(r#"{"dataDir":""}"#), None);
         assert_eq!(parse_pointer(r#"{"other":1}"#), None);
         assert_eq!(parse_pointer("不是 JSON"), None);
+    }
+
+    /// 清空本机时 backups/ 是**按文件名逐个删**的（那个目录不归橡果独占，不能递归删）。
+    /// 所以「实际写出去的每一种名字」都必须落在 BACKUP_PREFIXES 里，
+    /// 否则清完还留在盘上——这条隐私功能就白做了。加一种新备份时这里会先红。
+    #[test]
+    fn backup_names_are_all_purgeable() {
+        let day = chrono::Local::now().format("%Y%m%d").to_string();
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        // ensure_daily_backup 写的每日轮换
+        assert!(is_acorn_backup_name(&format!("data-{day}.json")));
+        // restore_backup 恢复前留的那一份
+        assert!(is_acorn_backup_name(&format!("pre-restore-{stamp}.json")));
+        // snapshot_backup 写的：前缀由前端传，而它只收 BACKUP_PREFIXES 里登记过的
+        for prefix in BACKUP_PREFIXES {
+            assert!(is_acorn_backup_name(&format!("{prefix}-{stamp}.json")), "{prefix}");
+        }
+        // 别人放在同一个 backups 目录里的东西一个都不许碰
+        assert!(!is_acorn_backup_name("我的照片.json"));
+        assert!(!is_acorn_backup_name("data-2026.txt"));
+        assert!(!is_acorn_backup_name("backup.json"));
     }
 
     #[test]

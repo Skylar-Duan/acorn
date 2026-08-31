@@ -7,8 +7,9 @@ import type { ParseResult } from "../core/parse";
 import type { Priority, RepeatRule } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { addDays, dayOfWeek, formatShort, todayYMD } from "../core/dates";
-import { addList, addTask, allTags, allWho, navigate, useApp } from "../core/store";
+import { addList, addTask, allTags, allWho, useApp } from "../core/store";
 import SyntaxInput from "./SyntaxInput";
+import { useGuideEntry } from "./GuideSheet";
 
 export interface QuickAddBarProps {
   /** 视图上下文默认值：如清单视图里默认加进该清单 */
@@ -31,7 +32,7 @@ interface Picks {
 
 const EMPTY: Picks = { due: null, listId: null, who: [], priority: 0, repeat: null };
 
-const PRIO_NAME = ["不标", "低", "中", "高"] as const;
+const PRIO_NAME = ["无", "低", "中", "高"] as const;
 
 /** 「每周/每月」按当天算，所以每次打开菜单现算——常驻托盘跨过零点也不会用昨天的星期几 */
 function repeatChoices(today: string): { label: string; rule: RepeatRule | null }[] {
@@ -85,6 +86,7 @@ export default function QuickAddBar({
   const [menu, setMenu] = useState<MenuId | null>(null);
   const today = todayYMD();
   const whoNames = allWho(data).map((w) => w.who);
+  const guide = useGuideEntry();
 
   // 点别处关掉打开的小菜单
   useEffect(() => {
@@ -147,12 +149,13 @@ export default function QuickAddBar({
           whos={whoNames}
           showChips
         />
-        <button className="qa-help" title="一句话怎么写" onClick={() => navigate("guide")}>?</button>
+        <button className="qa-help" title="怎么写一句话" onClick={guide.open}>?</button>
       </div>
+      {guide.sheet}
 
       {withPickers && (
         <div className="qa-picks">
-          <span className="qa-hint">或者点着选：</span>
+          <span className="qa-hint">也可以点选：</span>
 
           <Pick menu={menu} setMenu={setMenu} id="due" on={!!pick.due} label={<>📅 {pick.due ? formatShort(pick.due) : "日期"}</>}>
             <button className="item" onClick={() => { setPick({ ...pick, due: today }); setMenu(null); }}>今天</button>
@@ -257,7 +260,7 @@ export default function QuickAddBar({
               清空
             </button>
           )}
-          <span className="qa-tip">选了就一直生效，方便连着记好几条</span>
+          <span className="qa-tip">选中的会保持生效，方便连续记录</span>
         </div>
       )}
     </div>

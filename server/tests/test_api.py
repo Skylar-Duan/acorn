@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -18,6 +19,9 @@ sys.path.insert(0, str(ROOT))
 # 必须在 import app 之前设好：配置是模块级读环境变量的
 _TMP = tempfile.mkdtemp(prefix="acorn-test-")
 os.environ["ACORN_DB"] = str(Path(_TMP) / "test.db")
+# 版本清单目录也指到临时目录：Settings 是 frozen dataclass，只能在 import 前用环境变量改
+PUBLIC = Path(_TMP) / "public"
+os.environ["ACORN_PUBLIC_DIR"] = str(PUBLIC)
 os.environ["ACORN_JWT_SECRET"] = "test-secret-not-used-anywhere-real"
 os.environ.pop("SMTP_HOST", None)
 os.environ.pop("SMTP_PASSWORD", None)
@@ -340,6 +344,98 @@ def test_token_from_other_secret_rejected():
 
     forged = make_token("不是真的密钥", 1, 1, 30)
     assert client.get("/api/me", headers=auth(forged)).status_code == 401
+
+
+# ---------- 版本清单（自动更新的那一问） ----------
+#
+# 这三种情况都得分清楚，否则表现全一样：「明明发了包却查不到更新」。
+# 客户端那头只认 available 这一个字段，所以清单坏了必须回 false，不能 500。
+
+
+def write_manifest(subdir: str, raw: str) -> None:
+    d = PUBLIC / subdir
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "latest.json").write_text(raw, encoding="utf-8")
+
+
+def drop_manifest(subdir: str) -> None:
+    p = PUBLIC / subdir / "latest.json"
+    if p.exists():
+        p.unlink()
+
+
+def manifest_json(file: str, version: str) -> str:
+    return json.dumps(
+        {
+            "file": file,
+            "version": version,
+            "schema": 6,
+            "size": 27411625,
+            "sha256": "a" * 64,
+            "notes": "修了几个小问题",
+            "publishedAt": "2026-08-31T10:00:00Z",
+            "pageUrl": "https://github.com/Skylar-Duan/acorn/releases/latest",
+        },
+        ensure_ascii=False,
+    )
+
+
+def test_android_latest_without_manifest():
+    """还没发过包：安静地回 available=false，不是 404 也不是 500。"""
+    drop_manifest("android")
+    r = client.get("/api/android/latest")
+    assert r.status_code == 200
+    assert r.json() == {"available": False}
+
+
+def test_android_latest_broken_manifest():
+    """清单在但解不开（编码写歪过一次）：也回 false，别把 500 甩给客户端。"""
+    write_manifest("android", "{ 这不是 JSON")
+    r = client.get("/api/android/latest")
+    assert r.status_code == 200
+    assert r.json()["available"] is False
+    drop_manifest("android")
+
+
+def test_android_latest_ok():
+    write_manifest("android", manifest_json("Acorn_1.9.0_arm64.apk", "1.9.0"))
+    body = client.get("/api/android/latest").json()
+    assert body["available"] is True
+    assert body["version"] == "1.9.0"
+    assert body["schema"] == 6
+    # 下载地址必须落在 /download/android/ 下——客户端只认自家域名，拼错就一律不下载
+    assert body["url"].endswith("/download/android/Acorn_1.9.0_arm64.apk")
+    drop_manifest("android")
+
+
+def test_desktop_latest_without_manifest():
+    drop_manifest("windows")
+    assert client.get("/api/desktop/latest").json() == {"available": False}
+
+
+def test_desktop_latest_broken_manifest():
+    write_manifest("windows", "{ 这不是 JSON")
+    assert client.get("/api/desktop/latest").json()["available"] is False
+    drop_manifest("windows")
+
+
+def test_desktop_latest_ok():
+    """接口名是 desktop，目录名是 windows——两个名字不一样，别并成一个。"""
+    write_manifest("windows", manifest_json("Acorn_1.9.0_x64-setup.exe", "1.9.0"))
+    body = client.get("/api/desktop/latest").json()
+    assert body["available"] is True
+    assert body["version"] == "1.9.0"
+    assert body["url"].endswith("/download/windows/Acorn_1.9.0_x64-setup.exe")
+    drop_manifest("windows")
+
+
+def test_channels_do_not_leak_into_each_other():
+    """只发了桌面包时，手机那头必须还是「没有更新」。"""
+    drop_manifest("android")
+    write_manifest("windows", manifest_json("Acorn_1.9.0_x64-setup.exe", "1.9.0"))
+    assert client.get("/api/android/latest").json() == {"available": False}
+    assert client.get("/api/desktop/latest").json()["available"] is True
+    drop_manifest("windows")
 
 
 # ---------- 跑起来 ----------

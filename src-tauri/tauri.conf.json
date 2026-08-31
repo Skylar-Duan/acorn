@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Acorn",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "identifier": "com.cdpandas.acorn",
   "build": {
     "beforeDevCommand": "npm run vite:dev",
@@ -48,6 +48,18 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false
+      },
+      {
+        "label": "guide",
+        "title": "一句话记事",
+        "url": "guide.html",
+        "width": 720,
+        "height": 820,
+        "minWidth": 420,
+        "minHeight": 420,
+        "visible": false,
+        "decorations": true,
+        "center": true
       }
     ],
     "security": {
@@ -66,7 +78,8 @@
     "windows": {
       "nsis": {
         "languages": ["SimpChinese"],
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "nsis-hooks.nsh"
       }
     }
   }

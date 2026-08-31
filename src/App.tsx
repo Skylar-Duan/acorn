@@ -6,7 +6,6 @@ import ListView from "./views/ListView";
 import Habits from "./views/Habits";
 import Plan from "./views/Plan";
 import Done from "./views/Done";
-import Guide from "./views/Guide";
 import Calendar from "./views/Calendar";
 import FocusView from "./views/FocusView";
 import StatsView from "./views/StatsView";
@@ -16,6 +15,8 @@ import SearchOverlay from "./components/SearchOverlay";
 import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
 import DataRescue from "./components/DataRescue";
+import UpdateDialog, { UpdateNudge } from "./components/UpdateDialog";
+import { DATA_VERSION } from "./core/model";
 import {
   clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
   navigate, postponeTasks, setPaletteOpen, setSearchOpen, setSelection,
@@ -42,6 +43,7 @@ export default function App() {
   const view = useApp((s) => s.ui.view);
   const loaded = useApp((s) => s.loaded);
   const loadError = useApp((s) => s.loadError);
+  const dataTooNew = useApp((s) => s.dataTooNew);
   const toast = useApp((s) => s.ui.toast);
   const selectedIds = useApp((s) => s.ui.selectedIds);
   const paletteOpen = useApp((s) => s.ui.paletteOpen);
@@ -150,7 +152,6 @@ export default function App() {
       case "habits": return <Habits />;
       case "trash": return <ListView kind="trash" />;
       case "calendar": return <Calendar />;
-      case "guide": return <Guide />;
       case "focus": return <FocusView />;
       case "stats": return <StatsView />;
       case "settings": return <Settings />;
@@ -158,14 +159,36 @@ export default function App() {
   }, [view]);
 
   if (!loaded) {
-    return <div className="center-note"><span className="big">橡果</span>正在打开数据…</div>;
+    return <div className="center-note"><span className="big">橡果</span>正在读取数据…</div>;
+  }
+  if (dataTooNew) {
+    return (
+      <div className="center-note">
+        <span className="big">这台设备上的橡果版本过旧</span>
+        <span>
+          数据文件夹里的数据由新版本（模型 v{dataTooNew.schema}）写入，这台设备上的橡果只支持到 v{DATA_VERSION}。
+        </span>
+        <span>
+          数据没有改动，也没有写回磁盘：按旧格式读一遍再存回去，会丢掉新版本才有的字段。
+          把这台设备上的橡果升级到同一版本即可。
+        </span>
+        {/* 这一屏的正事就是让人升级，所以升级入口必须在这儿——设置页此刻根本渲染不到，
+            以前只有一个「重试」，用户在应用里没有任何一条升级的路 */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
+          <button className="btn primary" onClick={() => location.reload()}>重试</button>
+          <UpdateNudge />
+        </div>
+        {/* 查到新版就让它盖在这一屏上（UpdateDialog 不再对 dataTooNew 让位） */}
+        <UpdateDialog />
+      </div>
+    );
   }
   if (loadError) {
     return (
       <div className="center-note">
         <span className="big">数据打不开</span>
         <span>{loadError}</span>
-        <span>数据文件夹现在不可用。若数据放在移动硬盘或网盘上，接好后点重试；也可以去设置换一个文件夹。</span>
+        <span>数据文件夹当前不可用。数据若放在移动硬盘或网盘上，连接后点重试；也可以到设置里更换文件夹。</span>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn primary" onClick={() => location.reload()}>重试</button>
           <button className="btn" onClick={() => navigate("settings")}>打开设置</button>
@@ -184,6 +207,8 @@ export default function App() {
       {body}
 
       <DataRescue />
+      {/* 排在 DataRescue 后面：两个都在时由 UpdateDialog 自己让位（见组件里那段判断） */}
+      <UpdateDialog />
       {paletteOpen && <CommandPalette />}
       {searchOpen && <SearchOverlay />}
       <ContextMenu />

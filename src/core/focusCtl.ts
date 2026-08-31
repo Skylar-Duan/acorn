@@ -125,7 +125,7 @@ async function onTick() {
     // 按真实运行时间记（正常跑完 = totalMinutes；中途睡过去的只记睡前部分）
     const earned = Math.min(Math.round(earnedMs() / 60000), s.totalMinutes);
     if (earned >= 1) logFocus(s.taskId, earned);
-    showToast(`🍅 专注 ${earned} 分钟完成`, false);
+    showToast(`已记录专注 ${earned} 分钟`, false);
     void notifyDone(earned);
     pausedRemainMs = null;
     accumulatedMs = 0;
@@ -144,7 +144,7 @@ async function notifyDone(minutes: number) {
     );
     let granted = await isPermissionGranted();
     if (!granted) granted = (await requestPermission()) === "granted";
-    if (granted) sendNotification({ title: "专注完成", body: `这一轮 ${minutes} 分钟收进口袋了，歇口气。` });
+    if (granted) sendNotification({ title: "专注完成", body: `本轮 ${minutes} 分钟已记录。` });
   } catch {
     // 通知失败不影响主流程
   }

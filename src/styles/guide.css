@@ -1,7 +1,60 @@
-/* 用法页：举例卡片。前缀 .gd-
-   手机上一列铺满、卡片大一点好点；电脑上自动铺成多列。 */
+/* 一句话记事说明：举例卡片。前缀 .gd-
+   手机上一列铺满、卡片大一点好点；电脑上自动铺成多列。
+
+   这块内容有两个容器：桌面的独立窗口（.gd-win）和手机的应用内弹层（.gd-sheet）。
+   主窗的 .main / .view-head / .view-body 都在 app.css 里，这两处都用不上，
+   所以外壳样式写在这儿。 */
 
 .gd-body { max-width: 940px; }
+
+/* ---------- 独立窗口 ---------- */
+.gd-win {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 26px 0;
+  overflow: hidden;
+}
+.gd-win-head { display: flex; align-items: baseline; gap: 12px; flex: none; flex-wrap: wrap; row-gap: 2px; }
+.gd-win-head h1 { font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.gd-win-head .sub { color: var(--ink-2); font-size: 13px; }
+.gd-win-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 2px 26px; margin-top: 8px; }
+
+/* ---------- 应用内弹层（手机，或桌面开不出窗口时兜底） ---------- */
+.gd-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 100; /* 跟 base.css 的 .overlay 同层，别被命令面板压住 */
+  background: rgba(0, 0, 0, .25);
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+.gd-sheet-panel {
+  flex: 1;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-left: 1px solid var(--hair);
+  border-right: 1px solid var(--hair);
+  padding: 18px 22px 0;
+  overflow: hidden;
+}
+.gd-sheet-panel .gd-win-head { position: relative; padding-right: 34px; }
+.gd-sheet-close {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  border: none;
+  background: none;
+  color: var(--ink-2);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.gd-sheet-close:hover { color: var(--ink); }
 
 .gd-try {
   background: var(--card);
@@ -83,6 +136,9 @@
 .gd-note { font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.55; }
 
 @media (max-width: 760px) {
+  .gd-win, .gd-sheet-panel { padding-left: 16px; padding-right: 16px; }
+  .gd-sheet-panel { border: none; }
+  .gd-win-head h1 { font-size: 20px; }
   .gd-grid { grid-template-columns: 1fr; gap: 12px; }
   .gd-card { padding: 14px 16px 13px; border-radius: 16px; }
   .gd-say { font-size: 14px; padding: 9px 12px; }

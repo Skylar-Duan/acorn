@@ -1,10 +1,34 @@
-// 手机端自动更新的判断逻辑。这块最容易出的错是版本号按字符串比
-// （那样 1.10.0 会小于 1.9.0，用户永远等不到更新），所以钉死。
-import { describe, expect, it } from "vitest";
+// 自动更新的判断逻辑（手机 + 桌面共用）。这块最容易出的错有两个，都在这儿钉死：
+// 1. 版本号按字符串比（那样 1.10.0 会小于 1.9.0，用户永远等不到更新）
+// 2. 「查不到」跟「已是最新」混成一个 null——断网时界面会骗人说「已经是最新版了」
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  compareVersions, isNewer, isRequiredForSync, parseManifest, shouldOffer,
+  afterInstall, checkUpdateNow, dismissUpdate, INSTALL_FALLBACK_MSG, skippedVersion,
+  skipVersion, updateStore,
+} from "../src/core/updateCtl";
+import {
+  compareVersions, downloadPackage, DOWNLOAD_CANCELLED, DOWNLOAD_STALL_MS, EXIT_GRACE_MS,
+  fetchUpdate, installPackage, isCancelled, isNewer, isRequiredForSync, packageName,
+  parseManifest, shouldOffer, UPDATE_CHANNEL,
 } from "../src/core/updater";
 import { DATA_VERSION } from "../src/core/model";
+
+// 这台设备「走不走这套」的开关是 updaterSupported = inTauri && …，浏览器里永远是 false。
+// 下面要测的正是「查到之后弹不弹」「交接之后停在哪儿」，所以把 inTauri 顶成真。
+vi.mock("../src/core/persist", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/core/persist")>()),
+  inTauri: true,
+}));
+
+// 落盘和拉起安装器都是 Rust 那边的事，这儿只要它们「成功了」
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: async (cmd: string, _arg?: unknown, opts?: { headers?: Record<string, string> }) =>
+    (cmd === "save_download_raw" ? `saved:${opts?.headers?.["acorn-file-name"] ?? ""}` : null),
+}));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: async () => undefined,
+  openUrl: async () => undefined,
+}));
 
 const BASE = "https://acorn.cdpandas.com";
 
@@ -107,5 +131,295 @@ describe("是不是非升不可", () => {
     expect(isRequiredForSync(parseManifest(manifest({ schema: DATA_VERSION })))).toBe(false);
     expect(isRequiredForSync(parseManifest(manifest({ schema: 1 })))).toBe(false);
     expect(isRequiredForSync(null)).toBe(false);
+  });
+});
+
+// ---------- 查一次（fetchUpdate） ----------
+
+/** 测试跑在 jsdom 里，UA 不是安卓，所以这儿一律按桌面算 */
+function okResponse(body: unknown) {
+  return { ok: true, status: 200, json: async () => body } as unknown as Response;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("查一次更新", () => {
+  it("测试环境按桌面通道走，包名是 .exe", () => {
+    expect(UPDATE_CHANNEL).toBe("desktop");
+    expect(packageName("1.9.1")).toBe("Acorn_1.9.1.exe");
+  });
+
+  it("查到了：ok=true，info 是解出来的清单，端点按通道拼", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      seen.push(url);
+      return Promise.resolve(okResponse(manifest({ version: "1.9.1" })));
+    });
+    const res = await fetchUpdate();
+    expect(res).toEqual({ ok: true, info: expect.objectContaining({ version: "1.9.1" }) });
+    expect(seen[0]).toBe(`${BASE}/api/desktop/latest`);
+  });
+
+  it("**已经是最新和查不到必须分开**：没发过包是 ok=true + info=null，不是失败", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(okResponse({ available: false })));
+    expect(await fetchUpdate()).toEqual({ ok: true, info: null });
+  });
+
+  it("断网：ok=false / offline——界面靠这个才说得出「检测失败请检查网络」", async () => {
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
+    expect(await fetchUpdate()).toEqual({ ok: false, reason: "offline" });
+  });
+
+  it("服务器返回 5xx：ok=false / http，不能当成「已是最新」", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve({ ok: false, status: 502 } as unknown as Response));
+    expect(await fetchUpdate()).toEqual({ ok: false, reason: "http" });
+  });
+
+  it("清单不是 JSON：算服务端的事（http），别栽给网络", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token");
+        },
+      } as unknown as Response));
+    expect(await fetchUpdate()).toEqual({ ok: false, reason: "http" });
+  });
+
+  it("网慢卡住：12 秒后自己断掉，报 timeout——**绝不能一直挂着挡住启动**", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", (_url: string, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Aborted", "AbortError")));
+      }));
+    const pending = fetchUpdate();
+    await vi.advanceTimersByTimeAsync(12000);
+    expect(await pending).toEqual({ ok: false, reason: "timeout" });
+  });
+});
+
+// ---------- 「这一版不再提醒」 ----------
+
+describe("开机弹窗的打发方式", () => {
+  afterEach(() => {
+    localStorage.removeItem("acorn-update-skip");
+    updateStore.setState({ pending: null });
+  });
+
+  it("「稍后再说」只是关掉，不记任何东西——下次开机还会问", () => {
+    updateStore.setState({ pending: parseManifest(manifest({ version: "1.9.1" })) });
+    dismissUpdate();
+    expect(updateStore.getState().pending).toBeNull();
+    expect(skippedVersion()).toBe("");
+  });
+
+  it("「这一版不再提醒」按版本号记，**不是「永远别提醒」**——下一版照样弹", () => {
+    updateStore.setState({ pending: parseManifest(manifest({ version: "1.9.1" })) });
+    skipVersion("1.9.1");
+    expect(updateStore.getState().pending).toBeNull();
+    expect(skippedVersion()).toBe("1.9.1");
+    expect(skippedVersion() === "1.9.2").toBe(false);
+  });
+});
+
+// ---------- 下载这一段：超时、中断、复位 ----------
+//
+// 这里钉的是同一件事的三个面：下载 27MB 的时候界面上盖着一整块遮罩，
+// 既没有 Esc 也点不掉背景，所以这条请求**永远不许挂死**，也永远得能叫停。
+
+/** 一条「连上了但一个字节都不来」的连接：合盖、切到没网的热点、门户劫持、服务端 hang 都长这样 */
+function hangingFetch() {
+  return (_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      const s = init?.signal;
+      const stop = () => reject(new DOMException("Aborted", "AbortError"));
+      if (s?.aborted) stop(); // 已经断了的 signal 不会再发 abort 事件
+      else s?.addEventListener("abort", stop);
+    });
+}
+
+/** 一条真的在往下走的连接：每 gapMs 吐一块 */
+function streamFetch(chunks: Uint8Array[], gapMs: number) {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  let i = 0;
+  return () =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: { get: () => String(total) },
+      body: {
+        getReader: () => ({
+          read: () =>
+            new Promise((resolve) => {
+              setTimeout(() => {
+                resolve(i < chunks.length
+                  ? { done: false, value: chunks[i++] }
+                  : { done: true, value: undefined });
+              }, gapMs);
+            }),
+        }),
+      },
+    } as unknown as Response);
+}
+
+/** sha256 留空：jsdom 里没有 crypto.subtle，校验那一段不在这几条用例的射程内 */
+const pkg = () => ({ ...parseManifest(manifest())!, sha256: "" });
+
+/** 把一次注定失败的下载收成 Error，好断言它到底是怎么断的 */
+function failure(p: Promise<unknown>): Promise<Error> {
+  return p.then(
+    () => { throw new Error("这次下载本该失败"); },
+    (e) => (e instanceof Error ? e : new Error(String(e))),
+  );
+}
+
+describe("下载安装包", () => {
+  it("**连接挂住就自己断掉**：30 秒没有新字节 → 报「卡住了」，不再永远挂着把应用锁死", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingFetch());
+    const caught = failure(downloadPackage(pkg(), () => {}));
+    await vi.advanceTimersByTimeAsync(DOWNLOAD_STALL_MS);
+    const e = await caught;
+    expect(e.message).toContain("下载卡住了");
+    expect(isCancelled(e)).toBe(false); // 不是用户取消的，界面该报错让人重试
+  });
+
+  it("慢但活着的连接不会被误杀：每收到一批新字节就把看门狗顶回去", async () => {
+    vi.useFakeTimers();
+    const gap = DOWNLOAD_STALL_MS - 5000; // 每块之间差一点就到超时，但一直有新字节
+    vi.stubGlobal("fetch", streamFetch([new Uint8Array(10), new Uint8Array(10), new Uint8Array(10)], gap));
+    const seen: number[] = [];
+    const done = downloadPackage(pkg(), (p) => seen.push(p.received)).then((v) => v, (e) => e as Error);
+    await vi.advanceTimersByTimeAsync(gap * 6);
+    expect(await done).toBe("saved:Acorn_1.7.0.exe");
+    expect(seen).toEqual([10, 20, 30]); // 进度是一路报上来的
+  });
+
+  it("用户点「取消」：报的是取消不是失败——界面靠这个把状态打回 idle，而不是留一条红字", async () => {
+    vi.stubGlobal("fetch", hangingFetch());
+    const ctrl = new AbortController();
+    const caught = failure(downloadPackage(pkg(), () => {}, ctrl.signal));
+    ctrl.abort();
+    const e = await caught;
+    expect(e.message).toBe(DOWNLOAD_CANCELLED);
+    expect(isCancelled(e)).toBe(true);
+  });
+
+  it("signal 递进来时就已经是 aborted：一样当取消处理，不会开一条下不完的连接", async () => {
+    vi.stubGlobal("fetch", hangingFetch());
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const e = await failure(downloadPackage(pkg(), () => {}, ctrl.signal));
+    expect(isCancelled(e)).toBe(true);
+  });
+
+  it("HTTP 错误照旧按下载失败报，别被取消/卡住这两条盖过去", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve({ ok: false, status: 502 } as unknown as Response));
+    const e = await failure(downloadPackage(pkg(), () => {}));
+    expect(e.message).toContain("502");
+    expect(isCancelled(e)).toBe(false);
+  });
+});
+
+// ---------- 交给系统安装器之后 ----------
+
+describe("交接之后停在哪儿", () => {
+  it("**没有「装好了」这一种**：能拿到返回值就说明橡果还活着，界面必须把按钮还回来", async () => {
+    vi.useFakeTimers();
+    const done = installPackage("C:/tmp/Acorn_1.9.1.exe").then((v) => v);
+    await vi.advanceTimersByTimeAsync(EXIT_GRACE_MS + 1000);
+    expect(await done).toBe("handed-off");
+  });
+
+  it("交接成功后不是「安装中」：安卓那一下点了取消，用户得退得出去", () => {
+    const rest = afterInstall("handed-off");
+    expect(rest.phase).toBe("handed-off");
+    // 关键：它不算 working，弹窗里那三个 !working 的按钮才会重新出现
+    expect(rest.phase === "downloading" || rest.phase === "installing").toBe(false);
+    expect(rest.manual).toBe(true); // 「改用浏览器下载」这条出口要在
+    expect(rest.err).toBeNull(); // 装没装成只有用户知道，别先替他报个错
+  });
+
+  it("安装界面压根没拉起来：报失败并亮出备用方案", () => {
+    expect(afterInstall("failed")).toEqual({
+      phase: "failed", manual: true, err: INSTALL_FALLBACK_MSG,
+    });
+  });
+
+  it("交接之前点了「稍后再说」：什么都没发生，安安静静回 idle", () => {
+    expect(afterInstall("cancelled")).toEqual({ phase: "idle", manual: false, err: null });
+  });
+});
+
+// ---------- installing 那几秒里的「稍后再说」 ----------
+//
+// 以前这一段是个按了不算数的按钮：cancel() 只 abort 已经结束的下载、把 runId +1，
+// 而 installPackage 早就在跑了——照样拉起安装器、照样 exit_app。
+// 用户以为自己取消了，几秒后橡果无声退出、安装程序跳出来，而他此刻可能正在别的窗口干活。
+describe("交接途中的取消", () => {
+  it("安装器还没拉起来：说停就停，一个进程都不起", async () => {
+    const outcome = await installPackage("C:/tmp/Acorn_1.9.1.exe", () => false);
+    expect(outcome).toBe("cancelled");
+  });
+
+  it("安装器已经起来了：不再假装没发生，但至少不把橡果关掉", async () => {
+    // 停不下来的那一段：这时候界面上摆的是一句说明，不是按钮
+    let launched = false;
+    const outcome = await installPackage(
+      "C:/tmp/Acorn_1.9.1.exe",
+      () => !launched, // 拉起之后这一轮就作废了
+      () => {
+        launched = true;
+      },
+    );
+    expect(launched).toBe(true);
+    expect(outcome).toBe("handed-off");
+  });
+
+  it("没人传「还算不算数」时照旧交接（设置页那条路）", async () => {
+    vi.useFakeTimers();
+    const done = installPackage("C:/tmp/Acorn_1.9.1.exe");
+    await vi.advanceTimersByTimeAsync(EXIT_GRACE_MS + 1000);
+    expect(await done).toBe("handed-off");
+    vi.useRealTimers();
+  });
+});
+
+// ---------- 「版本过旧」那一屏上的检查更新 ----------
+//
+// 那一屏替换掉了整个界面，设置页里的 UpdatePanel 渲染不到；不给这条路的话，
+// 它就是一边写着「升级到同一版本即可」、一边把升级入口全挡了。
+
+describe("手动查一次", () => {
+  afterEach(() => {
+    localStorage.removeItem("acorn-update-skip");
+    updateStore.setState({ pending: null });
+  });
+
+  it("查到新版就把弹窗顶出来（那一屏上这是唯一的升级入口）", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(okResponse(manifest({ version: "99.0.0" }))));
+    expect(await checkUpdateNow()).toBe("found");
+    expect(updateStore.getState().pending?.version).toBe("99.0.0");
+  });
+
+  it("已是最新和查不到分开报，都不弹框——断网时不能骗人说「已经是最新版了」", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(okResponse({ available: false })));
+    expect(await checkUpdateNow()).toBe("latest");
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
+    expect(await checkUpdateNow()).toBe("failed");
+    expect(updateStore.getState().pending).toBeNull();
+  });
+
+  it("**不看「这一版不再提醒」**：是用户自己点的检查，得给他查出来", async () => {
+    skipVersion("99.0.0");
+    vi.stubGlobal("fetch", () => Promise.resolve(okResponse(manifest({ version: "99.0.0" }))));
+    expect(await checkUpdateNow()).toBe("found");
+    expect(updateStore.getState().pending?.version).toBe("99.0.0");
   });
 });

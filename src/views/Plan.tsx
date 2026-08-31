@@ -82,10 +82,10 @@ export default function Plan() {
             {foldable && (
               <button
                 className="btn ghost"
-                title={foldAll ? "一件事只显示下一步" : "有子任务的事一行一条摊开"}
+                title={foldAll ? "展开每件事的全部子任务" : "折叠后每件事只显示下一步"}
                 onClick={() => setFoldAll(!foldAll)}
               >
-                {foldAll ? "摊开子任务" : "收起子任务"}
+                {foldAll ? "展开子任务" : "收起子任务"}
               </button>
             )}
           </>
@@ -110,10 +110,7 @@ export default function Plan() {
             );
           })}
           {allRows.length === 0 && (
-            <div className="empty">
-              <span className="glyph">🌰</span>
-              一件未完成的事都没有——好状态
-            </div>
+            <div className="empty">没有未完成的事。</div>
           )}
         </div>
       )}

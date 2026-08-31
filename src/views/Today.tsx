@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import { formatCN, todayYMD } from "../core/dates";
 import { postponeRows, rowTaskIds, tasksForToday, useApp } from "../core/store";
+import { FOCUS_ENABLED } from "../core/features";
 import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
@@ -58,10 +59,7 @@ export default function Today() {
           </Fragment>
         ))}
         {overdue.length === 0 && todays.length === 0 && doneToday.length === 0 && (
-          <div className="empty">
-            <span className="glyph">🌰</span>
-            今天还没有安排——记一条，或者享受留白。
-          </div>
+          <div className="empty">今天没有安排。</div>
         )}
       </div>
       <div className="day-foot">
@@ -74,7 +72,7 @@ export default function Today() {
         <span>
           完成 {doneToday.length} / {total}
         </span>
-        {focusMin > 0 && <span>🍅 专注 {focusMin} 分钟</span>}
+        {FOCUS_ENABLED && focusMin > 0 && <span>🍅 专注 {focusMin} 分钟</span>}
         <span className="kbd-hint">
           <kbd>Ctrl K</kbd> 命令面板 · <kbd>Ctrl F</kbd> 搜索 · <kbd>Ctrl Z</kbd> 撤销
         </span>

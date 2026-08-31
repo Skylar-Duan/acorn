@@ -22,10 +22,10 @@ interface QuadCell {
 }
 
 const QUADRANTS: QuadCell[] = [
-  { key: "iu", important: true, urgent: true, name: "重要且紧急", hint: "现在就做" },
+  { key: "iu", important: true, urgent: true, name: "重要且紧急", hint: "立即处理" },
   { key: "in", important: true, urgent: false, name: "重要不紧急", hint: "排进日程" },
-  { key: "nu", important: false, urgent: true, name: "紧急不重要", hint: "能挪就挪" },
-  { key: "nn", important: false, urgent: false, name: "不重要不紧急", hint: "想想还做不做" },
+  { key: "nu", important: false, urgent: true, name: "紧急不重要", hint: "转交或压缩" },
+  { key: "nn", important: false, urgent: false, name: "不重要不紧急", hint: "考虑不做" },
 ];
 
 function isImportant(t: Task): boolean {
@@ -112,7 +112,7 @@ export default function QuadrantBoard() {
                   <QuadRow key={t.id} task={t} today={today} />
                 ),
               )}
-              {items.length === 0 && <div className="quad-empty">这格清净</div>}
+              {items.length === 0 && <div className="quad-empty">这一格没有任务</div>}
             </div>
           </div>
         );

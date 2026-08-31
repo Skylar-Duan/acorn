@@ -79,16 +79,16 @@ function QuickAddApp() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }} data-tauri-drag-region>
         <span style={{ fontFamily: "var(--serif)", fontSize: 15, letterSpacing: 2, color: "var(--ink-2)" }} data-tauri-drag-region>
-          🌰 随手记一条
+          随手记一条
         </span>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>Esc 关闭 · 回车收下</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>Esc 关闭 · 回车保存</span>
       </div>
       <SyntaxInput
         value={text}
         onChange={setText}
         onSubmit={submit}
         autoFocus
-        placeholder="想到什么记什么…「周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"
+        placeholder="记一条…「周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"
         lists={ctx.listNames}
         tags={ctx.tagNames}
         whos={ctx.whoNames}

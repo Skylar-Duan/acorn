@@ -17,6 +17,7 @@ import {
   deleteList,
   addSubtask,
   toggleSubtask,
+  updateSubtask,
   removeSubtask,
   logFocus,
   undo,
@@ -346,6 +347,57 @@ describe("子任务", () => {
     expect(getTask(id).subtasks[0].done).toBe(true);
     toggleSubtask(id, subId);
     expect(getTask(id).subtasks[0].done).toBe(false);
+  });
+
+  it("addSubtask 建出来的自带 doneAt: null（不是 undefined，undefined 会被 JSON 吞掉）", () => {
+    const id = addTask({ title: "大事" });
+    addSubtask(id, "一步");
+    const s = getTask(id).subtasks[0];
+    expect(s.doneAt).toBeNull();
+    expect("doneAt" in s).toBe(true);
+  });
+
+  // 勾一条子任务有三条路：任务卡走 toggleSubtask，列表行和右键菜单直调 updateSubtask({done})。
+  // 两条路必须产出同一种数据，否则「在卡上勾有完成日、在行上勾没有」
+  it("toggleSubtask 勾上盖完成时刻、取消清掉", () => {
+    const id = addTask({ title: "大事" });
+    addSubtask(id, "一步");
+    const subId = getTask(id).subtasks[0].id;
+    const before = new Date().toISOString();
+    toggleSubtask(id, subId);
+    const at = getTask(id).subtasks[0].doneAt;
+    expect(at).toBeTruthy();
+    expect(at! >= before).toBe(true);
+    toggleSubtask(id, subId);
+    expect(getTask(id).subtasks[0].doneAt).toBeNull();
+  });
+
+  it("updateSubtask({done}) 走的是同一套：列表行和右键菜单勾出来的一样有完成时刻", () => {
+    const id = addTask({ title: "大事" });
+    addSubtask(id, "一步");
+    const subId = getTask(id).subtasks[0].id;
+    updateSubtask(id, subId, { done: true });
+    expect(getTask(id).subtasks[0].doneAt).toBeTruthy();
+    updateSubtask(id, subId, { done: false });
+    expect(getTask(id).subtasks[0].doneAt).toBeNull();
+  });
+
+  it("不碰 done 的补丁（改标题/日期）不动完成时刻", () => {
+    const id = addTask({ title: "大事" });
+    addSubtask(id, "一步");
+    const subId = getTask(id).subtasks[0].id;
+    updateSubtask(id, subId, { done: true });
+    const at = getTask(id).subtasks[0].doneAt;
+    updateSubtask(id, subId, { title: "改个名", due: todayYMD() });
+    expect(getTask(id).subtasks[0].doneAt).toBe(at);
+  });
+
+  it("显式带了 doneAt 的以调用方为准（导入回填用）", () => {
+    const id = addTask({ title: "大事" });
+    addSubtask(id, "一步");
+    const subId = getTask(id).subtasks[0].id;
+    updateSubtask(id, subId, { done: true, doneAt: "2026-08-20T02:00:00.000Z" });
+    expect(getTask(id).subtasks[0].doneAt).toBe("2026-08-20T02:00:00.000Z");
   });
 
   it("removeSubtask 只删指定那条", () => {

@@ -17,6 +17,8 @@ import {
   updateSubtask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
+import { FOCUS_ENABLED } from "../core/features";
+import { syncFootState, useSync } from "../core/syncCtl";
 import {
   IDLE, LONG_PRESS_MS, cancel, down, hold, move, up, type SortState,
 } from "../core/touchSort";
@@ -35,7 +37,6 @@ const ICONS = {
   today: "M12 8a4 4 0 100 8 4 4 0 000-8z M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1",
   plan: "M4 6h16 M4 12h16 M4 18h10",
   done: "M20 6L9 17l-5-5",
-  guide: "M12 19c-2-1.4-4.2-2-7-2V5c2.8 0 5 .6 7 2 2-1.4 4.2-2 7-2v12c-2.8 0-5 .6-7 2z M12 7v12",
   calendar: "M3 5h18v16H3z M8 3v4M16 3v4M3 10h18M9 10v11M15 10v11M3 15.5h18",
   focus: "M12 5a8 8 0 100 16 8 8 0 000-16z M12 9v4l3 2 M9 2h6",
   stats: "M4 20V10 M10 20V4 M16 20v-9 M21 20H3",
@@ -244,6 +245,15 @@ export default function Sidebar(
   const curTag = useApp((s) => s.ui.tag);
   const data = useApp((s) => s.data);
   const loadError = useApp((s) => s.loadError);
+  // 同步状态得在主界面上有块表盘：以前只在 设置 → 云账号 里显示，
+  // 而升级、令牌过期、断网都会让同步无声停摆，用户要等到某天点开设置才发现。
+  // 分三个 selector 取而不是整份算：syncFootState 每次都返回新对象，整份取会一直重渲染
+  const syncSession = useSync((s) => s.session);
+  const syncPhase = useSync((s) => s.phase);
+  const syncNeedsUpgrade = useSync((s) => s.needsUpgrade);
+  const sync = syncFootState({
+    session: syncSession, phase: syncPhase, needsUpgrade: syncNeedsUpgrade,
+  });
   const [addingList, setAddingList] = useState(false);
   const [dropHint, setDropHint] = useState<string | null>(null);
   /** 侧栏内部换位置时，鼠标正悬在哪一条上（画一条落点线） */
@@ -289,7 +299,7 @@ export default function Sidebar(
 
   const lists = [...data.lists].sort((a, b) => a.order - b.order);
   // 正看着的东西如果被折在下面，就得露出来——否则界面上没有任何地方显示「你在哪」
-  const MORE_VIEWS: ViewId[] = ["calendar", "focus", "stats", "guide", "trash"];
+  const MORE_VIEWS: ViewId[] = ["calendar", "focus", "stats", "trash"];
   const showMore = moreOpen || MORE_VIEWS.includes(view);
   const curListHidden =
     view === "list" && lists.findIndex((l) => l.id === curList) >= PEEK;
@@ -367,6 +377,9 @@ export default function Sidebar(
       <div className="brand">
         <img src={iconUrl} alt="" />
         橡果
+        {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
+            .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
+        <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
       </div>
       <nav>
         <ul>
@@ -410,9 +423,9 @@ export default function Sidebar(
         {showMore && (
           <ul>
             {item("calendar", "日历", "calendar")}
-            {item("focus", "专注", "focus")}
+            {/* 专注暂时收起，见 core/features.ts */}
+            {FOCUS_ENABLED && item("focus", "专注", "focus")}
             {item("stats", "统计", "stats")}
-            {item("guide", "用法", "guide")}
             {/* 回收站：删掉的事在这儿待 30 天。也是拖拽落点——拖过来就是删掉（还能撤销、还能在这里恢复） */}
             {item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
               const s = draggedSub(e);
@@ -432,7 +445,7 @@ export default function Sidebar(
               <li
                 key={l.id}
                 className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}${moveOver === `list:${l.id}` ? " move-over" : ""}${listSort.lifted(l.id) ? " lifted" : ""}`}
-                title="拖着可以换位置（手机上按住不放）"
+                title="拖动可以换位置（手机上长按）"
                 onClick={() => {
                   if (listSort.swallowClick()) return;
                   navigate("list", { listId: l.id });
@@ -479,7 +492,7 @@ export default function Sidebar(
                 <li
                   key={who}
                   className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}${moveOver === `who:${who}` ? " move-over" : ""}${whoSort.lifted(who) ? " lifted" : ""}`}
-                  title="拖着可以换位置（手机上按住不放）"
+                  title="拖动可以换位置（手机上长按）"
                   onClick={() => {
                     if (whoSort.swallowClick()) return;
                     navigate("who", { who });
@@ -532,7 +545,12 @@ export default function Sidebar(
       <div className="foot">
         {loadError ? <span className="bad" title={loadError} /> : <span className="ok" />}
         {loadError ? "数据异常" : "数据已就绪"}
-        <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
+        {sync && (
+          <>
+            <span className="sep">·</span>
+            <span className={sync.bad ? "warn" : undefined}>{sync.text}</span>
+          </>
+        )}
       </div>
     </aside>
   );

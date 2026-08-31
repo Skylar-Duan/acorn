@@ -20,6 +20,9 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         quickadd: resolve(__dirname, "quickadd.html"),
         focus: resolve(__dirname, "focus.html"),
+        // 每个独立窗口的 html 都要在这儿登记。漏了的话 dev 正常（vite 现伺服），
+        // 打包后 dist 里没有这个文件，窗口一开就是白的
+        guide: resolve(__dirname, "guide.html"),
       },
     },
   },

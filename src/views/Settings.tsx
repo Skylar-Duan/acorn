@@ -12,8 +12,10 @@ import {
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
 import { hasDesktopFeatures } from "../core/platform";
+import { FOCUS_ENABLED } from "../core/features";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
+import { useGuideEntry } from "../components/GuideSheet";
 import UpdatePanel from "../components/UpdatePanel";
 import { updaterSupported } from "../core/updater";
 import "../styles/settings.css";
@@ -113,6 +115,7 @@ export default function Settings() {
   const [backups, setBackups] = useState<BackupInfo[] | null>(null);
   const [shortcut, setShortcut] = useState(settings.quickAddShortcut);
   const [autoOn, setAutoOn] = useState(settings.autostart);
+  const guide = useGuideEntry();
 
   useEffect(() => {
     void dataStatus().then(setStatus).catch(() => setStatus(null));
@@ -269,13 +272,13 @@ export default function Settings() {
     <section className="main">
       <div className="view-head">
         <h1>设置</h1>
-        <span className="sub">把橡果调成你的样子</span>
+        <span className="sub">外观、账号、数据与行为</span>
       </div>
       <div className="view-body set-body">
         {/* ---------- 外观 ---------- */}
         <div className="set-section">
           <h2>外观</h2>
-          <div className="set-desc">六款自然主题，随季节心情换。每款都有自己的一幅画，淡淡地垫在任务下面。</div>
+          <div className="set-desc">六款主题，每款配一幅背景画，淡淡地垫在任务下面。</div>
           <div className="set-themes">
             {THEMES.map((t) => (
               <button
@@ -314,16 +317,19 @@ export default function Settings() {
         <div className="set-section">
           <h2>云账号</h2>
           <div className="set-desc">
-            登录后手机和电脑看到的是同一份事。两边都改过同一件事时，以改得晚的那次为准。
+            登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
           <AccountPanel />
         </div>
 
-        {/* ---------- 版本更新（只有手机上有；桌面走安装包） ---------- */}
+        {/* ---------- 版本更新（手机和桌面都有） ---------- */}
         {updaterSupported && (
           <div className="set-section">
             <h2>版本更新</h2>
-            <div className="set-desc">新版本在这儿直接下、直接装，不用去网页找。</div>
+            <div className="set-desc">
+              每次启动会自动检查一次，有新版本会提示；这里也可以手动检查。新版本在应用内下载安装。
+              {hasDesktopFeatures && "电脑上安装前橡果会先退出，否则新版本装不进来。"}
+            </div>
             <UpdatePanel />
           </div>
         )}
@@ -356,7 +362,7 @@ export default function Settings() {
           )}
           {backups &&
             (backups.length === 0 ? (
-              <div className="set-empty">还没有备份——每天首次保存时会自动留一份。</div>
+              <div className="set-empty">还没有备份。每天首次保存时会自动留一份。</div>
             ) : (
               <div className="set-backups">
                 {backups.map((b) => (
@@ -375,7 +381,7 @@ export default function Settings() {
           <h2>导出与导入</h2>
           {hasDesktopFeatures ? (
             <>
-          <div className="set-desc">导出成通用格式随身带走；导入会整体替换现有数据。</div>
+          <div className="set-desc">导出为通用格式；导入会整体替换现有数据。</div>
           <div className="set-actions">
             <button className="btn" onClick={() => void exportAs("json")}>导出 JSON</button>
             <button className="btn" onClick={() => void exportAs("csv")}>导出 CSV</button>
@@ -386,20 +392,23 @@ export default function Settings() {
             </>
           ) : (
             <div className="set-desc">
-              手机上不做文件导出——搬数据请用上面的「云账号」，登录同一个账号，
-              电脑和手机看到的就是同一份。
+              手机上不提供文件导出。迁移数据请用上面的「云账号」：两端登录同一个账号，
+              使用的就是同一份数据。
             </div>
           )}
         </div>
 
         {/* ---------- 行为 ---------- */}
+        {/* 整节一起判空：手机上前两行本来就被 hasDesktopFeatures 挡掉，
+            专注那行再收起来（core/features.ts）就只剩一个空壳卡片 */}
+        {(hasDesktopFeatures || FOCUS_ENABLED) && (
         <div className="set-section">
           <h2>行为</h2>
           {hasDesktopFeatures && (
           <div className="set-row">
             <div className="set-row-label">
               全局快捷键
-              <span className="set-hint">随手记一条小窗 · 如 Alt+Space、Ctrl+Shift+A</span>
+              <span className="set-hint">唤起「随手记一条」小窗 · 如 Alt+Space、Ctrl+Shift+A</span>
             </div>
             <div className="set-ctl">
               <input
@@ -418,7 +427,7 @@ export default function Settings() {
             <div className="set-row">
               <div className="set-row-label">
                 开机自启
-                <span className="set-hint">开机后安静地待在托盘里</span>
+                <span className="set-hint">开机后在托盘中启动</span>
               </div>
               <div className="set-ctl">
                 <button
@@ -431,6 +440,7 @@ export default function Settings() {
               </div>
             </div>
           )}
+          {FOCUS_ENABLED && (
           <div className="set-row">
             <div className="set-row-label">默认专注时长</div>
             <div className="set-ctl">
@@ -448,24 +458,27 @@ export default function Settings() {
               <span className="set-suffix">分钟</span>
             </div>
           </div>
+          )}
         </div>
+        )}
 
-        {/* ---------- 用法 ---------- */}
+        {/* ---------- 一句话记事 ---------- */}
         <div className="set-section">
           <h2>一句话记事</h2>
           <div className="set-desc">
-            日期、清单、需求方、重要性、循环，全都能在一句话里写完。不想背也行，随手记下面那排按钮点着选。
+            日期、清单、需求方、重要性、循环，可以写在同一句里；也可以用随手记下面那排按钮点选。
           </div>
           <div className="set-row">
             <div className="set-row-label">
-              怎么写
-              <span className="set-hint">一页举例卡片，照着抄就会</span>
+              写法说明
+              <span className="set-hint">在单独的窗口里打开，一组可以照着抄的例子</span>
             </div>
             <div className="set-ctl">
-              <button className="btn" onClick={() => navigate("guide")}>打开用法</button>
+              <button className="btn" onClick={guide.open}>打开用法</button>
             </div>
           </div>
         </div>
+        {guide.sheet}
 
         {/* ---------- 回收站 ---------- */}
         <div className="set-section">
@@ -484,7 +497,7 @@ export default function Settings() {
         {/* ---------- 关于 ---------- */}
         <div className="set-section set-about">
           <span className="set-about-brand">橡果 Acorn</span>
-          <span className="set-about-line">v{APP_VERSION} · 温暖纸感的待办工具 · 数据只存在你自己的盘上。</span>
+          <span className="set-about-line">v{APP_VERSION} · 本地优先的待办工具 · 数据保存在你自己的磁盘上。</span>
         </div>
       </div>
     </section>

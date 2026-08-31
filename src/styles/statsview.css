@@ -2,8 +2,10 @@
 
 .stats-body { display: flex; flex-direction: column; gap: 28px; padding-top: 14px; }
 
-/* ---------- 三枚数字卡 ---------- */
+/* ---------- 数字卡 ---------- */
 .stats-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+/* 专注收起来的时候只剩两枚，不改列数右边会空出一格 */
+.stats-cards.n2 { grid-template-columns: repeat(2, 1fr); }
 .stats-card {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
   box-shadow: var(--shadow-sm); padding: 15px 18px 13px;

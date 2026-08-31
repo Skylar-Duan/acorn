@@ -79,28 +79,36 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone }: 
       {rows.map((r, i) => {
         const key = rowKey(r);
         const bundled = !!r.sub && i > 0 && rows[i - 1].task.id === r.task.id;
+        // 展开的卡片按**任务 id** 认领 key，不跟着行 key 走：在卡里勾掉一条子任务，
+        // openRows 会把那行剔出去、anchor 顺势落到下一条子任务行上，行 key 一变整张卡就被卸载重建——
+        // 已完成子任务的折叠开关、「＋子任务」草稿、「整句改」草稿会一起被清空
+        // （表现成「我展开已完成，勾一下，它自己又收回去了」）。
+        // cardAnchor 保证全视图只有一行认领这张卡，且有子任务行时不会同时有母任务行，key 不会撞
+        if (anchor === key) {
+          return (
+            <Fragment key={r.task.id}>
+              <TaskCard task={r.task} />
+            </Fragment>
+          );
+        }
         return (
           <Fragment key={key}>
-            {anchor === key ? (
-              <TaskCard task={r.task} />
-            ) : (
-              <TaskRow
-                task={r.task}
-                sub={r.sub}
-                orderedIds={orderedIds}
-                bundled={bundled}
-                fadeOnDone={fadeOnDone}
-                chain={
-                  fold.head.has(key)
-                    ? {
-                        folded: fold.more.has(key),
-                        more: fold.more.get(key) ?? 0,
-                        onToggle: () => toggleChain(r.task.id),
-                      }
-                    : undefined
-                }
-              />
-            )}
+            <TaskRow
+              task={r.task}
+              sub={r.sub}
+              orderedIds={orderedIds}
+              bundled={bundled}
+              fadeOnDone={fadeOnDone}
+              chain={
+                fold.head.has(key)
+                  ? {
+                      folded: fold.more.has(key),
+                      more: fold.more.get(key) ?? 0,
+                      onToggle: () => toggleChain(r.task.id),
+                    }
+                  : undefined
+              }
+            />
           </Fragment>
         );
       })}

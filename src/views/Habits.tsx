@@ -78,7 +78,7 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
       <div className="hb-head" onClick={onToggleExpand}>
         <button
           className={`hb-check${done ? " on" : ""}`}
-          title={done ? "点一下撤销今天的打卡" : due ? "打卡" : "今天本来不用做，也可以记一笔"}
+          title={done ? "撤销今天的打卡" : due ? "打卡" : "今天不在计划内，也可以补打一次"}
           onClick={(e) => {
             e.stopPropagation();
             toggleHabitCheck(habit.id, today);
@@ -89,7 +89,7 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
         <span className="hb-title">{habit.title || "（未命名）"}</span>
         <span className="hb-rule">{describeHabitRule(habit)}</span>
         {n > 0 && (
-          <span className="hb-streak" title={`连续 ${n} 次没断过`}>
+          <span className="hb-streak" title={`已连续 ${n} 次`}>
             🔥 {n}
           </span>
         )}
@@ -180,7 +180,7 @@ function HabitDetail({ habit, today }: { habit: Task; today: string }) {
       </div>
       <textarea
         className="hb-notes"
-        placeholder="备注…（为什么想养成它？）"
+        placeholder="备注…"
         value={habit.notes}
         rows={habit.notes ? undefined : 1}
         onChange={(e) => updateTask(habit.id, { notes: e.target.value })}
@@ -188,7 +188,7 @@ function HabitDetail({ habit, today }: { habit: Task; today: string }) {
       <div className="hb-actions">
         <button
           className="btn ghost"
-          title="打卡记录会清空，事情本身留下来变成一条普通待办"
+          title="打卡记录会清空，这件事本身保留为一条普通任务"
           onClick={() => setTaskKind(habit.id, "task")}
         >
           转成普通任务
@@ -227,11 +227,11 @@ export default function Habits() {
         <h1>习惯</h1>
         <span className="sub">
           {habits.length === 0
-            ? "重复着做的事放这儿，每天勾一下"
+            ? "需要反复做的事放在这里，每天打卡"
             : dueToday.length === 0
-              ? "今天一个都不用做，歇着"
+              ? "今天没有要打卡的习惯"
               : doneCount === dueToday.length
-                ? `今天的 ${dueToday.length} 个都打过卡了 🌰`
+                ? `今天的 ${dueToday.length} 个已全部打卡`
                 : `今天 ${doneCount}/${dueToday.length}`}
         </span>
       </div>
@@ -293,10 +293,7 @@ export default function Habits() {
         )}
 
         {habits.length === 0 && (
-          <div className="empty">
-            <span className="glyph">🌱</span>
-            还没有习惯。上面加一个——每天做一点的事最适合放这儿。
-          </div>
+          <div className="empty">还没有习惯，在上面加一个。</div>
         )}
       </div>
     </section>

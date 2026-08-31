@@ -22,10 +22,10 @@ export default function DataRescue() {
     <div className="overlay">
       <div className="modal rescue">
         <div className="rescue-head">
-          <h2 className="serif">找到了你以前的数据</h2>
+          <h2 className="serif">找到了以前的数据</h2>
           <p>
-            现在这个数据文件夹是空的，但在下面这些地方找到了有内容的账本。
-            <b>什么都还没动过</b>——你选哪份就用哪份。
+            当前数据文件夹是空的，但在下面这些位置找到了有内容的数据。
+            <b>这些文件都没有被改动</b>，选中哪份就使用哪份。
           </p>
         </div>
         <div className="rescue-list">
@@ -42,9 +42,9 @@ export default function DataRescue() {
           ))}
         </div>
         <div className="rescue-foot">
-          <span className="set-hint">选错了也不要紧：设置 → 数据 → 更换文件夹，随时能改回来。</span>
+          <span className="set-hint">选错了可以改：设置 → 数据 → 更换文件夹。</span>
           <button className="btn" disabled={busy} onClick={() => void pick(null)}>
-            都不是，从空的开始
+            都不是，从空数据开始
           </button>
         </div>
       </div>

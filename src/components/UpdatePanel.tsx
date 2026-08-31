@@ -1,16 +1,19 @@
-// 设置页的「版本更新」一节，只在安卓上出现。
+// 设置页的「版本更新」一节。手机和桌面都有。
 //
 // 一条原则：这段路要在 App 里走完——查、下、装。让人跑去浏览器翻下载目录
 // 是最容易半路走丢的做法，只在 App 内这条路真走不通时才给出来当备用。
 
 import { useEffect, useState } from "react";
 import { APP_VERSION } from "../core/model";
+import { isAndroid } from "../core/platform";
+import { CHECK_FAILED_MSG, HANDOFF_MSG, useUpdateRun } from "../core/updateCtl";
 import {
-  downloadApk, fetchUpdate, installApk, isRequiredForSync, openFallback,
-  shouldOffer, updaterSupported, type UpdateInfo,
+  fetchUpdate, isRequiredForSync, openFallback, shouldOffer, updaterSupported,
+  type UpdateCheck, type UpdateInfo,
 } from "../core/updater";
 
-type Stage = "idle" | "checking" | "found" | "downloading" | "installing" | "latest" | "failed";
+/** 只管「查」这一段；「下」和「装」在 useUpdateRun 里，跟开机弹窗共用一份 */
+type Stage = "idle" | "checking" | "found" | "latest" | "check-failed";
 
 function mb(n: number): string {
   return `${(n / 1048576).toFixed(1)} MB`;
@@ -19,19 +22,25 @@ function mb(n: number): string {
 export default function UpdatePanel() {
   const [stage, setStage] = useState<Stage>("idle");
   const [info, setInfo] = useState<UpdateInfo | null>(null);
-  const [pct, setPct] = useState(0);
-  const [got, setGot] = useState(0);
-  const [err, setErr] = useState<string | null>(null);
-  const [manual, setManual] = useState(false);
+  const run = useUpdateRun();
+
+  // **查不到和已是最新是两回事**：断网时绝不能显示「已经是最新版了」，那是骗人
+  function apply(res: UpdateCheck) {
+    if (!res.ok) {
+      setInfo(null);
+      setStage("check-failed");
+      return;
+    }
+    setInfo(res.info);
+    setStage(shouldOffer(res.info) ? "found" : "latest");
+  }
 
   // 开设置页时静默查一次：有就提示，没有就当无事发生
   useEffect(() => {
     if (!updaterSupported) return;
     let alive = true;
-    void fetchUpdate().then((u) => {
-      if (!alive) return;
-      setInfo(u);
-      setStage(shouldOffer(u) ? "found" : "latest");
+    void fetchUpdate().then((res) => {
+      if (alive) apply(res);
     });
     return () => {
       alive = false;
@@ -42,53 +51,28 @@ export default function UpdatePanel() {
 
   async function check() {
     setStage("checking");
-    setErr(null);
-    const u = await fetchUpdate();
-    setInfo(u);
-    setStage(shouldOffer(u) ? "found" : "latest");
-  }
-
-  async function run() {
-    if (!info) return;
-    setStage("downloading");
-    setErr(null);
-    setPct(0);
-    setGot(0);
-    try {
-      const path = await downloadApk(info, ({ received, total }) => {
-        setGot(received);
-        setPct(total > 0 ? Math.round((received / total) * 100) : 0);
-      });
-      setStage("installing");
-      const ok = await installApk(path);
-      if (!ok) {
-        // App 内交给系统安装器这条路没走通 → 亮出备用方案，别把人晾在这儿
-        setManual(true);
-        setErr("这台手机没能直接拉起安装界面。下面那个按钮可以用浏览器打开下载页，手动装一次。");
-        setStage("failed");
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "下载失败，过会儿再试");
-      setManual(true);
-      setStage("failed");
-    }
+    apply(await fetchUpdate());
   }
 
   const required = isRequiredForSync(info);
+  const working =
+    run.phase === "downloading" || run.phase === "installing" || run.phase === "launching";
+  const busy = stage === "checking" || working;
 
   return (
     <div className="set-row col">
       <div className="acct-line">
         <b>当前版本 {APP_VERSION}</b>
         <span className="spacer" />
-        <button className="btn" disabled={stage === "checking" || stage === "downloading"} onClick={() => void check()}>
+        <button className="btn" disabled={busy} onClick={() => void check()}>
           {stage === "checking" ? "检查中…" : "检查更新"}
         </button>
       </div>
 
-      {stage === "latest" && <p className="hint">已经是最新版了。</p>}
+      {stage === "latest" && <p className="hint">当前已是最新版本。</p>}
+      {stage === "check-failed" && <p className="hint">{CHECK_FAILED_MSG}。</p>}
 
-      {(stage === "found" || stage === "downloading" || stage === "installing" || stage === "failed") && info && (
+      {stage === "found" && info && (
         <>
           <p className="hint">
             <b style={{ color: "var(--accent)" }}>有新版本 {info.version}</b>
@@ -96,46 +80,62 @@ export default function UpdatePanel() {
             {required && (
               <>
                 <br />
-                <b style={{ color: "var(--warn)" }}>这一版必须升</b>
-                ：云端的数据已经是新版格式了，不升级这台手机同步不了（同步会一直停着，
-                但本地照常用、一条都不会动）。
+                <b style={{ color: "var(--warn)" }}>这一版必须升级</b>
+                ：云端数据已是新版格式，不升级则这台设备无法同步（同步会停住，
+                本地使用不受影响，数据也不会改动）。
               </>
             )}
           </p>
           {info.notes && <pre className="up-notes">{info.notes}</pre>}
 
-          {stage === "downloading" && (
+          {run.phase === "downloading" && (
             <div className="up-progress">
               <div className="up-bar">
-                <span style={{ width: `${pct}%` }} />
+                <span style={{ width: `${run.pct}%` }} />
               </div>
               <span className="hint">
-                下载中 {pct}%{info.size > 0 ? ` · ${mb(got)} / ${mb(info.size)}` : ""}
+                下载中 {run.pct}%{info.size > 0 ? ` · ${mb(run.got)} / ${mb(info.size)}` : ""}
               </span>
             </div>
           )}
-          {stage === "installing" && <p className="hint">正在交给系统安装，按提示点「安装」就行。</p>}
+          {(run.phase === "installing" || run.phase === "launching") && (
+            <p className="hint">
+              {isAndroid
+                ? "正在交给系统安装，按提示点「安装」。"
+                : "正在启动安装程序。橡果会先退出，安装完成后重新打开。"}
+            </p>
+          )}
+          {run.phase === "handed-off" && <p className="hint">{HANDOFF_MSG}</p>}
 
           <div className="acct-actions">
-            {stage !== "downloading" && stage !== "installing" && (
-              <button className="btn primary" onClick={() => void run()}>
-                {stage === "failed" ? "重试下载并安装" : "下载并安装"}
+            {!working && (
+              <button className="btn primary" onClick={() => void run.start(info)}>
+                {run.phase === "failed" || run.phase === "handed-off"
+                  ? "重试下载并安装"
+                  : "下载并安装"}
               </button>
             )}
-            {manual && (
+            {/* 下载 27MB 得走一会儿，中途一定得能停下来（这里不锁屏，但同一个 run 顺手也用上） */}
+            {run.phase === "downloading" && (
+              <button className="btn" onClick={run.cancel}>
+                取消下载
+              </button>
+            )}
+            {run.manual && (
               <button className="btn" onClick={() => void openFallback(info)}>
                 改用浏览器下载
               </button>
             )}
           </div>
           <p className="hint">
-            首次安装可能要在系统弹窗里允许「安装未知来源应用」。装完数据不会丢——它在本机，
-            升级不动它。
+            {isAndroid
+              ? "首次安装可能需要在系统弹窗里允许「安装未知来源应用」。数据保存在本机，升级不会改动。"
+              : "点击后橡果会先把未保存的内容落盘、再退出，把位置让给安装程序（不退出则新版本装不进来）。数据保存在本机，升级不会改动。"}
           </p>
         </>
       )}
 
-      {err && <p className="acct-err">{err}</p>}
+      {run.err && <p className="acct-err">{run.err}</p>}
     </div>
   );
 }

@@ -107,7 +107,7 @@ async function call<T>(
       signal: ctrl.signal,
     });
   } catch (e) {
-    throw new ApiError(0, "offline", "连不上服务器（断网了？），这次先不同步");
+    throw new ApiError(0, "offline", "连不上服务器，这次没有同步");
   } finally {
     clearTimeout(timer);
   }
@@ -221,11 +221,22 @@ function unpackRemote(raw: unknown): AppData | null {
     throw new ApiError(
       0,
       "client_too_old",
-      `云端的数据是更新版本的橡果存的（数据版本 ${r.schema}，这台设备只认到 ${CLIENT_SCHEMA}）。` +
-        `先把这台设备上的橡果升级，升级前不会同步——本地照常用，一条都不会动。`,
+      `云端数据由更新版本的橡果写入（数据版本 ${r.schema}，这台设备只支持到 ${CLIENT_SCHEMA}）。` +
+        `请先升级这台设备上的橡果；升级前不会同步，本地数据不受影响。`,
     );
   }
   return r.data;
+}
+
+/** 只拉不合也不推：把云端那份原样解出来。
+ *  「从云端覆盖本机」那条恢复路径专用——它要的就是**云端原样**，
+ *  走 syncOnce 会先跟本机合一遍，本机多出来的东西反而会被推上云，那不是覆盖。
+ *  云端还没有数据时 data 是 null，调用方必须据此中止，绝不能拿空的去覆盖本机。 */
+export async function pullOnly(
+  session: Session,
+): Promise<{ rev: number; data: AppData | null; updatedAt: string | null }> {
+  const pulled = await call<PullOut>("/api/sync", { token: session.token });
+  return { rev: pulled.rev, data: unpackRemote(pulled.data), updatedAt: pulled.updatedAt };
 }
 
 export interface SyncOutcome {

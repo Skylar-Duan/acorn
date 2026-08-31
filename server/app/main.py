@@ -377,19 +377,21 @@ def push(body: PushIn, user: CurrentUser) -> dict:
     return {"rev": rev, "updatedAt": now_iso()}
 
 
-# ---------- 安卓自动更新 ----------
+# ---------- 自动更新（手机 + 桌面） ----------
 #
-# 手机上不该让人「去网页点点点」找安装包。App 自己问一句「有没有新版」，
+# 不该让人「去网页点点点」找安装包。App 自己问一句「有没有新版」，
 # 有就自己下、自己拉起安装。这里只负责回答那一句问话。
 #
-# 清单文件由 deploy/publish-apk.sh 写到 <public_dir>/android/latest.json，
-# 安装包本身由 nginx 从同一个目录静态伺服（/download/android/xxx.apk）。
+# 清单文件由 deploy/publish-apk.sh / publish-exe.sh 写到 <public_dir>/<子目录>/latest.json，
+# 安装包本身由 nginx 从同一个目录静态伺服（/download/<子目录>/xxx）。
+#
+# 两个通道只差一个子目录名，所以共用 _channel_latest——将来加通道也只是多一行路由。
+# 注意接口叫 desktop、目录叫 windows：接口名对客户端，目录名对产物，别把两个名字并成一个。
 
 
-@app.get("/api/android/latest")
-def android_latest() -> dict:
-    """最新安卓版是什么。没发过就回 available=false，客户端安静地什么都不做。"""
-    path = Path(settings.public_dir) / "android" / "latest.json"
+def _channel_latest(subdir: str) -> dict:
+    """某个通道最新版是什么。没发过就回 available=false，客户端安静地什么都不做。"""
+    path = Path(settings.public_dir) / subdir / "latest.json"
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -397,7 +399,7 @@ def android_latest() -> dict:
     except (OSError, ValueError) as exc:
         # 清单在但读不了/解不开：这是配置事故，不能静默——静默的话表现成
         # 「明明发了包却查不到更新」，很难查（编码写歪过一次）
-        log.error("安卓版本清单读不了 %s: %s", path, exc)
+        log.error("%s 版本清单读不了 %s: %s", subdir, path, exc)
         return {"available": False}
     if not isinstance(raw, dict) or not raw.get("version") or not raw.get("file"):
         return {"available": False}
@@ -406,7 +408,7 @@ def android_latest() -> dict:
         "version": str(raw["version"]),
         # 数据模型版本：客户端拿它判断「这次更新是不是为了读懂云端那份新数据」
         "schema": int(raw.get("schema") or 0),
-        "url": f"{settings.download_base}/android/{raw['file']}",
+        "url": f"{settings.download_base}/{subdir}/{raw['file']}",
         "size": int(raw.get("size") or 0),
         "sha256": str(raw.get("sha256") or ""),
         "notes": str(raw.get("notes") or ""),
@@ -414,6 +416,18 @@ def android_latest() -> dict:
         # 备用方案：万一 App 内安装那条路走不通，让用户能自己去下
         "pageUrl": str(raw.get("pageUrl") or ""),
     }
+
+
+@app.get("/api/android/latest")
+def android_latest() -> dict:
+    """最新安卓版（APK）是什么。"""
+    return _channel_latest("android")
+
+
+@app.get("/api/desktop/latest")
+def desktop_latest() -> dict:
+    """最新桌面版（Windows NSIS 安装包）是什么。"""
+    return _channel_latest("windows")
 
 
 # ---------- 收尾 ----------

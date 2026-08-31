@@ -71,7 +71,7 @@ export default function FocusView() {
     <section className="main">
       <div className="view-head">
         <h1>专注</h1>
-        <span className="sub">一次只做一件事</span>
+        <span className="sub">番茄钟计时</span>
       </div>
 
       <div className="view-body fv-body">
@@ -96,7 +96,7 @@ export default function FocusView() {
         ) : (
           <div className="fv-stage">
             <div className="fv-card">
-              <div className="fv-lead">选一件事，开始专注</div>
+              <div className="fv-lead">选一件事，开始计时</div>
               <select className="input fv-select" value={chosen} onChange={(e) => setPickId(e.target.value)}>
                 <option value="">不挂任务，纯计时</option>
                 {todayTasks.length > 0 && (
@@ -138,7 +138,7 @@ export default function FocusView() {
           今天的专注记录
           {totalMin > 0 && <span className="fv-sum">合计 {totalMin} 分钟</span>}
         </div>
-        {todaySessions.length === 0 && <div className="fv-log-empty">还没有记录——开一轮试试。</div>}
+        {todaySessions.length === 0 && <div className="fv-log-empty">今天还没有专注记录。</div>}
         {[...todaySessions].reverse().map((s, i) => (
           <div className="fv-log-row" key={`${s.startedAt}-${i}`}>
             <span className="fv-at">{fmtStart(s.startedAt)}</span>

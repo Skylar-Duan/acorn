@@ -5,6 +5,7 @@ import { addDays, formatCN, fromYMD, todayYMD, weekStart } from "../core/dates";
 import { byList, byWho, completionByDay, exportWeekMarkdown, weeklyReview } from "../core/stats";
 import * as persist from "../core/persist";
 import { showToast, useApp } from "../core/store";
+import { FOCUS_ENABLED } from "../core/features";
 import { WhoBadge } from "../components/TaskRow";
 
 const HEAT_WEEKS = 13;
@@ -87,15 +88,16 @@ export default function StatsView() {
     <section className="main">
       <div className="view-head">
         <h1>统计</h1>
-        <span className="sub">看看最近的节奏</span>
+        <span className="sub">最近的完成情况</span>
       </div>
       <div className="view-body stats-body">
-        {/* 三枚数字卡 */}
-        <div className="stats-cards">
+        {/* 数字卡：专注收起来的时候是两枚，列数跟着改（statsview.css 的 .n2） */}
+        <div className={`stats-cards${FOCUS_ENABLED ? "" : " n2"}`}>
           <div className="stats-card">
             <span className="stats-num">{review.completed.length}</span>
             <span className="stats-label">本周完成</span>
           </div>
+          {FOCUS_ENABLED && (
           <div className="stats-card">
             <span className="stats-num">
               {review.focusMinutes}
@@ -103,6 +105,7 @@ export default function StatsView() {
             </span>
             <span className="stats-label">本周专注</span>
           </div>
+          )}
           <div className="stats-card">
             <span className="stats-num">
               {streak}
@@ -207,7 +210,7 @@ export default function StatsView() {
               <span className="stats-sec-sub">最近 30 天完成</span>
             </div>
             {whoRows.length === 0 ? (
-              <div className="stats-none">还没有为谁记录过任务</div>
+              <div className="stats-none">还没有记录需求方的任务</div>
             ) : (
               <div className="stats-dist">
                 {whoRows.map((r) => (
@@ -236,8 +239,8 @@ export default function StatsView() {
               </span>
             </div>
             <div className="stats-week-sum">
-              完成 {review.completed.length} · 未清 {review.stillOpen.length} · 反复顺延 {review.postponed.length} · 专注{" "}
-              {review.focusMinutes} 分钟
+              完成 {review.completed.length} · 未清 {review.stillOpen.length} · 反复顺延 {review.postponed.length}
+              {FOCUS_ENABLED && <> · 专注 {review.focusMinutes} 分钟</>}
             </div>
           </div>
           <button className="btn" onClick={() => void onExport()}>

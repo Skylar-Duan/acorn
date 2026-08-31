@@ -10,6 +10,10 @@ export interface Subtask {
   due?: string | null;
   dueTime?: string | null;
   priority?: Priority | null;
+  /** ISO 完成时刻；null = 没勾上，或者是这个字段之前就已经勾掉的老数据。
+   *  「已完成」按子任务列、日历按实际完成日归格都靠它。老数据缺这个戳时回落到母任务的
+   *  doneAt（口径见 store.rowDoneAt），**绝不在迁移时拿「现在」补** */
+  doneAt?: string | null;
 }
 
 export type RepeatRule =
@@ -112,10 +116,10 @@ export const APP_VERSION: string =
   typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 /** 当前数据模型版本。导入导出、服务器同步都以它为准（见 transfer.ts / cloud.ts） */
-export const DATA_VERSION = 5;
+export const DATA_VERSION = 6;
 
 export interface AppData {
-  version: 5;
+  version: 6;
   lists: List[];
   tasks: Task[];
   sessions: FocusSession[];
@@ -153,7 +157,7 @@ export function defaultSettings(): Settings {
 export function defaultData(): AppData {
   const at = new Date().toISOString();
   return {
-    version: 5,
+    version: 6,
     lists: [
       { id: newId(), name: "工作", color: "clay", order: 0, updatedAt: at },
       { id: newId(), name: "生活", color: "moss", order: 1, updatedAt: at },
@@ -214,7 +218,13 @@ export function normalizeWho(v: unknown): string[] {
  *           老数据没有这个戳，就拿创建时刻顶上——比拿「现在」老实：
  *           拿现在会让本机所有旧任务显得比云端新，第一次同步就把云端盖掉
  *  v4 → v5：新增「习惯」分类。老任务一律 kind='task'、checkIns 空——
- *           没有任何一条旧数据会被误判成习惯 */
+ *           没有任何一条旧数据会被误判成习惯
+ *  v5 → v6：子任务补 doneAt（补 null，不补「现在」）。之所以为一个可选字段升版本：
+ *           老客户端不只是「读进来看不见新字段」，它还会**持续写入**勾掉却没有 doneAt 的
+ *           已完成子任务，新客户端拿到只能猜日子。升版本把老客户端挡在同步之外
+ *
+ *  **字段差异表、转化规则、升不升版本的判据都在 `docs/数据模型变更.md`**，
+ *  这段注释只留一句摘要，改模型时以那份台账为准。 */
 export function migrate(raw: unknown): AppData {
   const d = (raw ?? {}) as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };
   const base = defaultData();
@@ -229,10 +239,15 @@ export function migrate(raw: unknown): AppData {
       kind: (rest.kind === "habit" ? "habit" : "task") as TaskKind,
       checkIns: normalizeCheckIns((rest as { checkIns?: unknown }).checkIns),
       updatedAt: typeof rest.updatedAt === "string" && rest.updatedAt ? rest.updatedAt : rest.createdAt,
+      // 子任务没有工厂函数，默认值就写在这个字面量里（另一处是 store.addSubtask）——
+      // 给 Subtask 加字段必须同时改这两处。漏了这处，老数据里那个键是 undefined，
+      // JSON.stringify 会把它整个吞掉，「导出→导入→再导出逐字节一致」当场就不成立了。
+      // doneAt 只补 null：已经勾掉的老子任务不知道是哪天勾的，拿「现在」补等于集体撒谎
       subtasks: (rest.subtasks ?? []).map((s) => ({
         due: null,
         dueTime: null,
         priority: null,
+        doneAt: null,
         ...s,
       })),
     };
@@ -247,7 +262,7 @@ export function migrate(raw: unknown): AppData {
     )
     .map((g) => ({ id: g.id, at: g.at }));
   return {
-    version: 5,
+    version: 6,
     lists,
     tasks,
     sessions: Array.isArray(d.sessions) ? (d.sessions as FocusSession[]) : [],
