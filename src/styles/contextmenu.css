@@ -9,7 +9,7 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
   padding: 6px;
-  animation: card-in .12s ease-out;
+  animation: card-in var(--dur-1) var(--ease);
 }
 
 /* 多选时的头部小字 */
@@ -48,7 +48,7 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
   padding: 6px;
-  animation: card-in .12s ease-out;
+  animation: card-in var(--dur-1) var(--ease);
 }
 .ctx-submenu.flip { left: auto; right: calc(100% + 2px); }
 

@@ -45,7 +45,7 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   margin-bottom: 8px;
-  transition: border-color .12s, box-shadow .12s;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .hb-row:hover { border-color: var(--ink-3); }
 .hb-row.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -73,7 +73,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background .14s, border-color .14s, transform .1s;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
 }
 .hb-check:hover { border-color: var(--accent); }
 .hb-check:active { transform: scale(.9); }
@@ -100,7 +100,7 @@
   padding: 0;
   border: 1.4px solid var(--hair);
   background: transparent;
-  transition: transform .1s;
+  transition: transform var(--dur-1) var(--ease);
 }
 .hb-dot:not(:disabled):hover { transform: scale(1.25); }
 .hb-dot.done { background: var(--ok); border-color: var(--ok); }
@@ -162,7 +162,7 @@
   color: var(--ink-3);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  transition: transform .1s;
+  transition: transform var(--dur-1) var(--ease);
 }
 .hb-cell:not(:disabled):hover { transform: scale(1.08); border-color: var(--accent); }
 .hb-cell.done { background: var(--ok); color: var(--card); font-weight: 600; }
@@ -175,6 +175,9 @@
 .hb-edit { display: flex; gap: 8px; flex-wrap: wrap; }
 .hb-edit .input { flex: 1 1 180px; min-width: 140px; width: auto; }
 .hb-edit select.input { flex: 0 0 auto; }
+/* 备注外面那层只为托住提交回执的「✓」（A2），不改布局 */
+.hb-notes-wrap { position: relative; }
+.hb-notes-ok { left: auto; right: 8px; top: 15px; }
 .hb-notes {
   width: 100%;
   border: 1px solid var(--hair);

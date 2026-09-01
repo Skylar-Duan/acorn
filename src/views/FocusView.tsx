@@ -48,7 +48,8 @@ export default function FocusView() {
     const tt = [...overdue, ...todays].filter((r) => !r.sub).map((r) => r.task);
     const seen = new Set(tt.map((t) => t.id));
     const ib = aliveTasks(data)
-      .filter((t) => !t.done && t.listId === null && !seen.has(t.id))
+      // 放弃的不进候选：跟随手记那个视图同一个口径，都说了不做了就别再拿它开一轮专注
+      .filter((t) => !t.done && !t.droppedAt && t.listId === null && !seen.has(t.id))
       .sort((a, b) => a.order - b.order)
       .slice(0, 10);
     return { todayTasks: tt, inbox: ib };

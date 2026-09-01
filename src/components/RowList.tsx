@@ -6,9 +6,12 @@
 // 2. **子任务链折叠**：收起时一件事**在整个视图里**只占一行「下一步」，行尾标 +N 说明后面还有几条。
 //    这两件事都必须**按整个视图算，不能按组算**——子任务各自带日期时会被分到不同的时间段里去，
 //    按组算的话「收起」之后这件事仍然一段出现一次，按钮说的「只显示下一步」就是句空话。
-import { Fragment } from "react";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import type { DateRow, UIState } from "../core/store";
 import { isChainFolded, toggleChain, useApp } from "../core/store";
+import { cardMs } from "../core/motion";
+import { CardSlot } from "./motion";
 import TaskRow from "./TaskRow";
 import TaskCard from "./TaskCard";
 
@@ -63,7 +66,9 @@ export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
 }
 
 export interface RowListProps {
-  /** 本组要显示的行（**已经**用 fold.hidden 过滤过了） */
+  /** 本组的行。**不要**先拿 fold.hidden 过滤——折叠掉的行由这里收成 0 高，
+   *  这样「只看下一步」是收进去/放出来的，而不是凭空少几行又多几行（B5）。
+   *  视图那边照旧用 visibleRows 判断这一组还剩不剩东西、组标题画不画 */
   rows: DateRow[];
   /** 整个视图算好的折叠方案 */
   fold: FoldPlan;
@@ -74,46 +79,66 @@ export interface RowListProps {
 }
 
 export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone }: RowListProps) {
-  return (
-    <>
-      {rows.map((r, i) => {
-        const key = rowKey(r);
-        const bundled = !!r.sub && i > 0 && rows[i - 1].task.id === r.task.id;
-        // 展开的卡片按**任务 id** 认领 key，不跟着行 key 走：在卡里勾掉一条子任务，
-        // openRows 会把那行剔出去、anchor 顺势落到下一条子任务行上，行 key 一变整张卡就被卸载重建——
-        // 已完成子任务的折叠开关、「＋子任务」草稿、「整句改」草稿会一起被清空
-        // （表现成「我展开已完成，勾一下，它自己又收回去了」）。
-        // cardAnchor 保证全视图只有一行认领这张卡，且有子任务行时不会同时有母任务行，key 不会撞
-        if (anchor === key) {
-          return (
-            <Fragment key={r.task.id}>
-              <TaskCard task={r.task} />
-            </Fragment>
-          );
-        }
-        return (
-          <Fragment key={key}>
-            <TaskRow
-              task={r.task}
-              sub={r.sub}
-              orderedIds={orderedIds}
-              bundled={bundled}
-              fadeOnDone={fadeOnDone}
-              chain={
-                fold.head.has(key)
-                  ? {
-                      folded: fold.more.has(key),
-                      more: fold.more.get(key) ?? 0,
-                      onToggle: () => toggleChain(r.task.id),
-                    }
-                  : undefined
+  // 收起卡片也要有动画（B1）：expandedId 一清空就把卡片从树上摘掉的话，
+  // 「收起」永远是硬切。所以让它再活一拍，那一拍里 .shut 把高度收回去。
+  // 只有卡片本来就落在这一组的那个 RowList 会留住它，别的组从头到尾没画过卡片。
+  // 状态必须在渲染里翻、不能放 useEffect：放那儿卡片已经被卸载了，动画没机会开始
+  const owned = anchor && rows.some((r) => rowKey(r) === anchor) ? anchor : null;
+  const [prevOwned, setPrevOwned] = useState<string | null>(owned);
+  const [closing, setClosing] = useState<string | null>(null);
+  if (prevOwned !== owned) {
+    setPrevOwned(owned);
+    if (owned) setClosing(null);
+    else if (prevOwned) setClosing(prevOwned);
+  }
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(() => setClosing(null), cardMs());
+    return () => clearTimeout(t);
+  }, [closing]);
+
+  // 手搭一个**平铺**的数组，不用 rows.map 返回数组套数组：嵌套数组会给 key 加一层作用域，
+  // 下面那条「卡片按任务 id 认 key」的规矩就白写了
+  const out: ReactNode[] = [];
+  rows.forEach((r, i) => {
+    const key = rowKey(r);
+    const bundled = !!r.sub && i > 0 && rows[i - 1].task.id === r.task.id;
+    const expanded = anchor === key;
+    out.push(
+      <TaskRow
+        key={`row:${key}`}
+        task={r.task}
+        sub={r.sub}
+        orderedIds={orderedIds}
+        bundled={bundled}
+        fadeOnDone={fadeOnDone}
+        // 摊成卡片了、或者被「只看下一步」收起来了，都只是收成 0 高，不下树
+        collapsed={expanded || fold.hidden.has(key)}
+        chain={
+          fold.head.has(key)
+            ? {
+                folded: fold.more.has(key),
+                more: fold.more.get(key) ?? 0,
+                onToggle: () => toggleChain(r.task.id),
               }
-            />
-          </Fragment>
-        );
-      })}
-    </>
-  );
+            : undefined
+        }
+      />,
+    );
+    // 展开的卡片按**任务 id** 认领 key，不跟着行 key 走：在卡里勾掉一条子任务，
+    // openRows 会把那行剔出去、anchor 顺势落到下一条子任务行上，行 key 一变整张卡就被卸载重建——
+    // 已完成子任务的折叠开关、「＋子任务」草稿、「整句改」草稿会一起被清空
+    // （表现成「我展开已完成，勾一下，它自己又收回去了」）。
+    // 行的 key 加了 `row:` 前缀正是为了跟它岔开：母任务行的 rowKey 就等于任务 id，会撞
+    if (expanded || key === closing) {
+      out.push(
+        <CardSlot key={`card:${r.task.id}`} shut={!expanded}>
+          <TaskCard task={r.task} />
+        </CardSlot>,
+      );
+    }
+  });
+  return <>{out}</>;
 }
 
 /** 用折叠方案过掉一组里该藏起来的行。视图拿它决定「这一组还剩东西吗、组标题要不要画」 */

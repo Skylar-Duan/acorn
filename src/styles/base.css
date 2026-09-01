@@ -10,6 +10,27 @@
   --r-sm: 7px; --r-md: 10px; --r-lg: 14px;
   --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 15.5px;
   --fs-title: 26px; --fs-h2: 17px;
+
+  /* ---------- 动效（v1.9.0 · B0）----------
+     全应用的动画只认这三个值，别处不许再写字面时长。
+     **想整体调轻就把两个时长调小、想调慢就调大、想彻底关掉动效就都写成 0ms**——
+     改这里一处就够了，JS 那边的等待（core/motion.ts）读的也是这两个变量。 */
+  --ease: cubic-bezier(.2, .8, .3, 1);
+  --dur-1: 120ms;  /* 小动作：淡入淡出、边框、箭头转、徽标 */
+  --dur-2: 180ms;  /* 大动作：卡片长出来、行收走、面折叠 */
+}
+
+/* 系统开了「减少动态效果」就全部降级（B0，此前一处都没有）。
+   时长变量也一起压掉，JS 那边跟着变成「立刻」，不会出现动画没了却还等一拍。
+   「✓」提交回执排除在外：它是靠动画把自己显示 800 毫秒再淡出的，
+   一并压掉等于把 A2 的回执关了 */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0.01ms; --dur-2: 0.01ms; }
+  *:not(.commit-ok), *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -29,6 +50,10 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* 换主题**不做**渐变（B7 已撤回，v1.9.0）：只给几块大面加底色过渡，
+     几十处显式写死 --ink-2 / --ink-3 的前景仍是瞬切，中段前景压在还没爬到位的底色上，
+     浅↔深切换时任务卡标题对比度掉到约 1.2:1，字几乎看不见；节奏也被撕成三档。
+     整齐的瞬切好过撕裂的渐变。要做完整版，得把同一批面上的前景一并纳入同长过渡 */
 }
 
 input, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
@@ -73,7 +98,7 @@ a { color: var(--accent); }
 .btn {
   border-radius: var(--r-sm); padding: 6px 14px; font-size: var(--fs-sm);
   color: var(--ink-2); border: 1px solid var(--hair); background: var(--card);
-  transition: background .12s, color .12s;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .btn:hover { color: var(--ink); background: var(--bg); }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
@@ -91,9 +116,38 @@ kbd {
 .input {
   width: 100%; border: 1px solid var(--hair); background: var(--card);
   border-radius: var(--r-sm); padding: 7px 11px; outline: none;
-  transition: border-color .12s, box-shadow .12s;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 提交回执（v1.9.0 · A2）：打字存上了的那一声轻响。逻辑在 components/commitFlash.tsx。
+   放 base.css 是因为「随手记一条」浮窗只载 themes.css + base.css，它那个框也要有回执 */
+.commit-lit { animation: commit-edge var(--dur-2) var(--ease); }
+@keyframes commit-edge {
+  0%, 60% { box-shadow: 0 0 0 2px var(--accent-soft); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
+
+/* 零宽占位：插在输入框后面，「✓」浮在它右边，不占布局、不挤走同行的东西 */
+.commit-slot {
+  position: relative; display: inline-block; width: 0;
+  flex: 0 0 0; align-self: center; vertical-align: middle;
+}
+.commit-ok {
+  position: absolute; left: 5px; top: 50%;
+  color: var(--accent); font-size: 12px; line-height: 1;
+  white-space: nowrap; pointer-events: none;
+  /* 全仓唯一一条不走 --dur-* 的时长：它不是「动多久」，是「停留多久」（A2 的 FLASH_MS=1100），
+     跟 commitFlash.tsx 里那个数配对，收进动效常量会把回执一起调没 */
+  animation: commit-ok-fade 1.1s ease-out forwards;
+}
+/* 12% 冒出来 → 停到 72%（约 800ms）→ 淡出 */
+@keyframes commit-ok-fade {
+  0% { opacity: 0; transform: translateY(-50%) scale(.7); }
+  12% { opacity: 1; transform: translateY(-50%) scale(1); }
+  72% { opacity: 1; transform: translateY(-50%) scale(1); }
+  100% { opacity: 0; transform: translateY(-50%) scale(1); }
+}
 
 /* 弹层 */
 .overlay {
@@ -113,17 +167,24 @@ kbd {
   background: var(--ink); color: var(--bg);
   border-radius: 999px; padding: 9px 18px; font-size: var(--fs-sm);
   display: flex; align-items: center; gap: 14px; z-index: 200;
-  box-shadow: var(--shadow); animation: toast-in .18s ease-out;
+  box-shadow: var(--shadow); animation: toast-in var(--dur-2) var(--ease);
 }
 .toast button { color: inherit; font-weight: 600; opacity: .9; }
 .toast button:hover { opacity: 1; text-decoration: underline; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+/* 退场（B6）。以前是「啪一下没了」——只有进场没有退场，是全应用最常见的那种生硬。
+   transform 里的 -50% 一个字都不能少：它是居中用的，写漏了退场时会先往右跳半个身位 */
+.toast.leaving, .bulk-bar.leaving {
+  animation: toast-out var(--dur-1) var(--ease) forwards;
+  pointer-events: none;
+}
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px); } }
 
 /* 勾选圆圈 */
 .cb {
   width: 17px; height: 17px; border: 1.6px solid var(--ink-3); border-radius: 50%;
   flex: none; position: relative; background: transparent; padding: 0;
-  transition: background .15s, border-color .15s, transform .1s;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
 }
 .cb:hover { border-color: var(--accent); transform: scale(1.08); }
 .cb.done { background: var(--ok); border-color: var(--ok); }

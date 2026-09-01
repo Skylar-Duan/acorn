@@ -17,6 +17,7 @@ import {
   bestStreak, describeHabitRule, doneOn, isDueOn, monthMarks, recentRate,
   sortHabitsForDay, streak, weekMarks, type DayMark,
 } from "../core/habits";
+import { CommitMark, useCommitFlash, useTypingFlash } from "../components/commitFlash";
 import "../styles/habits.css";
 
 const WEEK_LABEL = ["一", "二", "三", "四", "五", "六", "日"];
@@ -102,6 +103,9 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
 
 function HabitDetail({ habit, today }: { habit: Task; today: string }) {
   const [month, setMonth] = useState(() => monthStart(today));
+  // 习惯名和备注也是逐键落库、零提示（A7）：停手半秒闪一下，跟任务卡那边一个规矩
+  const titleFlash = useTypingFlash(habit.title);
+  const notesFlash = useTypingFlash(habit.notes);
   const marks = monthMarks(habit, month, today);
   const rate = recentRate(habit, 30, today);
   const best = bestStreak(habit);
@@ -159,11 +163,12 @@ function HabitDetail({ habit, today }: { habit: Task; today: string }) {
 
       <div className="hb-edit">
         <input
-          className="input"
+          className={`input${titleFlash ? " commit-lit" : ""}`}
           value={habit.title}
           placeholder="习惯名"
           onChange={(e) => updateTask(habit.id, { title: e.target.value })}
         />
+        <CommitMark on={titleFlash} />
         <select
           className="input"
           value={JSON.stringify(habit.repeat)}
@@ -178,13 +183,17 @@ function HabitDetail({ habit, today }: { habit: Task; today: string }) {
           )}
         </select>
       </div>
-      <textarea
-        className="hb-notes"
-        placeholder="备注…"
-        value={habit.notes}
-        rows={habit.notes ? undefined : 1}
-        onChange={(e) => updateTask(habit.id, { notes: e.target.value })}
-      />
+      {/* 包一层只为给回执的「✓」一个落脚点，跟任务卡的备注同一个写法 */}
+      <div className="hb-notes-wrap">
+        <textarea
+          className={`hb-notes${notesFlash ? " commit-lit" : ""}`}
+          placeholder="备注…"
+          value={habit.notes}
+          rows={habit.notes ? undefined : 1}
+          onChange={(e) => updateTask(habit.id, { notes: e.target.value })}
+        />
+        {notesFlash && <span className="commit-ok hb-notes-ok">✓</span>}
+      </div>
       <div className="hb-actions">
         <button
           className="btn ghost"
@@ -207,6 +216,7 @@ export default function Habits() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [draftRule, setDraftRule] = useState<RepeatRule>({ kind: "daily", every: 1 });
+  const addFlash = useCommitFlash();
 
   const habits = useMemo(() => sortHabitsForDay(aliveHabits(data), today), [data, today]);
   const dueToday = habits.filter((h) => isDueOn(h, today));
@@ -218,6 +228,7 @@ export default function Habits() {
     if (!title) return;
     const id = addHabit({ title, repeat: draftRule });
     setDraft("");
+    addFlash.flash();
     setExpandedId(id);
   }
 
@@ -240,14 +251,30 @@ export default function Habits() {
         <div className="hb-add">
           <span className="plus">＋</span>
           <input
-            className="hb-add-input"
+            className={`hb-add-input${addFlash.on ? " commit-lit" : ""}`}
             placeholder="加一个习惯，比如「喝水 2L」"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.nativeEvent.isComposing) create();
+              // Esc 才是丢弃
+              if (e.key === "Escape" && draft) {
+                e.stopPropagation();
+                setDraft("");
+              }
+            }}
+            // A1：点走 = 提交。但**点旁边那个周期下拉和「加上」按钮不算点走**——
+            // 那一下正是在给这个习惯挑周期，抢先建了反而拿的是默认周期
+            // **窗口失焦也不算点走**：alt-tab 去别的程序时浏览器照样发 blur，
+            // 抢着建出一个打了一半名字的习惯、还顺手跳过去展开它
+            onBlur={(e) => {
+              if (!document.hasFocus()) return;
+              const next = e.relatedTarget as Node | null;
+              if (next && e.currentTarget.parentElement?.contains(next)) return;
+              create();
             }}
           />
+          <CommitMark on={addFlash.on} />
           <select
             className="input hb-add-rule"
             value={JSON.stringify(draftRule)}

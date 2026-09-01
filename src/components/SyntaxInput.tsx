@@ -4,17 +4,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangeEvent,
   CSSProperties,
+  FocusEvent as ReactFocusEvent,
   KeyboardEvent as ReactKeyboardEvent,
   SyntheticEvent,
 } from "react";
 import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
+import { CommitMark, useCommitFlash } from "./commitFlash";
 import "../styles/syntaxinput.css";
 
 export interface SyntaxInputProps {
   value: string;
   onChange: (v: string) => void;
-  onSubmit: (parsed: ParseResult) => void;
+  /** 回车提交。**回执由调用方说了算**：明确返回 false = 这一下什么都没存
+   *  （用法页那个只解析不落库的试写框、只写了日期没写标题的子任务栏），那就不闪 ✓。
+   *  返回 true / 什么都不返回 = 存下了，照旧闪。A2 那个回执的全部价值在于它不能说谎 */
+  onSubmit: (parsed: ParseResult) => boolean | void;
   lists: string[];
   tags: string[];
   whos: string[];
@@ -25,6 +30,17 @@ export interface SyntaxInputProps {
   /** 不认这几类要素（子任务行用：没有清单/标签/需求方/循环）。被关掉的类别也不弹补全 */
   skip?: ParseChip["kind"][];
   inputStyle?: CSSProperties;
+  /** 失焦时怎么办（A1「点走 = 提交」）。**这里不写死任何一种语义**：
+   *  这个框被 4 处复用（随手记 / 整句改 / 加子任务 / 浮窗），
+   *  随手记要躲开自己那排点选按钮、浮窗根本不能在失焦时落库——各家自己判。
+   *  不给这个 prop 就是老样子：失焦只关补全下拉，什么都不提交。
+   *  返回 true = 真的存下去了，这边才闪回执 */
+  onBlurCommit?: (parsed: ParseResult, e: ReactFocusEvent<HTMLInputElement>) => boolean;
+  /** 补全下拉没开着时按 Esc。返回 true = 这一下我吃掉了（不再往外冒泡）。
+   *  整句改那处第一下 Esc 是「还原本句」，浮窗那处是「隐藏窗口」，语义各不相同 */
+  onEscape?: () => boolean;
+  /** Shift+Enter（A8「一路回车敲完一张卡」里的收卡那一下）。不给就当普通回车 */
+  onShiftEnter?: () => void;
 }
 
 // chips 图标：与 QuickAddBar 保持一致
@@ -66,8 +82,10 @@ interface DropMatch {
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
   placeholder, autoFocus, showChips = true, skip, inputStyle,
+  onBlurCommit, onEscape, onShiftEnter,
 }: SyntaxInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { on: flashOn, flash } = useCommitFlash();
   const [caret, setCaret] = useState(0);
   /** Esc 关掉的那个下拉的签名：签名不变就不再弹，继续敲字换了签名会重开 */
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
@@ -149,15 +167,36 @@ export default function SyntaxInput({
       }
       return;
     }
-    if (e.key === "Enter") onSubmit(parsed);
-    // Esc 不拦截，冒泡交给外层（清空/关窗由调用方决定）
+    if (e.key === "Enter") {
+      if (e.shiftKey && onShiftEnter) {
+        e.preventDefault();
+        onShiftEnter();
+        return;
+      }
+      submit(parsed);
+      return;
+    }
+    if (e.key === "Escape" && onEscape && onEscape()) {
+      // 调用方吃掉了这一下（比如整句改还原本句），别再让外层收卡片
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    // 其余情况 Esc 不拦截，冒泡交给外层（清空选中/收卡片/关窗由调用方决定）
+  }
+
+  /** 提交并闪一下回执。空框不闪——那一下什么都没存；
+   *  调用方明说「没存」（返回 false）的同样不闪，见 onSubmit 那段注释 */
+  function submit(p: ParseResult) {
+    const stored = onSubmit(p);
+    if (stored !== false && value.trim()) flash();
   }
 
   return (
     <div className="si-wrap">
       <input
         ref={inputRef}
-        className="si-input"
+        className={`si-input${flashOn ? " commit-lit" : ""}`}
         value={value}
         placeholder={placeholder}
         autoFocus={autoFocus}
@@ -171,10 +210,19 @@ export default function SyntaxInput({
           setCaret(e.currentTarget.selectionStart ?? 0);
         }}
         onKeyDown={handleKeyDown}
-        onBlur={() => {
+        onBlur={(e: ReactFocusEvent<HTMLInputElement>) => {
           if (dropKey !== null) setDismissedKey(dropKey);
+          // 点补全项不会走到这儿：那边 onMouseDown 已经 preventDefault，焦点根本没离开。
+          //
+          // **窗口失焦不是点走**（A1 的统一口径，一处盖住所有 onBlurCommit 的调用方）：
+          // alt-tab 去别的程序时浏览器照样发 blur。任务卡那条「整句改」尤其凶——它做的是
+          // 整句全量对齐，打到一半失焦就会把日期/重要性/清单/需求方/标签整片写成空。
+          // 正确的行为是**原样悬着**，等用户回来自己了结（回车提交 / Esc 丢弃）
+          if (!document.hasFocus()) return;
+          if (onBlurCommit && value.trim() && onBlurCommit(parsed, e)) flash();
         }}
       />
+      <CommitMark on={flashOn} />
       {showChips && parsed.chips.length > 0 && (
         <span className="si-chips">
           {parsed.chips.map((c, i) => (

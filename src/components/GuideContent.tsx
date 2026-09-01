@@ -126,7 +126,9 @@ export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: G
           <SyntaxInput
             value={tryIt}
             onChange={setTryIt}
-            onSubmit={() => { /* 只是试写，不落库 */ }}
+            // 只是试写，不落库——返回 false 是明着告诉输入框「这一下什么都没存」，
+            // 别闪那个 ✓：旁边的说明白纸黑字写着「不会创建任务」
+            onSubmit={() => false}
             placeholder="例如：下周三下午3点 !高 /工作 @李哥 场地确认"
             lists={listNames}
             tags={tagNames}

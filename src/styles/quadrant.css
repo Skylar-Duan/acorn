@@ -27,7 +27,7 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow-sm);
   padding: 10px 12px 8px;
-  transition: border-color .12s, box-shadow .12s;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 
 /* 拖拽悬停：格子轻轻亮起接住它 */
@@ -79,7 +79,7 @@
   padding: 6px;
   border-radius: var(--r-sm);
   font-size: var(--fs-sm);
-  transition: background .1s;
+  transition: background var(--dur-1) var(--ease);
 }
 .quad-row:hover { background: var(--bg); }
 .quad-row .quad-title {

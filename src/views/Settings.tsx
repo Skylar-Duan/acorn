@@ -16,6 +16,7 @@ import { FOCUS_ENABLED } from "../core/features";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
 import { useGuideEntry } from "../components/GuideSheet";
+import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import UpdatePanel from "../components/UpdatePanel";
 import { updaterSupported } from "../core/updater";
 import "../styles/settings.css";
@@ -65,7 +66,8 @@ function buildCsv(d: AppData): string {
       PRIORITY_LABEL[t.priority],
       t.due ?? "",
       t.dueTime ?? "",
-      t.done ? "已完成" : "未完成",
+      // 三态：放弃是第三种收场，写成「未完成」等于把用户已经了结的事又摆回待办
+      t.done ? "已完成" : t.droppedAt ? "已放弃" : "未完成",
       t.doneAt ? localDT(t.doneAt) : "",
     ]
       .map(csvCell)
@@ -114,6 +116,8 @@ export default function Settings() {
   /** null = 备份列表收起 */
   const [backups, setBackups] = useState<BackupInfo[] | null>(null);
   const [shortcut, setShortcut] = useState(settings.quickAddShortcut);
+  /** 快捷键那格的提交回执（A2）：这里本来就是失焦即存，只是从来没告诉过人 */
+  const shortcutFlash = useCommitFlash();
   const [autoOn, setAutoOn] = useState(settings.autostart);
   const guide = useGuideEntry();
 
@@ -149,6 +153,7 @@ export default function Settings() {
     if (v === settings.quickAddShortcut) return;
     updateSettings({ quickAddShortcut: v });
     void applyQuickAddShortcut(v);
+    shortcutFlash.flash();
   }
 
   async function toggleAutostart() {
@@ -314,7 +319,8 @@ export default function Settings() {
         </div>
 
         {/* ---------- 云账号 ---------- */}
-        <div className="set-section">
+        {/* id 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找 */}
+        <div className="set-section" id="set-cloud">
           <h2>云账号</h2>
           <div className="set-desc">
             登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
@@ -412,14 +418,22 @@ export default function Settings() {
             </div>
             <div className="set-ctl">
               <input
-                className="input set-shortcut"
+                className={`input set-shortcut${shortcutFlash.on ? " commit-lit" : ""}`}
                 value={shortcut}
                 onChange={(e) => setShortcut(e.target.value)}
-                onBlur={commitShortcut}
+                // 窗口失焦不是点走：alt-tab 出去时会把打了一半的那组键当成新快捷键注册掉，
+                // 框原样悬着，等用户回来自己了结（回车确认 / Esc 还原）
+                onBlur={() => { if (document.hasFocus()) commitShortcut(); }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  // Esc 还原成现在真正生效的那一组，别把没按下确认的字留在框里骗人
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setShortcut(settings.quickAddShortcut);
+                  }
                 }}
               />
+              <CommitMark on={shortcutFlash.on} />
             </div>
           </div>
           )}

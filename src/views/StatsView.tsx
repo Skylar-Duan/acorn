@@ -91,12 +91,21 @@ export default function StatsView() {
         <span className="sub">最近的完成情况</span>
       </div>
       <div className="view-body stats-body">
-        {/* 数字卡：专注收起来的时候是两枚，列数跟着改（statsview.css 的 .n2） */}
-        <div className={`stats-cards${FOCUS_ENABLED ? "" : " n2"}`}>
+        {/* 数字卡的枚数是活的：专注收起来时少一枚，本周一件都没放弃时也少一枚。
+            列数跟着枚数走（statsview.css 的 .n2 / .n3 / .n4），不然会剩个半格 */}
+        <div className={`stats-cards n${2 + (FOCUS_ENABLED ? 1 : 0) + (review.dropped.length ? 1 : 0)}`}>
           <div className="stats-card">
             <span className="stats-num">{review.completed.length}</span>
             <span className="stats-label">本周完成</span>
           </div>
+          {/* 放弃**单独一枚**，一件都没有时整枚不出现。
+              绝不并进「本周完成」——那样完成率虚高，这一整页的数字就都不能信了 */}
+          {review.dropped.length > 0 && (
+            <div className="stats-card">
+              <span className="stats-num">{review.dropped.length}</span>
+              <span className="stats-label">本周放弃</span>
+            </div>
+          )}
           {FOCUS_ENABLED && (
           <div className="stats-card">
             <span className="stats-num">
@@ -239,7 +248,9 @@ export default function StatsView() {
               </span>
             </div>
             <div className="stats-week-sum">
-              完成 {review.completed.length} · 未清 {review.stillOpen.length} · 反复顺延 {review.postponed.length}
+              完成 {review.completed.length}
+              {review.dropped.length > 0 && <> · 放弃 {review.dropped.length}</>}
+              {" "}· 未清 {review.stillOpen.length} · 反复顺延 {review.postponed.length}
               {FOCUS_ENABLED && <> · 专注 {review.focusMinutes} 分钟</>}
             </div>
           </div>

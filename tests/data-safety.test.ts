@@ -246,14 +246,20 @@ describe("闸门不许搭一轮早就在飞的旧同步的顺风车", () => {
     await inflight;
     const res = await checked;
 
-    // 3 次不是 2 次：第一轮同步在往返期间被检测到「数据漂移了」，
-    // 按新规矩它会自己补跑一轮以当前数据为快照的同步，再加上闸门 force 的那一轮。
-    // ⚠️ 这个数字是 2026-08-31 会话被打断时就地改的，**下一轮复核要确认第三次调用
-    // 确实是漂移补跑、而不是别的什么在空转**。
+    // 3 次不是 2 次，三次各有各的名分（都不是空转）：
+    // ① 防抖那一轮，快照是「起飞那一刻」，没有新记的那条；
+    // ② 它落地时发现数据漂移了，自己补跑一轮 chained，快照是当前这份；
+    // ③ 闸门 force 的那一轮——它要的是「**当前这份**上去了」，不许搭前两轮的顺风车。
+    // 补跑那一轮自己不再漂移（快照就是当前这份），所以到此为止，不会接力下去
     expect(syncOnce).toHaveBeenCalledTimes(3);
     expect(titles(seen[0])).not.toContain("起飞之后记的一条");
-    expect(titles(seen[1])).toContain("起飞之后记的一条");
+    expect(titles(seen[1])).toContain("起飞之后记的一条"); // 漂移补跑
+    expect(titles(seen[2])).toContain("起飞之后记的一条"); // 闸门那一轮
     expect(res).toEqual({ ok: true, rev: 12 });
+    // 再等几拍：没有第四轮，说明没人在原地空转
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(syncOnce).toHaveBeenCalledTimes(3);
   });
 });
 

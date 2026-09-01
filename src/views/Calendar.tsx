@@ -11,6 +11,7 @@ import {
   rowTaskIds, setTasksDue, useApp,
 } from "../core/store";
 import { rowKey } from "../components/RowList";
+import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import TaskCard from "../components/TaskCard";
 import "../styles/calendar.css";
 
@@ -44,6 +45,8 @@ export default function Calendar() {
   const [dropYmd, setDropYmd] = useState<string | null>(null);
   const [quickYmd, setQuickYmd] = useState<string | null>(null);
   const [quickText, setQuickText] = useState("");
+  /** 日历格补记的提交回执（A2） */
+  const quickFlash = useCommitFlash();
   const [filter, setFilter] = useState<CalFilter>(loadFilter);
   const pickFilter = (f: CalFilter) => {
     setFilter(f);
@@ -80,7 +83,9 @@ export default function Calendar() {
       return slot;
     };
     for (const t of aliveTasks(data)) {
-      if (t.due && !t.done) slotOf(t.due).open.push(t);
+      // 放弃的一格都不占：日历上的计划条是「那天要做什么」，已经不做了就不该再排在那儿。
+      // 已完成桶走 doneRows，那个函数本来就只收做完的，放弃的进不去（见 store.droppedRows）
+      if (t.due && !t.done && !t.droppedAt) slotOf(t.due).open.push(t);
     }
     // 完成时刻是猜出来的（老子任务没戳、母任务也没完成）一律不落格：
     // 那天用户其实什么都没做完，画上去就是凭空捏造一条完成记录。
@@ -104,11 +109,17 @@ export default function Calendar() {
     setAnchor((a) => addDays(a, daysInMonth(Number(a.slice(0, 4)), Number(a.slice(5, 7)))));
   }
 
-  function submitQuick() {
-    const title = quickText.trim();
-    if (title && quickYmd) addTask({ title, due: quickYmd });
-    setQuickYmd(null);
+  /** 日历格里补记一条。回车之后**框留在原地清空**，接着记下一条同一天的事；
+   *  点走则记完就收（A1：空的就丢、有字就提交）。text 显式传进来，
+   *  免得 Esc 清空之后 blur 读到的还是上一拍的 state */
+  function submitQuick(text: string, keepOpen: boolean) {
+    const title = text.trim();
+    if (title && quickYmd) {
+      addTask({ title, due: quickYmd });
+      quickFlash.flash();
+    }
     setQuickText("");
+    if (!keepOpen) setQuickYmd(null);
   }
 
   function onDrop(e: React.DragEvent, ymd: string) {
@@ -200,15 +211,28 @@ export default function Calendar() {
                   <div className="cal-quick" onDoubleClick={(e) => e.stopPropagation()}>
                     <input
                       autoFocus
+                      className={quickFlash.on ? "commit-lit" : undefined}
                       placeholder="回车添加"
                       value={quickText}
                       onChange={(e) => setQuickText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.nativeEvent.isComposing) submitQuick();
-                        if (e.key === "Escape") setQuickYmd(null);
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) submitQuick(quickText, true);
+                        // Esc 才是丢弃
+                        if (e.key === "Escape") {
+                          e.stopPropagation();
+                          setQuickText("");
+                          setQuickYmd(null);
+                        }
                       }}
-                      onBlur={() => setQuickYmd(null)}
+                      // A1：点走 = 提交（空的照旧直接收）。
+                      // 但**窗口失焦不是点走**：alt-tab 去别的程序不该凭空多一条任务，
+                      // 框原样悬在这儿等用户回来自己了结
+                      onBlur={(e) => {
+                        if (!document.hasFocus()) return;
+                        submitQuick(e.target.value, false);
+                      }}
                     />
+                    <CommitMark on={quickFlash.on} />
                   </div>
                 )}
                 {shownOpen.map((t) => (

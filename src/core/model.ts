@@ -14,6 +14,9 @@ export interface Subtask {
    *  「已完成」按子任务列、日历按实际完成日归格都靠它。老数据缺这个戳时回落到母任务的
    *  doneAt（口径见 store.rowDoneAt），**绝不在迁移时拿「现在」补** */
   doneAt?: string | null;
+  /** ISO 放弃时刻；null/缺失 = 没放弃。「不做了」跟「做完了」是两回事，各占一个字段：
+   *  圈圈只管完成，放弃是标题旁边那个灰标签。两者互斥，见 store.applySubPatch */
+  droppedAt?: string | null;
 }
 
 export type RepeatRule =
@@ -50,6 +53,9 @@ export interface Task {
   done: boolean;
   /** ISO 完成时刻 */
   doneAt: string | null;
+  /** ISO 放弃时刻；null = 没放弃。放弃 = 这件事不做了，但它不是「完成」——
+   *  统计里单独算一档，绝不混进完成率。跟 done/doneAt 互斥（见 store.dropTasks / completeTask） */
+  droppedAt: string | null;
   createdAt: string;
   /** 手动排序序号（组内） */
   order: number;
@@ -187,6 +193,7 @@ export function newTask(partial: Partial<Task> & { title: string }): Task {
     subtasks: [],
     done: false,
     doneAt: null,
+    droppedAt: null,
     createdAt: new Date().toISOString(),
     order: 0,
     postponeCount: 0,
@@ -219,9 +226,10 @@ export function normalizeWho(v: unknown): string[] {
  *           拿现在会让本机所有旧任务显得比云端新，第一次同步就把云端盖掉
  *  v4 → v5：新增「习惯」分类。老任务一律 kind='task'、checkIns 空——
  *           没有任何一条旧数据会被误判成习惯
- *  v5 → v6：子任务补 doneAt（补 null，不补「现在」）。之所以为一个可选字段升版本：
- *           老客户端不只是「读进来看不见新字段」，它还会**持续写入**勾掉却没有 doneAt 的
- *           已完成子任务，新客户端拿到只能猜日子。升版本把老客户端挡在同步之外
+ *  v5 → v6：子任务补 doneAt、任务与子任务各补 droppedAt（都补 null，不补「现在」）。
+ *           之所以为可选字段升版本：老客户端不只是「读进来看不见新字段」，它还会**持续写入**
+ *           勾掉却没有 doneAt 的已完成子任务，新客户端拿到只能猜日子；「放弃」它更是整个不认，
+ *           在它那边一件已放弃的事会照旧躺在待办里。升版本把老客户端挡在同步之外
  *
  *  **字段差异表、转化规则、升不升版本的判据都在 `docs/数据模型变更.md`**，
  *  这段注释只留一句摘要，改模型时以那份台账为准。 */
@@ -242,12 +250,14 @@ export function migrate(raw: unknown): AppData {
       // 子任务没有工厂函数，默认值就写在这个字面量里（另一处是 store.addSubtask）——
       // 给 Subtask 加字段必须同时改这两处。漏了这处，老数据里那个键是 undefined，
       // JSON.stringify 会把它整个吞掉，「导出→导入→再导出逐字节一致」当场就不成立了。
-      // doneAt 只补 null：已经勾掉的老子任务不知道是哪天勾的，拿「现在」补等于集体撒谎
+      // doneAt 只补 null：已经勾掉的老子任务不知道是哪天勾的，拿「现在」补等于集体撒谎。
+      // droppedAt 同理，老数据里根本没有「放弃」这回事，一律补 null
       subtasks: (rest.subtasks ?? []).map((s) => ({
         due: null,
         dueTime: null,
         priority: null,
         doneAt: null,
+        droppedAt: null,
         ...s,
       })),
     };

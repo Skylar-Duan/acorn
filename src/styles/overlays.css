@@ -10,7 +10,7 @@
 .rescue-item {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
   padding: 11px 12px; border-radius: var(--r-md); border: 1px solid var(--hair);
-  background: var(--bg); margin-bottom: 8px; transition: border-color .12s, background .12s;
+  background: var(--bg); margin-bottom: 8px; transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
 .rescue-item:hover { border-color: var(--accent); background: var(--accent-soft); }
 .rescue-item:disabled { opacity: .5; }
@@ -68,7 +68,7 @@
 }
 
 /* ---------- 命令面板 .cp- ---------- */
-.cp-modal { animation: card-in .16s ease-out; }
+.cp-modal { animation: card-in var(--dur-2) var(--ease); }
 .cp-input {
   display: flex; align-items: center; gap: 10px;
   padding: 13px 17px; border-bottom: 1px solid var(--hair);
@@ -96,7 +96,7 @@
 .cp-empty { padding: 30px 0; text-align: center; color: var(--ink-3); font-size: var(--fs-sm); }
 
 /* ---------- 全局搜索 .so- ---------- */
-.so-modal { animation: card-in .16s ease-out; }
+.so-modal { animation: card-in var(--dur-2) var(--ease); }
 .so-input {
   display: flex; align-items: center; gap: 10px;
   padding: 13px 17px; border-bottom: 1px solid var(--hair);

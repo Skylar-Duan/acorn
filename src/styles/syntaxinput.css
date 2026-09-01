@@ -29,7 +29,7 @@
   background: var(--accent-soft);
   color: var(--accent);
   white-space: nowrap;
-  animation: si-chip-in .14s ease-out;
+  animation: si-chip-in var(--dur-1) var(--ease);
 }
 @keyframes si-chip-in { from { opacity: 0; transform: scale(.85); } }
 
@@ -46,7 +46,7 @@
   box-shadow: var(--shadow);
   padding: 5px;
   z-index: 70;
-  animation: si-drop-in .12s ease-out;
+  animation: si-drop-in var(--dur-1) var(--ease);
 }
 @keyframes si-drop-in { from { opacity: 0; transform: translateY(-3px); } }
 

@@ -9,20 +9,45 @@
 // 需求方的顺序存在设置里（每台设备各排各的，见 Settings.whoOrder）。
 // 换顺序有两套手势：鼠标走 HTML5 拖拽，手指走「按住不动进排序模式」——
 // 后者是必须的，HTML5 拖拽在触摸屏上根本不触发（见 core/touchSort.ts）。
-import { useEffect, useRef, useState } from "react";
-import { addDays, dayOfWeek, todayYMD, cmpYMD } from "../core/dates";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { duePresets, todayYMD, cmpYMD } from "../core/dates";
 import {
-  addList, addTasksWho, aliveTasks, allTags, allWho, deleteTasks, habitsOpenToday, moveList,
-  moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setTasksDue, setTasksList,
-  updateSubtask, useApp, type ViewId,
+  addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
+  moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setTasksDue,
+  setTasksList, updateSubtask, updateTask, useApp, type ViewId,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
+import { CommitMark, useCommitFlash } from "./commitFlash";
+import DateField from "./DateField";
+import type { DateFieldHandle } from "./DateField";
+import { useLeaving } from "./motion";
 import { FOCUS_ENABLED } from "../core/features";
 import { syncFootState, useSync } from "../core/syncCtl";
 import {
   IDLE, LONG_PRESS_MS, cancel, down, hold, move, up, type SortState,
 } from "../core/touchSort";
 import iconUrl from "../../src-tauri/icons/32x32.png";
+
+/** 跳进设置页之后，把「云账号」那一节滚到眼前。
+ *
+ *  晚一拍再找那个锚点：navigate 只是排了一次渲染，这会儿设置页还没挂上来。
+ *  找不到就静静算了——人已经在设置页里了，往下翻两行照样看得见，不值得为它报错。
+ *
+ *  开了「减少动态效果」就直接跳过去，不做平滑滚动：base.css 那个 reduced-motion 块
+ *  只压 animation-duration / transition-duration，管不了脚本发起的滚动；
+ *  而滚动动画正是 reduced-motion 首要要抑制的一类（前庭不适）。 */
+function revealCloudSection(): void {
+  const still =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(() => {
+    document.getElementById("set-cloud")?.scrollIntoView({
+      behavior: still ? "auto" : "smooth",
+      block: "start",
+    });
+  }, 60);
+}
 
 function Ico({ d }: { d: string }) {
   return (
@@ -243,7 +268,12 @@ export default function Sidebar(
   const curList = useApp((s) => s.ui.listId);
   const curWho = useApp((s) => s.ui.who);
   const curTag = useApp((s) => s.ui.tag);
-  const data = useApp((s) => s.data);
+  // B8：只订阅自己真用得上的那三片，别整份 data 一变就跟着走。
+  // 侧栏里几处派生（openRows / allWho / allTags / 计数）以前是**每次渲染都全量重算一遍**——
+  // 而侧栏自己有一堆本地状态（拖拽落点、排序悬停、新建清单…），拖一下就重算几十次
+  const tasks = useApp((s) => s.data.tasks);
+  const rawLists = useApp((s) => s.data.lists);
+  const settings = useApp((s) => s.data.settings);
   const loadError = useApp((s) => s.loadError);
   // 同步状态得在主界面上有块表盘：以前只在 设置 → 云账号 里显示，
   // 而升级、令牌过期、断网都会让同步无声停摆，用户要等到某天点开设置才发现。
@@ -255,6 +285,8 @@ export default function Sidebar(
     session: syncSession, phase: syncPhase, needsUpgrade: syncNeedsUpgrade,
   });
   const [addingList, setAddingList] = useState(false);
+  /** 新建清单那个框的提交回执（A2） */
+  const newList = useCommitFlash();
   const [dropHint, setDropHint] = useState<string | null>(null);
   /** 侧栏内部换位置时，鼠标正悬在哪一条上（画一条落点线） */
   const [moveOver, setMoveOver] = useState<string | null>(null);
@@ -265,39 +297,112 @@ export default function Sidebar(
   const [pendingPlan, setPendingPlan] = useState<
     { ids: string[]; sub: { taskId: string; subId: string } | null; x: number; y: number } | null
   >(null);
-  /** 弹层里选定日期后的落点：跟拖拽落点同一套口径 */
-  const planTo = (due: string) => {
+  /** 退场那一拍里弹层还得挂在树上（B6），否则关掉是「啪一下没了」 */
+  const planPop = useLeaving(pendingPlan);
+  /** 弹层里那个日期框（DateField）的三个手：点弹层外先 flush，Esc 是 cancel */
+  const planFieldRef = useRef<DateFieldHandle | null>(null);
+  /** 「安排到哪天？」**打开那一刻**这几件事各自的日子（弹层没开着 = null；
+   *  拖的是一条子任务也是 null——子任务没有顺延计数这回事）。
+   *  跟任务卡同一套口径：顺延按「弹层开 → 弹层关」整段算**一次**，见 settlePlanPopup */
+  const planDueAtOpenRef = useRef<Record<string, string> | null>(null);
+  /** **这次弹层自己在日期框里写进去的那个日子**（undefined = 没在日期框里写过）。
+   *  结算只认它，不认 store 里当下那个 due——弹层开着时别处改的日期不该算到这一笔上。
+   *  点预设那条路一次到位、照旧就地计数，写完把它清回 undefined，免得关弹层再数一遍 */
+  const planWrittenRef = useRef<string | undefined>(undefined);
+  /** 这次弹层的撤销合并键（整个弹层共用一把）。日期写入和关弹层时补的那几次 postponeCount
+   *  必须用同一把，才并得成一格撤销——每个 id 各用各的键是并不上的 */
+  const planCoalesceRef = useRef<string | undefined>(undefined);
+  /** 关弹层时的结算。effect 的清理跑的是「弹层刚开那一帧」的闭包，用 ref 保证结算的永远是最新那一份 */
+  const settlePlanRef = useRef<() => void>(() => {});
+  /** 弹层里选定日期后的落点：跟拖拽落点同一套口径。
+   *
+   *  `close` 默认 true（点预设 = 话说完了，设好就收）。**日期框那条路必须传 false**：
+   *  键盘正敲在框里，落一次库就把弹层连同框一起拆掉，用户敲「2026 / 10 / 15」时
+   *  日段刚敲下「1」就当场按 10-01 排期并关窗，后面那个「5」打在空气上，还顺手 +1 顺延。
+   *  收弹层归 DateField 的 onDone（真的点走了才收） */
+  const planTo = (due: string, close = true) => {
     if (!pendingPlan) return;
     if (pendingPlan.sub) updateSubtask(pendingPlan.sub.taskId, pendingPlan.sub.subId, { due });
-    else setTasksDue(pendingPlan.ids, due);
-    setPendingPlan(null);
+    // 日期框那条路（close=false）一次弹层能落好几次库：去抖落一次、月份点错了在同一个弹层里
+    // 改一次又落一次，每次都数就是「安排一次净加 2」——正好是「顺延×2」和周报那句
+    // 「（顺延 N 次）」的门槛，而这个数没有任何入口能清零。所以那条路一律不数，
+    // 留给关弹层时统一结算一次（settlePlanPopup）；点预设一次到位，照旧就地数
+    // 日期框那条路（close=false）要跟关弹层时补的那几次 postponeCount 并成同一格撤销：
+    // 不并的话「拖 3 件去排期」得按 4 下 Ctrl+Z 日期才回得去，而撤销栈只有 10 格
+    else if (close) setTasksDue(pendingPlan.ids, due);
+    else {
+      const key = `plan:${pendingPlan.ids.join(",")}:due`;
+      planCoalesceRef.current = key;
+      setTasksDue(pendingPlan.ids, due, { noPostponeCount: true, coalesceKey: key });
+    }
+    planWrittenRef.current = close ? undefined : due;
+    if (close) setPendingPlan(null);
   };
 
+  /** 关弹层时结算「顺延次数」——**整段只算这一次**，跟任务卡的 settleDuePopup 是同一套。
+   *
+   *  为什么不能让 setTasksDue 按落库次数数：原生 date 是分段控件，一次「安排到哪天」
+   *  能落好几次库（键盘敲月段停手落一次、敲日段停手又落一次；或者选完发现月份点错了
+   *  在同一个弹层里改一次），逐次计数就是净加 2。跟停手时长较劲永远有漏，
+   *  所以改成跟时长完全无关的算法：「这件事被往后推了几次」= 数弹层，不是数写库。
+   *
+   *  认的是**这次弹层自己写过的那个日子**（planWrittenRef），不是 store 里当下那个 due——
+   *  拿现值当依据会把别处的改动（Ctrl+→ 推明天、勾掉一件循环任务）算到这一笔上。 */
+  function settlePlanPopup() {
+    // 还欠着的那一次先做掉：它也算「这次弹层写的」，不做掉就漏了这一笔
+    planFieldRef.current?.flush();
+    const before = planDueAtOpenRef.current;
+    const written = planWrittenRef.current;
+    const key = planCoalesceRef.current;
+    planDueAtOpenRef.current = null;
+    planWrittenRef.current = undefined;
+    planCoalesceRef.current = undefined;
+    if (!before) return; // 拖的是子任务：没有顺延计数这回事
+    if (written === undefined) return; // 这次弹层没在日期框里写过（点了预设 / 取消 / Esc）
+    for (const [id, at] of Object.entries(before)) {
+      if (!at) continue; // 打开时本来就没日期 = 从无到有，不算顺延（跟 store 那边同口径）
+      if (cmpYMD(written, at) <= 0) continue; // 没往后挪（改早了 / 绕一圈又改回来了）
+      const cur = appStore.getState().data.tasks.find((t) => t.id === id);
+      if (!cur) continue;
+      // 跟刚才那次日期写入并成同一格撤销：不然改一次日期吃掉两格（栈只有 10 格）。
+      // 用的是 planTo 里那把键（整个弹层共用一把），不是 `task:<id>:due`——
+      // 后者跟 setTasksDue 那次写入的键对不上，多选时每个 id 还各不相同，一格都并不上
+      updateTask(id, { postponeCount: cur.postponeCount + 1 }, { coalesceKey: key });
+    }
+  }
+  settlePlanRef.current = settlePlanPopup;
+
   const today = todayYMD();
-  const open = aliveTasks(data).filter((t) => !t.done);
-  const rows = openRows(data);
+  // 「还欠着的」= 没做完**也没放弃**。放弃跟完成同一个口径（v1.9.0 收口）：
+  // 它们都是了结了的事，两种都不进这个数，也都不出现在随手记/清单/需求方/标签里。
+  // 这里改了口径，counts.inbox 和清单角标跟着一起改，跟 counts.plan（走 openRows）对齐
+  const open = useMemo(() => aliveTasks({ tasks }).filter((t) => !t.done && !t.droppedAt), [tasks]);
+  const rows = useMemo(() => openRows({ tasks }), [tasks]);
   // 计数按「行」算，跟点进去实际看到的条数对得上（有子任务的事已经拆成一行一个子任务）
-  const counts = {
-    inbox: open.filter((t) => !t.listId && !t.due).length,
-    today: rows.filter((r) => {
-      const due = rowDue(r);
-      return due && cmpYMD(due, today) <= 0;
-    }).length,
-    // 按「件」算，跟点进去标题上那个「N 件未完成」是同一个数。
-    // 一件事拆成几行子任务时，侧栏显示 3 而视图标题显示 1 会让人以为哪儿漏了
-    plan: rowTaskIds(rows).length,
-    trash: data.tasks.filter((t) => t.deletedAt).length,
-    habits: habitsOpenToday(data, today),
-  };
-  const whoList = allWho(data);
-  const tagList = allTags(data);
+  const counts = useMemo(
+    () => ({
+      inbox: open.filter((t) => !t.listId && !t.due).length,
+      today: rows.filter((r) => {
+        const due = rowDue(r);
+        return due && cmpYMD(due, today) <= 0;
+      }).length,
+      // 按「件」算，跟点进去标题上那个「N 件未完成」是同一个数。
+      // 一件事拆成几行子任务时，侧栏显示 3 而视图标题显示 1 会让人以为哪儿漏了
+      plan: rowTaskIds(rows).length,
+      trash: tasks.filter((t) => t.deletedAt).length,
+      habits: habitsOpenToday({ tasks }, today),
+    }),
+    [tasks, open, rows, today],
+  );
+  const whoList = useMemo(() => allWho({ tasks, settings }), [tasks, settings]);
+  const tagList = useMemo(() => allTags({ tasks }), [tasks]);
 
   const [moreOpen, toggleMore] = useFold("more", false);
   const [listsOpen, toggleLists] = useFold("lists", false);
   const [whoOpen, toggleWho] = useFold("who", false);
   const [tagsOpen, toggleTags] = useFold("tags", false);
 
-  const lists = [...data.lists].sort((a, b) => a.order - b.order);
+  const lists = useMemo(() => [...rawLists].sort((a, b) => a.order - b.order), [rawLists]);
   // 正看着的东西如果被折在下面，就得露出来——否则界面上没有任何地方显示「你在哪」
   const MORE_VIEWS: ViewId[] = ["calendar", "focus", "stats", "trash"];
   const showMore = moreOpen || MORE_VIEWS.includes(view);
@@ -309,12 +414,13 @@ export default function Sidebar(
   const showWho = whoOpen || curWhoHidden;
   const showTags = tagsOpen || curTagHidden;
 
-  /** 「还有 N 个 ▾ / 收起 ▴」那一行 */
+  /** 「还有 N 个 ▾ / 收起 ▴」那一行。
+   *  小三角是**转过去**的，不是换个字符（B4）——所以这里永远画 ▾，方向交给 CSS 的 transform */
   const moreRow = (hidden: number, open: boolean, onClick: () => void) =>
     hidden <= 0 ? null : (
       <li className="side-more" onClick={onClick}>
         <span className="side-more-txt">{open ? "收起" : `还有 ${hidden} 个`}</span>
-        <span className="side-caret">{open ? "▴" : "▾"}</span>
+        <span className={`side-caret${open ? " up" : ""}`}>▾</span>
       </li>
     );
 
@@ -336,20 +442,38 @@ export default function Sidebar(
     };
   }
 
-  // 「计划」弹层：Esc / 点弹层外关闭
+  // 「计划」弹层：Esc / 点弹层外关闭。
+  // 顺带记账：一开记下这几件事当时各自的日子，一关（不管走哪条路）统一结算一次顺延
   useEffect(() => {
     if (!pendingPlan) return;
+    const now = appStore.getState().data.tasks;
+    planDueAtOpenRef.current = pendingPlan.sub
+      ? null
+      : Object.fromEntries(
+        pendingPlan.ids.map((id) => [id, now.find((t) => t.id === id)?.due ?? ""]),
+      );
+    planWrittenRef.current = undefined;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setPendingPlan(null);
+      // Esc 才是丢弃：日期框里刚敲了一半、还欠着的那一次一并作废，
+      // 这次弹层也不许被记成一次顺延（把记账清空，结算那儿直接 return）
+      if (e.key === "Escape") {
+        planFieldRef.current?.cancel();
+        planWrittenRef.current = undefined;
+        setPendingPlan(null);
+      }
     }
     function onDoc(e: MouseEvent) {
-      if (!(e.target as HTMLElement).closest(".side-plan-pop")) setPendingPlan(null);
+      if ((e.target as HTMLElement).closest(".side-plan-pop")) return;
+      // 点走 = 提交：先把日期框里还欠着的那一次做掉，再收弹层
+      planFieldRef.current?.flush();
+      setPendingPlan(null);
     }
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDoc);
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onDoc);
+      settlePlanRef.current();
     };
   }, [pendingPlan]);
 
@@ -394,22 +518,35 @@ export default function Sidebar(
               摆一起口径相反，而且这个数只会越来越大，看久了变成噪音 */}
           {item("done", "已完成", "done")}
         </ul>
-        {pendingPlan && (
+        {planPop.shown && (
           <div
-            className="popmenu side-plan-pop"
-            style={{ left: Math.min(pendingPlan.x, window.innerWidth - 220), top: Math.min(pendingPlan.y, window.innerHeight - 220), position: "fixed" }}
+            className={`popmenu side-plan-pop${planPop.leaving ? " leaving" : ""}`}
+            style={{ left: Math.min(planPop.shown.x, window.innerWidth - 220), top: Math.min(planPop.shown.y, window.innerHeight - 220), position: "fixed" }}
           >
             <div style={{ fontSize: 12, color: "var(--ink-2)", padding: "4px 10px" }}>
               安排到哪天？
-              {pendingPlan.sub ? "（这条子任务）" : pendingPlan.ids.length > 1 ? `（${pendingPlan.ids.length} 项）` : ""}
+              {planPop.shown.sub ? "（这条子任务）" : planPop.shown.ids.length > 1 ? `（${planPop.shown.ids.length} 项）` : ""}
             </div>
-            <button className="item" onClick={() => planTo(addDays(today, 1))}>明天</button>
-            <button className="item" onClick={() => { const wd = dayOfWeek(today); planTo(addDays(today, wd === 0 ? 1 : 8 - wd)); }}>下周一</button>
-            <input
-              className="inline"
-              type="date"
-              onChange={(e) => {
-                if (e.target.value) planTo(e.target.value);
+            {/* 预设跟任务卡的日期弹层、右键的「安排日期」同一套（core/dates.duePresets）。
+                安排日期只有一套规矩，一处算一处用，别在这儿再写一份 */}
+            {duePresets(today).map((p) => (
+              <button key={p.key} className="item" onClick={() => planTo(p.ymd)}>{p.label}</button>
+            ))}
+            {/* 跟另外三处日期框同一个件。这一处以前**三样都没有**（没草稿、没去抖、
+                一凑齐就落库并当场关窗），是同一个病复发的第四轮；三件套现在封在 DateField 里，
+                这儿只交代「落库那句」和「什么时候收弹层」——落库那句绝不许自己关弹层 */}
+            <DateField
+              ref={planFieldRef}
+              value=""
+              onCommit={(ymd) => planTo(ymd, false)}
+              onDone={(e) => {
+                // 焦点还落在这个弹层里（比如点了一下日期框、又改主意去按上面的「本周五」）
+                // 就别收弹层：mousedown 把焦点挪走 → 这儿一收 → 弹层当场进退场态
+                // （.leaving 是 pointer-events:none）→ 后面那下 mouseup 落不到按钮上、
+                // click 根本不触发，整个拖拽动作静默作废。跟「随手记」那排点选同一道闸
+                const next = e.relatedTarget as HTMLElement | null;
+                if (next && next.closest(".side-plan-pop")) return;
+                setPendingPlan(null);
               }}
             />
             <button className="item" onClick={() => setPendingPlan(null)}>取消</button>
@@ -418,9 +555,11 @@ export default function Sidebar(
         {/* 不常用的收进这里。默认收起——加了习惯之后侧栏太长了 */}
         <div className={`group-title fold${showMore ? " on" : ""}`} onClick={toggleMore}>
           更多
-          <span className="side-caret">{showMore ? "▴" : "▾"}</span>
+          <span className={`side-caret${showMore ? " up" : ""}`}>▾</span>
         </div>
-        {showMore && (
+        {/* B4：以前是条件渲染，开合是瞬时的。改成一直挂着、靠外层把高度收成 0——
+            开和收才都是「长出来 / 收回去」，而不是几行凭空增删 */}
+        <div className={`side-fold${showMore ? "" : " shut"}`}>
           <ul>
             {item("calendar", "日历", "calendar")}
             {/* 专注暂时收起，见 core/features.ts */}
@@ -433,7 +572,7 @@ export default function Sidebar(
               else deleteTasks(ids);
             })}
           </ul>
-        )}
+        </div>
         <div className="group-title">
           清单
           <button title="新建清单" onClick={() => setAddingList(true)}>＋</button>
@@ -466,21 +605,43 @@ export default function Sidebar(
           {moreRow(lists.length - PEEK, showLists, toggleLists)}
           {addingList && (
             <li>
+              {/* A1：这里原来是「点走就丢」。改成**空的就丢、有字就建**——
+                  打了半个清单名去点了别处，回来它已经在了，而不是白打。
+                  回车之后框留在原地清空，可以接着建下一张（也才有地方给回执） */}
               <input
-                className="input"
+                className={`input${newList.on ? " commit-lit" : ""}`}
                 autoFocus
                 placeholder="清单名，回车创建"
                 style={{ padding: "3px 8px", fontSize: 13 }}
                 onKeyDown={(e) => {
+                  const el = e.target as HTMLInputElement;
                   if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                    const v = (e.target as HTMLInputElement).value.trim();
-                    if (v) addList(v, LIST_COLORS[data.lists.length % LIST_COLORS.length]);
+                    const v = el.value.trim();
+                    if (v) {
+                      addList(v, LIST_COLORS[rawLists.length % LIST_COLORS.length]);
+                      el.value = "";
+                      newList.flash();
+                    } else {
+                      setAddingList(false);
+                    }
+                  }
+                  // Esc 才是丢弃。先把框清空再关：万一 blur 还是来了，读到的也是空的
+                  if (e.key === "Escape") {
+                    el.value = "";
                     setAddingList(false);
                   }
-                  if (e.key === "Escape") setAddingList(false);
                 }}
-                onBlur={() => setAddingList(false)}
+                onBlur={(e) => {
+                  // A1 要的是「点走 = 存下」，**窗口失焦不是点走**：alt-tab 去别的程序时
+                  // 浏览器照样发 blur，落库就等于凭空多一张叫「工」的清单。整个悬着，
+                  // 等用户回来自己了结（回车建 / Esc 丢）
+                  if (!document.hasFocus()) return;
+                  const v = e.target.value.trim();
+                  if (v) addList(v, LIST_COLORS[rawLists.length % LIST_COLORS.length]);
+                  setAddingList(false);
+                }}
               />
+              <CommitMark on={newList.on} />
             </li>
           )}
         </ul>
@@ -548,7 +709,18 @@ export default function Sidebar(
         {sync && (
           <>
             <span className="sep">·</span>
-            <span className={sync.bad ? "warn" : undefined}>{sync.text}</span>
+            {/* 点得动：同步出问题时，用户看见这行字之后要有地方可去 */}
+            <button
+              className={sync.bad ? "foot-sync warn" : "foot-sync"}
+              title="云账号与同步状态"
+              onClick={() => {
+                navigate("settings");
+                onNavigate?.();
+                revealCloudSection();
+              }}
+            >
+              {sync.text}
+            </button>
           </>
         )}
       </div>

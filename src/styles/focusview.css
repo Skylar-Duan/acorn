@@ -36,7 +36,7 @@
   color: var(--ink-2);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
-  transition: background .12s, color .12s, border-color .12s;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
 }
 .fv-min:hover { border-color: var(--accent); color: var(--accent); }
 .fv-min.on {
@@ -53,7 +53,7 @@
   font-weight: 600;
   background: var(--accent);
   color: var(--on-accent);
-  transition: filter .12s;
+  transition: filter var(--dur-1) var(--ease);
 }
 .fv-start:hover { filter: brightness(1.06); }
 

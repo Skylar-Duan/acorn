@@ -4,8 +4,10 @@
 
 /* ---------- 数字卡 ---------- */
 .stats-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-/* 专注收起来的时候只剩两枚，不改列数右边会空出一格 */
+/* 枚数是活的（专注开关 × 本周有没有放弃），列数跟着走，不然右边会空出一格 */
 .stats-cards.n2 { grid-template-columns: repeat(2, 1fr); }
+.stats-cards.n3 { grid-template-columns: repeat(3, 1fr); }
+.stats-cards.n4 { grid-template-columns: repeat(4, 1fr); }
 .stats-card {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
   box-shadow: var(--shadow-sm); padding: 15px 18px 13px;
@@ -91,7 +93,7 @@
 }
 .stats-dist-fill {
   display: block; height: 100%; border-radius: 999px;
-  background: var(--accent); transition: width .25s ease;
+  background: var(--accent); transition: width var(--dur-2) var(--ease);
 }
 .stats-dist-num {
   font-size: var(--fs-xs); color: var(--ink-3); text-align: right;

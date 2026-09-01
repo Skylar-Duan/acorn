@@ -4,11 +4,12 @@
 // 日期/重要性没单独设的子任务显示的是继承自母任务的那份（口径统一走 store 的 row* 系列）。
 import { useRef, useState } from "react";
 import type { Subtask, Task } from "../core/model";
+import { doneRowMs } from "../core/motion";
 import { formatShort, todayYMD, cmpYMD } from "../core/dates";
 import { describeRepeat } from "../core/recur";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
-  updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority,
+  updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority, dropTasks, dropSubtask,
 } from "../core/store";
 
 export function WhoBadge({ who }: { who: string }) {
@@ -36,9 +37,12 @@ export interface TaskRowProps {
   chain?: { folded: boolean; more: number; onToggle: () => void };
   /** 「已完成」视图用：右边显示完成日期而不是截止日期（都做完了，还看截止日没意义） */
   doneDate?: string | null;
+  /** 这行让位：收成 0 高。两种情况——它摊成任务卡了（B1），或者被「只看下一步」收起来了（B5）。
+   *  不是从树上摘掉而是收起来，收/放才都有动画 */
+  collapsed?: boolean;
 }
 
-export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate }: TaskRowProps) {
+export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed }: TaskRowProps) {
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -55,16 +59,30 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   const dueInherited = !!sub && sub.due == null && task.due != null;
   const prioInherited = !!sub && sub.priority == null;
   const isDone = sub ? sub.done : task.done;
-  const overdue = !isDone && !!due && cmpYMD(due, today) < 0;
-  const subDone = task.subtasks.filter((s) => s.done).length;
+  // 放弃：行上只是「删除线 + 一个灰标签」，圈圈永远不制造放弃。
+  // 唯一的例外在 onCheck 里：本来就是放弃的那行，点圆圈 = 放回未完成（取消放弃）
+  const isDropped = sub ? !!sub.droppedAt : !!task.droppedAt;
+  const overdue = !isDone && !isDropped && !!due && cmpYMD(due, today) < 0;
+  // 「N/total」是进度，放弃掉的那几步既不算做完也不该占分母——不然一件事永远差那么一两条
+  const counted = task.subtasks.filter((s) => !s.droppedAt);
+  const subDone = counted.filter((s) => s.done).length;
 
   function onCheck(e: React.MouseEvent) {
     e.stopPropagation();
     if (leaving) return; // 完成动画播放中，重复点击不能把循环任务推进两轮
+    // 这一行本来就是「放弃的」：圈圈的意思是**放回未完成**，跟「已完成」视图表头那句
+    // 「点圆圈可以放回未完成」对齐。绝不是把它标成完成——那会把放弃的并进完成数，
+    // 完成率当场虚高，正是这个功能最要防的那件事。
+    // 时刻一律交给 store 盖/清（子任务走 applySubPatch 的互斥），调用点不自己算
+    if (isDropped) {
+      if (sub) dropSubtask(task.id, sub.id, false);
+      else dropTasks([task.id], false);
+      return;
+    }
     if (sub) {
       // 完成时刻由 store.applySubPatch 统一盖/清（这里走的是 updateSubtask，不经 toggleSubtask），
       // 所以下面几处都不用、也不该自己算时间戳
-      // 用幂等置位而非 toggle：950ms 动画窗口内用户可能已在展开卡片里改过状态
+      // 用幂等置位而非 toggle：动画窗口内用户可能已在展开卡片里改过状态
       if (sub.done) {
         updateSubtask(task.id, sub.id, { done: false });
         return;
@@ -74,7 +92,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         setTimeout(() => {
           updateSubtask(task.id, sub.id, { done: true });
           setLeaving(false);
-        }, 950);
+        }, doneRowMs());
       } else {
         updateSubtask(task.id, sub.id, { done: true });
       }
@@ -86,11 +104,12 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
     }
     if (fadeOnDone) {
       setLeaving(true);
-      // 动画演完再真正完成（store 变更会让行从列表消失）
+      // 动画演完再真正完成（store 变更会让行从列表消失）。
+      // 等多久由 app.css 的 .row-slot.leaving 说了算，这边只是读它（B2），不另写一个数
       setTimeout(() => {
         completeTask(task.id);
         setLeaving(false);
-      }, 950);
+      }, doneRowMs());
     } else {
       completeTask(task.id);
     }
@@ -135,8 +154,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   const willDone = isDone || leaving;
 
   return (
+    // 外面这层只管高度（见 app.css 的 .row-slot）：行让位、行收走都在它身上做，
+    // 行本身一个属性都没改，hover / 拖拽 / 右键那些老规矩原样还在
+    <div className={`row-slot${leaving ? " leaving" : ""}${collapsed ? " shut" : ""}`}>
     <div
-      className={`task-row${willDone ? " done-row" : ""}${leaving ? " leaving" : ""}${selected ? " selected" : ""}`}
+      className={`task-row${willDone ? " done-row" : ""}${isDropped ? " dropped-row" : ""}${selected ? " selected" : ""}`}
       onClick={onRowClick}
       onContextMenu={onCtx}
       draggable
@@ -171,7 +193,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         <span className="chain-caret ghost" />
       )}
       <span className={`flag p${priority}`} title={prioInherited ? "重要性继承自母任务" : undefined} />
-      <button className={`cb${willDone ? " done" : ""}`} onClick={onCheck} title={isDone ? "标记未完成" : "完成"} />
+      <button
+        className={`cb${willDone ? " done" : ""}`}
+        onClick={onCheck}
+        title={isDropped ? "放回未完成（取消放弃）" : isDone ? "标记未完成" : "完成"}
+      />
       {sub ? (
         <span className="title">
           <span style={{ color: "var(--ink-3)" }}>{task.title || "（未命名）"} › </span>
@@ -179,6 +205,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         </span>
       ) : (
         <span className="title">{task.title || "（未命名）"}</span>
+      )}
+      {isDropped && (
+        <span className="drop-tag" title="这件事标记了放弃。右键可以取消放弃">
+          已放弃
+        </span>
       )}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
         {chain?.folded && chain.more > 0 && (
@@ -194,9 +225,9 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
             {list.name}
           </span>
         )}
-        {!sub && task.subtasks.length > 0 && (
-          <span>
-            {subDone}/{task.subtasks.length}
+        {!sub && counted.length > 0 && (
+          <span title={counted.length === task.subtasks.length ? undefined : "放弃的那几步不算进这个进度"}>
+            {subDone}/{counted.length}
           </span>
         )}
         {!sub && task.repeat && <span title={describeRepeat(task.repeat)}>↻</span>}
@@ -206,7 +237,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           </span>
         )}
         {doneDate ? (
-          <span title={`完成于 ${doneDate}`}>完成 {formatShort(doneDate)}</span>
+          // 「已完成」视图里同一个位置写两种事：做完的写完成日，放弃的写放弃日。
+          // 别把放弃的写成「完成」，那正是这个功能要避免的谎
+          <span title={`${isDropped ? "放弃于" : "完成于"} ${doneDate}`}>
+            {isDropped ? "放弃" : "完成"} {formatShort(doneDate)}
+          </span>
         ) : (
           due && (
             <span
@@ -219,6 +254,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           )
         )}
       </span>
+    </div>
     </div>
   );
 }

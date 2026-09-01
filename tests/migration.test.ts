@@ -25,7 +25,7 @@ import type { Task } from "../src/core/model";
 const LISTS = [{ id: "l1", name: "工作", color: "clay", order: 0, updatedAt: "2026-01-01T00:00:00.000Z" }];
 
 describe("升级路径：v1 → 当前", () => {
-  it("someday 丢掉、子任务补齐四个可选字段、任务一条不少", () => {
+  it("someday 丢掉、子任务补齐五个可选字段、任务一条不少", () => {
     const v1 = {
       version: 1,
       lists: LISTS,
@@ -44,7 +44,8 @@ describe("升级路径：v1 → 当前", () => {
     expect(d.tasks).toHaveLength(1);
     expect("someday" in d.tasks[0]).toBe(false);
     expect(d.tasks[0].subtasks[0]).toEqual({
-      id: "s1", title: "子", done: false, due: null, dueTime: null, priority: null, doneAt: null,
+      id: "s1", title: "子", done: false, due: null, dueTime: null, priority: null,
+      doneAt: null, droppedAt: null,
     });
   });
 });

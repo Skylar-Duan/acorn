@@ -86,7 +86,12 @@ function QuickAddApp() {
       <SyntaxInput
         value={text}
         onChange={setText}
-        onSubmit={submit}
+        // 回执照实说：没标题就什么都没发出去（submit 自己会退回），那一下不该闪 ✓。
+        // submit 是异步的，这儿显式吞掉那个 Promise，把「存没存下」当场答复输入框
+        onSubmit={(p) => {
+          if (!p.title.trim()) return false;
+          void submit(p);
+        }}
         autoFocus
         placeholder="记一条…「周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"
         lists={ctx.listNames}

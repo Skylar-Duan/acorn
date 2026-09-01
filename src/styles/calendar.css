@@ -6,7 +6,7 @@
 .cal-nav button {
   min-width: 28px; height: 26px; padding: 0 9px;
   border-radius: var(--r-sm); color: var(--ink-2); font-size: var(--fs-sm);
-  transition: background .1s, color .1s;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .cal-nav button:hover { background: var(--card); color: var(--accent); }
 .cal-nav .arr { font-size: 16px; line-height: 1; }
@@ -32,7 +32,7 @@
   min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; gap: 3px;
   background: var(--card); padding: 6px 7px;
-  transition: background .12s, box-shadow .12s;
+  transition: background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .cal-cell.dim { background: var(--bg); }
 .cal-cell.dim .cal-num { color: var(--ink-3); }
@@ -62,7 +62,7 @@
   padding: 2px 5px; border-radius: 5px;
   font-size: var(--fs-xs); color: var(--ink); line-height: 1.4;
   background: var(--bg); cursor: default;
-  transition: background .1s, color .1s;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .cal-task:hover { background: var(--accent-soft); color: var(--accent); }
 .cal-task .flag { width: 3px; height: 11px; border-radius: 2px; }
@@ -77,7 +77,10 @@
 .cal-task-done .cal-check { flex: none; width: 9px; font-size: 9px; color: var(--ok); }
 
 /* 双击空白处弹出的补记小输入 */
-.cal-quick { flex: none; }
+/* 排成一行：提交回执那个零宽占位得跟输入框同排，另起一行会把固定高的日格撑出去 */
+.cal-quick { flex: none; display: flex; align-items: center; }
+/* 输入框贴着日格右边缘，「✓」只能往框里挪，挂外面会被 overflow:hidden 裁掉 */
+.cal-quick .commit-ok { left: auto; right: 6px; }
 .cal-quick input {
   width: 100%; border: 1px solid var(--accent); background: var(--card);
   border-radius: 5px; padding: 2px 6px; outline: none;

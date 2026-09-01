@@ -9,6 +9,7 @@ import { Fragment, useMemo, useState } from "react";
 import { todayYMD } from "../core/dates";
 import { planGroups } from "../core/plan";
 import { openRows, rowTaskIds, setFoldAll, updateSettings, useApp } from "../core/store";
+import { hardCutRows } from "../core/motion";
 import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import QuadrantBoard from "./Quadrant";
 import "../styles/plan.css";
@@ -83,7 +84,10 @@ export default function Plan() {
               <button
                 className="btn ghost"
                 title={foldAll ? "展开每件事的全部子任务" : "折叠后每件事只显示下一步"}
-                onClick={() => setFoldAll(!foldAll)}
+                // 这一下可能翻掉上百行。高度过渡不能上合成器，每帧都要重算轨道并回流其下方
+                // 的全部内容——这个按钮存在的理由恰恰是「行太多了」。所以总开关这条路走硬切，
+                // 高度动画只留给单条小三角（它一次只动几行）
+                onClick={() => { hardCutRows(); setFoldAll(!foldAll); }}
               >
                 {foldAll ? "展开子任务" : "收起子任务"}
               </button>
@@ -96,6 +100,8 @@ export default function Plan() {
       ) : (
         <div className="view-body">
           {groups.map((g) => {
+            // 只用来判断组标题画不画。RowList 拿的是**没过滤过**的那份：
+            // 折叠掉的行由它收成 0 高，收/放才都有动画（B5）
             const rows = visibleRows(g.rows, fold);
             return (
               <Fragment key={g.key}>
@@ -105,7 +111,7 @@ export default function Plan() {
                     {g.warn ? ` ${g.rows.length}` : ""}
                   </div>
                 )}
-                <RowList rows={rows} fold={fold} anchor={anchor} orderedIds={orderedIds} />
+                <RowList rows={g.rows} fold={fold} anchor={anchor} orderedIds={orderedIds} />
               </Fragment>
             );
           })}

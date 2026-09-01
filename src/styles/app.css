@@ -41,6 +41,7 @@
   flex-direction: column;
   padding: 14px 10px 10px;
   overflow-y: auto;
+  /* 换主题不做底色渐变（B7 已撤回）：前景色是瞬切的，只渐底色会在中段把字压糊。见 base.css body 那处 */
 }
 .side .brand {
   font-family: var(--serif);
@@ -67,6 +68,8 @@
 }
 .side .brand .gear:hover { color: var(--accent); background: var(--card); }
 .side nav ul { list-style: none; }
+/* 新建清单那个框占满整条，「✓」只能往框里挪，挂外面会被侧栏裁掉 */
+.side nav li .commit-ok { left: auto; right: 8px; }
 .side nav li {
   display: flex;
   align-items: center;
@@ -76,7 +79,8 @@
   font-size: 13.5px;
   color: var(--ink);
   cursor: default;
-  transition: background .1s;
+  /* 当前项的高亮也过渡一下（B3）：换视图时侧栏那块底色是挪过去的，不是啪一下换了个格子 */
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .side nav li:hover { background: var(--card); }
 .side nav li.on { background: var(--card); box-shadow: var(--shadow-sm); font-weight: 600; }
@@ -113,6 +117,10 @@
 /* 同步状态跟数据状态挤一行；侧栏窄的时候换行显示，别把字挤没了 */
 .side .foot .sep { color: var(--ink-3); }
 .side .foot .warn { color: #C0564A; font-weight: 600; }
+/* 同步那一段点得动（进 设置 → 云账号）。正常时长得跟旁边的字一模一样，不抢眼 */
+.side .foot .foot-sync { font: inherit; color: inherit; padding: 0; border-radius: 3px; }
+.side .foot .foot-sync:hover { color: var(--accent); text-decoration: underline; }
+.side .foot .foot-sync.warn { color: #C0564A; font-weight: 600; }
 
 /* ---------- 主区 ---------- */
 .main {
@@ -123,9 +131,26 @@
 }
 .view-head { display: flex; align-items: baseline; gap: 12px; flex: none; }
 .view-head h1 { font-family: var(--serif); font-size: var(--fs-title); font-weight: 600; }
+/* 清单名那个可改的框（A4）。字体/字号/字重不能靠上面那条 h1 规则捡了，得自己写全一份。
+   平时看不出是输入框，鼠标扫过才露一圈淡边框——「能改」这件事说出来，但不喧宾夺主 */
+.view-head .list-name {
+  font-family: var(--serif); font-size: var(--fs-title); font-weight: 600;
+  color: var(--ink); background: transparent; outline: none;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  padding: 0 4px; margin: 0 -4px; min-width: 60px; max-width: 42vw;
+  transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.view-head .list-name:hover { border-color: var(--hair); }
+.view-head .list-name:focus { border-color: var(--accent); background: var(--card); }
 .view-head .sub { color: var(--ink-2); font-size: 13px; }
 .view-head .spacer { flex: 1; }
-.view-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px 30px; margin-top: 6px; }
+/* 换视图时正文淡入 + 上移 6px（B3）。换的是整个视图组件，这条动画自然就重播一遍。
+   刻意**不做左右滑页**：那种动效跟橡果的纸感不搭 */
+.view-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px 30px; margin-top: 6px;
+  animation: view-in var(--dur-1) var(--ease);
+}
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---------- 任务组 ---------- */
 .group-head {
@@ -142,6 +167,30 @@
 .group-head .act { margin-left: auto; font-size: 11px; letter-spacing: 0; color: var(--ink-3); }
 .group-head .act:hover { color: var(--accent); }
 
+/* ---------- 一行的外壳（v1.9.0 · B1/B2/B5）----------
+   行本身一点没动（hover / 拖拽 / 选中那些老规矩全在 .task-row 上），
+   高度变化统统交给外面这层：grid 的 0fr↔1fr 是**可插值**的，
+   而原来 row-leave 里的 height:auto→0 不可插值，收行时中途会硬跳一下。
+   三种用法：
+   · .shut   —— 这行让位给展开的任务卡（B1），或者被「只看下一步」收起来了（B5）
+   · .leaving—— 刚勾掉，停一下再收走（B2） */
+.row-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+}
+.row-slot > .task-row { min-height: 0; }
+.row-slot.shut { grid-template-rows: 0fr; opacity: 0; }
+/* 勾掉一件事：先停 --dur-1 让人看见勾上了，再用 --dur-2 收走。
+   JS 那边等多久读的是同一对变量（core/motion.ts 的 doneRowMs），不会一处改一处漏 */
+.row-slot.leaving { animation: row-leave var(--dur-2) var(--ease) var(--dur-1) forwards; }
+@keyframes row-leave { to { grid-template-rows: 0fr; opacity: 0; } }
+/* 「收起/展开子任务」那个总开关走硬切（B5）：一次翻掉上百行，每帧全列表重算轨道 + 回流，
+   正好在行最多时最卡，而这个按钮存在的理由就是「行太多了」。一次性翻掉整列本来也不该有动画。
+   只挂一拍，由 core/motion.ts 的 hardCutRows 摘掉；单条小三角一次只动几行，照旧有动画 */
+:root.no-row-anim .row-slot { transition: none; }
+
 /* ---------- 任务行 ---------- */
 .task-row {
   display: flex;
@@ -151,12 +200,28 @@
   border-radius: var(--r-sm);
   font-size: var(--fs-md);
   position: relative;
-  transition: background .1s;
+  transition: background var(--dur-1) var(--ease);
 }
 .task-row:hover { background: var(--card); }
 .task-row.selected { background: var(--accent-soft); }
 .task-row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row.done-row .title { color: var(--ink-3); text-decoration: line-through; }
+/* 放弃：跟完成一样把标题划掉，但圈圈不动——分辨靠旁边那个灰标签 */
+.task-row.dropped-row .title { color: var(--ink-3); text-decoration: line-through; }
+
+/* 「已放弃」小标签。行里、任务卡标题旁、子任务行里共用一套，长得一模一样。
+   刻意做得很淡：它是一句说明，不是一个警告，不该比任务标题还抢眼 */
+.drop-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
 .task-row .meta {
   margin-left: auto;
   display: flex;
@@ -171,13 +236,8 @@
 .task-row .meta .warn { color: var(--warn); }
 .task-row .meta .overdue { color: var(--warn); font-weight: 600; }
 
-/* 完成动画：勾选后短暂停留再淡出 */
-.task-row.leaving {
-  animation: row-leave .45s ease .55s forwards;
-}
-@keyframes row-leave {
-  to { opacity: 0; transform: translateX(6px); height: 0; padding-top: 0; padding-bottom: 0; margin: 0; }
-}
+/* 完成动画搬到上面的 .row-slot.leaving 去了：原来写在这儿的 height:auto→0 不可插值，
+   浏览器只能在中途硬跳一格 */
 
 /* ---------- 展开的任务卡 ---------- */
 .task-card {
@@ -187,25 +247,53 @@
   box-shadow: var(--shadow);
   margin: 4px 0 10px;
   padding: 14px 16px 12px;
-  animation: card-in .16s ease-out;
+  animation: card-in var(--dur-2) var(--ease);
+  /* 换主题不做底色渐变（B7 已撤回）：卡里的标题用的是瞬切的 --ink，
+     只渐底色时前 ~80ms 是浅字压浅底，标题整个糊掉。见 base.css body 那处 */
 }
 @keyframes card-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* 任务卡的外壳（B1）：卡片是「长出来」的，不是糊上去的。
+   行和卡同时挂在树上，一个收成 0fr 另一个长到 1fr，所以**收起也有动画**——
+   以前只有进场没有退场，收起是硬切，底下整列瞬间往上跳约 250px。
+   .clip 只在动的那一拍挂（见 components/motion.tsx）：常驻关着的话，
+   卡片里那几个弹层（日期/清单/需求方）会被裁掉半截 */
+.card-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: slot-open var(--dur-2) var(--ease);
+}
+.card-slot > * { min-height: 0; }
+.card-slot.clip { overflow: hidden; }
+.card-slot.shut {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+}
+@keyframes slot-open { from { grid-template-rows: 0fr; } }
 .task-card .row1 { display: flex; align-items: center; gap: 11px; }
 .task-card .row1 input {
   flex: 1; border: none; outline: none; background: transparent;
   font-size: var(--fs-lg); font-weight: 600; color: var(--ink); min-width: 0;
 }
+/* 备注外面包了一层，只为给提交回执的「✓」一个落脚点。左边那 28px 缩进从 textarea
+   挪到外层：留在 textarea 上的话 width:100% 会连着缩进一起超出去 28px */
+.task-card .tc-notes-wrap { position: relative; margin: 8px 0 0 28px; }
 .task-card textarea.notes {
   width: 100%; border: none; outline: none; background: transparent; resize: none;
-  color: var(--ink-2); font-size: 13px; line-height: 1.6; margin: 8px 0 0 28px;
+  color: var(--ink-2); font-size: 13px; line-height: 1.6; margin: 0;
   font-family: var(--sans); min-height: 20px; max-height: 140px;
 }
+.task-card .tc-notes-ok { left: auto; right: 4px; top: 10px; }
 .task-card .subs { margin: 8px 0 4px 28px; }
 .task-card .subs .sub-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
 .task-card .subs .sub-row input[type="text"] {
   border: none; outline: none; background: transparent; flex: 1; color: var(--ink); font-size: 13px;
 }
 .task-card .subs .sub-row.done input[type="text"] { color: var(--ink-3); text-decoration: line-through; }
+/* 放弃了的那一步：划掉、变淡，圈圈不动 */
+.task-card .subs .sub-row.dropped input[type="text"] { color: var(--ink-3); text-decoration: line-through; }
+.task-card .row1 input.dropped { color: var(--ink-3); text-decoration: line-through; }
 .task-card .subs .sb {
   width: 13px; height: 13px; border: 1.4px solid var(--ink-3); border-radius: 4px;
   flex: none; background: transparent; padding: 0; position: relative;
@@ -217,6 +305,12 @@
 }
 .task-card .subs .rm { color: var(--ink-3); font-size: 13px; opacity: 0; }
 .task-card .subs .sub-row:hover .rm { opacity: 1; }
+/* 「放弃这一步」。跟删除同一档待遇：平时藏着，鼠标扫过才露面。
+   **已经放弃的那条常驻显示**——不然想反悔的人得先猜出来这儿有个按钮 */
+.task-card .subs .sub-drop { color: var(--ink-3); font-size: 12px; opacity: 0; flex: none; }
+.task-card .subs .sub-row:hover .sub-drop,
+.task-card .subs .sub-row.dropped .sub-drop { opacity: 1; }
+.task-card .subs .sub-drop:hover { color: var(--accent); }
 /* 已完成子任务的折叠头。样式自己写一套，不蹭 .chain-caret / .chain-more——
    那两个归列表行的折叠管，宽度和旋转规则会跟着串过来 */
 .task-card .subs .tc-donefold {
@@ -229,7 +323,7 @@
   font-size: 12px;
   text-align: left;
   border-radius: var(--r-sm);
-  transition: color .12s, background-color .12s;
+  transition: color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
 }
 .task-card .subs .tc-donefold:hover { color: var(--accent); background: var(--accent-soft); }
 .task-card .subs .tc-donefold-caret { font-size: 9px; line-height: 1; opacity: .8; }
@@ -255,8 +349,14 @@
   padding: 6px;
   z-index: 60;
   min-width: 180px;
-  animation: card-in .12s ease-out;
+  animation: card-in var(--dur-1) var(--ease);
 }
+/* 弹层退场（B6）：以前一律「啪一下没了」。退场这一拍里别再接点击 */
+.popmenu.leaving, .ctx-menu.leaving {
+  animation: pop-out var(--dur-1) var(--ease) forwards;
+  pointer-events: none;
+}
+@keyframes pop-out { to { opacity: 0; transform: translateY(-4px); } }
 .popmenu .item {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 6px 10px; border-radius: var(--r-sm); font-size: 13px; color: var(--ink);
@@ -282,7 +382,8 @@
   padding: 9px 13px;
   margin-top: 14px;
   box-shadow: var(--shadow-sm);
-  transition: border-color .12s, box-shadow .12s;
+  /* 只有聚焦时的边框/描边过渡（本来就有的）。换主题的底色渐变（B7）已撤回 */
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .quick-add:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .quick-add.tall { display: block; padding: 9px 13px 8px; }
@@ -301,7 +402,7 @@
   font-size: var(--fs-xs); color: var(--ink-2);
   border: 1px solid var(--hair); background: var(--bg);
   border-radius: 999px; padding: 4px 11px; white-space: nowrap;
-  transition: border-color .12s, color .12s, background .12s;
+  transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
 .qa-pick:hover { border-color: var(--accent); color: var(--accent); }
 .qa-pick.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
@@ -326,7 +427,7 @@
   background: var(--accent-soft);
   color: var(--accent);
   white-space: nowrap;
-  animation: chip-in .14s ease-out;
+  animation: chip-in var(--dur-1) var(--ease);
 }
 @keyframes chip-in { from { opacity: 0; transform: scale(.85); } }
 
@@ -352,7 +453,7 @@
   background: var(--card); border: 1px solid var(--hair); border-radius: 999px;
   box-shadow: var(--shadow); padding: 8px 16px; display: flex; gap: 10px; align-items: center;
   z-index: 90; font-size: var(--fs-sm);
-  animation: toast-in .18s ease-out;
+  animation: toast-in var(--dur-2) var(--ease);
 }
 .bulk-bar .cnt { color: var(--accent); font-weight: 600; }
 
@@ -375,7 +476,23 @@
   border-radius: var(--r-sm);
 }
 .side .group-title.fold:hover { color: var(--ink-2); }
-.side .side-caret { margin-left: auto; font-size: 9px; opacity: .7; }
+/* 小三角是**转过去**的，不是换了个字符（B4）。写法跟 .chain-caret 那边一致 */
+.side .side-caret {
+  margin-left: auto; font-size: 9px; opacity: .7;
+  display: inline-block;
+  transition: transform var(--dur-1) var(--ease);
+}
+.side .side-caret.up { transform: rotate(180deg); }
+
+/* 折叠的那一块（B4）：高度过渡，不再瞬间开合。0fr↔1fr 可插值 */
+.side-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease);
+}
+.side-fold > * { min-height: 0; }
+.side-fold.shut { grid-template-rows: 0fr; }
 
 /* 「还有 N 个 ▾」 */
 .side .side-more {
@@ -405,7 +522,9 @@
     width: min(82vw, 300px);
     z-index: 90;
     transform: translateX(-102%);
-    transition: transform .22s cubic-bezier(.2, .8, .3, 1);
+    /* 这条缓动就是 --ease 的出处：改造前全仓唯一像样的一条。
+       抽屉滑进滑出而已，换主题的底色渐变（B7）已撤回 */
+    transition: transform var(--dur-2) var(--ease);
     box-shadow: none;
     padding-top: max(14px, env(safe-area-inset-top));
     padding-bottom: max(10px, env(safe-area-inset-bottom));
@@ -422,7 +541,7 @@
     inset: 0;
     z-index: 89;
     background: rgba(0, 0, 0, .32);
-    animation: scrim-in .18s ease-out;
+    animation: scrim-in var(--dur-2) var(--ease);
   }
   @keyframes scrim-in { from { opacity: 0; } }
 
@@ -449,6 +568,7 @@
   .main { padding: max(10px, env(safe-area-inset-top)) 12px 0; }
   .view-head { padding-left: 46px; flex-wrap: wrap; row-gap: 2px; }
   .view-head h1 { font-size: 21px; }
+  .view-head .list-name { font-size: 21px; max-width: 62vw; }
   .theme-scene { left: 0; max-height: 40vh; }
 
   /* 点得着：手指不是鼠标 */
@@ -494,7 +614,7 @@
   line-height: 1;
   color: var(--ink-2);
   text-align: center;
-  transition: transform .14s ease, color .12s;
+  transition: transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 button.chain-caret:hover { color: var(--accent); }
 button.chain-caret.folded { transform: rotate(-90deg); }
@@ -506,7 +626,10 @@ button.chain-caret.folded { transform: rotate(-90deg); }
   border-radius: 999px;
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
+  /* 收起来的时候「+N」是长出来的一小下（B5），不是凭空冒出来 */
+  animation: badge-in var(--dur-1) var(--ease);
 }
+@keyframes badge-in { from { opacity: 0; transform: scale(.7); } }
 
 /* ---------- 任务卡底部的「整句改」 ----------
    一定要看得出这是个能改的输入框：里面预填着这件事的一整句话，
@@ -520,7 +643,7 @@ button.chain-caret.folded { transform: rotate(-90deg); }
   border: 1px solid var(--hair);
   border-radius: 999px;
   background: var(--bg);
-  transition: border-color .12s;
+  transition: border-color var(--dur-1) var(--ease);
 }
 .tc-sentence:focus-within { border-color: var(--accent); }
 .tc-sentence-tag {
@@ -558,6 +681,8 @@ button.chain-caret.folded { transform: rotate(-90deg); }
 /* 任务卡胶囊排里，删除键前面的那道空隙 */
 .task-card .tc-gap { flex: 1; min-width: 10px; }
 .task-card .pill.danger-pill:hover { color: #C0564A; border-color: #C0564A; }
+/* 「放弃」跟 🗑 站在同一边（隔开区之后），但它不是危险动作，悬停用强调色不用红 */
+.task-card .pill.drop-pill:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- 侧栏里拖着换位置 ---------- */
 .side nav li.move-over { box-shadow: inset 0 2px 0 var(--accent); background: var(--accent-soft); }

@@ -10,6 +10,8 @@ import type { Mock } from "vitest";
 import syncCtlSource from "../src/core/syncCtl.ts?raw";
 import accountPanelSource from "../src/components/AccountPanel.tsx?raw";
 import sidebarSource from "../src/components/Sidebar.tsx?raw";
+import settingsSource from "../src/views/Settings.tsx?raw";
+import mainSource from "../src/main.tsx?raw";
 import { defaultData, newTask } from "../src/core/model";
 import type { AppData } from "../src/core/model";
 import { addTask, appStore, clearUndo, flushSave, requestSave, undo } from "../src/core/store";
@@ -296,6 +298,16 @@ describe("侧栏那行同步指示", () => {
     expect(sidebarSource).toContain("syncFootState");
     expect(sidebarSource).toContain("useSync");
   });
+
+  it("点得动：一路点到 设置 → 云账号那一节，光看见问题没处去等于没说", () => {
+    const foot = sidebarSource.slice(sidebarSource.indexOf('className="foot"'));
+    expect(foot).toContain("foot-sync");
+    expect(foot).toContain('navigate("settings")');
+    expect(foot).toContain("revealCloudSection()");
+    // 落点得真的在设置页上，不然滚了个寂寞
+    expect(sidebarSource).toContain('getElementById("set-cloud")');
+    expect(settingsSource).toContain('id="set-cloud"');
+  });
 });
 
 describe("每天自动同步一次", () => {
@@ -342,6 +354,17 @@ describe("每天自动同步一次", () => {
     // 状态行反复闪「正在同步…」→「同步失败」——所以失败也得记一次「今天试过了」
     expect(await dailySyncIfNeeded()).toBe(false);
     expect(syncOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it("focus / visibilitychange 那两条触发还有一道最短间隔", () => {
+    // 这两个事件来得很密（alt-tab 一次、关掉说明窗一次、从托盘恢复一次），
+    // 光靠「今天试过就早退」那道按日期的闸不够细，一分钟内能被戳十几次
+    const boot = mainSource.slice(mainSource.indexOf("FOCUS_SYNC_GAP_MS"));
+    expect(boot).toContain("10 * 60 * 1000");
+    expect(boot).toContain("lastFocusSync");
+    // 两条触发走的必须是同一个带间隔的入口，不许有谁绕过去直接调
+    expect(boot).toContain('window.addEventListener("focus", onBackToApp)');
+    expect(boot).toContain("if (document.visibilityState === \"visible\") onBackToApp()");
   });
 
   it("失败之后重开橡果还会再试一次（那个记号只活在进程内）", async () => {

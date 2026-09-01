@@ -16,6 +16,7 @@ import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
 import DataRescue from "./components/DataRescue";
 import UpdateDialog, { UpdateNudge } from "./components/UpdateDialog";
+import { useLeaving } from "./components/motion";
 import { DATA_VERSION } from "./core/model";
 import {
   clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
@@ -41,6 +42,12 @@ function visibleTaskIds(): string[] {
 
 export default function App() {
   const view = useApp((s) => s.ui.view);
+  // 这三个只为 B3 的正文淡入服务：清单/需求方/标签共用 ListView 这一个组件，
+  // 光看 view 的话「清单 A → 清单 B」是同一个值，DOM 节点不重挂，淡入就不播——
+  // 而这三段恰恰是侧栏里条目最多、点得最频繁的
+  const listId = useApp((s) => s.ui.listId);
+  const whoFilter = useApp((s) => s.ui.who);
+  const tagFilter = useApp((s) => s.ui.tag);
   const loaded = useApp((s) => s.loaded);
   const loadError = useApp((s) => s.loadError);
   const dataTooNew = useApp((s) => s.dataTooNew);
@@ -54,6 +61,12 @@ export default function App() {
   /** 窄屏（手机 / 把窗口拖窄）时侧栏收成抽屉，这里记它开没开 */
   const [drawer, setDrawer] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // B6：退场那一拍里这两条还得挂在树上，元素没了动画就无从播起。
+  // 期间 .leaving 会把它们的 pointer-events 关掉，不会误点到正在消失的按钮
+  const { shown: toastShown, leaving: toastLeaving } = useLeaving(toast);
+  const { shown: bulkShown, leaving: bulkLeaving } = useLeaving(
+    selectedIds.length > 1 ? selectedIds : null,
+  );
 
   // toast 自动消散
   useEffect(() => {
@@ -140,23 +153,30 @@ export default function App() {
   // 换了视图就把抽屉收起来——手机上点完一项还挡着半屏很烦
   useEffect(() => setDrawer(false), [view]);
 
+  // key 是给 B3 用的：随手记/清单/需求方/标签共用 ListView 这一个组件，
+  // 不给 key 的话它们之间来回切属于「同一个组件换了个 prop」，.view-body 不重挂，淡入就不播。
+  // 光用 view 还不够：清单 A → 清单 B 的 view 一直是 "list"，需求方和标签同理，
+  // 结果侧栏上半截切过去有淡入、条目最多的下半截一律没有——一半有一半没有比全都没有更像坏了。
+  // 所以 key 带上具体目标。这会连带把该视图内部的 state 与滚动位置一起重置，
+  // 切清单时这正是想要的；ListView 自己没有跨清单要保留的 state（清单名那个框已自带 key={list.id}）
+  const bodyKey = `${view}:${listId ?? whoFilter ?? tagFilter ?? ""}`;
   const body = useMemo(() => {
     switch (view) {
-      case "today": return <Today />;
-      case "inbox": return <ListView kind="inbox" />;
-      case "plan": return <Plan />;
-      case "done": return <Done />;
-      case "list": return <ListView kind="list" />;
-      case "who": return <ListView kind="who" />;
-      case "tag": return <ListView kind="tag" />;
-      case "habits": return <Habits />;
-      case "trash": return <ListView kind="trash" />;
-      case "calendar": return <Calendar />;
-      case "focus": return <FocusView />;
-      case "stats": return <StatsView />;
-      case "settings": return <Settings />;
+      case "today": return <Today key={bodyKey} />;
+      case "inbox": return <ListView key={bodyKey} kind="inbox" />;
+      case "plan": return <Plan key={bodyKey} />;
+      case "done": return <Done key={bodyKey} />;
+      case "list": return <ListView key={bodyKey} kind="list" />;
+      case "who": return <ListView key={bodyKey} kind="who" />;
+      case "tag": return <ListView key={bodyKey} kind="tag" />;
+      case "habits": return <Habits key={bodyKey} />;
+      case "trash": return <ListView key={bodyKey} kind="trash" />;
+      case "calendar": return <Calendar key={bodyKey} />;
+      case "focus": return <FocusView key={bodyKey} />;
+      case "stats": return <StatsView key={bodyKey} />;
+      case "settings": return <Settings key={bodyKey} />;
     }
-  }, [view]);
+  }, [view, bodyKey]);
 
   if (!loaded) {
     return <div className="center-note"><span className="big">橡果</span>正在读取数据…</div>;
@@ -213,16 +233,17 @@ export default function App() {
       {searchOpen && <SearchOverlay />}
       <ContextMenu />
 
-      {toast && (
-        <div className="toast" key={toast.key}>
-          {toast.msg}
-          {toast.undoable && <button onClick={() => { undo(); dismissToast(); }}>撤销</button>}
+      {/* B6：这两条以前都是「啪一下没了」。useLeaving 让它们比状态多活一拍，把退场演完 */}
+      {toastShown && (
+        <div className={`toast${toastLeaving ? " leaving" : ""}`} key={toastShown.key}>
+          {toastShown.msg}
+          {toastShown.undoable && <button onClick={() => { undo(); dismissToast(); }}>撤销</button>}
         </div>
       )}
 
-      {selectedIds.length > 1 && (
-        <div className="bulk-bar">
-          <span className="cnt">{selectedIds.length}</span> 项已选
+      {bulkShown && (
+        <div className={`bulk-bar${bulkLeaving ? " leaving" : ""}`}>
+          <span className="cnt">{bulkShown.length}</span> 项已选
           <button className="btn ghost" onClick={() => postponeTasks(selectedIds)}>推到明天</button>
           <span style={{ position: "relative" }}>
             <button className="btn ghost" onClick={() => setBulkListMenu(!bulkListMenu)}>移到清单</button>

@@ -1,9 +1,9 @@
 // 今天：主战场。逾期置顶，可一键全部顺延；底部当日小结。
 // 行来自 DateRow：母任务 + 带自己日期的子任务（「母 › 子」形式）。
-import { Fragment } from "react";
 import { formatCN, todayYMD } from "../core/dates";
 import { postponeRows, rowTaskIds, tasksForToday, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
+import { RowCard } from "../components/motion";
 import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
@@ -20,6 +20,8 @@ export default function Today() {
   // 折叠整页算一次（跟「计划」同一套口径），否则逾期区和今天区会各收一遍
   const fold = useFoldPlan(allRows);
   const anchor = cardAnchor(allRows, expandedId);
+  // 这两个只用来判断「这一组还剩东西吗、组标题画不画」。
+  // 真正交给 RowList 的是**没过滤过**的那份：折叠掉的行由它收成 0 高，收/放才都有动画（B5）
   const overdueRows = visibleRows(overdue, fold);
   const todayRows = visibleRows(todays, fold);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
@@ -43,20 +45,21 @@ export default function Today() {
                 全部推到明天 →
               </button>
             </div>
-            <RowList rows={overdueRows} fold={fold} anchor={anchor} orderedIds={orderedIds} />
+            <RowList rows={overdue} fold={fold} anchor={anchor} orderedIds={orderedIds} />
           </>
         )}
         {todayRows.length > 0 && <div className="group-head">今天</div>}
-        <RowList rows={todayRows} fold={fold} anchor={anchor} orderedIds={orderedIds} />
+        <RowList rows={todays} fold={fold} anchor={anchor} orderedIds={orderedIds} />
         {doneToday.length > 0 && <div className="group-head">已完成 {doneToday.length}</div>}
         {doneToday.map((t) => (
-          <Fragment key={t.id}>
-            {expandedId === t.id ? (
-              <TaskCard task={t} />
-            ) : (
-              <TaskRow task={t} orderedIds={orderedIds} fadeOnDone={false} />
+          <RowCard
+            key={t.id}
+            open={expandedId === t.id}
+            row={(collapsed) => (
+              <TaskRow task={t} orderedIds={orderedIds} fadeOnDone={false} collapsed={collapsed} />
             )}
-          </Fragment>
+            card={() => <TaskCard task={t} />}
+          />
         ))}
         {overdue.length === 0 && todays.length === 0 && doneToday.length === 0 && (
           <div className="empty">今天没有安排。</div>

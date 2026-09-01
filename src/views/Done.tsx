@@ -7,14 +7,22 @@
 // 2026-08-31 起按**行**列，不再按任务列：做完的子任务各占一行（显示成「母 › 子」），
 // 母任务勾掉了也占一行。用户原话「已完成按照子任务来排列」——一件事分几步做完，
 // 就该看得见是分几天做完的，而不是只在收尾那天冒出一条。
+//
+// 2026-09-01 起这里也是「放弃」的归宿：顶上一个三选一（做完的 / 放弃的 / 全部），默认「做完的」。
+// **不新开侧栏项**——放弃跟完成一样是「这件事收场了」，收场的东西住同一个屋子，
+// 只是进门时分一下是做成的还是不做了。
 import { Fragment, useMemo, useState } from "react";
 import { todayYMD } from "../core/dates";
 import { doneGroups } from "../core/plan";
 import type { DateRow } from "../core/store";
-import { doneRows, rowDoneAt, rowDoneDay, rowDoneGuessed, rowTaskIds, useApp } from "../core/store";
+import {
+  doneRows, droppedRows, rowDoneAt, rowDoneDay, rowDoneGuessed,
+  rowDroppedAt, rowDroppedDay, rowTaskIds, useApp,
+} from "../core/store";
 import { cardAnchor, rowKey } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
+import "../styles/plan.css";
 
 /** 「更早」一上来只画这么多——一次画几千行会卡。**不是上限**：下面有按钮能全展开，
  *  绝不能出现「标题说有 350 件、页面只有 300 行、剩下的在 App 里彻底够不着」那种事 */
@@ -28,6 +36,27 @@ interface DoneItem {
   day: string;
   at: string;
   guessed: boolean;
+  /** 这条是放弃的（不是做完的）。分组、排序两边一视同仁，只有文案和筛选认它 */
+  dropped: boolean;
+}
+
+/** 顶上那个三选一。默认「做完的」——这个视图的主业还是完成记录，放弃的是来投奔的。
+ *  控件和存法都照抄日历那个筛子（同款 .all-sort 分段控件，选择存 localStorage） */
+const FILTERS = [
+  { id: "done", name: "做完的" },
+  { id: "dropped", name: "放弃的" },
+  { id: "all", name: "全部" },
+] as const;
+type DoneFilter = (typeof FILTERS)[number]["id"];
+const FILTER_KEY = "acorn-done-filter";
+
+function loadFilter(): DoneFilter {
+  try {
+    const v = localStorage.getItem(FILTER_KEY);
+    return v === "dropped" || v === "all" ? v : "done";
+  } catch {
+    return "done";
+  }
 }
 
 export default function Done() {
@@ -35,14 +64,34 @@ export default function Done() {
   const expandedId = useApp((s) => s.ui.expandedId);
   const today = todayYMD();
   const [showAllOld, setShowAllOld] = useState(false);
+  const [filter, setFilter] = useState<DoneFilter>(loadFilter);
+  const pickFilter = (f: DoneFilter) => {
+    setFilter(f);
+    try {
+      localStorage.setItem(FILTER_KEY, f);
+    } catch {
+      /* 存不了就这次会话记得 */
+    }
+  };
 
   const { groups, total, taskCount } = useMemo(() => {
     // 归日和排序都只走 store 的 rowDoneDay / rowDoneAt：老子任务没有自己的完成时刻会
     // 回落到母任务，而且那里已经把 UTC ISO 转成本地日期了（本地 0-8 点做完的不能归到昨天）。
     // 日历的已完成桶用的是同两个函数——口径一旦分家，同一件事会在两个页面落在不同的日子
-    const items: DoneItem[] = doneRows(data)
-      .map((r) => ({ row: r, day: rowDoneDay(r), at: rowDoneAt(r), guessed: rowDoneGuessed(r) }))
-      .sort((a, b) => (a.at < b.at ? 1 : -1));
+    // 放弃的按**放弃那一刻**归日排（走 rowDroppedDay，跟完成那边同一套本地时区口径），
+    // 而且不存在「猜的」那一档：droppedAt 是这版才有的字段，有标记就必定带着时刻
+    const items: DoneItem[] = [];
+    if (filter !== "dropped") {
+      for (const r of doneRows(data)) {
+        items.push({ row: r, day: rowDoneDay(r), at: rowDoneAt(r), guessed: rowDoneGuessed(r), dropped: false });
+      }
+    }
+    if (filter !== "done") {
+      for (const r of droppedRows(data)) {
+        items.push({ row: r, day: rowDroppedDay(r), at: rowDroppedAt(r), guessed: false, dropped: true });
+      }
+    }
+    items.sort((a, b) => (a.at < b.at ? 1 : -1));
     // 日子是猜出来的那些不按天分组——按母任务的创建日归档等于编一个完成日，
     // 一堆几个月前才建的老事会假装是那天做完的。它们统一沉到最后一组（「更早」）的尾部：
     // 不显示用户会以为东西不见了，显示就得老实说不知道是哪天（doneDate 传 null）
@@ -58,7 +107,7 @@ export default function Done() {
         : { ...g, shown: g.items, rest: 0 },
     );
     return { groups: gs, total: items.length, taskCount: rowTaskIds(items.map((x) => x.row)).length };
-  }, [data, today, showAllOld]);
+  }, [data, today, showAllOld, filter]);
 
   // 连选按「件」不按「行」（跟计划视图一个口径）。只数**这一轮真画出来的**行：
   // 「更早」还没全展开时，没露面的行不能混进连选序列，否则 shift 连选会错位
@@ -99,8 +148,22 @@ export default function Done() {
         <span className="sub">
           {total} 条
           {total !== taskCount && ` · ${taskCount} 件事`}
-          {" · 点圆圈可以放回未完成"}
+          {/* 提示语跟圈圈的实际行为对齐：做完的点圆圈 = 标记未完成，
+              放弃的点圆圈 = 取消放弃放回未完成（见 TaskRow.onCheck），两种都是「放回未完成」 */}
+          {filter === "dropped" ? " · 点圆圈或右键可以取消放弃" : " · 点圆圈可以放回未完成"}
         </span>
+        <span className="spacer" />
+        <div className="all-sort">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              className={filter === f.id ? "on" : undefined}
+              onClick={() => pickFilter(f.id)}
+            >
+              {f.name}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="view-body">
         {groups.map((g) => (
@@ -121,7 +184,9 @@ export default function Done() {
           </Fragment>
         ))}
         {total === 0 && (
-          <div className="empty">还没有完成记录。</div>
+          <div className="empty">
+            {filter === "dropped" ? "还没有放弃过什么。" : "还没有完成记录。"}
+          </div>
         )}
       </div>
     </section>

@@ -46,6 +46,21 @@ export function cmpYMD(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** 原生 `<input type="date">` 吐出来的这个值，是不是一个人真的会安排的日子。
+ *
+ *  拦的是**键盘敲年份时的中间态**：Chromium 的年份段是累加的，敲 2 / 0 / 2 / 7
+ *  会依次发出 `0002-…` / `0020-…` / `0202-…` / `2027-…` 四次 change，
+ *  而这四个都是**格式合法的完整日期**——只判空串一个都拦不住，于是四次全落库，
+ *  postponeCount 一次连加 3、还连压好几张撤销快照，行上凭空冒出「顺延×3」。
+ *
+ *  判据取「年份 1900–2999」：四位年的中间态最大只到 299（floor(2999/10)），
+ *  必定落在这一格外面；鼠标点日历格出来的一律是四位年，一点不受影响。 */
+export function isPlausibleYMD(v: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const y = Number(v.slice(0, 4));
+  return y >= 1900 && y <= 2999;
+}
+
 /** 两个日期相差的天数：b - a */
 export function diffDays(a: string, b: string): number {
   const ms = fromYMD(b).getTime() - fromYMD(a).getTime();
@@ -61,6 +76,49 @@ export function weekStart(ymd: string): string {
 /** 当月一号 */
 export function monthStart(ymd: string): string {
   return `${ymd.slice(0, 7)}-01`;
+}
+
+/** 当月最后一天 */
+export function monthEnd(ymd: string): string {
+  const y = Number(ymd.slice(0, 4));
+  const m = Number(ymd.slice(5, 7));
+  return `${ymd.slice(0, 7)}-${pad2(daysInMonth(y, m))}`;
+}
+
+/** 从 ymd 起（**含当天**）往后最近的那个星期几。dow：0=周日 … 6=周六。
+ *  「向后取最近的一个」是全部日期预设的统一口径：过了就顺延到下一个，绝不给出一个过去的日子 */
+export function nextDow(ymd: string, dow: number): string {
+  return addDays(ymd, (dow - dayOfWeek(ymd) + 7) % 7);
+}
+
+/** 安排日期的一个快捷预设 */
+export interface DuePreset {
+  /** 稳定标识，UI 拿它做 key，不随标签变 */
+  key: "today" | "fri" | "sun" | "monthEnd";
+  /** 按算出来的日子现取的名字：周六点开时「本周五」就写成「下周五」 */
+  label: string;
+  ymd: string;
+}
+
+/** 安排日期的快捷预设：今天 / 本周五 / 本周日 / 本月末。
+ *
+ *  三条规矩：
+ *  ① 一律**向后取最近的一个**（周起始按周一），过了就顺延到下一个；
+ *  ② 标签跟着算出来的日子走，落在下一周就叫「下周五」；
+ *  ③ **跟「今天」撞上同一天的预设直接不出现**——两个按钮干同一件事，只会让人多犹豫一下。
+ *     「本月末」正好是今天时也照此隐掉（它不可能往后跑到下个月，所以没有「下月末」这一说）。 */
+export function duePresets(today: string): DuePreset[] {
+  const weekEnd = addDays(weekStart(today), 6);
+  const inThisWeek = (d: string) => cmpYMD(d, weekEnd) <= 0;
+  const fri = nextDow(today, 5);
+  const sun = nextDow(today, 0);
+  const all: DuePreset[] = [
+    { key: "today", label: "今天", ymd: today },
+    { key: "fri", label: inThisWeek(fri) ? "本周五" : "下周五", ymd: fri },
+    { key: "sun", label: inThisWeek(sun) ? "本周日" : "下周日", ymd: sun },
+    { key: "monthEnd", label: "本月末", ymd: monthEnd(today) },
+  ];
+  return all.filter((p) => p.key === "today" || p.ymd !== today);
 }
 
 const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];

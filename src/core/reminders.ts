@@ -34,8 +34,10 @@ function sweep() {
     void ensureDailyBackup().catch(() => {});
   }
   const now = nowLocalDT();
+  // 放弃的跟做完的、删掉的一样不再提醒：都说了不做了还弹一下，那是纯打扰。
+  // 注意提醒本身**不清空**——取消放弃之后它得原样回来（真到点了会在下一轮 sweep 里补响）
   const dueOnes = s.data.tasks.filter(
-    (t) => !t.done && !t.deletedAt && t.reminder && t.reminder <= now,
+    (t) => !t.done && !t.droppedAt && !t.deletedAt && t.reminder && t.reminder <= now,
   );
   if (!dueOnes.length) return;
   for (const t of dueOnes) {

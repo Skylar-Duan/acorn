@@ -87,8 +87,17 @@ interface AppState {
   undoDepth: number;
 }
 
-const UNDO_CAP = 50;
+/** 撤销栈上限（v1.9.0 从 50 降到 10）。降得动是因为下面那条合并规则：
+ *  连着打字不再一个字一张快照，10 张能撤回去的事反而比原来 50 张多 */
+const UNDO_CAP = 10;
+/** 连续输入的合并窗口：**停手** 800 毫秒才落一张新快照，每敲一个字重新计时。
+ *  不是「从第一个字算起的固定 800ms」——那样打得慢的人照样一句话攒出十几张。
+ *  注意：这只动撤销栈。**逐键落库一个字都没少**，见 mutate 末尾照旧调 scheduleSave */
+const COALESCE_MS = 800;
 let undoStack: AppData[] = [];
+/** 上一次带合并键的写入：键 + 时刻。键带任务 id 与字段名，
+ *  所以「改 A 的标题」和「改 B 的标题」永远并不到一张快照里去 */
+let coalesce: { key: string; at: number } | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let toastKey = 0;
 
@@ -160,6 +169,7 @@ export async function flushSave(): Promise<void> {
 /** 清空撤销栈。整份数据被换掉之后必须清——不清的话 Ctrl+Z 一按就把旧的整份写回盘 */
 export function clearUndo(): void {
   undoStack = [];
+  coalesce = null;
   appStore.setState({ undoDepth: 0 });
 }
 
@@ -167,7 +177,7 @@ export function clearUndo(): void {
  *  ① flushSave 把攒着的写完（此刻本地与云端刚比对过，写完才是「已全在云端」的那一份）
  *  ② 冲的过程里可能又排上一次防抖，再清一遍定时器
  *  ③ 置 wiped 闸门，从这一刻起 doSave 一律拒绝
- *  ④ 清撤销栈：栈里躺着 50 份完整数据，撤一下就整份写回盘 */
+ *  ④ 清撤销栈：栈里躺着十来份完整数据，撤一下就整份写回盘 */
 export async function haltPersistence(): Promise<void> {
   await flushSave();
   if (saveTimer) {
@@ -176,6 +186,7 @@ export async function haltPersistence(): Promise<void> {
   }
   appStore.setState({ wiped: true, undoDepth: 0 });
   undoStack = [];
+  coalesce = null;
 }
 
 // ---------- 变更入口 ----------
@@ -209,14 +220,29 @@ function stamp(prev: AppData, next: AppData): AppData {
   return { ...next, tasks, lists };
 }
 
-/** 所有写操作的唯一入口：应用变更 → 盖改动时刻 → 快照进撤销栈 → 计划落盘。无实际变更时什么都不做 */
-function mutate(fn: (d: AppData) => AppData, opts?: { toast?: string; skipUndo?: boolean }) {
+/** 所有写操作的唯一入口：应用变更 → 盖改动时刻 → 快照进撤销栈 → 计划落盘。无实际变更时什么都不做。
+ *  coalesceKey：同一个框里连着打字（同 id 同字段），停手不到 COALESCE_MS 就并进上一张快照，
+ *  不再压新的。Ctrl+Z 撤的是「刚才那件事」，不是「刚才那个字」 */
+function mutate(
+  fn: (d: AppData) => AppData,
+  opts?: { toast?: string; skipUndo?: boolean; coalesceKey?: string },
+) {
   const cur = appStore.getState().data;
   const next = stamp(cur, fn(cur));
-  if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘
+  if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘、也不打断合并
   if (!opts?.skipUndo) {
-    undoStack.push(cur);
-    if (undoStack.length > UNDO_CAP) undoStack.shift();
+    const key = opts?.coalesceKey;
+    const at = Date.now();
+    // 只有「接着上一次同键写入、且还没停手够久」才并。栈空时不能并（没有可并的快照）
+    const merge =
+      key !== undefined && coalesce !== null && coalesce.key === key
+      && at - coalesce.at < COALESCE_MS && undoStack.length > 0;
+    if (!merge) {
+      undoStack.push(cur);
+      if (undoStack.length > UNDO_CAP) undoStack.shift();
+    }
+    // 中间夹一次别的操作（完成/删除/改日期…）就断链：回头再打字必须另起一张快照
+    coalesce = key === undefined ? null : { key, at };
   }
   appStore.setState({ data: next, undoDepth: undoStack.length });
   if (opts?.toast) showToast(opts.toast, !opts?.skipUndo);
@@ -225,6 +251,8 @@ function mutate(fn: (d: AppData) => AppData, opts?: { toast?: string; skipUndo?:
 
 export function undo() {
   const prev = undoStack.pop();
+  // 撤过之后接着打字必须另起一张快照：栈顶已经不是刚才合并的那张了
+  coalesce = null;
   if (!prev) return;
   // sessions 与 settings 不属于可撤销数据（专注记录/偏好不该被连带回滚），从当前状态嫁接。
   // 逐任务再嫁接两样：已消费的过期提醒不复活（否则撤销会重复轰炸）、focusMinutes 取两边较大值
@@ -265,6 +293,7 @@ export function applyRemoteData(data: AppData) {
   const cur = appStore.getState().data;
   if (data === cur) return;
   undoStack = [];
+  coalesce = null;
   appStore.setState({ data, undoDepth: 0 });
   scheduleSave();
 }
@@ -325,6 +354,7 @@ export async function initStore(): Promise<void> {
       data.graveyard = bury(data.graveyard, expired.map((t) => t.id), new Date().toISOString());
     }
     undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
+    coalesce = null;
     appStore.setState({ data, loaded: true, loadError: null, dataTooNew: null });
 
     // 这里空空如也的时候，先别急着建一本空账本落盘——指针指歪 / 换了机器 / 数据在另一个
@@ -397,14 +427,42 @@ export function addTask(input: AddTaskInput): string {
   return t.id;
 }
 
-export function updateTask(id: string, patch: Partial<Task>) {
+/** 逐键落库那几个纯文本字段的合并键（A5）。**在这儿现推、不靠调用方传**：
+ *  能打字的地方有十来处，靠一处处记得传参迟早漏一个。
+ *  只认「一次只改一个字段、而且是 title/notes」——那就是有人正在框里打字；
+ *  一次改好几个字段的（整句改、点日期）本来就是一下一张快照，不该并 */
+function typingKey(scope: string, patch: object): string | undefined {
+  const keys = Object.keys(patch);
+  // 日期弹层是「连写」的另一种：那儿 due 和 dueTime 永远一起写（commitDraft 那一个出口），
+  // 而原生日期控件改一段就发一次 change——不给它一个合并键，改个日期就吃掉两三格撤销栈，
+  // 真正想撤的那件事被挤出去（栈只有 10 格）。单独写 due 的（点预设、清日期）照旧一次一张
+  if (keys.length === 2 && keys.includes("due") && keys.includes("dueTime")) return `${scope}:due`;
+  if (keys.length !== 1) return undefined;
+  const k = keys[0];
+  if (k !== "title" && k !== "notes") return undefined;
+  return `${scope}:${k}`;
+}
+
+export interface UpdateTaskOpts {
+  /** 这次写入**不许自动数顺延**：顺延次数由调用方自己按「用户做了一次什么」来算。
+   *  日期弹层就是这么用的——弹层期间可以落好几次库（点日历格立刻生效、去抖落一次都算），
+   *  但「这件事被往后推了几次」只该按**弹层开 → 弹层关**整段算一次，
+   *  跟中途落了几次库、用户在两段之间停手多久全无关系。原委见 core/dateinput.ts */
+  noPostponeCount?: boolean;
+  /** 撤销栈的合并键。不给就按 patch 的形状自己推（typingKey）。
+   *  给的场合只有一处：弹层关掉时补那一次 postponeCount，要跟刚才那次日期写入并成同一格 */
+  coalesceKey?: string;
+}
+
+export function updateTask(id: string, patch: Partial<Task>, opts: UpdateTaskOpts = {}) {
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) => {
       if (t.id !== id) return t;
       const next = { ...t, ...patch };
       // 顺延计数：把日期改得比原来晚（或从无到有不算）
-      if (patch.due !== undefined && t.due && patch.due && cmpYMD(patch.due, t.due) > 0) {
+      if (!opts.noPostponeCount
+        && patch.due !== undefined && t.due && patch.due && cmpYMD(patch.due, t.due) > 0) {
         next.postponeCount = t.postponeCount + 1;
       }
       // 日期/时间变了且原本有提醒 → 提醒跟着走
@@ -420,7 +478,7 @@ export function updateTask(id: string, patch: Partial<Task>) {
       if (patch.dueTime === null && patch.reminder === undefined) next.reminder = null;
       return next;
     }),
-  }));
+  }), { coalesceKey: opts.coalesceKey ?? typingKey(`task:${id}`, patch) });
 }
 
 /** 完成任务。循环任务：留下一条已完成副本，本体推进到下一个落点 */
@@ -437,7 +495,7 @@ export function completeTask(id: string) {
     if (!t || t.done) return d;
     if (t.repeat && t.due) {
       const doneCopy: Task = {
-        ...t, id: newId(), repeat: null, done: true, doneAt: nowIso,
+        ...t, id: newId(), repeat: null, done: true, doneAt: nowIso, droppedAt: null,
         subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
       };
       // 严重逾期的循环任务补追赶：锚点取 max(旧 due, 今天)，新落点必在未来，
@@ -449,17 +507,19 @@ export function completeTask(id: string) {
         due: nd,
         // dueTime 优先再生提醒：响过的提醒（已被 sweep 清成 null）要在新落点复活
         reminder: regenReminder(t, nd),
-        // 子任务的专属日期和完成时刻都属于上一轮，随循环推进一并清掉（重新继承母任务）。
-        // doneAt 跟 done 同口径：新一轮还没做，就不能挂着上一轮做完的那个时刻。
+        // 子任务的专属日期、完成时刻、放弃时刻都属于上一轮，随循环推进一并清掉（重新继承母任务）。
+        // doneAt / droppedAt 跟 done 同口径：新一轮还没做，就不能挂着上一轮的那个时刻。
         // 留在已完成副本（上面那条 doneCopy）里的那份原样保留，那才是历史
-        subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, due: null, dueTime: null })),
+        subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
         postponeCount: 0,
+        droppedAt: null,
       };
       return { ...d, tasks: d.tasks.map((x) => (x.id === id ? advanced : x)).concat(doneCopy) };
     }
+    // 互斥：勾完成就不再是「放弃」，那个灰标签当场撤掉
     return {
       ...d,
-      tasks: d.tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso } : x)),
+      tasks: d.tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso, droppedAt: null } : x)),
     };
   }, { toast: "已完成，移入「已完成」" });
 }
@@ -482,20 +542,22 @@ export function completeTasks(ids: string[]) {
       if (!t || t.done || t.kind === "habit") continue;
       if (t.repeat && t.due) {
         extras.push({
-          ...t, id: newId(), repeat: null, done: true, doneAt: nowIso,
+          ...t, id: newId(), repeat: null, done: true, doneAt: nowIso, droppedAt: null,
           subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
         });
         const anchor = cmpYMD(t.due, today) > 0 ? t.due : today;
         const nd = nextOccurrence(t.repeat, anchor);
         const advanced: Task = {
           ...t, due: nd, reminder: regenReminder(t, nd),
-          // 跟 completeTask 单条那处逐字同口径：done/doneAt/日期一起清（两处是双胞胎，改一处必改另一处）
-          subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, due: null, dueTime: null })),
+          // 跟 completeTask 单条那处逐字同口径：done/doneAt/droppedAt/日期一起清
+          //（两处是双胞胎，改一处必改另一处）
+          subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
           postponeCount: 0,
+          droppedAt: null,
         };
         tasks = tasks.map((x) => (x.id === id ? advanced : x));
       } else {
-        tasks = tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso } : x));
+        tasks = tasks.map((x) => (x.id === id ? { ...x, done: true, doneAt: nowIso, droppedAt: null } : x));
       }
     }
     if (tasks === d.tasks && extras.length === 0) return d;
@@ -509,6 +571,85 @@ export function uncompleteTask(id: string) {
     ...d,
     tasks: d.tasks.map((t) => (t.id === id ? { ...t, done: false, doneAt: null } : t)),
   }));
+}
+
+// ---------- 放弃 ----------
+//
+// 「放弃」是完成之外的第二种收场：这件事不做了，但它没做成。
+// 圈圈一点都不动（那儿只管完成），放弃是标题旁边那个灰标签。三条底线：
+//   · 跟 done/doneAt **互斥**——勾完成清放弃，放弃清完成
+//   · 统计里**单独算一档**，绝不并进完成数，否则完成率虚高、那个数字就废了
+//   · 循环任务放弃 = 这一轮不做了，**照样推进到下一轮**（跟完成同一套推进逻辑）。
+//     要彻底不做就删除，那是另一个键
+
+/** 放弃 / 取消放弃若干件事。
+ *  循环任务的推进逻辑跟 completeTasks 是同一套（第三胞胎），改一处必须回头看那两处：
+ *  留一条「这一轮放弃了」的副本，本体推到下一个落点，新一轮的 droppedAt 必须是干净的。
+ *
+ *  **对「已经做完的事」的口径跟那两个双胞胎不同，是有意的**：completeTask/completeTasks
+ *  开头 `if (t.done) continue`（做完的再点一次完成没有意义），而放弃这边 done 与 droppedAt
+ *  互斥、「做完了又反悔说这件事其实没做成」是真实动作——非循环那条路（下面的 else）本来就
+ *  把 done/doneAt 清掉照放不误。所以循环这条路也照办：**新一轮显式写 done: false, doneAt: null**，
+ *  绝不能靠 `...t` 把上一轮的完成状态带进新一轮（那会让「放弃」对目标完全失效：
+ *  它照旧躺在「已完成」里，却被悄悄改了日期、还多出一条幽灵副本）。 */
+export function dropTasks(ids: string[], dropped = true) {
+  const nowIso = new Date().toISOString();
+  const today = todayYMD();
+  mutate((d) => {
+    let tasks = d.tasks;
+    const extras: Task[] = [];
+    for (const id of ids) {
+      const t = tasks.find((x) => x.id === id);
+      // 习惯没有「放弃」这回事：它不是一件会结束的事，今天不做就是今天没打卡
+      if (!t || t.kind === "habit") continue;
+      if (!dropped) {
+        if (!t.droppedAt) continue;
+        tasks = tasks.map((x) => (x.id === id ? { ...x, droppedAt: null } : x));
+        continue;
+      }
+      if (t.droppedAt) continue;
+      if (t.repeat && t.due) {
+        extras.push({
+          ...t, id: newId(), repeat: null, done: false, doneAt: null, droppedAt: nowIso,
+          subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
+        });
+        const anchor = cmpYMD(t.due, today) > 0 ? t.due : today;
+        const nd = nextOccurrence(t.repeat, anchor);
+        const advanced: Task = {
+          // done/doneAt 显式清掉：见函数头那段口径说明。靠 `...t` 继承就是把上一轮的
+          // 完成状态带进新一轮，那样「放弃一件已完成的循环任务」等于没放弃
+          ...t, due: nd, done: false, doneAt: null, reminder: regenReminder(t, nd),
+          subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+          postponeCount: 0,
+          droppedAt: null,
+        };
+        tasks = tasks.map((x) => (x.id === id ? advanced : x));
+      } else {
+        // 互斥：放弃就不再是「完成」
+        tasks = tasks.map((x) => (x.id === id ? { ...x, droppedAt: nowIso, done: false, doneAt: null } : x));
+      }
+    }
+    if (tasks === d.tasks && extras.length === 0) return d;
+    return { ...d, tasks: [...tasks, ...extras] };
+  }, {
+    toast: dropped
+      ? ids.length > 1 ? `已放弃 ${ids.length} 件，收进「已完成」` : "已放弃，收进「已完成」"
+      : ids.length > 1 ? `已取消放弃 ${ids.length} 件` : "已取消放弃",
+  });
+  clearSelection();
+}
+
+/** 放弃 / 取消放弃一条子任务。跟母任务一样进撤销栈、一样给可撤销的提示 */
+export function dropSubtask(taskId: string, subId: string, dropped = true) {
+  const at = dropped ? new Date().toISOString() : null;
+  mutate((d) => ({
+    ...d,
+    tasks: d.tasks.map((t) =>
+      t.id === taskId
+        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, { droppedAt: at }) : s)) }
+        : t,
+    ),
+  }), { toast: dropped ? "已放弃这一步" : "已取消放弃" });
 }
 
 export function deleteTasks(ids: string[]) {
@@ -671,12 +812,21 @@ export function setTasksList(ids: string[], listId: string | null) {
   clearSelection();
 }
 
-export function setTasksDue(ids: string[], due: string | null) {
+/** 一组任务改期。`opts.noPostponeCount` 跟 updateTask 那个是同一个口径：
+ *  这次写入不许自动数顺延，计数由调用方按「用户做了一次什么」自己算。
+ *  侧栏「安排到哪天？」那个弹层就是这么用的——弹层里的日期框可以落好几次库
+ *  （去抖落一次、改主意再落一次都算），但「这件事被往后推了几次」只该按
+ *  **弹层开 → 弹层关**整段算一次，见 Sidebar.settlePlanPopup */
+export function setTasksDue(
+  ids: string[],
+  due: string | null,
+  opts: Pick<UpdateTaskOpts, "noPostponeCount" | "coalesceKey"> = {},
+) {
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) => {
       if (!ids.includes(t.id)) return t;
-      const postpone = t.due && due && cmpYMD(due, t.due) > 0 ? 1 : 0;
+      const postpone = !opts.noPostponeCount && t.due && due && cmpYMD(due, t.due) > 0 ? 1 : 0;
       return {
         ...t, due,
         // 清日期必须连带清时间：残留的 dueTime 会在下次排期时把提醒从隐形状态复活
@@ -685,7 +835,10 @@ export function setTasksDue(ids: string[], due: string | null) {
         reminder: due ? regenReminder(t, due) : null,
       };
     }),
-  }));
+    // 不给键就是老行为（一次一张快照）。给的场合只有侧栏「安排到哪天？」那条：
+    // 那儿一次弹层可能落好几次库，还要在关弹层时补一次 postponeCount，
+    // 不并成一格的话「拖 3 件去排期」要按 4 下 Ctrl+Z 日期才回得去，而栈只有 10 格
+  }), { coalesceKey: opts.coalesceKey });
   clearSelection();
 }
 
@@ -755,6 +908,8 @@ export function setTaskKind(id: string, kind: TaskKind) {
           reminder: null,
           done: false,
           doneAt: null,
+          // 习惯没有「放弃」这回事，转过去顺手把那个标签摘掉
+          droppedAt: null,
         };
       }
       return { ...t, kind, checkIns: [] };
@@ -781,6 +936,7 @@ export function addSubtask(
     priority: extra?.priority ?? null,
     // 子任务的默认值一共两处（另一处是 model.migrate 里那个字面量），加字段要一起改
     doneAt: null,
+    droppedAt: null,
   };
   mutate((d) => ({
     ...d,
@@ -792,11 +948,18 @@ export function addSubtask(
  *  这件事必须落在这一层，不能交给调用点：勾一条子任务有三条独立的路——任务卡走 toggleSubtask，
  *  列表行（TaskRow）和右键菜单都是直调 updateSubtask({done})。在三个调用点各写一遍迟早漏一处，
  *  漏了就出「在卡上勾有完成日、在行上勾没有」的分裂数据。
- *  显式带了 doneAt 的（导入回填之类）以调用方给的为准。 */
+ *  显式带了 doneAt 的（导入回填之类）以调用方给的为准。
+ *  「放弃」跟「完成」的互斥也落在这一层，理由同上——三条路都得守同一条规矩。 */
 export function applySubPatch(s: Subtask, patch: Partial<Subtask>): Subtask {
   const next = { ...s, ...patch };
   if (patch.done !== undefined && patch.doneAt === undefined) {
     next.doneAt = patch.done ? new Date().toISOString() : null;
+  }
+  // 勾完成 → 撤掉「已放弃」；标记放弃 → 撤掉完成。取消放弃（droppedAt 传 null）不动完成状态
+  if (patch.done === true && patch.droppedAt === undefined) next.droppedAt = null;
+  if (patch.droppedAt != null) {
+    next.done = false;
+    next.doneAt = null;
   }
   return next;
 }
@@ -821,7 +984,7 @@ export function updateSubtask(taskId: string, subId: string, patch: Partial<Subt
         ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, patch) : s)) }
         : t,
     ),
-  }));
+  }), { coalesceKey: typingKey(`sub:${taskId}:${subId}`, patch) });
 }
 
 export function removeSubtask(taskId: string, subId: string) {
@@ -1004,20 +1167,24 @@ export function closeCtxMenu() {
 }
 
 // ---------- 派生查询（UI 共用；返回未删除任务） ----------
+//
+// 下面几个只吃 tasks（allWho 还要 settings.whoOrder），参数类型就写成 Pick 而不是整份 AppData：
+// 界面那边才能只订阅自己真用到的那两三片，而不是整份数据一变就跟着重算一遍（v1.9.0 · B8）。
+// 传整份 AppData 进来照样合法，老调用点一个都不用改。
 
 /** 没删的**普通事**。习惯是另一个分类，不该混进今天/计划/全部/日历/四象限——
  *  它不会逾期、也没有「做完就没了」，混进去只会把这些视图搅乱。想要习惯用 aliveHabits */
-export function aliveTasks(d: AppData): Task[] {
+export function aliveTasks(d: Pick<AppData, "tasks">): Task[] {
   return d.tasks.filter((t) => !t.deletedAt && t.kind !== "habit");
 }
 
 /** 没删的习惯 */
-export function aliveHabits(d: AppData): Task[] {
+export function aliveHabits(d: Pick<AppData, "tasks">): Task[] {
   return d.tasks.filter((t) => !t.deletedAt && t.kind === "habit");
 }
 
 /** 普通事 + 习惯。搜索这类「找东西」的场景用它——按名字找当然要能找到习惯 */
-export function aliveAll(d: AppData): Task[] {
+export function aliveAll(d: Pick<AppData, "tasks">): Task[] {
   return d.tasks.filter((t) => !t.deletedAt);
 }
 
@@ -1027,7 +1194,7 @@ export function habitsForToday(d: AppData, today = todayYMD()): Task[] {
 }
 
 /** 今天还欠着几个卡——侧栏「习惯」后面那个数字 */
-export function habitsOpenToday(d: AppData, today = todayYMD()): number {
+export function habitsOpenToday(d: Pick<AppData, "tasks">, today = todayYMD()): number {
   return aliveHabits(d).filter((h) => isDueOn(h, today) && !doneOn(h, today)).length;
 }
 
@@ -1076,12 +1243,15 @@ export function foldDoneSubs(subs: Subtask[]): boolean {
 /** 未完成的事在日期/总览视图里怎么占行。
  *  用户口径：「有子任务的把重要级和截止日期挪到子任务，默认等于母任务，总任务排序时分开排」——
  *  所以有未完成子任务的任务**分拆**成一行一个子任务（母任务行收起，子任务行自带「母 › 子」前缀），
- *  子任务各自按继承或自填的日期/重要性独立参与排序；子任务全做完后母任务行才回来收尾。 */
-export function openRows(d: AppData): DateRow[] {
+ *  子任务各自按继承或自填的日期/重要性独立参与排序；子任务全做完后母任务行才回来收尾。
+ *
+ *  放弃的一律不出现——不管是整件事放弃了，还是只放弃了其中一步。它们退出今天/计划/四象限/日历，
+ *  去「已完成」里那个「放弃的」筛子下面待着。 */
+export function openRows(d: Pick<AppData, "tasks">): DateRow[] {
   const rows: DateRow[] = [];
   for (const t of aliveTasks(d)) {
-    if (t.done) continue;
-    const openSubs = t.subtasks.filter((s) => !s.done);
+    if (t.done || t.droppedAt) continue;
+    const openSubs = t.subtasks.filter((s) => !s.done && !s.droppedAt);
     if (openSubs.length === 0) {
       rows.push({ task: t, sub: null });
       continue;
@@ -1128,6 +1298,37 @@ export function rowDoneGuessed(r: DateRow): boolean {
  *  不许各写一遍——两处口径一旦分家，同一件事在两个页面会落在不同的日子 */
 export function rowDoneDay(r: DateRow): string {
   return toYMD(new Date(rowDoneAt(r)));
+}
+
+/** 放弃的事怎么占行——doneRows 的另一面，规则逐条对应：
+ *  放弃掉的子任务各出一行（「母 › 子」），母任务自己被放弃时也出一行。
+ *  **单独一个函数、不并进 doneRows**：日历只画做完的，并进去就会在日历上多出放弃的条目 */
+export function droppedRows(d: AppData): DateRow[] {
+  const rows: DateRow[] = [];
+  for (const t of aliveTasks(d)) {
+    // `&& !done` 是道防线，不是业务规则：写入口那边两者互斥，但手改过的 JSON、
+    // 别处导进来的数据可能两个标记都带着。真撞上就**认完成**——
+    // 否则「已完成」切到「全部」时同一行会被画两次，React 的 key 当场撞车
+    for (const s of t.subtasks) if (s.droppedAt && !s.done) rows.push({ task: t, sub: s });
+    if (t.droppedAt && !t.done) rows.push({ task: t, sub: null });
+  }
+  return rows;
+}
+
+/** 这一行是「放弃」的吗。行的口径：子任务行看子任务自己，母任务行看母任务 */
+export function rowDropped(r: DateRow): boolean {
+  return r.sub ? !!r.sub.droppedAt : !!r.task.droppedAt;
+}
+
+/** 这一行是哪一刻放弃的（ISO）。跟 rowDoneAt 同形，但**不需要「猜」那一档**：
+ *  droppedAt 是这一版才有的字段，凡是有放弃标记的都必定带着时刻，没有来历不明的老数据 */
+export function rowDroppedAt(r: DateRow): string {
+  return (r.sub ? r.sub.droppedAt : null) ?? r.task.droppedAt ?? r.task.createdAt;
+}
+
+/** 这一行放弃在哪一天（本地 'YYYY-MM-DD'）。同 rowDoneDay，UTC ISO 要转回本地再归日 */
+export function rowDroppedDay(r: DateRow): string {
+  return toYMD(new Date(rowDroppedAt(r)));
 }
 
 /** 一批行里涉及的任务 id，按出现顺序去重。分拆后一件事会占好几行，
@@ -1192,10 +1393,12 @@ export function sortTasks(tasks: Task[], mode: "time" | "priority"): Task[] {
 /** 需求方列表。一件事挂了几个人，就在这几个人名下各算一次。
  *  排过序（侧栏拖过）就照手排的来，没排过的接在后面按未完成数降序——
  *  否则手排完一加新任务，顺序又自己跳回去了 */
-export function allWho(d: AppData): { who: string; open: number }[] {
+export function allWho(d: Pick<AppData, "tasks" | "settings">): { who: string; open: number }[] {
   const map = new Map<string, number>();
   for (const t of aliveTasks(d)) {
-    for (const w of t.who) map.set(w, (map.get(w) ?? 0) + (t.done ? 0 : 1));
+    // 放弃跟完成同一个口径（v1.9.0 收口）：两种都是「了结了」，都不算未完成。
+    // 这个数跟统计页 byWho 的 open 栏、跟点进去看到的条数是同一个算法，三处不许再劈叉
+    for (const w of t.who) map.set(w, (map.get(w) ?? 0) + (t.done || t.droppedAt ? 0 : 1));
   }
   const all = [...map.entries()]
     .map(([who, open]) => ({ who, open }))
@@ -1207,10 +1410,11 @@ export function allWho(d: AppData): { who: string; open: number }[] {
   return [...ranked, ...all.filter((x) => !rank.has(x.who))];
 }
 
-export function allTags(d: AppData): { tag: string; open: number }[] {
+export function allTags(d: Pick<AppData, "tasks">): { tag: string; open: number }[] {
   const map = new Map<string, number>();
   for (const t of aliveTasks(d)) {
-    if (t.done) continue;
+    // 放弃跟完成同一个口径，理由同 allWho
+    if (t.done || t.droppedAt) continue;
     for (const tag of t.tags) map.set(tag, (map.get(tag) ?? 0) + 1);
   }
   return [...map.entries()].map(([tag, open]) => ({ tag, open })).sort((a, b) => b.open - a.open);

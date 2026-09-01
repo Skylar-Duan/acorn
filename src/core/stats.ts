@@ -1,7 +1,9 @@
 // 统计与每周回顾聚合：纯函数、零 DOM 依赖，"现在/今天"一律由调用方注入。
 // 口径约定（各函数共用）：
 // - "完成"指 done 且未在回收站，按 doneAt 换算为本地日期后判断是否落入区间；
-// - "未完成"（open）指当前 !done 且未删除，与区间无关；
+// - "未完成"（open）指当前 !done、**未放弃**且未删除，与区间无关；
+// - "放弃"（dropped）**自成一档**：既不算完成也不算未完成。混进哪一边都会让数字骗人——
+//   算进完成则完成率虚高，算进未完成则那堆早就不打算做的事永远压在待办数上；
 // - 所有 [startYMD, endYMD] 区间均含两端。
 
 import type { FocusSession, List, Task } from "./model";
@@ -26,6 +28,21 @@ function inRange(ymd: string, startYMD: string, endYMD: string): boolean {
 /** 平局时的稳定排序：按码点比较（不用 localeCompare，避免结果随 ICU 版本漂移） */
 function cmpStr(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** 这件事被放弃了吗。droppedAt 是可选字段，老数据里根本没有这个键，统一在这里判 */
+export function isDropped(t: Task): boolean {
+  return !!t.droppedAt;
+}
+
+/** 是否为区间内的有效放弃（未删除 + droppedAt 本地日落入区间）。
+ *  不查 done：放弃与完成互斥，有 droppedAt 就一定没勾完成 */
+function isDroppedInRange(t: Task, startYMD: string, endYMD: string): t is Task & { droppedAt: string } {
+  return (
+    t.deletedAt === null &&
+    !!t.droppedAt &&
+    inRange(localDateOfISO(t.droppedAt), startYMD, endYMD)
+  );
 }
 
 /** 是否为区间内的有效完成（done + 未删除 + doneAt 本地日落入区间） */
@@ -87,7 +104,8 @@ export function byList(
     const row = rows.get(t.listId) ?? rows.get(null)!;
     if (t.done) {
       if (isDoneInRange(t, startYMD, endYMD)) row.done++;
-    } else {
+    } else if (!isDropped(t)) {
+      // 放弃的既不算完成也不算未完成，两栏都不加
       row.open++;
     }
   }
@@ -112,7 +130,8 @@ export function byWho(
       }
       if (t.done) {
         if (isDoneInRange(t, startYMD, endYMD)) row.done++;
-      } else {
+      } else if (!isDropped(t)) {
+        // 同 byList：放弃的两栏都不加
         row.open++;
       }
     }
@@ -135,6 +154,8 @@ export interface WeeklyReview {
   weekStart: string;
   weekEnd: string;
   completed: Task[];
+  /** 本周放弃的。**单独一栏**，一件都不进 completed——完成率是这份数据里最容易被搞废的数字 */
+  dropped: Task[];
   stillOpen: Task[];
   postponed: Task[];
   focusMinutes: number;
@@ -185,19 +206,28 @@ export function weeklyReview(
     .map(([who, done]) => ({ who, done }))
     .sort((a, b) => b.done - a.done || cmpStr(a.who, b.who));
 
+  // 本周放弃的：按 droppedAt 归本地日再判周内。跟 completed 完全分开算
+  const dropped = live
+    .filter((t): t is Task & { droppedAt: string } => isDroppedInRange(t, ws, we))
+    .sort((a, b) => (a.droppedAt < b.droppedAt ? -1 : 1));
+
+  // 「未清」「反复顺延」都得把放弃的剔掉：那些事已经收场了，再挂在这两栏里是在催人做不打算做的事
   const stillOpen = live
-    .filter((t): t is Task & { due: string } => !t.done && t.due !== null && cmpYMD(t.due, we) <= 0)
+    .filter(
+      (t): t is Task & { due: string } =>
+        !t.done && !isDropped(t) && t.due !== null && cmpYMD(t.due, we) <= 0,
+    )
     .sort((a, b) => cmpYMD(a.due, b.due) || a.order - b.order);
 
   const postponed = live
-    .filter((t) => !t.done && t.postponeCount > 0)
+    .filter((t) => !t.done && !isDropped(t) && t.postponeCount > 0)
     .sort((a, b) => b.postponeCount - a.postponeCount);
 
   const focusMinutes = sessions
     .filter((s) => inRange(s.date, ws, we))
     .reduce((sum, s) => sum + s.minutes, 0);
 
-  return { weekStart: ws, weekEnd: we, completed, stillOpen, postponed, focusMinutes, perList, perWho };
+  return { weekStart: ws, weekEnd: we, completed, dropped, stillOpen, postponed, focusMinutes, perList, perWho };
 }
 
 function fmtMD(ymd: string): string {
@@ -220,6 +250,7 @@ export function exportWeekMarkdown(r: WeeklyReview): string {
 
   const isEmpty =
     r.completed.length === 0 &&
+    r.dropped.length === 0 &&
     r.stillOpen.length === 0 &&
     r.postponed.length === 0 &&
     r.focusMinutes === 0;
@@ -239,6 +270,12 @@ export function exportWeekMarkdown(r: WeeklyReview): string {
       for (const t of r.completed.slice(i, i + g.done)) lines.push(`- ${t.title}`);
       i += g.done;
     }
+  }
+
+  // 放弃单独一节，排在完成后面。一件都没放弃时整节不出现，别给人添堵
+  if (r.dropped.length > 0) {
+    lines.push("", `## 本周放弃 ${r.dropped.length} 件`);
+    for (const t of r.dropped) lines.push(`- ${t.title}`);
   }
 
   if (r.stillOpen.length > 0) {

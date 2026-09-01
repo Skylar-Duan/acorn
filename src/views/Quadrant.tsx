@@ -44,7 +44,8 @@ export default function QuadrantBoard() {
   const today = todayYMD();
   const tomorrow = addDays(today, 1);
 
-  const open = useMemo(() => aliveTasks(data).filter((t) => !t.done), [data]);
+  // 放弃的退出四象限：这四个格子问的是「接下来怎么排」，已经决定不做的事没有格子可待
+  const open = useMemo(() => aliveTasks(data).filter((t) => !t.done && !t.droppedAt), [data]);
 
   const groups = useMemo(() => {
     const out = new Map<QuadKey, Task[]>();
