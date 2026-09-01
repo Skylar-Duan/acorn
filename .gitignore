@@ -1,16 +1,16 @@
-node_modules/
-dist/
+工程/node_modules/
+工程/dist/
 userdata/
-src-tauri/target/
-src-tauri/gen/
+工程/src-tauri/target/
+工程/src-tauri/gen/
 *.log
 .DS_Store
 
 # 服务端本地产物
-server/**/__pycache__/
-server/*.db
-server/*.db-*
-server/.venv/
+工程/server/**/__pycache__/
+工程/server/*.db
+工程/server/*.db-*
+工程/server/.venv/
 
 # 给用户的东西（验收单 / 安装包 / 截图）——放在盘上给人看，不进代码仓库
 交付验收/
