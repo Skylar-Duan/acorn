@@ -7,6 +7,8 @@ import type { Subtask, Task } from "../core/model";
 import { doneRowMs } from "../core/motion";
 import { formatShort, formatDoneShort, doneShortIsWide, todayYMD, cmpYMD } from "../core/dates";
 import { describeRepeat } from "../core/recur";
+// 长按的两个数跟侧栏拖动排序共用一份：手机上「按住多久算长按」只该有一个口径
+import { LONG_PRESS_MS, SLOP_PX } from "../core/touchSort";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
   updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority, dropTasks, dropSubtask,
@@ -19,6 +21,27 @@ export function WhoBadge({ who }: { who: string }) {
       {who}
     </span>
   );
+}
+
+/**
+ * 长按弹出菜单之后，手指抬起来浏览器会补发一串**鼠标兼容事件**（mousedown → mouseup → click）。
+ * 后果有两条，都是实测出来的：
+ *   · ContextMenu 判「关掉」用的是 document 上的 mousedown，那一下落在行上、不在菜单里，
+ *     于是菜单刚弹出来就被自己关掉（实测：抬手后约 200ms 消失）；
+ *   · 接着那一下 click 会走 onRowClick，把任务卡也展开。
+ *
+ * 治本的做法是在**这一次 touchend 上 preventDefault**：按 Touch Events 的规矩，
+ * 被取消的 touchend 不再派发那串兼容鼠标事件，所以两个后果一起没了。
+ * 不用「在 document 上抢先吞 mousedown」那招——ContextMenu 的监听也挂在 document 上，
+ * stopPropagation 管不到同一个节点上的别的监听，能不能拦住全看谁先注册，太脆。
+ *
+ * 只吃一次：菜单弹出来的时候手指还按着，下一次 touchend 一定就是这一press 的抬手。
+ * 5 秒的兜底删除是防手指按住不放又没抬起来，别把监听永久留在 document 上。
+ */
+function eatNextTouchEnd() {
+  const stop = (e: Event) => e.preventDefault();
+  document.addEventListener("touchend", stop, { capture: true, once: true, passive: false });
+  window.setTimeout(() => document.removeEventListener("touchend", stop, true), 5000);
 }
 
 export interface TaskRowProps {
@@ -156,6 +179,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   }
 
   function onRowClick(e: React.MouseEvent) {
+    // 长按刚弹过菜单：抬手带出来的这一下 click 不算「点开这件事」
+    if (menuJustOpened.current) {
+      menuJustOpened.current = false;
+      return;
+    }
     if (multiSelect(e)) return;
     anchor.current = task.id;
     expandTask(task.id);
@@ -169,17 +197,63 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
     chain?.onToggle();
   }
 
-  function onCtx(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  /** 在 (x, y) 打开这一行的菜单。右键和长按共用一份，菜单内容永远一致 */
+  function openMenuAt(x: number, y: number) {
     if (sub) {
       // 子任务行：菜单作用于子任务本身，不能打到整个母任务上
-      openCtxMenu(e.clientX, e.clientY, [task.id], { taskId: task.id, subId: sub.id });
+      openCtxMenu(x, y, [task.id], { taskId: task.id, subId: sub.id });
       return;
     }
     // 右键落在多选集合上时保留多选，否则只对当前行
     const ids = selected && selectedIds.length > 1 ? selectedIds : [task.id];
-    openCtxMenu(e.clientX, e.clientY, ids);
+    openCtxMenu(x, y, ids);
+  }
+
+  function onCtx(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenuAt(e.clientX, e.clientY);
+  }
+
+  // 手机上没有右键。「放弃 / 移到清单 / 需求方 / 复制标题 / 推到明天」这些动作
+  // 原来只有右键菜单一条路，安卓 WebView 的原生长按到底发不发 contextmenu 靠不住
+  // （body 上还有一条 user-select: none 会影响它），所以自己接一份长按。
+  // 时长与「按下就滑算滚动」的阈值跟侧栏排序共用 touchSort 那套常量，不另定一个数
+  const press = useRef<{ timer: number; x: number; y: number } | null>(null);
+  // 长按弹出菜单之后，抬手那一下的 click 要吞掉，否则菜单一出来任务卡也跟着展开
+  const menuJustOpened = useRef(false);
+
+  function clearPress() {
+    if (press.current) {
+      clearTimeout(press.current.timer);
+      press.current = null;
+    }
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    // 新的一次按下 = 上一次长按的残留作废。
+    // 这一句是防「长按弹过菜单之后，这一行的下一次轻点被白白吞掉」——
+    // 正常情况下 touchend 被 eatNextTouchEnd 取消了，那一下 click 压根不会来，
+    // 标记就一直挂着；万一哪个 WebView 不认 preventDefault，也只影响紧跟着的那一下
+    menuJustOpened.current = false;
+    // 有鼠标的设备照旧走右键，不跟拖拽和框选抢
+    if (e.pointerType === "mouse") return;
+    const x = e.clientX;
+    const y = e.clientY;
+    const timer = window.setTimeout(() => {
+      press.current = null;
+      menuJustOpened.current = true;
+      openMenuAt(x, y);
+      eatNextTouchEnd();
+    }, LONG_PRESS_MS);
+    press.current = { timer, x, y };
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const p = press.current;
+    if (!p) return;
+    // 按住之后手指挪起来了 = 在滚列表，整个手势作废
+    if (Math.abs(e.clientX - p.x) > SLOP_PX || Math.abs(e.clientY - p.y) > SLOP_PX) clearPress();
   }
 
   const willDone = isDone || leaving;
@@ -192,6 +266,11 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
       className={`task-row${willDone ? " done-row" : ""}${isDropped ? " dropped-row" : ""}${selected ? " selected" : ""}`}
       onClick={onRowClick}
       onContextMenu={onCtx}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={clearPress}
+      onPointerCancel={clearPress}
+      onPointerLeave={clearPress}
       draggable
       onDragStart={(e) => {
         // 子任务行也能拖：额外带上子任务身份，拖到「今天/计划」时只挪这一条，
@@ -239,9 +318,16 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
             title={chain ? (chain.folded ? "摊开这件事剩下的子任务（→）" : "只看下一步（←）") : undefined}
             onClick={chain ? onFoldHit : undefined}
           >
-            {task.title || "（未命名）"} ›{" "}
+            {task.title || "（未命名）"}
           </span>
-          {sub.title || "（未命名）"}
+          {/* 「›」单独一个 span，子任务名也包一层（v1.10.0）。
+              原来「›」跟在母任务名里、子任务名是裸文本节点，后果有两条：
+              ① 裸文本是匿名 flex 项，拿不到 text-overflow，窄屏下省略号全落在母任务名上，
+                 三行子任务行长得一模一样（都是「把上个季度的渠道复盘材料…」）；
+              ② 母任务名被省略时「›」跟着一起被吃掉，看不出这是一条子任务。
+              两段各自省略的规则在 app.css 的窄屏块里（桌面照旧一行到底，一个像素没动） */}
+          <span className="chain-sep"> › </span>
+          <span className="chain-self">{sub.title || "（未命名）"}</span>
         </span>
       ) : (
         <span className="title">{task.title || "（未命名）"}</span>

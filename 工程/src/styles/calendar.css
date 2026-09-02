@@ -42,11 +42,16 @@
 .cal-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 /* 绿点和「+N」并排靠右。放这一行是因为格子固定高、超出裁掉，排在条目后面的会被整条吃掉 */
 .cal-head-right { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+/* flex: none 不能少：它躺在 .cal-head 这个 flex 行里，窄格子会把这个 22×22 的圆
+   压扁成竖椭圆——「今天」那个圈是全视图最显眼的一件事，压扁了一眼就看得出来 */
 .cal-num {
-  width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--serif); font-size: 13px; color: var(--ink-2);
   border-radius: 50%; font-variant-numeric: tabular-nums;
 }
+/* 「周三」这种标签只有窄屏的周视图用得上（那时七列拍成七行、列头关掉了） */
+.cal-wd { display: none; }
 .cal-num.today { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 
 /* 当日完成数：一枚绿点 + 数字 */
@@ -92,8 +97,93 @@
 /* 网格下方的展开卡 */
 .cal-detail { flex: none; max-height: 45%; overflow-y: auto; margin-top: 8px; }
 
+/* ---------- 点开某天的清单（v1.10.0，只在窄屏出现） ----------
+   桌面格子里 107px 写得下标题，不需要这一层；窄屏格子只有 51px，
+   条目在格子里只画一颗圆点，事情叫什么名字全靠这块交代 */
+.cal-daylist { display: none; }
+
 /* 月 / 周 切换（v1.9.1）。周视图一行七格、格子高，一格能列的条目多得多 */
 .cal-nav .all-sort { margin-right: 6px; }
 .cal-nav .all-sort button { padding: 3px 10px; }
 .cal-grid.week .cal-cell { padding: 8px 9px; }
 .cal-grid.week .cal-num { font-size: 15px; }
+
+/* ---------- 窄屏（手机） ----------
+   390px 上七列每格 51px，条目标题只显示得下一个汉字（「整…」「把…」），
+   周视图更极端：七根窄柱子，每根 1400px 高、九成是空白。
+   改法：格子里只放「日期 + 圆点 + 计数」，点一格在网格下面列出当天的事。 */
+@media (max-width: 760px) {
+  /* 整页交回给浏览器滚：格子按内容定高，详情区排在网格后面，
+     不再跟固定高的网格抢那点高度（原来 .cal-detail 只有 45% 的屏高） */
+  .view-body.cal-body { overflow-y: auto; }
+  .cal-grid { flex: none; grid-auto-rows: minmax(52px, min-content); }
+  .cal-cell { padding: 5px 4px; }
+
+  /* 月视图：一格是「日期一整行 + 下面一排圆点」 */
+  .cal-grid:not(.week) .cal-cell { flex-flow: row wrap; align-content: flex-start; gap: 4px; }
+  .cal-grid:not(.week) .cal-cell > .cal-head,
+  .cal-grid:not(.week) .cal-cell > .cal-quick { flex: 1 0 100%; }
+
+  /* 条目收成 6px 的圆点：标题在 51px 的格子里只显示得下一个字，画了等于没画。
+     整格是一个点击区，圆点自己不接点击——手指按不准一颗 6px 的点 */
+  .cal-task {
+    padding: 0; background: transparent; gap: 0;
+    pointer-events: none;
+  }
+  .cal-task .cal-title { display: none; }
+  .cal-cell .cal-task .flag { width: 6px; height: 6px; border-radius: 50%; }
+  /* 没设重要性的那档 .flag 是透明的，在这儿得给它一个颜色，否则圆点看不见 */
+  .cal-cell .cal-task .flag.p0 { background: var(--ink-3); }
+  /* 做完的那条：绿点。字号压成 0 把「✓」收掉，盒子留着当点用 */
+  .cal-cell .cal-task-done .cal-check {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--ok); font-size: 0;
+  }
+  .cal-num { width: 26px; height: 26px; }
+  .cal-cell.cal-picked { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* 周视图：七列拍成七行，日期数字挪进行首，右边挂圆点 */
+  .cal-body.cal-week-mode .cal-week { display: none; }
+  .cal-grid.week { grid-template-columns: 1fr; grid-auto-rows: min-content; }
+  .cal-grid.week .cal-cell {
+    flex-direction: row; align-items: center; flex-wrap: wrap;
+    gap: 7px; padding: 9px 11px; min-height: 44px;
+  }
+  .cal-grid.week .cal-head { flex: none; gap: 7px; justify-content: flex-start; }
+  .cal-grid.week .cal-quick { flex: 1 0 100%; }
+  .cal-grid.week .cal-wd { display: inline; font-size: var(--fs-xs); color: var(--ink-3); }
+
+  /* 点开那天的清单 */
+  .cal-daylist {
+    display: block; flex: none; margin-top: 10px;
+    background: var(--card); border: 1px solid var(--hair);
+    border-radius: var(--r-md); padding: 4px 10px 8px;
+  }
+  .cal-daylist-head {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 7px 2px 6px; border-bottom: 1px solid var(--hair);
+  }
+  .cal-daylist-head b { font-family: var(--serif); font-size: var(--fs-md); }
+  .cal-daylist-wd { font-size: var(--fs-xs); color: var(--ink-3); }
+  .cal-daylist-x {
+    margin-left: auto; width: 30px; height: 30px; border-radius: 50%;
+    color: var(--ink-3); font-size: 18px; line-height: 1;
+  }
+  .cal-daylist-empty { padding: 16px 2px; font-size: var(--fs-sm); color: var(--ink-3); }
+  .cal-day-row {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 10px 2px; min-height: 40px; text-align: left;
+    font-size: var(--fs-sm); color: var(--ink);
+    border-bottom: 1px solid var(--hair);
+  }
+  .cal-day-row:last-child { border-bottom: none; }
+  .cal-day-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-day-row.done .cal-day-title { color: var(--ink-3); text-decoration: line-through; }
+  .cal-day-time { flex: none; font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  /* 展开的那张任务卡跟着往下排，不再被压在 45% 屏高的小窗里 */
+  .cal-detail { max-height: none; overflow: visible; }
+
+  /* 翻页那排（‹ 今天 › 月 周）量出来只有 26px 高，手指按不准 */
+  .cal-nav button { min-height: 34px; }
+  .cal-nav .all-sort button { min-height: 30px; }
+}

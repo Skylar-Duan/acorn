@@ -10,18 +10,66 @@ import { useCallback, useRef, useState } from "react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { showToast } from "./store";
+import { todayYMD } from "./dates";
+import { APP_VERSION } from "./model";
 import { isAndroid } from "./platform";
 import {
   downloadPackage, fetchUpdate, installPackage, isCancelled, shouldOffer, updaterSupported,
   type InstallOutcome, type UpdateInfo,
 } from "./updater";
 
+/**
+ * 上一次**查成功**的结果（v1.10.0）。更新日志弹窗顶上那个「检查新版本」按钮靠它：
+ * 今天已经查过、而且是最新，就不再给按钮，换成一个绿勾「你用的已经是最新版本」（用户点名）。
+ * 只记查成功的；查失败不记——失败不是「已知状态」，下次进来还该让人能再查。
+ */
+export interface CheckMemo {
+  /** 查的那天，YYYY-MM-DD */
+  date: string;
+  result: "latest" | "found";
+  /** latest 时是本机版本，found 时是服务器上那个新版本 */
+  version: string;
+}
+
 interface UpdateStore {
   /** 开机查到的新版本，还没被打发走。null = 不弹 */
   pending: UpdateInfo | null;
+  /** 上一次查成功的结果；null = 从没查成功过 */
+  memo: CheckMemo | null;
 }
 
-export const updateStore = createStore<UpdateStore>(() => ({ pending: null }));
+const MEMO_KEY = "acorn-update-last-check";
+
+function loadMemo(): CheckMemo | null {
+  try {
+    const raw = localStorage.getItem(MEMO_KEY);
+    if (!raw) return null;
+    const m = JSON.parse(raw) as Partial<CheckMemo>;
+    if (typeof m.date !== "string" || typeof m.version !== "string") return null;
+    if (m.result !== "latest" && m.result !== "found") return null;
+    return { date: m.date, result: m.result, version: m.version };
+  } catch {
+    return null; // 存的东西坏了就当没查过，让人能再查一次
+  }
+}
+
+export const updateStore = createStore<UpdateStore>(() => ({ pending: null, memo: loadMemo() }));
+
+/** 记下这次查成功的结果。开机那次和手动那次都走这里，两处口径一致 */
+export function rememberCheck(result: CheckMemo["result"], version: string, today: string = todayYMD()): void {
+  const memo: CheckMemo = { date: today, result, version };
+  try {
+    localStorage.setItem(MEMO_KEY, JSON.stringify(memo));
+  } catch {
+    /* 记不住只是下次多按一下按钮 */
+  }
+  updateStore.setState({ memo });
+}
+
+/** 今天查成功过的话给那条记录，没有就 null。跨天就算过期——版本一天一发也不稀奇 */
+export function checkedToday(memo: CheckMemo | null, today: string = todayYMD()): CheckMemo | null {
+  return memo && memo.date === today ? memo : null;
+}
 
 export function useUpdate<T>(selector: (s: UpdateStore) => T): T {
   return useStore(updateStore, selector);
@@ -70,7 +118,11 @@ export async function checkUpdateOnBoot(): Promise<void> {
     return;
   }
   const info = res.info;
-  if (!info || !shouldOffer(info)) return; // 已经是最新：安静地什么都不做
+  if (!info || !shouldOffer(info)) {
+    rememberCheck("latest", APP_VERSION);
+    return; // 已经是最新：安静地什么都不做
+  }
+  rememberCheck("found", info.version);
   if (skippedVersion() === info.version) return;
   updateStore.setState({ pending: info });
 }
@@ -90,7 +142,11 @@ export async function checkUpdateNow(): Promise<ManualCheck> {
   const res = await fetchUpdate();
   if (!res.ok) return "failed";
   const info = res.info;
-  if (!info || !shouldOffer(info)) return "latest";
+  if (!info || !shouldOffer(info)) {
+    rememberCheck("latest", APP_VERSION);
+    return "latest";
+  }
+  rememberCheck("found", info.version);
   updateStore.setState({ pending: info });
   return "found";
 }

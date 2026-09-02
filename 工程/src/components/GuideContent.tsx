@@ -6,6 +6,8 @@
 import { useMemo, useState } from "react";
 import { parseQuickAdd } from "../core/parse";
 import type { ParseChip } from "../core/parse";
+// platform.ts 只读 navigator.userAgent，不碰 store，独立窗口里一样能用
+import { isMobile } from "../core/platform";
 import SyntaxInput from "./SyntaxInput";
 import "../styles/guide.css";
 
@@ -129,7 +131,9 @@ export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: G
             // 只是试写，不落库——返回 false 是明着告诉输入框「这一下什么都没存」，
             // 别闪那个 ✓：旁边的说明白纸黑字写着「不会创建任务」
             onSubmit={() => false}
-            placeholder="例如：下周三下午3点 !高 /工作 @李哥 场地确认"
+            // 手机上这句被硬裁在「场地确」，末尾没有省略号，读起来像输入框坏了。
+            // 短的那句一样把「日期 + 重要性 + 清单」三件事说全了
+            placeholder={isMobile ? "例如：下周三3点 !高 /工作" : "例如：下周三下午3点 !高 /工作 @李哥 场地确认"}
             lists={listNames}
             tags={tagNames}
             whos={whoNames}

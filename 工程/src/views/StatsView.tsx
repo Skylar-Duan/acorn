@@ -6,6 +6,7 @@ import { byList, byWho, completionByDay, exportWeekMarkdown, weeklyReview } from
 import * as persist from "../core/persist";
 import { showToast, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
+import { hasDesktopFeatures } from "../core/platform";
 import { WhoBadge } from "../components/TaskRow";
 
 const HEAT_WEEKS = 13;
@@ -65,10 +66,13 @@ export default function StatsView() {
   async function onExport() {
     const md = exportWeekMarkdown(review);
     try {
-      if (!persist.inTauri) {
-        // 浏览器环境没有保存对话框，退化为复制
+      // 判据必须连手机一起问（v1.10.0）。原来只看 inTauri：安卓上它是真，
+      // 于是走文件保存那条路——save() 在安卓给回的是 content:// URI，
+      // Rust 侧 fs::write 写不了，用户只会看到一句「导出失败：…」。
+      // 设置页早就明说「手机上不提供文件导出」，这颗按钮当时没跟着改
+      if (!persist.inTauri || !hasDesktopFeatures) {
         await navigator.clipboard.writeText(md);
-        showToast("当前不在桌面环境，小结已复制到剪贴板", false);
+        showToast("本周小结已复制到剪贴板", false);
         return;
       }
       const { save } = await import("@tauri-apps/plugin-dialog");
@@ -255,7 +259,7 @@ export default function StatsView() {
             </div>
           </div>
           <button className="btn" onClick={() => void onExport()}>
-            导出本周小结 (Markdown)
+            {hasDesktopFeatures ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}
           </button>
         </div>
       </div>

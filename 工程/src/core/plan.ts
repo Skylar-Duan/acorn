@@ -7,7 +7,7 @@
 // 为什么一定要有「更远」这一组：半年以后的事总会有（学费、年检、明年的考试）。
 // 没有兜底组，它们不属于任何一段，会在界面上凭空消失——那是丢数据级的错觉。
 
-import type { Priority } from "./model";
+import type { Priority, Task } from "./model";
 import type { DateRow } from "./store";
 import { rowDue, rowPriority, sortRows } from "./store";
 import { addDays, cmpYMD } from "./dates";
@@ -71,6 +71,39 @@ export function planGroups(rows: DateRow[], mode: "time" | "priority", today: st
   out.push({ key: "far", label: "更远", rows: pick((r) => { const d = rowDue(r); return !!d && cmpYMD(d, last) > 0; }) });
   out.push({ key: "nodate", label: "未安排", rows: pick((r) => rowDue(r) === null) });
   return out;
+}
+
+/** 清单 / 随手记 / 需求方 / 标签（views/ListView）怎么分组。这四处一件事只占一行，
+ *  所以分的是 Task 不是 DateRow。传进来的 tasks 已经排好序了，这儿只切分、不重排。
+ *
+ *  两条规矩跟「展开期间把这件事钉在原位」（core/pin.ts）是一套的：
+ *   · key 是**语义名**，不是数组下标。下标当 key 的话，某一组一空，它后面每一组的 key
+ *     全体错一位，整片 Fragment 换 key 重挂，卡片跟着卸载重建——输入焦点、「＋子任务」
+ *     草稿、「整句改」草稿全清空，正是用户报的那个「卡片自己收回去了」
+ *   · 空组照旧出场（画不画交给视图判）。钉住的那一件可能正落在一个「本来空了」的组里：
+ *     在卡里把日期改到今天，它原来那组只剩它一个，组就空了；组要是当场从数组里消失，
+ *     pinExpanded 认不出这个组名，就没地方把它钉回去了 */
+export interface ListGroup {
+  key: string;
+  label: string;
+  /** 醒目提示（逾期） */
+  warn?: boolean;
+  rows: Task[];
+}
+
+/** @param nodateLabel 「没有日期」那一组的标题（随手记整页都是没日期的，不用再标一遍） */
+export function listGroups(tasks: Task[], today: string, nodateLabel: string): ListGroup[] {
+  const overdue = tasks.filter((t) => t.due && cmpYMD(t.due, today) < 0);
+  const todays = tasks.filter((t) => t.due === today);
+  const later = tasks.filter((t) => t.due && cmpYMD(t.due, today) > 0);
+  const nodate = tasks.filter((t) => !t.due);
+  // 标题上那个数字数的是「这一组本来有几件」——钉住只管画面上别挪窝，不改「谁属于哪一组」
+  return [
+    { key: "overdue", label: `逾期 ${overdue.length}`, warn: true, rows: overdue },
+    { key: "today", label: "今天", rows: todays },
+    { key: "later", label: "以后", rows: later },
+    { key: "nodate", label: nodateLabel, rows: nodate },
+  ];
 }
 
 /** 已完成视图的分组：过去一周 / 过去一个月 / 更早。传的是完成日（本地 'YYYY-MM-DD'） */

@@ -21,6 +21,9 @@ import {
   doneRows, droppedRows, rowDoneAt, rowDoneDay, rowDoneGuessed,
   rowDroppedAt, rowDroppedDay, rowTaskIds, useApp,
 } from "../core/store";
+import type { PinIds } from "../core/pin";
+import { usePinExpanded } from "../core/pin";
+import { hasDesktopFeatures } from "../core/platform";
 import { cardAnchor, rowKey } from "../components/RowList";
 import { CardSlot } from "../components/motion";
 import TaskRow from "../components/TaskRow";
@@ -42,6 +45,10 @@ interface DoneItem {
   /** 这条是放弃的（不是做完的）。分组、排序两边一视同仁，只有文案和筛选认它 */
   dropped: boolean;
 }
+
+/** 「这一条是谁、属于哪件事」——喂给 core/pin 的 usePinExpanded。
+ *  key 跟下面那个 `row:` 的 React key 同源（都走 rowKey），认的是同一条行 */
+const DONE_PIN: PinIds<DoneItem> = { key: (x) => rowKey(x.row), taskId: (x) => x.row.task.id };
 
 /** 顶上那个三选一。默认「做完的」——这个视图的主业还是完成记录，放弃的是来投奔的。
  *  控件和存法都照抄日历那个筛子（同款 .all-sort 分段控件，选择存 localStorage） */
@@ -112,9 +119,16 @@ export default function Done() {
     return { groups: gs, total: items.length, taskCount: rowTaskIds(items.map((x) => x.row)).length };
   }, [data, today, showAllOld, filter]);
 
+  // 展开着的那件事钉在上一版的位置上（core/pin.ts）：在卡里勾掉一条子任务，
+  // 那条新完成记录会插到最新那一组的最前面、把卡片的落点从原来那一组抢走，
+  // 整张卡跟着卸载重挂——已完成子任务的折叠状态、几个草稿全清空。收起之后照常重排。
+  // 钉的是**这一轮真画出来的**那份（shown），不是整组：「更早」还没全展开时
+  // 没露面的行本来就不参与画面
+  const laid = groups.map((g) => ({ ...g, rows: g.shown }));
+  const pinned = usePinExpanded(laid, expandedId, DONE_PIN);
   // 连选按「件」不按「行」（跟计划视图一个口径）。只数**这一轮真画出来的**行：
   // 「更早」还没全展开时，没露面的行不能混进连选序列，否则 shift 连选会错位
-  const shown = groups.flatMap((g) => g.shown);
+  const shown = pinned.flatMap((g) => g.rows);
   const orderedIds = rowTaskIds(shown.map((x) => x.row));
   // 一件事占好几行时，展开卡只能出现一次——落点整页算一次，各组照着认领
   const anchor = cardAnchor(shown.map((x) => x.row), expandedId);
@@ -182,7 +196,11 @@ export default function Done() {
           {total !== taskCount && ` · ${taskCount} 件事`}
           {/* 提示语跟圈圈的实际行为对齐：做完的点圆圈 = 标记未完成，
               放弃的点圆圈 = 取消放弃放回未完成（见 TaskRow.onCheck），两种都是「放回未完成」 */}
-          {filter === "dropped" ? " · 点圆圈或右键可以取消放弃" : " · 点圆圈可以放回未完成"}
+          {/* 手机上没有右键（长按也只是同一份菜单的另一条路），这句话按平台分叉，
+              别给手机用户指一个他做不到的操作 */}
+          {filter === "dropped"
+            ? ` · 点圆圈${hasDesktopFeatures ? "或右键" : ""}可以取消放弃`
+            : " · 点圆圈可以放回未完成"}
         </span>
         <span className="spacer" />
         <div className="all-sort">
@@ -198,14 +216,14 @@ export default function Done() {
         </div>
       </div>
       <div className="view-body">
-        {groups.map((g) => (
+        {pinned.map((g) => (
           <Fragment key={g.key}>
             {g.items.length > 0 && (
               <div className="group-head">
                 {g.label} {g.items.length}
               </div>
             )}
-            {g.shown.flatMap(renderRow)}
+            {g.rows.flatMap(renderRow)}
             {g.rest > 0 && (
               <button className="done-more" onClick={() => setShowAllOld(true)}>
                 {/* g.rest 数的是 DoneItem（行），不是任务件数——跟顶上「N 条 · M 件事」

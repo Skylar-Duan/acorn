@@ -355,7 +355,13 @@
   grid-template-rows: 1fr;
   animation: slot-open var(--dur-2) var(--ease);
 }
-.card-slot > * { min-height: 0; }
+/* min-width: 0 跟 min-height 是一对，缺一半就等于没写（v1.10.0）。
+   .task-card 是 grid item，默认 min-width: auto = 不能收缩到内容最小宽度以下；
+   桌面宽度看不出来，390px 的手机上整张卡被里面最宽的那一行（「整句改」那排 chips）
+   顶到 839px，右边 449px 连同「# 标签」「⊘ 放弃」「× 删除」全挂在屏幕外，
+   而 body 不能横滚 —— 那些按钮不是难点，是**永远点不到**。
+   同一个病 .row-slot 在 v1.9.1 已经修过一次（见 tests/row-tail.test.ts） */
+.card-slot > * { min-height: 0; min-width: 0; }
 .card-slot.clip { overflow: hidden; }
 /* 跟 .row-slot 一样的病，只是更贵：0fr 的轨道被 .task-card 自己的
    margin(4+10) + padding(14+12) + border(1+1) = **42px** 顶住，收不到 0。
@@ -443,13 +449,38 @@
   border: solid var(--card); border-width: 0 1.5px 1.5px 0; transform: rotate(40deg);
 }
 .task-card .subs .rm { color: var(--ink-3); font-size: 13px; opacity: 0; }
-.task-card .subs .sub-row:hover .rm { opacity: 1; }
 /* 「放弃这一步」。跟删除同一档待遇：平时藏着，鼠标扫过才露面。
    **已经放弃的那条常驻显示**——不然想反悔的人得先猜出来这儿有个按钮 */
 .task-card .subs .sub-drop { color: var(--ink-3); font-size: 12px; opacity: 0; flex: none; }
-.task-card .subs .sub-row:hover .sub-drop,
 .task-card .subs .sub-row.dropped .sub-drop { opacity: 1; }
-.task-card .subs .sub-drop:hover { color: var(--accent); }
+/* 🔴「平时藏着，扫过才露面」只对**有鼠标的设备**成立。手指没有 hover ——
+   不圈进 (hover: hover) 的话，手机上这两颗按钮 opacity 一直是 0，
+   等于「放弃了能撤回、但压根没法放弃」（v1.10.0 修） */
+@media (hover: hover) {
+  .task-card .subs .sub-row:hover .rm,
+  .task-card .subs .sub-row:hover .sub-drop { opacity: 1; }
+  .task-card .subs .sub-drop:hover { color: var(--accent); }
+  .task-card .subs .rm:hover { color: #C0564A; }
+}
+/* 没有 hover 的设备（手机 / 平板）：两颗常驻半显，并撑到手指按得准的大小。
+   压到 .55 而不是 1，是因为它们在手机上是常驻件，全亮会跟子任务标题抢视线 */
+@media (hover: none) {
+  /* 长按任务行是唤右键菜单的（TaskRow 自己接的长按），别让系统再弹「复制 / 全选」气泡抢戏——
+     侧栏排序那套 .lifted 已经这么写了，任务行漏了这一句（v1.10.0 手机走查第 11 条） */
+  .task-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .task-card .subs .rm,
+  .task-card .subs .sub-drop {
+    opacity: .55;
+    min-width: 30px;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 13px 的方框手指按不准。勾对号是按 13px 的盒子摆的，一起跟着放大 */
+  .task-card .subs .sb { width: 18px; height: 18px; }
+  .task-card .subs .sb.done::after { left: 5px; top: 1.5px; width: 4.5px; height: 9px; }
+}
 /* 已完成子任务的折叠头。样式自己写一套，不蹭 .chain-caret / .chain-more——
    那两个归列表行的折叠管，宽度和旋转规则会跟着串过来 */
 .task-card .subs .tc-donefold {
@@ -466,7 +497,7 @@
 }
 .task-card .subs .tc-donefold:hover { color: var(--accent); background: var(--accent-soft); }
 .task-card .subs .tc-donefold-caret { font-size: 9px; line-height: 1; opacity: .8; }
-.task-card .subs .rm:hover { color: #C0564A; }
+/* .rm / .sub-drop 的 :hover 上色都收进上面那个 @media (hover: hover) 了，这儿不再重复一份 */
 .task-card .chips { display: flex; gap: 7px; margin: 10px 0 0 28px; align-items: center; flex-wrap: wrap; }
 .task-card .chips .pill { cursor: default; }
 .task-card .chips .pill:hover { border-color: var(--accent); color: var(--accent); }
@@ -630,8 +661,23 @@
   overflow: hidden;
   transition: grid-template-rows var(--dur-2) var(--ease);
 }
-.side-fold > * { min-height: 0; }
+/* min-width 跟 min-height 成对（v1.10.0，与 .card-slot 同一个病）：
+   grid 子项默认 min-width: auto = 不能收缩到内容最小宽度以下，
+   抽屉只有 300px 宽，长清单名会把整块顶出抽屉 */
+.side-fold > * { min-height: 0; min-width: 0; }
 .side-fold.shut { grid-template-rows: 0fr; }
+/* 收起来之后里面的「日历 / 回收站」等条目**没有下树**，只是高度被压成 0：
+   自动化和屏幕阅读器仍然摸得到它们，手指也可能戳到一条看不见的东西。
+   visibility 挂在容器上，不是挂到子元素选择器上：子元素那条只留给 min-height /
+   min-width 那一对，tests/motion.test.ts 有一句断言钉着「收起态不许再长出子元素规则」
+   （怕有人顺手往里加 padding 归零，而侧栏的子元素本来就没 padding），别去动它。
+   visibility 的过渡是「到点才翻」，所以收起的那一拍动画照常演完再消失；
+   两条 transition 必须写在一起——它是简写，只留 visibility 会把上面那条
+   grid-template-rows 的过渡顶掉，收起就变成硬切 */
+.side-fold.shut {
+  visibility: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease), visibility var(--dur-2) var(--ease);
+}
 
 /* 「还有 N 个 ▾」 */
 .side .side-more {
@@ -703,8 +749,11 @@
   }
   .shell.drawer-open .drawer-btn { display: none; }
 
-  /* 内容区给 ☰ 让出位置，四周留窄一点 */
+  /* 内容区给 ☰ 让出位置，四周留窄一点。
+     底部那句 v1.10.0 补：安卓 15 起强制 edge-to-edge，正文会画到手势条底下，
+     最后一行事被那道横条压住（index.html 的 viewport-fit=cover 是这一套的前提） */
   .main { padding: max(10px, env(safe-area-inset-top)) 12px 0; }
+  .view-body { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
   .view-head { padding-left: 46px; flex-wrap: wrap; row-gap: 2px; }
   .view-head h1 { font-size: 21px; }
   .view-head .list-name { font-size: 21px; max-width: 62vw; }
@@ -715,7 +764,7 @@
   .task-row { padding-top: 9px; padding-bottom: 9px; }
   .task-row .cb, .task-card .cb { width: 20px; height: 20px; }
   .task-row .meta { gap: 6px; font-size: 11px; }
-  .btn { padding: 7px 12px; }
+  .btn { padding: 7px 12px; min-height: 36px; }
 
   /* 任务行：标题占满一行，需求方/清单/日期这些落到第二行。
      不这么做的话标题会被右边一串徽标挤成「季度复盘会材料 › …」 */
@@ -728,13 +777,50 @@
      就写在这里，等于一直没生效——实测手机上量到的是桌面那份 13px。搬到本体旁边了，
      见文件末尾「子任务链折叠」那一节 */
   .task-row { gap: 9px; }
-  .task-row .meta { flex: 1 0 100%; margin-left: 30px; justify-content: flex-start; }
+  /* basis 要减掉自己那 30px 左缩进，否则这一块比它所在的行还宽 30px：
+     现在 meta 里只剩一格日期、左对齐，看不出来；一旦同时挂上
+     「+N 徽标 + 顺延×N + 完成于 X」，右边就会被裁掉一截 */
+  .task-row .meta { flex: 1 0 calc(100% - 30px); margin-left: 30px; justify-content: flex-start; }
   /* 这儿 meta 已经换行到第二行、整块左对齐了，「完成于 X」自己就对齐了。
      再留着桌面那 88px 定宽只会在它右边开一个空洞（后面还跟着别的东西时更明显） */
   .task-row .meta .when { width: auto; }
 
+  /* 子任务链行：窄屏下 .title 只剩约 282px，母任务名一个人就要 740px，
+     省略号全落在母任务名里，「补华东数据」「发管理层」三行长得一模一样。
+     改成两段各自省略：母任务名最多占 45%，子任务名拿剩下的。
+     :has() 只给链行开 flex —— 普通行加了 flex 之后 ellipsis 会退化成硬裁 */
+  .task-row .title:has(.chain-parent) { display: flex; align-items: baseline; }
+  .task-row .title .chain-parent {
+    flex: 0 1 auto; min-width: 2.5em; max-width: 45%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* 左右的空格靠 padding 给：`<span> › </span>` 成了 flex 项之后，
+     它前后那两个空格会被折掉，读起来是「渠道…›补华东数据」，挤成一坨 */
+  .task-row .title .chain-sep { flex: none; padding: 0 .25em; }
+  .task-row .title .chain-self {
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
   /* 折叠头是手指点的，12px 的一行字太薄，撑到跟任务行一个厚度 */
   .task-card .subs .tc-donefold { padding: 10px 0; font-size: 13px; }
+
+  /* 任务卡的「整句改」：里面那排解析 chips 不可收缩（flex: none + nowrap），
+     就是把整张卡顶出屏幕的那只手。窄屏让输入框和 chips 各占一整行、都能换行 */
+  /* .tc-sentence 自己那两句窄屏声明**不在这儿**：它的本体写在这个 @media 块之后
+     （同为一个类名，谁在后面谁赢），写这里会被本体的 border-radius: 999px 顶掉。
+     搬到本体旁边了，见下面「任务卡底部的整句改」那一节。
+     下面这三条能留在这儿，是因为它们比 syntaxinput.css 里的本体多一层类，specificity 更高 */
+  .tc-sentence .si-wrap { flex-wrap: wrap; }
+  .tc-sentence .si-input { min-width: 0; flex: 1 1 100%; }
+  .tc-sentence .si-chips { flex: 1 1 100%; flex-wrap: wrap; }
+  /* 子任务行：允许换行，并且给标题定一个下限。
+     日期小签 / 重要性小签 / ⊘ / × 全是 flex: none，标题是唯一会被压的那个；
+     不给下限的话，多挂一个「已放弃」灰标签就把标题挤到三四个字宽，
+     「这条放弃了」断成「这条放 / 弃了」。6em 是「宁可让小签换到第二行」的那条线——
+     够宽的行（绝大多数）照旧一行到底，不会平白长高 */
+  .task-card .subs .sub-row { flex-wrap: wrap; row-gap: 2px; }
+  .task-card .subs .sub-row textarea { min-width: 6em; }
 
   /* 键盘快捷键提示在手机上是废话 */
   .kbd-hint { display: none; }
@@ -742,8 +828,20 @@
   /* 一行放不下的横排改成能横向滑动，而不是把页面撑宽 */
   .quick-add.tall .qa-picks { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
   .quick-add.tall .qa-picks::-webkit-scrollbar { display: none; }
+  /* 「选中的会保持生效」那句挂在这排的最右边，窄屏下整条在屏幕外，
+     得横向划两下才看得到——不如不画，点选按钮本身已经把状态说清楚了 */
+  .qa-tip { display: none; }
   .bulk-bar { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
   .toast { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); }
+
+  /* 手指按得准：低于 36px 的那几处统一抬高（侧栏那颗「＋」只有 22×14） */
+  .side .group-title > button { min-width: 34px; min-height: 34px; }
+  .side .brand .ver { padding: 8px 10px; margin: -8px -4px; }
+  /* 随手记那颗「?」的窄屏版同理写在本体旁边（本体在这个块之后），见文件末尾 */
+  .qa-pick { min-height: 34px; }
+  /* 右键菜单那份写在 contextmenu.css 自己里：那个文件是组件按需引入的，
+     加载顺序在 app.css 之后，写这儿会被它自己的 padding 顶掉 */
+  .popmenu .item { padding-top: 9px; padding-bottom: 9px; }
 }
 
 /* 新增前缀备忘：.gd-（用法页 guide.css）· .chain-（子任务链）· .tc-（任务卡内部件） */
@@ -830,6 +928,12 @@ button.chain-more.plain:hover { color: var(--accent); border-color: var(--accent
   background: var(--bg);
   transition: border-color var(--dur-1) var(--ease);
 }
+/* 窄屏版必须写在本体**后面**（同为一个类名，谁在后面谁赢，而上面那个
+   @media (max-width: 760px) 大块在本体之前——这个坑 .chain-caret 已经踩过一次）。
+   999px 的圆角在换行长高之后是个奇怪的长胶囊，窄屏收成常规圆角 */
+@media (max-width: 760px) {
+  .tc-sentence { flex-wrap: wrap; border-radius: var(--r-md); }
+}
 .tc-sentence:focus-within { border-color: var(--accent); }
 .tc-sentence-tag {
   flex: none;
@@ -901,3 +1005,7 @@ button.chain-more.plain:hover { color: var(--accent); border-color: var(--accent
   line-height: 1;
 }
 .quick-add .qa-help:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+/* 窄屏版写在本体后面才盖得住（同上面 .tc-sentence 那条注释）：20px 的圆手指按不准 */
+@media (max-width: 760px) {
+  .quick-add .qa-help { width: 30px; height: 30px; }
+}

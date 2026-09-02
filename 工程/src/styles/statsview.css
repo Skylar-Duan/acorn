@@ -113,3 +113,19 @@
 .stats-week-range { font-size: var(--fs-xs); color: var(--ink-3); }
 .stats-week-sum { font-size: var(--fs-sm); color: var(--ink-2); }
 .stats-week > .btn { margin-left: auto; flex: none; }
+
+/* ---------- 窄屏（手机） ----------
+   「每周回顾」四个字被折成两行、日期区间也折行、按钮挤在旁边。
+   一律换行：标题行占满、按钮自己独占一行 */
+@media (max-width: 760px) {
+  .stats-week { flex-wrap: wrap; padding: 15px 14px; }
+  .stats-week-titlerow { flex-wrap: wrap; }
+  .stats-week > .btn { margin-left: 0; width: 100%; }
+  /* 三枚数字卡挤在 390px 上每格只剩 110，数字都换行了 */
+  .stats-cards, .stats-cards.n3, .stats-cards.n4 { grid-template-columns: repeat(2, 1fr); }
+  .stats-duo { grid-template-columns: 1fr; gap: 22px; }
+  .stats-dist-row { grid-template-columns: 84px 1fr 24px; gap: 8px; }
+  /* 热力图 13 周 × 16px 一列 = 208px，加上左边星期条正好在窄屏溢出，交给横滑 */
+  .stats-hm { overflow-x: auto; scrollbar-width: none; }
+  .stats-hm::-webkit-scrollbar { display: none; }
+}

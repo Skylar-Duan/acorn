@@ -90,6 +90,10 @@ export default function Calendar() {
       /* 存不了就这次会话记得 */
     }
   };
+  /** 点开了哪一天（v1.10.0，窄屏用）。窄屏格子只有 51px 宽，条目标题只显示得下一个字，
+   *  所以格子里改画圆点，点一格在网格下面列出当天的事。
+   *  这块在桌面上由 calendar.css 关掉——桌面格子里本来就写得下标题，不需要二级列表 */
+  const [picked, setPicked] = useState<string | null>(null);
 
   // 格子：月视图整月（周一开头，前后补齐到整周）；周视图就是 anchor 那一周的七天
   const cells = useMemo(() => {
@@ -204,7 +208,9 @@ export default function Calendar() {
         </div>
       </div>
 
-      <div className="view-body cal-body">
+      {/* 模式挂在容器上：窄屏周视图要把七列拍成七行，那时候上面那排「一二三…」的
+          列头就没有意义了，得能选中它关掉，而列头自己不知道现在是月还是周 */}
+      <div className={`view-body cal-body${mode === "week" ? " cal-week-mode" : ""}`}>
         <div className="cal-week">
           {WEEK_HEAD.map((w) => (
             <span key={w}>{w}</span>
@@ -229,7 +235,10 @@ export default function Calendar() {
             return (
               <div
                 key={ymd}
-                className={`cal-cell${inMonth ? "" : " dim"}${dropYmd === ymd ? " cal-dropping" : ""}`}
+                className={`cal-cell${inMonth ? "" : " dim"}${dropYmd === ymd ? " cal-dropping" : ""}${picked === ymd ? " cal-picked" : ""}`}
+                // 点一格 = 在下面那块列出这天的事（窄屏才画得出来，见 .cal-daylist）。
+                // 再点一次收起来：一格既是开关也是当前位置，手机上不另放一颗关闭键
+                onClick={() => setPicked((cur) => (cur === ymd ? null : ymd))}
                 onDoubleClick={() => {
                   setQuickYmd(ymd);
                   setQuickText("");
@@ -245,6 +254,9 @@ export default function Calendar() {
                   <span className={`cal-num${ymd === today ? " today" : ""}`}>
                     {Number(ymd.slice(8, 10))}
                   </span>
+                  {/* 周几。窄屏周视图把七列拍成七行，那排列头就关掉了，
+                      日期旁边得自己写上是周几；桌面和月视图里由 CSS 藏起来 */}
+                  <span className="cal-wd">周{WEEK_HEAD[(dayOfWeek(ymd) + 6) % 7]}</span>
                   {/* 绿点和「+N」都挤在日期这一行：日格是固定高 + overflow:hidden，
                       排在条目后面的东西在 6 周布局里会被整条裁掉，用户根本看不见还有没显示完的 */}
                   <span className="cal-head-right">
@@ -333,6 +345,51 @@ export default function Calendar() {
             );
           })}
         </div>
+
+        {/* 点开那天的清单（窄屏专用，桌面由 calendar.css 关掉）。
+            窄屏格子里只剩「日期 + 圆点 + 计数」，事情叫什么名字全靠这一块交代；
+            点其中一条照旧展开下面那张任务卡 */}
+        {picked && (
+          <div className="cal-daylist">
+            <div className="cal-daylist-head">
+              <b>{mdLabel(picked, picked.slice(0, 4) !== today.slice(0, 4))}</b>
+              <span className="cal-daylist-wd">周{WEEK_HEAD[(dayOfWeek(picked) + 6) % 7]}</span>
+              <button className="cal-daylist-x" title="收起这天" onClick={() => setPicked(null)}>×</button>
+            </div>
+            {(() => {
+              const slot = byDay.get(picked);
+              const open = filter === "done" ? [] : slot?.open ?? [];
+              const done = filter === "plan" ? [] : slot?.done ?? [];
+              if (open.length === 0 && done.length === 0) {
+                return <div className="cal-daylist-empty">这天没有安排</div>;
+              }
+              return (
+                <>
+                  {open.map((t) => (
+                    <button key={t.id} className="cal-day-row" onClick={() => expandTask(t.id)}>
+                      <span className={`flag p${t.priority}`} />
+                      <span className="cal-day-title">{t.title || "（未命名）"}</span>
+                      {t.dueTime && <span className="cal-day-time">{t.dueTime}</span>}
+                    </button>
+                  ))}
+                  {done.map((r) => (
+                    <button
+                      key={rowKey(r)}
+                      className="cal-day-row done"
+                      onClick={() => expandTask(r.task.id)}
+                    >
+                      <span className="cal-check">✓</span>
+                      <span className="cal-day-title">
+                        {/* 做完的子任务写成「母 › 子」，跟「已完成」视图一个口径 */}
+                        {(r.sub ? `${r.task.title} › ${r.sub.title}` : r.task.title) || "（未命名）"}
+                      </span>
+                    </button>
+                  ))}
+                </>
+              );
+            })()}
+          </div>
+        )}
 
         {expanded && (
           <div className="cal-detail">

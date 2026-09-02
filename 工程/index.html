@@ -2,7 +2,11 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover 是安卓端必需的一句：targetSdk 36，Android 15 起强制
+         edge-to-edge，WebView 会画到状态栏和手势条底下。没有这句，CSS 里所有
+         env(safe-area-inset-*) 恒等于 0，max(8px, 0) 退化成 8px——
+         左上角那颗 ☰ 会被状态栏压住，底部 toast / 批量条会被手势条盖掉 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>橡果 Acorn</title>
   </head>
   <body>

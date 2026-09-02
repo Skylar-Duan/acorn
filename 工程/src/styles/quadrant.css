@@ -104,3 +104,28 @@
   color: var(--ink-3);
   opacity: .75;
 }
+
+/* ---------- 窄屏（手机）：2×2 改成单列四段 ----------
+   390px 上每格只有 175px，标题被砍成三四个字（「把上…」「更」），
+   日期比标题还占地方，四格还各自留半屏空白——这个视图在手机上等于不可用。
+   改成四段挨个往下铺、每段一个象限标题 + 行，滚动交回给整页 */
+@media (max-width: 760px) {
+  .view-body.quad-body { overflow-y: auto; }
+  .quad-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: min-content;
+    gap: 10px;
+  }
+  /* 每格高度随内容长，不再各自开一个小滚动区——手机上嵌套滚动最难伺候 */
+  .quad-cell-body { overflow: visible; }
+  .quad-head { flex-wrap: wrap; }
+  /* 「转交或压缩」不再被挤成两行 */
+  .quad-hint { margin-left: 0; }
+  .quad-row { padding: 8px 6px; gap: 10px; }
+  /* 日期挪到标题下面另起一行：留在同一行的话它 flex: none，
+     整条右侧宽度都由它说了算，标题又被压回三四个字 */
+  .quad-row { flex-wrap: wrap; row-gap: 2px; }
+  .quad-row .quad-title { flex: 1 1 0; }
+  .quad-row .quad-due { margin-left: 0; flex: 1 0 100%; padding-left: 30px; }
+}

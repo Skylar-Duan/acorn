@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import type { DateRow, UIState } from "../core/store";
 import { isChainFolded, toggleChain, useApp } from "../core/store";
 import { cardMs } from "../core/motion";
+import type { PinIds } from "../core/pin";
 import { CardSlot } from "./motion";
 import TaskRow from "./TaskRow";
 import TaskCard from "./TaskCard";
@@ -18,6 +19,11 @@ import TaskCard from "./TaskCard";
 export function rowKey(r: DateRow): string {
   return r.sub ? `${r.task.id}/${r.sub.id}` : r.task.id;
 }
+
+/** 「这一行是谁、属于哪件事」——喂给 core/pin 的 usePinExpanded。
+ *  跟下面 `row:` 那个 React key 用的是同一个 rowKey，两处口径不许分家：
+ *  钉位置靠的就是「上一版这个 key 待在哪」，认错了行就等于没钉 */
+export const ROW_PIN: PinIds<DateRow> = { key: rowKey, taskId: (r) => r.task.id };
 
 /** 展开卡该落在哪一行（整个视图算一次，各组照着认领，保证只画一张） */
 export function cardAnchor(allRows: DateRow[], expandedId: string | null): string | null {

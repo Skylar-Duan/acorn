@@ -1,10 +1,11 @@
 // 今天：主战场。逾期置顶，可一键全部顺延；底部当日小结。
 // 行来自 DateRow：母任务 + 带自己日期的子任务（「母 › 子」形式）。
 import { formatCN, todayYMD } from "../core/dates";
-import { postponeRows, rowTaskIds, tasksForToday, useApp } from "../core/store";
+import { openRows, postponeRows, rowTaskIds, sortRows, tasksForToday, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
+import { usePinExpanded } from "../core/pin";
 import { RowCard } from "../components/motion";
-import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
+import RowList, { ROW_PIN, cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 
@@ -15,15 +16,29 @@ export default function Today() {
   const today = todayYMD();
 
   const { overdue, todays, doneToday } = tasksForToday(data, today);
-  const allRows = [...overdue, ...todays];
+  // 展开着的那件事钉在上一版的位置上（core/pin.ts）：在卡里加一条明天到期的子任务、
+  // 或者顺手把日期改到下周，这件事的行会整个退出这个视图，卡片当场没了没法接着输入。
+  // 所以兜底行池给的是**整份** openRows——光靠下面这两组是捞不回来的
+  const pinPool = expandedId
+    ? sortRows(openRows(data).filter((r) => r.task.id === expandedId), data.settings.sortMode)
+    : [];
+  const pinned = usePinExpanded(
+    [{ key: "overdue", rows: overdue }, { key: "today", rows: todays }],
+    expandedId,
+    ROW_PIN,
+    pinPool,
+  );
+  const overdueShown = pinned[0].rows;
+  const todayShown = pinned[1].rows;
+  const allRows = [...overdueShown, ...todayShown];
   const orderedIds = rowTaskIds(allRows);
   // 折叠整页算一次（跟「计划」同一套口径），否则逾期区和今天区会各收一遍
   const fold = useFoldPlan(allRows);
   const anchor = cardAnchor(allRows, expandedId);
   // 这两个只用来判断「这一组还剩东西吗、组标题画不画」。
   // 真正交给 RowList 的是**没过滤过**的那份：折叠掉的行由它收成 0 高，收/放才都有动画（B5）
-  const overdueRows = visibleRows(overdue, fold);
-  const todayRows = visibleRows(todays, fold);
+  const overdueRows = visibleRows(overdueShown, fold);
+  const todayRows = visibleRows(todayShown, fold);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
   // 底部进度按「件」算不按「行」算：一件事拆成 3 个子任务时，做掉 1 个不该让分母也跟着缩水
   const total = rowTaskIds(todays).length + doneToday.length;
@@ -45,11 +60,11 @@ export default function Today() {
                 全部推到明天 →
               </button>
             </div>
-            <RowList rows={overdue} fold={fold} anchor={anchor} orderedIds={orderedIds} />
+            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} />
           </>
         )}
         {todayRows.length > 0 && <div className="group-head">今天</div>}
-        <RowList rows={todays} fold={fold} anchor={anchor} orderedIds={orderedIds} />
+        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} />
         {doneToday.length > 0 && <div className="group-head">已完成 {doneToday.length}</div>}
         {doneToday.map((t) => (
           <RowCard
@@ -72,7 +87,9 @@ export default function Today() {
             card={() => <TaskCard task={t} />}
           />
         ))}
-        {overdue.length === 0 && todays.length === 0 && doneToday.length === 0 && (
+        {/* 按**这一版真画出来的行**算，不按 overdue/todays 算：展开期间钉在这儿的那一件
+            已经不属于这两组了，照旧数它俩的话会出现「卡片摆在页面上，底下写着今天没有安排」 */}
+        {allRows.length === 0 && doneToday.length === 0 && (
           <div className="empty">今天没有安排。</div>
         )}
       </div>

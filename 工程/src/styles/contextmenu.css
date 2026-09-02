@@ -64,3 +64,12 @@
 }
 .ctx-input:focus { border-color: var(--accent); }
 .ctx-input::placeholder { color: var(--ink-3); }
+
+/* 窄屏（手机）：这份菜单在手机上是长按唤起的（见 TaskRow 的长按），
+   6px 上下内边距量出来只有 29px 高，手指按不准，一律抬到 36 以上。
+   写在这个文件里而不是 app.css：contextmenu.css 是组件按需引入的，
+   加载顺序在 app.css 之后，写那边会被上面 .ctx-item 自己的 padding 顶掉 */
+@media (max-width: 760px) {
+  .ctx-item { padding-top: 9px; padding-bottom: 9px; }
+  .ctx-menu, .ctx-submenu { max-width: calc(100vw - 16px); }
+}

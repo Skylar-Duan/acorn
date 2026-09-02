@@ -3,11 +3,15 @@
 // 「随手记」是全应用的记录入口：打字用语法，不想背语法就用下面那排按钮。
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { List, Task } from "../core/model";
-import { cmpYMD, todayYMD } from "../core/dates";
+import { todayYMD } from "../core/dates";
 import {
   aliveTasks, deleteList, purgeTask, purgeTrash, renameList,
   restoreTask, setListColor, sortTasks, trashDaysLeft, useApp,
 } from "../core/store";
+import type { ListGroup } from "../core/plan";
+import { listGroups } from "../core/plan";
+import type { PinIds } from "../core/pin";
+import { usePinExpanded } from "../core/pin";
 import { LIST_COLORS } from "../core/model";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
@@ -16,6 +20,11 @@ import { RowCard } from "../components/motion";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
 
 export type ListKind = "inbox" | "list" | "who" | "tag" | "trash";
+
+/** 「这一行是谁、属于哪件事」——喂给 core/pin 的 usePinExpanded。
+ *  这几个视图一件事只占一行（子任务不单独出行），所以两个口径都是任务 id，
+ *  跟下面 RowCard 的 `key={t.id}` 同一个来源：认错行就等于没钉 */
+const LIST_PIN: PinIds<Task> = { key: (t) => t.id, taskId: (t) => t.id };
 
 /** 清单名（v1.9.0 · A4）。原来是个 contentEditable 的 h1：看不出能改、回车会插一个换行、
  *  也没法反悔。换成正经输入框——鼠标扫过露一圈淡边框，回车 / 点走都是存，Esc 还原。
@@ -128,23 +137,32 @@ export default function ListView({ kind }: { kind: ListKind }) {
     }
   }, [data, kind, listId, who, tag, list, sortMode]);
 
-  // 清单/需求方视图：按日期分组展示更有章法
-  const groups: { label: string; items: Task[] }[] = useMemo(() => {
-    if (kind === "trash") return [{ label: "", items: tasks }];
-    const overdue = tasks.filter((t) => t.due && cmpYMD(t.due, today) < 0);
-    const todays = tasks.filter((t) => t.due === today);
-    const later = tasks.filter((t) => t.due && cmpYMD(t.due, today) > 0);
-    const nodate = tasks.filter((t) => !t.due);
-    const out: { label: string; items: Task[] }[] = [];
-    if (overdue.length) out.push({ label: `逾期 ${overdue.length}`, items: overdue });
-    if (todays.length) out.push({ label: "今天", items: todays });
-    if (later.length) out.push({ label: "以后", items: later });
-    if (nodate.length) out.push({ label: kind === "inbox" ? "" : "未安排", items: nodate });
-    return out.length ? out : [{ label: "", items: [] }];
-  }, [tasks, kind, today]);
+  // 清单/需求方视图：按日期分组展示更有章法（分法在 core/plan.ts，纯函数、可单测）。
+  // 回收站不分组：那儿按删除时间倒着排，再切成逾期/今天没有意义
+  const laid: ListGroup[] = useMemo(
+    () =>
+      kind === "trash"
+        ? [{ key: "all", label: "", rows: tasks }]
+        : listGroups(tasks, today, kind === "inbox" ? "" : "未安排"),
+    [tasks, kind, today],
+  );
 
+  // 展开着的那件事钉在上一版的位置上（core/pin.ts）。这个视图犯的是同一种病：
+  // 在卡里把日期改到今天、或者顺手改掉它的归属，这一行会当场换一组（甚至整个退出这个视图），
+  // 而每一组各自一个 Fragment —— 卡片换了 React 父节点就是卸载重挂，
+  // 输入框焦点、「＋子任务」草稿、「整句改」草稿一起清空，用户看到的就是「卡片自己收回去了」。
+  // 兜底行池给的是**这个视图没过滤过**的那一份（还活着、还没了结的全部任务）：
+  // 改到别的清单去之后，光靠上面那四组是捞不回来的。
+  // 真勾掉 / 真删掉的不在池子里 —— 那种「真没了」就该让它没（跟「今天」视图同一个口径）
+  const pinPool = expandedId
+    ? aliveTasks(data).filter((t) => !t.done && !t.droppedAt && t.id === expandedId)
+    : [];
+  const groups = usePinExpanded(laid, expandedId, LIST_PIN, pinPool);
+
+  // 下面一律用**这一版真画出去的**那份：连选顺序、空态都得跟画面对得上
+  const shown = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
   // shift 连选的顺序必须与实际渲染顺序（分组后）一致，否则会圈中范围外的任务
-  const orderedIds = useMemo(() => groups.flatMap((g) => g.items.map((t) => t.id)), [groups]);
+  const orderedIds = useMemo(() => shown.map((t) => t.id), [shown]);
 
   return (
     <section className="main">
@@ -187,10 +205,17 @@ export default function ListView({ kind }: { kind: ListKind }) {
       </div>
       {showAdd && <QuickAddBar defaults={defaults} withPickers={kind === "inbox"} autoFocus={kind === "inbox"} />}
       <div className="view-body">
-        {groups.map((g, gi) => (
-          <Fragment key={gi}>
-            {g.label && <div className={`group-head${g.label.startsWith("逾期") ? " warn" : ""}`}>{g.label}</div>}
-            {g.items.map((t) =>
+        {groups.map((g) => (
+          // key 是组的语义名（overdue / today / later / nodate），不是下标：
+          // 下标当 key 的话，某一组一空，它后面每一组的 key 全体错一位、整片重挂，
+          // 卡片跟着卸载重建——那正是「加完子任务卡片自己收回去」的另一条路
+          <Fragment key={g.key}>
+            {/* 空组照旧不画（连组标题一起）。判的是**钉过之后**这一组还剩什么：
+                钉在这儿的那一件已经不属于这一组了，照原分组判会出现「标题底下空一片」 */}
+            {g.rows.length > 0 && g.label && (
+              <div className={`group-head${g.warn ? " warn" : ""}`}>{g.label}</div>
+            )}
+            {g.rows.map((t) =>
               kind === "trash" ? (
                 <div key={t.id} className="task-row">
                   {/* 跟别的视图的任务行左边缘对齐（那边行首有个折叠小三角） */}
@@ -228,7 +253,10 @@ export default function ListView({ kind }: { kind: ListKind }) {
             )}
           </Fragment>
         ))}
-        {tasks.length === 0 && (
+        {/* 按**这一版真画出来的行**算，不按过滤出来的 tasks 算：展开期间钉在这儿的那一件
+            已经不在 tasks 里了（比如在卡里改了归属），照 tasks 判会出现
+            「卡片明明摆在页面上，底下写着这里没有任务」 */}
+        {shown.length === 0 && (
           <div className="empty">
             {kind === "trash" ? "回收站是空的。"
               : kind === "inbox" ? "还没有记录，在上面记一条。"

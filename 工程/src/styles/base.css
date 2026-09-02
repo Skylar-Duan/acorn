@@ -163,9 +163,14 @@ kbd {
   display: flex; align-items: flex-start; justify-content: center;
   z-index: 100;
 }
+/* min-width 写成 min(...)（v1.10.0）：原来是死的 480px，比 390 的手机还宽，
+   浮层左右各出 45px、两边内容都被切掉。以前是每加一个浮层就去窄屏块里补一条豁免
+   （.update-modal / .nd-modal / .cl-modal 都补过，.cp-modal / .so-modal / .rescue 就漏了），
+   这里一次把默认值改对，以后新加的浮层不会再重犯 */
 .modal {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg);
-  box-shadow: var(--shadow); margin-top: 12vh; min-width: 480px; max-width: 640px;
+  box-shadow: var(--shadow); margin-top: 12vh;
+  min-width: min(480px, calc(100vw - 24px)); max-width: 640px;
   overflow: hidden;
 }
 

@@ -58,4 +58,7 @@
 .plan-search .ps-clear:hover { color: var(--accent); background: var(--bg); }
 @media (max-width: 760px) {
   .plan-search { margin: 0 14px 6px; }
+  /* 「列表 / 四象限」「按时间 / 按重要性」这些分段键量出来只有 24px 高，手指按不准。
+     写在这个文件里：plan.css 是视图按需引入的，加载顺序在 app.css 之后 */
+  .all-sort button { padding-top: 7px; padding-bottom: 7px; }
 }

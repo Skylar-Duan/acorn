@@ -206,6 +206,36 @@
   overflow: hidden;
   transition: grid-template-rows var(--dur-2) var(--ease);
 }
-.set-fold > .set-fold-inner { min-height: 0; padding-top: 3px; }
+/* min-width 跟 min-height 成对（v1.10.0，与 app.css 的 .card-slot / .side-fold 同一个病）：
+   grid 子项默认 min-width: auto = 收不到内容最小宽度以下。桌面看不出来，
+   390px 的手机上这块被撑到 429px —— 「立即同步」整颗在屏幕外、「注销账号」被切一半、
+   每一句说明都断在半截。而云账号正是手机端「把电脑那份拉下来」的唯一入口 */
+.set-fold > .set-fold-inner { min-height: 0; min-width: 0; padding-top: 3px; }
 .set-fold.shut { grid-template-rows: 0fr; }
+/* 收起的那一节内容仍在树上（见上面「为什么不用条件渲染」），只是高度被压成 0：
+   不关掉命中与朗读的话，看不见的按钮照样能被摸到。写法跟 app.css 的 .side-fold 一致——
+   visibility 挂容器；两条 transition 必须写在一起，它是简写，
+   只留 visibility 会把上面 .set-fold 那条 grid-template-rows 的过渡顶掉 */
+.set-fold.shut {
+  visibility: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease), visibility var(--dur-2) var(--ease);
+}
 .set-section.set-closed { padding-bottom: 14px; }
+
+/* ---------- 窄屏（手机） ----------
+   设置页的行是「左标签 右控件」，右控件那块 flex: none 不收缩；
+   一行挤三颗按钮时（退出登录并清空本机 / 只退出登录 / 注销账号）需要 382px，
+   而屏幕只有 390 减去卡片内外边距。一律允许换行，换行之后再右对齐只会开一个洞 */
+@media (max-width: 760px) {
+  .set-row { flex-wrap: wrap; }
+  .set-ctl { margin-left: 0; }
+  .acct-line { flex-wrap: wrap; min-width: 0; }
+  /* 长邮箱允许在任意位置断行，不然它一个人就能把整行撑破 */
+  .acct-line b { min-width: 0; overflow-wrap: anywhere; }
+  .acct-line .spacer { display: none; }
+  .set-section { padding: 14px 14px 12px; }
+  /* 主题卡三列在 390px 上每格只剩 100 出头，缩略图糊成一条；两列刚好 */
+  .set-themes { grid-template-columns: repeat(2, 1fr); }
+  /* 「浅色 / 深色 / 跟随系统」这排分段键只有 24px 高，手指按不准 */
+  .set-seg button { padding-top: 7px; padding-bottom: 7px; }
+}

@@ -1,10 +1,10 @@
-// 设置：外观 / 云账号 / 数据 / 导出导入 / 行为 / 回收站 / 关于。分节卡片，一屏调完。
+// 设置：外观 / 云账号 / 版本更新 / 数据 / 导出导入 / 行为 / 一句话记事 / 关于。分节卡片，可折叠。
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
 import { APP_VERSION, DATA_VERSION } from "../core/model";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
-import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
+import { aliveTasks, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
 import { useFold } from "../core/useFold";
 import {
   dataStatus, getDataDir, inTauri, listBackups, readTextFile, restoreBackup,
@@ -528,7 +528,11 @@ export default function Settings() {
           <div className="set-row">
             <div className="set-row-label">
               写法说明
-              <span className="set-hint">在单独的窗口里打开，一组可以照着抄的例子</span>
+              {/* 手机上开不了独立窗口，guideCtl 会 fallback 成应用内的全屏 sheet，
+                  这句话得跟着实际形态走，别许一个手机上不存在的窗口 */}
+              <span className="set-hint">
+                {hasDesktopFeatures ? "在单独的窗口里打开，一组可以照着抄的例子" : "一组可以照着抄的例子"}
+              </span>
             </div>
             <div className="set-ctl">
               <button className="btn" onClick={guide.open}>打开用法</button>
@@ -538,18 +542,7 @@ export default function Settings() {
         {/* 用法那个 sheet 必须留在折叠容器之外：容器 overflow:hidden 会把它裁掉 */}
         {guide.sheet}
 
-        {/* ---------- 回收站 ---------- */}
-        <SetSection id="trash" title="回收站" summary="已删除的任务保留 30 天">
-          <div className="set-row">
-            <div className="set-row-label">
-              已删除的任务
-              <span className="set-hint">保留 30 天，之后自动清理</span>
-            </div>
-            <div className="set-ctl">
-              <button className="btn" onClick={() => navigate("trash")}>打开回收站</button>
-            </div>
-          </div>
-        </SetSection>
+        {/* 回收站那一节 v1.10.0 撤了：侧栏「更多」里已经挂着它，设置页再放一个「打开回收站」是重复入口（用户点名） */}
 
         {/* ---------- 关于（不折叠） ---------- */}
         <div className="set-section set-about">

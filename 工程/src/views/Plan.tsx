@@ -11,7 +11,9 @@ import { planGroups } from "../core/plan";
 import { searchTasks } from "../core/search";
 import { aliveTasks, openRows, rowTaskIds, setFoldAll, updateSettings, useApp } from "../core/store";
 import { hardCutRows } from "../core/motion";
-import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
+import { isMobile } from "../core/platform";
+import { usePinExpanded } from "../core/pin";
+import RowList, { ROW_PIN, cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import QuadrantBoard from "./Quadrant";
 import "../styles/plan.css";
 
@@ -60,7 +62,18 @@ export default function Plan() {
     );
     return openAll.filter((r) => hit.has(r.task.id));
   }, [openAll, data, query]);
-  const groups = useMemo(() => planGroups(rows, sortMode, today), [rows, sortMode, today]);
+  // 分完组还有一道：**展开着的那件事钉在上一版的位置上**（core/pin.ts）。
+  // 母任务定在两个月后、在卡里加一条今天到期的子任务时，母任务行会被子任务行顶掉，
+  // 新行按日期落进「今天」那一组——卡片跟着换了个 React 父节点、整张卡卸载重挂，
+  // 焦点和几个草稿全丢，看着就是「卡片自己收回去了」。收起之后照常重排
+  const laid = useMemo(() => planGroups(rows, sortMode, today), [rows, sortMode, today]);
+  // 兜底行池：搜索框正筛着的时候，在卡里把标题改得不再命中，这件事的行会当场从页面上
+  // 消失、卡片跟着没。展开期间不许发生这种事，所以从**没过滤**的那份里把它的行留着
+  const pinPool = useMemo(
+    () => (expandedId ? openAll.filter((r) => r.task.id === expandedId) : []),
+    [openAll, expandedId],
+  );
+  const groups = usePinExpanded(laid, expandedId, ROW_PIN, pinPool);
   const allRows = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
   const totalOpen = useMemo(() => rowTaskIds(openAll).length, [openAll]);
   // 折叠和展开卡的落点都得**整页算一次**：子任务各带日期时会散落在不同的时间段里，
@@ -123,7 +136,9 @@ export default function Plan() {
           <input
             className="input"
             value={q}
-            placeholder="搜索计划里的事：标题、子任务、备注、标签、需求方"
+            // 手机上这句长的会被硬裁在「标签、」中间（框里没有省略号，只有半截字），
+            // 换一句短的比加省略号可读——搜的范围没变，只是不逐项报菜名
+            placeholder={isMobile ? "搜索标题、子任务、备注…" : "搜索计划里的事：标题、子任务、备注、标签、需求方"}
             // 每敲一个字行集合都大改，跟总开关一样走硬切，不然上百行的高度过渡每次击键重跑
             onChange={(e) => {
               hardCutRows();

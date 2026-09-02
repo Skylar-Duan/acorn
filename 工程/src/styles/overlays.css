@@ -133,19 +133,84 @@
 .nd-modal .nd-acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 .nd-modal .nd-foot { margin-top: 12px; font-size: var(--fs-xs); color: var(--ink-3); text-align: right; }
 
-/* ---------- 更新日志弹窗（侧栏版本号点开） ---------- */
-.cl-modal { min-width: 460px; max-width: 560px; display: flex; flex-direction: column; max-height: 76vh; }
-.cl-head { display: flex; align-items: baseline; gap: 12px; padding: 18px 22px 12px; border-bottom: 1px solid var(--hair); }
-.cl-head h2 { font-family: var(--serif); font-size: var(--fs-h2); }
-.cl-head .cl-cur { font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.cl-head .btn { margin-left: auto; }
-.cl-body { overflow-y: auto; padding: 8px 22px 18px; }
-.cl-entry + .cl-entry { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
-.cl-entry h3 { font-size: var(--fs-md); font-weight: 600; display: flex; align-items: baseline; gap: 10px; margin: 8px 0 6px; }
-.cl-entry h3 .cl-date { font-size: var(--fs-xs); color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
-.cl-entry ul { list-style: none; display: flex; flex-direction: column; gap: 5px; }
-.cl-entry li { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; padding-left: 14px; position: relative; }
-.cl-entry li::before { content: "·"; position: absolute; left: 2px; color: var(--ink-3); }
+/* ---------- 更新日志弹窗（侧栏版本号点开）----------
+   v1.10.0 重做：最新一版是一块主卡（大版本号 + 一句话 + 新能力小卡 + 「还有」一行），
+   之前的版本收成一行一版点开看。不是一列文本。 */
+/* min-width 必须归零：base.css 的 .modal 带 min-width 480px，手机上会顶出屏幕、左半边被裁掉 */
+.modal.cl-modal { width: min(680px, calc(100vw - 48px)); min-width: 0; max-width: 680px; display: flex; flex-direction: column; max-height: 82vh; padding: 0; }
+.cl-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px 14px 24px; border-bottom: 1px solid var(--hair); }
+.cl-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.cl-title h2 { font-family: var(--serif); font-size: var(--fs-h2); }
+.cl-title .cl-cur { font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cl-check { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); white-space: nowrap; }
+.cl-check-wait { color: var(--ink-3); }
+.cl-check-ok { color: var(--ok); }
+.cl-check-ok .cl-tick {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ok); color: var(--card); font-size: 12px; font-weight: 700; line-height: 1;
+}
+.cl-check-ok .cl-again { background: none; border: 0; padding: 0; margin-left: 2px; font-size: var(--fs-xs); color: var(--ink-3); cursor: pointer; text-decoration: underline dotted; }
+.cl-check-ok .cl-again:hover { color: var(--ink); }
+.cl-check-fail { color: var(--warn); font-size: var(--fs-xs); }
+.cl-x {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: transparent;
+  color: var(--ink-3); font-size: 22px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+}
+.cl-x:hover { background: var(--bg); color: var(--ink); }
+.cl-body { overflow-y: auto; padding: 20px 24px 22px; display: flex; flex-direction: column; gap: 22px; }
+
+/* 主卡：最新一版 */
+.cl-hero { padding: 22px 22px 18px; border-radius: 16px; background: color-mix(in srgb, var(--accent) 9%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--hair)); }
+.cl-hero-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.cl-hero-ver { font-family: var(--serif); font-size: 30px; font-weight: 700; letter-spacing: 0.01em; color: var(--ink); line-height: 1; }
+.cl-hero-date { font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cl-hero-now { margin-left: auto; font-size: var(--fs-xs); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 999px; padding: 1px 9px; }
+.cl-hero-head { margin: 12px 0 16px; font-size: var(--fs-lg, 17px); font-weight: 600; color: var(--ink); line-height: 1.5; }
+.cl-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cl-card { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 12px 14px 13px; min-width: 0; }
+.cl-card h4 { font-size: var(--fs-md); font-weight: 600; color: var(--ink); margin: 0 0 5px; }
+.cl-card p { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.65; margin: 0; }
+/* 五张卡时最后一张独占一行，别留一个空洞 */
+.cl-cards > .cl-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.cl-minor { margin: 14px 0 0; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+.cl-minor-tag { display: inline-block; margin-right: 8px; padding: 0 7px; border-radius: 999px; font-size: var(--fs-xs); color: var(--ink-3); border: 1px solid var(--hair); vertical-align: 1px; }
+
+/* 之前的版本：一行一版，点开才展开 */
+.cl-past h3 { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--ink-3); margin: 0 0 8px 4px; }
+.cl-old { border: 1px solid var(--hair); border-radius: 12px; background: var(--card); }
+.cl-old + .cl-old { margin-top: 8px; }
+.cl-old summary { list-style: none; display: flex; align-items: baseline; gap: 12px; padding: 11px 14px; cursor: pointer; user-select: none; }
+.cl-old summary::-webkit-details-marker { display: none; }
+.cl-old summary:hover { background: color-mix(in srgb, var(--ink) 3%, var(--card)); border-radius: 12px; }
+.cl-old-ver { font-family: var(--serif); font-weight: 700; font-size: var(--fs-md); color: var(--ink); white-space: nowrap; }
+.cl-old-head { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-old-date { font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cl-old-caret { color: var(--ink-3); font-size: 12px; transition: transform var(--dur-1) var(--ease); }
+.cl-old[open] .cl-old-caret { transform: rotate(180deg); }
+.cl-old[open] summary { border-bottom: 1px solid var(--hair); border-radius: 12px 12px 0 0; }
+.cl-old[open] .cl-old-head { white-space: normal; }
+.cl-old-list { list-style: none; margin: 0; padding: 10px 14px 4px; display: flex; flex-direction: column; gap: 8px; }
+.cl-old-list li { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.65; }
+.cl-old-list li b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 1px; }
+.cl-old .cl-minor { padding: 0 14px 12px; margin-top: 8px; }
+
 @media (max-width: 760px) {
-  .nd-modal, .cl-modal { min-width: 0; width: calc(100vw - 24px); }
+  /* 命令面板 / 全局搜索 / 找回数据这三个原来一条窄屏豁免都没有：
+     .rescue 自己写着 min-width: 560px，另两个吃 base.css 的 480px，
+     实测在 390 屏幕上 left = −45、right = 435，两边都被切。宽度交给屏幕定 */
+  .modal.cp-modal, .modal.so-modal, .modal.rescue {
+    min-width: 0; width: calc(100vw - 24px); max-width: calc(100vw - 24px);
+  }
+  .nd-modal { min-width: 0; width: calc(100vw - 24px); }
+  .modal.cl-modal { width: calc(100vw - 16px); max-height: 88vh; margin-top: 5vh; }
+  .cl-head { flex-wrap: wrap; padding: 14px 14px 12px 18px; }
+  .cl-check { margin-left: 0; order: 3; width: 100%; }
+  .cl-x { margin-left: auto; }
+  .cl-body { padding: 14px 14px 18px; gap: 16px; }
+  .cl-hero { padding: 16px 14px 14px; border-radius: 14px; }
+  .cl-hero-ver { font-size: 26px; }
+  .cl-cards { grid-template-columns: 1fr; }
+  .cl-cards > .cl-card:last-child:nth-child(odd) { grid-column: auto; }
+  .cl-old summary { padding: 10px 12px; flex-wrap: wrap; }
+  .cl-old-head { flex-basis: 100%; order: 3; white-space: normal; }
 }
