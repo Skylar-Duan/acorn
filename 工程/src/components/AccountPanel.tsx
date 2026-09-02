@@ -6,7 +6,9 @@
 
 import { useEffect, useState } from "react";
 import * as cloud from "../core/cloud";
-import { adoptSession, signOut, syncNow, useSync } from "../core/syncCtl";
+import { flushSync, signOut, syncNow, useSync } from "../core/syncCtl";
+import { askText, signInWithLocalData } from "../core/loginCtl";
+import type { LoginAsk, LoginChoice, SignInOutcome } from "../core/loginCtl";
 import { appStore, showToast } from "../core/store";
 import { checkWipeGate, restoreFromCloud, wipeLocalData } from "../core/wipe";
 import { getDataDir, inTauri, purgeTargets, writeTextFile } from "../core/persist";
@@ -29,6 +31,26 @@ async function ask(message: string, title: string): Promise<boolean> {
   if (!inTauri) return window.confirm(message);
   const dlg = await import("@tauri-apps/plugin-dialog");
   return dlg.ask(message, { title, kind: "warning" });
+}
+
+/** 「本机有内容、云端也有内容」时问一句：合并还是覆盖。
+ *  **确定 = 覆盖、取消 = 合并**——确认框按回车走的是取消那条，默认落在不丢东西的一边。
+ *  正经的登录弹窗另有人做，这里先用系统确认框把这条路接通，文案在 loginCtl.askText */
+async function askLoginChoice(info: LoginAsk): Promise<LoginChoice> {
+  return (await ask(askText(info), "云端已经有一份数据")) ? "replace" : "merge";
+}
+
+/** 登录完给用户的那句回执。三条路各说各的，别让人猜刚才到底发生了什么 */
+function signInToast(out: SignInOutcome): string {
+  const tail = out.folded > 0 ? `；顺手把 ${out.folded} 条重名的清单并成了一条` : "";
+  if (out.action === "replace" && out.restored) {
+    return (
+      `已把云端第 ${out.restored.rev} 版取回这台设备（${out.restored.tasks} 条事）` +
+      (out.restored.backup ? `，覆盖前那份存进了 backups/${out.restored.backup}` : "") +
+      tail
+    );
+  }
+  return `登录成功，正在合并两端数据${tail}`;
 }
 
 export default function AccountPanel() {
@@ -88,18 +110,29 @@ export default function AccountPanel() {
       setStep("code");
     });
 
+  /** 登录 / 验证 / 改密码之后统一走这条：本机是全新的就用云端整份覆盖，
+   *  两边都有内容就停下来问一句，其余照常合并。判据全在 core/fresh.ts */
+  async function settleSignIn(s: cloud.Session, fallbackMsg: string) {
+    const out = await signInWithLocalData(s, askLoginChoice);
+    showToast(out.action === "merge" && out.folded === 0 ? fallbackMsg : signInToast(out), false);
+    // 覆盖过就得刷一遍界面：ui 里记着的当前清单可能已经被云端那份换掉，
+    // 留在原地会是一屏空白。刷之前先把攒着的写完、推完，否则刚清好的那份云端还不知道
+    if (out.action === "replace") {
+      await flushSync();
+      location.reload();
+    }
+  }
+
   const doVerify = () =>
     run(async () => {
       const s = await cloud.verify(email.trim(), code.trim());
-      await adoptSession(s);
-      showToast("账号开好了，正在把这台机器上的事传上去", false);
+      await settleSignIn(s, "账号开好了，正在把这台机器上的事传上去");
     });
 
   const doLogin = () =>
     run(async () => {
       const s = await cloud.login(email.trim(), password);
-      await adoptSession(s);
-      showToast("登录成功，正在合并两端数据", false);
+      await settleSignIn(s, "登录成功，正在合并两端数据");
     });
 
   const doForgot = () =>
@@ -114,8 +147,7 @@ export default function AccountPanel() {
   const doReset = () =>
     run(async () => {
       const s = await cloud.resetPassword(email.trim(), code.trim(), password);
-      await adoptSession(s);
-      showToast("密码改好了，已经登录", false);
+      await settleSignIn(s, "密码改好了，已经登录");
     });
 
   const doResend = () =>
@@ -377,7 +409,10 @@ export default function AccountPanel() {
 
       {step === "login" && (
         <>
-          <p className="hint">登录之后，这台设备上已有的内容会与云端<b>合并</b>，不会互相覆盖。</p>
+          <p className="hint">
+            登录之后，这台设备上已有的内容会与云端<b>合并</b>，不会互相覆盖。
+            这台设备要是还什么都没记过（刚装好的样子），会直接把云端那份取回来，不留下多余的默认清单。
+          </p>
           <div className="acct-form">
             {emailInput}
             {passwordInput("密码")}

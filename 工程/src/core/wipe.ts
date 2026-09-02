@@ -116,7 +116,13 @@ export async function restoreFromCloud(): Promise<CloudRestore> {
   await persist.saveData(pulled.data);
   // 不清的话 Ctrl+Z 一按就把覆盖前那份整份写回盘，等于白覆盖
   clearUndo();
-  appStore.setState({ data: pulled.data, loaded: true, loadError: null, dataFromNewer: null, rescue: null });
+  // 覆盖的是「事」，不是这台设备的偏好：主题 / 快捷键 / 需求方顺序本来就不参与同步（mergeData 同一口径），
+  // 整份换掉会把另一台设备的主题、快捷键搬到这台上来——登录即覆盖那条新路（2026-09-02）让这个副作用露了头
+  const keep = appStore.getState().data.settings;
+  appStore.setState({
+    data: { ...pulled.data, settings: keep },
+    loaded: true, loadError: null, dataFromNewer: null, rescue: null,
+  });
   // 版本号跟着走：下一轮同步要报「我是基于第几版改的」，报错了会白白撞一次 409
   const next = { ...session, rev: pulled.rev, syncedAt: new Date().toISOString() };
   await cloud.saveSession(next);

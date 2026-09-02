@@ -6,6 +6,10 @@
 //   · 专注记录只增不减 → 两边合并去重
 //   · 设置（主题、快捷键这些）**不同步**，各机器各的
 //
+// 文件末尾还住着一件相关但**不在每轮同步里跑**的事：同名清单去重（dedupeListsByName）。
+// 合并只认 id 不认名字，所以两台设备各自的默认清单「工作」会并排站着；
+// 那件事只在登录那一刻收拾一次，见 loginCtl.ts。
+//
 // 为什么不逐字段合并：任务是一个整体（改了日期往往连带改了提醒和顺延计数），
 // 逐字段拼会产出「日期是 A 机的、提醒是 B 机的」这种自相矛盾的记录。
 // 整条替换最多丢掉「晚的那次改动之前、早的那次改动之后」的一点内容，代价可预期。
@@ -110,6 +114,89 @@ export function mergeData(local: AppData, remote: AppData, now = Date.now()): Me
       graveyard: graveList,
     },
     summary: { added, updated, removed },
+  };
+}
+
+// ---------- 同名清单去重 ----------
+
+export interface ListDedupe {
+  data: AppData;
+  /** 折掉了几条重名清单 */
+  folded: number;
+  /** 有几条任务被改挂到留下的那条清单上 */
+  moved: number;
+}
+
+/** 同名清单里留哪一条。**只看数据本身，不看它是本机的还是云端的**——
+ *  几台设备各自算一遍必须算出同一个答案，否则你删我的、我删你的，永远收敛不了。
+ *
+ *  排序口径（依次）：
+ *  ① 挂着的任务多的留下 —— 重名的这一对里，一条是真在用的，另一条多半是
+ *     新设备刚装出来的空默认清单。留空的那条等于让所有任务集体搬家，纯属折腾
+ *  ② 一样多就留**老**的 —— 老的那条是先有的，颜色、位置都是用户排过的
+ *  ③ 还一样就比 id —— 纯粹为了「两台设备算出同一个答案」，没有别的含义 */
+function keeperRank(a: List, b: List, count: Map<string, number>): number {
+  const ca = count.get(a.id) ?? 0;
+  const cb = count.get(b.id) ?? 0;
+  if (ca !== cb) return cb - ca;
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? -1 : 1;
+  return a.id < b.id ? -1 : 1;
+}
+
+/**
+ * 把名字一样的清单并成一条。
+ *
+ * 为什么要有这件事：新装的橡果自带「工作 / 生活」两条默认清单，每次都是新的 id。
+ * 用户一登录，合并只认 id 不认名字，云端那条「工作」和本机这条「工作」就并排站着，
+ * 侧栏上出现两个一模一样的「工作」，谁也分不清哪个是哪个（用户 2026-09-02 报的就是这个）。
+ *
+ * 做法：同名的一组里留一条（口径见 keeperRank），其余的
+ * ① 把挂在它们名下的任务改挂到留下的那条上，并**重新盖改动时刻戳**
+ *    —— 不盖的话别的设备手里那份「更新」的任务会赢，listId 又指回一条已经不存在的清单；
+ * ② 给被折掉的那条立墓碑，别的设备同步过来才不会把它又拉回来。
+ *
+ * **没有重名时原样返回同一个对象**：同步那边靠对象身份判断「这份动没动过」，
+ * 每次都返回一个新对象会白白多推一轮。
+ *
+ * 只在登录那一刻调（见 loginCtl），不挂进每一轮 mergeData：
+ * 这件事会改任务的归属，是一次性的收拾，不该在每次同步里反复搅动。
+ */
+export function dedupeListsByName(data: AppData, at = new Date().toISOString()): ListDedupe {
+  const groups = new Map<string, List[]>();
+  for (const l of data.lists) {
+    const key = l.name.trim();
+    const g = groups.get(key);
+    if (g) g.push(l);
+    else groups.set(key, [l]);
+  }
+
+  const count = new Map<string, number>();
+  for (const t of data.tasks) {
+    if (t.listId) count.set(t.listId, (count.get(t.listId) ?? 0) + 1);
+  }
+
+  /** 被折掉的清单 id → 留下的那条的 id */
+  const remap = new Map<string, string>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const keep = [...g].sort((a, b) => keeperRank(a, b, count))[0];
+    for (const l of g) if (l.id !== keep.id) remap.set(l.id, keep.id);
+  }
+  if (remap.size === 0) return { data, folded: 0, moved: 0 };
+
+  let moved = 0;
+  const tasks = data.tasks.map((t) => {
+    const to = t.listId === null ? undefined : remap.get(t.listId);
+    if (to === undefined) return t;
+    moved++;
+    return { ...t, listId: to, updatedAt: at };
+  });
+  // filter 保序：留下来的清单彼此的先后一个字都没动，用户看见的侧栏只是少了重复那条
+  const lists = data.lists.filter((l) => !remap.has(l.id));
+  return {
+    data: { ...data, lists, tasks, graveyard: bury(data.graveyard ?? [], [...remap.keys()], at) },
+    folded: remap.size,
+    moved,
   };
 }
 

@@ -24,6 +24,7 @@ import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
 import { FOCUS_ENABLED } from "../core/features";
 import { syncFootState, useSync } from "../core/syncCtl";
+import { openFoundUpdate, updateFootState, useUpdate } from "../core/updateCtl";
 import {
   IDLE, LONG_PRESS_MS, cancel, down, hold, move, up, type SortState,
 } from "../core/touchSort";
@@ -266,6 +267,11 @@ export default function Sidebar(
   const sync = syncFootState({
     session: syncSession, phase: syncPhase, needsUpgrade: syncNeedsUpgrade,
   });
+  // 版本检查也要在这行里有个交代。用户新装完打开橡果，以前「已是最新」是完全安静的，
+  // 看不出到底查没查过（2026-09-02 反馈：「下载后没有检查更新的消息框」）。
+  // 同样克制：不弹框不弹 toast，就这行小字加一截
+  const updCheck = useUpdate((s) => s.lastCheck);
+  const upd = updateFootState(updCheck);
   const [addingList, setAddingList] = useState(false);
   /** 新建清单那个框的提交回执（A2） */
   const newList = useCommitFlash();
@@ -706,6 +712,20 @@ export default function Sidebar(
             >
               {sync.text}
             </button>
+          </>
+        )}
+        {upd && (
+          <>
+            <span className="sep">·</span>
+            {/* 查到新版本那一条点得动：点了把更新弹窗顶出来。
+                「已是最新」「版本检查失败」没有下一步动作，就是一句话，不做成假按钮 */}
+            {upd.openable ? (
+              <button className="foot-sync" title="查看新版本" onClick={openFoundUpdate}>
+                {upd.text}
+              </button>
+            ) : (
+              <span className={upd.bad ? "warn" : undefined}>{upd.text}</span>
+            )}
           </>
         )}
       </div>

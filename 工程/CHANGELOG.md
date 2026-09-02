@@ -5,6 +5,28 @@
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
 
+## 未发布（下一版 v1.11.0 进行中，2026-09-02 起）
+
+> 用户 9/2 在真机上第一次看手机版，整体打回（「像十几年前的学生作业」）。**手机端界面改为先出稿对齐再动手**：
+> 设计稿在 `acorn/方案/手机端设计稿/`（Claude Design 画布 + PNG 预览 + `手机端方案（等你定）.md`），等用户定导航 A/B、详情抽屉 vs 整页、字体（MiSans 体积 vs 思源子集）。
+> 下面是不依赖设计决策、已经做掉的数据 / 状态层改动。
+
+- **登录时的本机数据处置**（用户报：新装手机登录后两个「工作」）：新增 `core/fresh.ts`（`isPristineLocal` / `planLoginData` / `shouldOfferLogin`，
+  判严不判松：无任务、无墓碑、无专注、`whoOrder` 空、清单为空或恰好是默认两条且未改名、从未同步）与 `core/loginCtl.ts`
+  （`signInWithLocalData`：本机全新且云端有数据 → 走 `wipe.restoreFromCloud` 整份覆盖，复用其备份闸门；两边都有 → 交界面问「合并 / 覆盖」，
+  不传问法默认合并；云端空或状态问不出来 → 合并）。`adoptSession` 加 `{sync:false}`，先落登录态再决定合还是覆。
+  `merge.ts` 新增 `dedupeListsByName`（按名字折叠重复清单：留挂任务多的 → 老的 → id；被折掉的任务改挂并重盖 `updatedAt`、立墓碑），只在登录路径跑一次，不进每轮同步。
+  `restoreFromCloud` 现在**保留本机 settings**（主题 / 快捷键 / 需求方顺序本来就不同步，整份覆盖不该把别的设备的偏好搬过来）。
+  `tests/login-fresh.test.ts` 58 条。已知边界：去重后另一台设备晚于去重改了被改挂的任务，`listId` 可能悬空——要补的话在 `mergeData` 里加「指向不存在的清单就归随手记」，另开一条。
+- **首启 / 升级后的反馈**（用户报：新装打开没有任何版本反馈）：`updateCtl` 新增 `firstRun`（`acorn-last-version`：install / upgrade / same）、`lastCheck` / `found` /
+  `updateFootState` / `openFoundUpdate`；侧栏底部状态行追加「· 已是最新 / · 有新版本 vX（可点，开 UpdateDialog）/ · 版本检查失败」；
+  App 仅在 `firstRun === "upgrade"` 时自动打开更新日志（全新安装不弹日志，那一刻该弹的是登录，见下）。
+- **首次启动登录提示的判据**已备好（`shouldOfferLogin` + `acorn-login-later`），**弹窗本身等设计稿定了再做**（画板 ⑦ / ⑦b）。
+- **安卓图标**：`gen/android` 里一直是 `tauri android init` 放的 Tauri 默认图标（用户第一眼就看见了）。`npx tauri icon src-tauri/icons/app-icon.png` 重生成，
+  并写进 `build-android.sh` 每次打包前跑一遍（顺手删 `icons/ios/`、`icon.icns`）。
+- **发包固定文件名**：`publish-exe/apk.sh` 上传后维护 `Acorn-latest-x64-setup.exe` / `Acorn-latest-arm64.apk` 符号链接，网站下载链接永远不用改；
+  服务器上已建。网站文案真源 `网站文案.md` 同步到 v1.10.1，10 的 INBOX 已留言（用户 9/2 定：每次发版必须同步网站，见记忆 acorn-release-checklist）。
+
 ## v1.10.1 · 2026-09-02
 
 > 中等更新（按用户定的分档：手机端追平 + 更新服务联网 = v1.10.x）。**数据格式没动，仍是 schema 6。**

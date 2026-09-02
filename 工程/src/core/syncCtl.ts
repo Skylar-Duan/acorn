@@ -139,14 +139,19 @@ export async function initSync(): Promise<void> {
   void syncNow();
 }
 
-/** 登录 / 注册验证成功后调：存下登录态，立刻把两边并起来 */
-export async function adoptSession(session: Session): Promise<void> {
+/** 登录 / 注册验证成功后调：存下登录态，立刻把两边并起来。
+ *
+ *  `sync: false` = **只落登录态，先别合**。给登录时那条「本机是全新的 → 用云端整份覆盖」
+ *  的路用（loginCtl.signInWithLocalData）：那条路要的正是不合并，
+ *  默认这一下 syncNow 恰恰是它要避免的动作。调用方自己负责随后走覆盖或走合并。 */
+export async function adoptSession(session: Session, opts?: { sync?: boolean }): Promise<void> {
   await cloud.saveSession(session);
   set({
     session, phase: "idle", message: idleMessage(session),
     dirty: false, needsUpgrade: false, upgradeRetryAt: null, lastAttemptAt: null,
   });
   watchData();
+  if (opts?.sync === false) return;
   await syncNow();
 }
 

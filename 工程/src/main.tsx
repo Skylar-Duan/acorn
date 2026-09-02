@@ -15,7 +15,7 @@ import { inTauri } from "./core/persist";
 import { hasDesktopFeatures, isMobile } from "./core/platform";
 import { maybeRunSmoke } from "./core/smoke";
 import { dailySyncIfNeeded, flushSync, initSync } from "./core/syncCtl";
-import { checkUpdateOnBoot } from "./core/updateCtl";
+import { checkUpdateOnBoot, rememberLaunch } from "./core/updateCtl";
 import type { AddTaskInput } from "./core/store";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -36,6 +36,11 @@ void (async () => {
   // **void 不 await**：查更新挡不得启动，断网时那 12 秒超时也不能让人干等。
   // 只放这儿——quickadd.html / focus.html 是各自独立的入口，写进共享模块就变成开机查三遍
   void checkUpdateOnBoot();
+
+  // 记下「这一版开过了」。**读那一下在 updateCtl 模块初始化时就做完了**（App 第一次渲染
+  // 就要问它），这里只负责写回去；写在冒烟模式之后，冒烟跑完就退出的那一趟不该算数。
+  // 只有主窗写：quickadd / focus / guide 是各自独立的 webview，它们共享同一个 localStorage
+  rememberLaunch();
 
   void initSync(); // 有登录态就恢复出来顺手同步一轮；没有就什么都不做，绝不阻塞启动
 

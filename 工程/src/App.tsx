@@ -21,9 +21,10 @@ import ChangelogDialog from "./components/ChangelogDialog";
 import { useLeaving } from "./components/motion";
 import {
   clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
-  hasChain, navigate, postponeTasks, setChainFolded, setPaletteOpen, setSearchOpen, setSelection,
-  setTasksList, undo, useApp,
+  hasChain, navigate, postponeTasks, setChainFolded, setChangelogOpen, setPaletteOpen, setSearchOpen,
+  setSelection, setTasksList, undo, useApp,
 } from "./core/store";
+import { useUpdate } from "./core/updateCtl";
 
 function inEditable(): boolean {
   const el = document.activeElement;
@@ -60,6 +61,8 @@ export default function App() {
   const paletteOpen = useApp((s) => s.ui.paletteOpen);
   const searchOpen = useApp((s) => s.ui.searchOpen);
   const changelogOpen = useApp((s) => s.ui.changelogOpen);
+  /** 这次启动是「装了新版第一次开」还是「第一次装橡果」还是「同一版又开一次」 */
+  const firstRun = useUpdate((s) => s.firstRun);
   const lists = useApp((s) => s.data.lists);
   const theme = useApp((s) => s.data.settings.theme);
   const [bulkListMenu, setBulkListMenu] = useState(false);
@@ -175,6 +178,14 @@ export default function App() {
 
   // 换了视图就把抽屉收起来——手机上点完一项还挡着半屏很烦
   useEffect(() => setDrawer(false), [view]);
+
+  // 装了新版之后第一次打开：把更新日志摆出来，让人知道这一版改了什么。
+  // **只在 upgrade 这一档弹**：第一次装橡果的人（install）什么都还没用过，
+  // 迎面一屏版本历史毫无意义——那一刻该请他登录（判据见 core/fresh.shouldOfferLogin，
+  // 登录框的界面另有人做）。同一版又开一次（same）当然也不弹
+  useEffect(() => {
+    if (firstRun === "upgrade") setChangelogOpen(true);
+  }, [firstRun]);
 
   // key 是给 B3 用的：随手记/清单/需求方/标签共用 ListView 这一个组件，
   // 不给 key 的话它们之间来回切属于「同一个组件换了个 prop」，.view-body 不重挂，淡入就不播。

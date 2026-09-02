@@ -31,14 +31,38 @@ export interface CheckMemo {
   version: string;
 }
 
+/** 这一次查版本的结果。跟 CheckMemo 的分工：memo 是**跨启动**记着的（「今天查过了」），
+ *  这个只活在本次会话里，专门喂侧栏那行小字——用户新装完打开，得当场看见
+ *  「查过了，已是最新」或者「没查着」，而不是一片安静
+ *  （2026-09-02 用户原话：「下载后没有检查更新的消息框」） */
+export type CheckOutcome =
+  | { kind: "latest" }
+  | { kind: "found"; version: string }
+  | { kind: "failed" };
+
+/** 这一次启动，是不是这个版本第一次跑。
+ *  · install = 这台设备**第一次**打开橡果（localStorage 里连上次版本号都没有）
+ *  · upgrade = 装了新版之后第一次打开
+ *  · same    = 同一个版本又开了一次（绝大多数情况） */
+export type FirstRun = "install" | "upgrade" | "same";
+
 interface UpdateStore {
   /** 开机查到的新版本，还没被打发走。null = 不弹 */
   pending: UpdateInfo | null;
   /** 上一次查成功的结果；null = 从没查成功过 */
   memo: CheckMemo | null;
+  /** 本次会话查版本的结果；null = 还没查过（或这台设备根本没有更新能力） */
+  lastCheck: CheckOutcome | null;
+  /** 最近一次查到的那个新版本。「有新版本 vX」那行字点得动，靠它把 UpdateDialog 顶出来——
+   *  pending 会被「稍后再说」「这一版不再提醒」清掉，清掉之后那行字就没东西可点了 */
+  found: UpdateInfo | null;
+  /** 这次启动是这个版本第一次跑吗 */
+  firstRun: FirstRun;
 }
 
 const MEMO_KEY = "acorn-update-last-check";
+/** 上一次启动时的版本号。**只用来判「这一版第一次开」**，不参与任何更新决策 */
+const LAUNCH_KEY = "acorn-last-version";
 
 function loadMemo(): CheckMemo | null {
   try {
@@ -53,7 +77,46 @@ function loadMemo(): CheckMemo | null {
   }
 }
 
-export const updateStore = createStore<UpdateStore>(() => ({ pending: null, memo: loadMemo() }));
+/**
+ * 「这一版第一次开」的判据。纯函数，三个分支各有用例钉着。
+ *
+ * 为什么要它：装完新版打开，用户该看见这一版做了什么（更新日志）；
+ * 而**第一次装橡果**的人不该被更新日志迎面糊一脸——他还什么都没用过，
+ * 那一刻该请他登录（见 fresh.shouldOfferLogin），不是给他念版本历史。
+ */
+export function firstRunKind(stored: string | null, current: string): FirstRun {
+  if (stored === null || stored === "") return "install";
+  return stored === current ? "same" : "upgrade";
+}
+
+/** 上次启动记下的版本号；没有（或读不了）就是 null */
+export function readLastVersion(): string | null {
+  try {
+    return localStorage.getItem(LAUNCH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** 把这一次的版本号写回去。**由 main.tsx 在启动流程里调一次**，
+ *  不放在模块初始化里：模块一被 import 就写，测试和别的入口都会误伤它 */
+export function rememberLaunch(version: string = APP_VERSION): void {
+  try {
+    localStorage.setItem(LAUNCH_KEY, version);
+  } catch {
+    /* 记不住只是下次开机多弹一次更新日志，不值得为它出错 */
+  }
+}
+
+export const updateStore = createStore<UpdateStore>(() => ({
+  pending: null,
+  memo: loadMemo(),
+  lastCheck: null,
+  found: null,
+  // 在模块初始化时**只读不写**就算出来：App 第一次渲染就要问它，
+  // 等到启动流程跑到某一步再算，那一帧已经过去了
+  firstRun: firstRunKind(readLastVersion(), APP_VERSION),
+}));
 
 /** 记下这次查成功的结果。开机那次和手动那次都走这里，两处口径一致 */
 export function rememberCheck(result: CheckMemo["result"], version: string, today: string = todayYMD()): void {
@@ -115,16 +178,53 @@ export async function checkUpdateOnBoot(): Promise<void> {
   const res = await fetchUpdate();
   if (!res.ok) {
     showToast(CHECK_FAILED_MSG, false);
+    updateStore.setState({ lastCheck: { kind: "failed" } });
     return;
   }
   const info = res.info;
   if (!info || !shouldOffer(info)) {
     rememberCheck("latest", APP_VERSION);
-    return; // 已经是最新：安静地什么都不做
+    // 「已经是最新」以前是**完全安静**的，用户新装完打开，看不出橡果到底查没查过
+    // （2026-09-02 反馈：「下载后没有检查更新的消息框」）。不弹框不弹 toast——
+    // 一切正常不值得占一整块屏，只把结果落到侧栏那行小字上
+    updateStore.setState({ lastCheck: { kind: "latest" }, found: null });
+    return;
   }
   rememberCheck("found", info.version);
+  updateStore.setState({ lastCheck: { kind: "found", version: info.version }, found: info });
   if (skippedVersion() === info.version) return;
   updateStore.setState({ pending: info });
+}
+
+/** 侧栏底下那行小字里，版本检查那一截。null = 不显示
+ *  （这台设备根本没有更新能力，或者这次还没查过）。
+ *
+ *  跟同步那一截（syncCtl.syncFootState）同一套口径：话短、灰字、出问题才标红。
+ *  `openable` = 点得动（点了把 UpdateDialog 顶出来）——只有真查到新版本时才给。 */
+export interface UpdateFoot {
+  bad: boolean;
+  text: string;
+  openable: boolean;
+}
+
+export function updateFootState(
+  last: CheckOutcome | null,
+  supported: boolean = updaterSupported,
+): UpdateFoot | null {
+  if (!supported || last === null) return null;
+  if (last.kind === "failed") return { bad: true, text: "版本检查失败", openable: false };
+  if (last.kind === "found") {
+    return { bad: false, text: `有新版本 v${last.version}`, openable: true };
+  }
+  return { bad: false, text: "已是最新", openable: false };
+}
+
+/** 点那行「有新版本 vX」时调：把查到的那一版重新顶成弹窗。
+ *  为什么不直接用 pending——「稍后再说」「这一版不再提醒」都会把 pending 清掉，
+ *  但那行字还在，点了必须仍然有反应 */
+export function openFoundUpdate(): void {
+  const found = updateStore.getState().found;
+  if (found) updateStore.setState({ pending: found });
 }
 
 /** 用户自己点「检查更新」的结果。跟开机那次的差别：不看「这一版不再提醒」——是他自己要查的 */
@@ -140,14 +240,22 @@ export type ManualCheck = "found" | "latest" | "failed" | "unsupported";
 export async function checkUpdateNow(): Promise<ManualCheck> {
   if (!updaterSupported) return "unsupported";
   const res = await fetchUpdate();
-  if (!res.ok) return "failed";
+  if (!res.ok) {
+    updateStore.setState({ lastCheck: { kind: "failed" } });
+    return "failed";
+  }
   const info = res.info;
   if (!info || !shouldOffer(info)) {
     rememberCheck("latest", APP_VERSION);
+    updateStore.setState({ lastCheck: { kind: "latest" }, found: null });
     return "latest";
   }
   rememberCheck("found", info.version);
-  updateStore.setState({ pending: info });
+  updateStore.setState({
+    lastCheck: { kind: "found", version: info.version },
+    found: info,
+    pending: info,
+  });
   return "found";
 }
 
