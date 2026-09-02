@@ -78,6 +78,8 @@ ls -1t *.apk 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
   echo "  删掉 \$old"
   rm -f -- "\$old"
 done
+# 固定文件名永远指向最新的包：网站上的下载链接写这个名字就不用每版改（2026-09-02 用户要求网站随发版同步）
+ln -sfn "$NAME" Acorn-latest-arm64.apk
 chmod -R a+rX /var/www/acorn-public
 ls -1 *.apk
 REMOTE
@@ -87,3 +89,5 @@ echo "=== 外网自测"
 curl -s -m 15 "https://acorn.cdpandas.com/api/android/latest"; echo
 curl -s -m 15 -o /dev/null -w "APK 直链 HTTP %{http_code}（%{size_download} 字节头）\n" -r 0-1023 \
   "https://acorn.cdpandas.com/download/android/$NAME"
+curl -s -m 15 -o /dev/null -w "固定名直链 HTTP %{http_code}
+" -r 0-1023 "https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"

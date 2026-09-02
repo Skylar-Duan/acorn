@@ -73,6 +73,12 @@ print("  已补上 REQUEST_INSTALL_PACKAGES")
 PY
 fi
 
+# 安卓启动图标必须是橡果自己的：gen/android 里的 mipmap 是 `tauri android init` 时放的 Tauri 默认图标，
+# 用户 2026-09-02 在手机上一眼看到的就是那个黄蓝圈。每次打包前从桌面同一张源图重生成一遍（幂等，10 秒），
+# 顺手删掉它一起生成的 ios/ 与 icon.icns（Windows 项目用不上，别进仓库）。
+echo "=== 重生成图标（含安卓 mipmap）"
+(cd "$HERE" && npx tauri icon src-tauri/icons/app-icon.png >/dev/null 2>&1 && rm -rf src-tauri/icons/ios src-tauri/icons/icon.icns) || echo "  图标重生成失败（继续打包，但要检查安卓图标）"
+
 echo "=== 镜像到 NTFS：$MIRROR"
 mkdir -p "$MIRROR"
 # robocopy 的退出码 0-7 都算成功（8 起才是真错），所以要手动放行
