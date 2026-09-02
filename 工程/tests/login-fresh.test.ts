@@ -13,6 +13,7 @@ import type { Mock } from "vitest";
 import appSource from "../src/App.tsx?raw";
 import sidebarSource from "../src/components/Sidebar.tsx?raw";
 import accountPanelSource from "../src/components/AccountPanel.tsx?raw";
+import authFlowSource from "../src/core/useAuthFlow.ts?raw";
 import { defaultData, newTask } from "../src/core/model";
 import type { AppData, List, Task } from "../src/core/model";
 import { appStore, clearUndo, flushSave } from "../src/core/store";
@@ -416,10 +417,17 @@ describe("A · 登录时怎么处置本机数据", () => {
     expect(syncOnce).toHaveBeenCalled();
   });
 
-  it("AccountPanel 三个入口（登录/验证/改密码）都走这条判断，没有漏网的 adoptSession", () => {
-    expect(accountPanelSource).toContain("signInWithLocalData");
-    expect(accountPanelSource).not.toContain("adoptSession");
-    expect((accountPanelSource.match(/settleSignIn\(/g) ?? []).length).toBe(4); // 1 定义 + 3 调用
+  it("三个入口（登录/验证/改密码）都走这条判断，没有漏网的 adoptSession", () => {
+    // v1.11.0 起表单从 AccountPanel 搬到了 core/useAuthFlow（设置页那块只剩一个入口，
+    // 界面在 components/LoginPage.tsx）。**判断本身一个字没动**：三个入口仍旧统一
+    // 走 settleSignIn → signInWithLocalData，谁都不许自己去 adoptSession
+    expect(authFlowSource).toContain("signInWithLocalData");
+    expect(authFlowSource).not.toContain("adoptSession");
+    expect((authFlowSource.match(/settleSignIn\(/g) ?? []).length).toBe(4); // 1 定义 + 3 调用
+    // 设置页那块不许再自己接一套登录（那会绕开上面这条判断）
+    expect(accountPanelSource).not.toContain("cloud.login(");
+    expect(accountPanelSource).not.toContain("cloud.verify(");
+    expect(accountPanelSource).not.toContain("cloud.resetPassword(");
   });
 });
 

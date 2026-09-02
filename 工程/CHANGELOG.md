@@ -19,6 +19,35 @@
   子集外生僻字回落系统字体。重跑：`python -m fontTools.subset <font> --text-file=chars.txt --flavor=woff2 --layout-features='*' --no-hinting --desubroutinize`。
   用户 9/2 先选了 MiSans，我说明它不开源且许可不许改字体文件（不能子集、整份 15 MB）后改选思源。`tests/fonts.test.ts`。
 
+- **手机端共用原语**（`src/mobile/`）：`sheetStore.ts`（抽屉栈 task / quickAdd / actions / listSettings + 登录页开关 `loginStore`）、
+  `Sheet.tsx`（底部抽屉外壳：portal 到 body、遮罩、把手**只上下拖**、Esc、进出场走 `--dur-2`）、`swipe.ts`（`useSwipeRow`：先判横纵意图再 `setPointerCapture`，
+  右滑过阈值松手即触发、左滑停在动作条、滑过吞 click；左边开着时按在 `.swipe-act` 上不抢——否则行本体滑回来盖住按钮，「删除」变「点开」）、
+  `styles/mobile.css`（`--m-*` 尺度、`.msheet-*`、`.swipe-*`；`.msheet` 的 `touch-action` 是 `pan-x pan-y`——它沿祖先链取交集，写死 pan-y 会钉死纸里横向滚的 chips）。
+
+- **手机壳子与列表（画板 ① ② ⑤ ⑥）**：`mobile/MobileShell.tsx`（底部五格导航固定不动 + 悬浮 ＋ + 「更多」本地开关，**没扩 ViewId / UIState**）、
+  `MobileHead.tsx`（文楷 30px 大标题 + 副标题 + SVG 进度环 + 搜索钮 + 可选返回 / 色点 / 第二行筛选键；单独成文件避开 MobileShell ↔ MobileMore 循环引用）、
+  `MobileRow.tsx`（3px 重要性条 → 24px 圆圈（命中区 44×44）→ 单行省略标题（子任务行带「母任务名 ›」限 6 字）→ 日期；右滑完成、左滑三动作（已了结只剩删除）、
+  点开抽屉、长按 450ms 动作单；`useSwipeHint` 首次进今天页第一行滑一下示意，`acorn-swipe-hinted` 只演一次）、`ActionSheet.tsx`（四宫格 + 收场五项，全走现有 store，候选日 `duePresets`）、
+  `ListSettingsSheet.tsx`（改名 / 六色 / 顺序说明 / 删除两步确认——**删清单的事回随手记不是进回收站**，按 `store.deleteList` 真实行为写文案）、`icons.tsx`（24 网格 1.8 描边 currentColor）、
+  `views/MobileMore.tsx`（账号卡 + 四格 + 清单 / 需求方 / 标签 + 齿轮）、`styles/mobile-shell.css`。
+  接线：`App.tsx` `isMobile` 时不渲染 ☰ / Sidebar / 遮罩（窄桌面那套原样），`<MobileShell>` 包 body，挂四张纸 + `<LoginPageHost/>`（两端都挂），首启 `shouldOfferLogin` → `openLogin("first-run")`；
+  `RowList.tsx` 在 `isMobile` 分支一组一张 `.mcard`、行换 MobileRow、不画 CardSlot；`Today / ListView / Plan / Done` 顶栏分叉（筛选键同一份 JSX 喂两边），
+  Today 的 `.day-foot` 只在桌面画、「已完成」默认收成一行；ListView 手机上不渲染色板 / 删除清单 / 常驻输入栏。
+  量出来：390 宽零横向溢出、行高 58、导航 60、左滑 `--dx -216`、三块各 72、可点元素 ≥ 44；1280 与 420 宽桌面对照零变化。`tests/mobile-shell.test.ts` 62 条；`tests/node-fs.d.ts` 给 `statSync` 补 `size`。
+  未做：手机上拖动排清单顺序；回收站页的行仍是桌面那套。
+
+- **任务详情抽屉 `mobile/TaskSheet.tsx`（画板 ④）**：手机上「点开一件事」的唯一去处，版式重画但**每一次写库照抄 TaskCard 那一份**（完成 / 放弃 / 删除 / 标题 / 属性 / 子任务），
+  含日期那套「顺延次数按段开→段关整段算一次」的 `POPUP_WRITE + settleDuePopup`。子任务一行一条、`useSwipeRow({leftWidth:144})` 左滑放弃 / 删除；
+  属性一行一个、点开在同一张纸内展开（不叠第二层抽屉）；候选日走 `duePresets`；删除按两下（第一下变「真的删？」）。`tests/mobile-sheets.test.ts` 37 条。
+- **记一条抽屉 `mobile/QuickAddSheet.tsx`（画板 ③）**：**不解析语法**（文件里没有 `parseQuickAdd` / `SyntaxInput`，测试钉着），标题原样落库；
+  日期 / 清单 / 需求方 / 重要性 / 重复全靠点，点中的亮起；记完只清标题、点选与焦点留着（跟桌面「选中保持生效」同口径）；从清单页点 ＋ 预选该清单；
+  `DateField` 的 pending + flush 那套照 QuickAddBar 搬。`tests/commit-guards.test.ts` 的 DateField 调用点计数 4 → 7（名单加 ActionSheet / QuickAddSheet / TaskSheet）。
+- **登录页 `components/LoginPage.tsx` + `core/useAuthFlow.ts` + `styles/login.css`（画板 ⑦ / ⑦b）**：手机整页 / 桌面 680×420 居中弹窗按 `isMobile` 分，两端同一套文案；
+  账号状态机从 AccountPanel 抽成 `useAuthFlow`（注册 / 验证码 / 登录 / 忘记密码 + `settleSignIn` → `loginCtl.signInWithLocalData`），全仓请求代码只剩一份；
+  「合并还是覆盖」那一问长在页里（不再是系统 confirm），问着的时候四个出口暂时收起；first-run 关闭时 `markLoginLater`。
+  **tab 是「密码登录 / 忘记密码」不是画板上的「验证码登录」**：服务端的验证码只有注册验邮箱与忘记密码两种用途，用后者顶「验证码登录」必然当场换密码，是误导——不为凑画板改服务端。
+  AccountPanel 未登录只剩说明 + 「登录 / 注册」（`openLogin("manual")`），已登录那半原样。`tests/login-page.test.ts` 54 条。
+
 - **登录时的本机数据处置**（用户报：新装手机登录后两个「工作」）：新增 `core/fresh.ts`（`isPristineLocal` / `planLoginData` / `shouldOfferLogin`，
   判严不判松：无任务、无墓碑、无专注、`whoOrder` 空、清单为空或恰好是默认两条且未改名、从未同步）与 `core/loginCtl.ts`
   （`signInWithLocalData`：本机全新且云端有数据 → 走 `wipe.restoreFromCloud` 整份覆盖，复用其备份闸门；两边都有 → 交界面问「合并 / 覆盖」，

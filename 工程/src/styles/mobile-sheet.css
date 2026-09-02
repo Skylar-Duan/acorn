@@ -1,0 +1,214 @@
+/* 手机端两张抽屉自己的样式（v1.11.0）：任务详情（画板 ④）、记一条（画板 ③）。
+   共用的外壳（.msheet-*）和滑动行（.swipe-*）在 mobile.css，这里一条都不重复。
+
+   颜色一律走 themes.css 的 token，六主题 × 深浅自动成立。
+   唯一的例外是「危险红」#C0564A：全仓至今没有对应 token（settings.css 里已经留过同样的注脚），
+   这儿跟 base.css / mobile.css 写得一字不差，将来出了 token 一起换。
+   时长只认 base.css 的 --dur-1 / --dur-2（tests/motion.test.ts 不许写字面时长）。 */
+
+/* ═══════════ 两张纸共用 ═══════════ */
+
+/* 纸里分「头 / 能滚的正文 / 钉在底下的那条」三段。
+   外壳那层 .msheet-body 本身就是滚动区，底部的「放弃 / 删除」要钉住不跟着滚，
+   就得把滚动权从它手里收到里面这一层来——只对挂了 .msh-sheet 的纸生效，别的抽屉照旧 */
+.msheet.msh-sheet > .msheet-body { display: flex; flex-direction: column; overflow: hidden; }
+.msh-scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* 展开的一段选项：日期 / 清单 / 需求方 / 重要性 / 标签 / 循环 全用这一套，
+   不再一处一个样子（用户点开哪一行，下面长出来的东西都长一个模样） */
+.msh-seg {
+  background: var(--bg); border-radius: 14px; padding: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.msh-seg-t { font-size: var(--fs-xs); letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
+.msh-row { display: flex; gap: 8px; align-items: stretch; }
+.msh-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* 一颗可点的选项。等分排一行时是 flex:1，挤在 .msh-chips 里时按内容宽 */
+.msh-opt {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 12px;
+  border-radius: 12px; border: 1px solid var(--hair); background: var(--card);
+  color: var(--ink); font-size: var(--fs-md); font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.msh-opt.on { background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600; }
+.msh-chips .msh-opt { flex: 0 0 auto; min-height: 40px; }
+.msh-opt.narrow { flex: 0 0 62px; }
+
+/* 段里的输入框（时间 / 选个日子 / 新需求方 / 新标签）跟 .msh-opt 一个身板。
+   左右只留 8px：原生的时间 / 日期控件自带一颗小图标，padding 给多了「2026/09/02」会被切掉半截 */
+.msh-field {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 8px;
+  border-radius: 12px; border: 1px solid var(--hair); background: var(--card);
+  color: var(--ink); font-size: var(--fs-md); font-family: inherit;
+  text-align: center; outline: none;
+}
+/* 原生日期控件比时间控件宽一截（四位年 + 两个分隔符 + 图标），得多分点地方 */
+.msh-field.date { flex: 1.7; }
+.msh-field.wide { flex: 1 1 100%; text-align: left; }
+.msh-field:focus { border-color: var(--accent); }
+
+/* ═══════════ 任务详情（画板 ④） ═══════════ */
+
+.msh-head { flex: none; display: flex; align-items: flex-start; gap: 14px; padding: 4px 20px 0; }
+
+/* 任务是**圆圈**，子任务是圆角方框——一眼分得出这一行是「一件事」还是「一件事里的一步」 */
+.msh-cb {
+  width: 28px; height: 28px; border-radius: 50%; border: 1.8px solid var(--ink-3);
+  background: transparent; flex: none; margin-top: 3px; padding: 0; position: relative;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.msh-cb.done { background: var(--ok); border-color: var(--ok); }
+.msh-cb.done::after {
+  content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--on-accent); font-size: 15px; line-height: 1;
+}
+.msh-headmain { flex: 1; min-width: 0; }
+
+/* 标题用文楷：这是整张纸唯一一处「正文」，别的都是标签 */
+.msh-title {
+  font-family: var(--serif); font-size: 20px; line-height: 28px; color: var(--ink);
+  width: 100%; display: block; word-break: break-word;
+}
+.msh-title.dropped { color: var(--ink-3); text-decoration: line-through; }
+.msh-title.empty { color: var(--ink-3); }
+textarea.msh-title, textarea.msh-notes {
+  border: 0; background: transparent; outline: none; resize: none; padding: 0; overflow: hidden;
+}
+.msh-notes {
+  margin-top: 6px; font-size: var(--fs-sm); line-height: 20px; color: var(--ink-3);
+  width: 100%; display: block; white-space: pre-wrap; word-break: break-word; font-family: inherit;
+}
+.msh-collapse {
+  width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--bg);
+  color: var(--ink-2); display: grid; place-items: center; flex: none; padding: 0;
+}
+
+/* 「已放弃」那个灰标签，任务和子任务共用 */
+.msh-droptag {
+  flex: none; font-size: var(--fs-xs); color: var(--ink-3);
+  border: 1px solid var(--hair); border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
+
+/* ---- 子任务 ---- */
+/* 整块不留左右内边距：左滑露出的动作条要贴到纸的右边缘，留白由行本体自己带 */
+.msh-subs { margin-top: 14px; }
+.msh-sec {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 0 20px; margin-bottom: 2px;
+}
+.msh-sec-t { font-size: var(--fs-sm); letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
+.msh-sec-hint { font-size: var(--fs-xs); color: var(--ink-3); flex: none; }
+
+/* 行本体必须是**不透明**的：左滑露出来的动作条就躺在它底下，透一点点就会一直隐隐透出红色。
+   连纸的噪点一起带上，不然这一段会变成一条比周围白的横带（.swipe-body 只给了纯色 --card） */
+.msh-sub {
+  display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 20px;
+}
+.swipe-body.msh-sub { background-image: var(--paper); }
+.msh-subwrap + .msh-subwrap .msh-sub { border-top: 1px solid var(--hair); }
+/* 做完的那几条淡下去——**淡的是里面的字，不是整行**：整行调 opacity 会把底下的动作条透出来 */
+.msh-subwrap.done .msh-sb,
+.msh-subwrap.done .msh-subtitle,
+.msh-subwrap.done .msh-subdate { opacity: .55; }
+.msh-subwrap.done .msh-subtitle { text-decoration: line-through; }
+
+.msh-sb {
+  width: 22px; height: 22px; border-radius: 7px; border: 1.6px solid var(--ink-3);
+  background: transparent; flex: none; padding: 0; position: relative;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.msh-sb.done { background: var(--ok); border-color: var(--ok); }
+.msh-sb.done::after {
+  content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--on-accent); font-size: 13px; line-height: 1;
+}
+.msh-sb.ghost { opacity: .35; }
+.msh-subtitle {
+  flex: 1; min-width: 0; font-size: var(--fs-lg); color: var(--ink); text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: transparent; border: 0; padding: 0; font-family: inherit; outline: none;
+}
+.msh-subdate { flex: none; font-size: var(--fs-sm); color: var(--ink-3); }
+.msh-subdate.own { color: var(--ink-2); }
+.msh-subdate.over { color: var(--warn); }
+
+/* mobile.css 把 .swipe-body 里的一切都设成不可选中（长按不弹系统的「复制 / 全选」气泡）。
+   原地改标题的那个框得把它要回来，否则光标和选区都用不了 */
+.msh-sub input, .msh-sub textarea { -webkit-user-select: text; user-select: text; }
+
+.msh-subadd { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 20px; border-top: 1px solid var(--hair); }
+.msh-subadd input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  font-size: var(--fs-lg); color: var(--ink); font-family: inherit;
+}
+.msh-donefold {
+  width: 100%; border: 0; background: transparent; color: var(--ink-3);
+  font-size: var(--fs-sm); padding: 10px 20px; display: flex; align-items: center; gap: 6px;
+}
+
+/* ---- 属性：一行一个 ---- */
+.msh-props { padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 8px; }
+.msh-prop {
+  width: 100%; display: flex; align-items: center; gap: 10px; min-height: 48px;
+  padding: 0 14px; border-radius: 12px; border: 0; background: var(--bg);
+  color: var(--ink); font-size: var(--fs-md); font-family: inherit; text-align: left;
+}
+.msh-prop-k { flex: none; width: 44px; color: var(--ink-3); font-size: var(--fs-sm); }
+.msh-prop-v { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msh-prop-v.off { color: var(--ink-3); }
+.msh-caret { flex: none; color: var(--ink-3); display: grid; place-items: center; transition: transform var(--dur-1) var(--ease); }
+.msh-prop.open .msh-caret { transform: rotate(90deg); }
+.msh-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.msh-pair .msh-prop { padding: 0 12px; }
+
+/* ---- 底下那条：两件「让它离开这张清单」的事 ---- */
+.msh-foot { flex: none; display: flex; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--hair); }
+.msh-drop {
+  flex: 1; min-height: 46px; border-radius: 12px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink-2); font-size: var(--fs-md); font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.msh-del {
+  width: 46px; min-height: 46px; border-radius: 12px; border: 1px solid var(--hair);
+  background: var(--card); color: #C0564A; display: grid; place-items: center; flex: none; padding: 0;
+  font-size: var(--fs-md); font-family: inherit;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+/* 删除要按两下：第一下这颗键自己变成「真的删？」，第二下才删。
+   不用 window.confirm——安卓 WebView 上那个系统弹窗会把整个页面冻住，长得也不像这个 App */
+.msh-del.armed { width: auto; padding: 0 16px; background: #C0564A; color: #FDFCF7; border-color: transparent; }
+
+/* ═══════════ 记一条（画板 ③） ═══════════ */
+
+.msh-qa { padding: 2px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+.msh-qa-line { display: flex; align-items: center; gap: 12px; }
+.msh-qa-cb { width: 26px; height: 26px; border-radius: 50%; border: 1.6px solid var(--ink-3); flex: none; }
+.msh-qa-input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  font-size: 18px; line-height: 26px; color: var(--ink); font-family: inherit;
+}
+.msh-qa-go {
+  flex: none; height: 40px; padding: 0 18px; border-radius: 999px; border: 0;
+  background: var(--accent); color: var(--on-accent); font-size: var(--fs-md); font-weight: 600; font-family: inherit;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.msh-qa-go:disabled { opacity: .38; }
+
+/* 这一排是**内容**不是导航，所以允许左右滚（用户说的「左右不能滑」指的是整页/整张纸）。
+   负 margin + 同宽 padding：滚到头时最后一颗贴着纸边，不会凭空多一截白 */
+.msh-picks {
+  display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;
+  margin: 0 -16px; padding: 0 16px 2px; scrollbar-width: none; touch-action: pan-x;
+}
+.msh-picks::-webkit-scrollbar { display: none; }
+.msh-pick {
+  flex: none; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid var(--hair); background: var(--card);
+  color: var(--ink-2); font-size: var(--fs-md); font-family: inherit; white-space: nowrap;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.msh-pick.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 500; }
+.msh-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }

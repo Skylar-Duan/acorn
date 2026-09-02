@@ -1,0 +1,78 @@
+/* 手机端（v1.11.0 按体验重做）——共用的尺度与两个原语：底部抽屉、滑动行。
+   壳子（顶栏 / 底部导航 / ＋）、任务详情、记一条各自的样式在 mobile-*.css 里，这里只放大家都用的。
+   颜色一律用 themes.css 的 token，六主题 × 深浅自动成立；时长只认 base.css 的 --dur-1 / --dur-2。 */
+
+:root {
+  --m-row-h: 58px;            /* 一件事一行的高度，手指点得准 */
+  --m-radius: 16px;           /* 列表卡片的圆角 */
+  --m-sheet-radius: 22px;     /* 抽屉顶部的圆角 */
+  --m-nav-h: 60px;            /* 底部导航本体高度（不含手势条） */
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --m-touch: 44px;            /* 任何可点的东西的最小尺寸 */
+}
+
+/* ---------- 底部抽屉 ---------- */
+.msheet-back {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(46, 49, 41, 0);
+  transition: background var(--dur-2) var(--ease);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.msheet-back.in { background: rgba(46, 49, 41, .28); }
+.msheet {
+  width: 100%; max-width: 560px;
+  max-height: calc(100dvh - var(--m-safe-top) - 24px);
+  background: var(--card); background-image: var(--paper);
+  border-radius: var(--m-sheet-radius) var(--m-sheet-radius) 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, .18);
+  display: flex; flex-direction: column;
+  transform: translateY(100%);
+  transition: transform var(--dur-2) var(--ease), height var(--dur-2) var(--ease);
+  padding-bottom: var(--m-safe-bottom);
+  /* 纸**自己**只许上下走（把手那条另有 touch-action: none）。
+     pan-x 也得留着：touch-action 是**沿祖先链取交集**的，在这儿写死 pan-y 会连带把纸里
+     所有横向滚动区一起钉死——「记一条」那排点选 chips 就是横着滚的（画板 ③）。
+     纸本身没有横向溢出，放开 pan-x 不会让纸自己左右动；而子任务行的左滑走的是
+     pointer events + setPointerCapture，本来就不吃 touch-action 这一套。 */
+  touch-action: pan-x pan-y;
+}
+.msheet.in { transform: translateY(0); }
+.msheet.full { height: calc(100dvh - var(--m-safe-top) - 24px); }
+.msheet-grab {
+  flex: none; height: 26px; display: grid; place-items: center;
+  cursor: grab; touch-action: none;  /* 把手区域完全交给我们自己的指针处理 */
+}
+.msheet-bar { width: 36px; height: 4px; border-radius: 2px; background: var(--hair); }
+.msheet-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* ---------- 滑动行 ----------
+   结构：.swipe-wrap（裁切）> .swipe-under.left / .swipe-under.right（底下的动作层）+ .swipe-body（行本体，跟手位移）
+   位移由 JS 写进 --dx；只有松手那一下用过渡回弹，手指拖着时 .dragging 把过渡关掉，才跟手 */
+.swipe-wrap { position: relative; overflow: hidden; }
+.swipe-under {
+  position: absolute; top: 0; bottom: 0; display: flex; align-items: stretch;
+}
+.swipe-under.right { left: 0; right: 0; justify-content: flex-start; background: var(--ok); color: var(--on-accent); }
+.swipe-under.left { right: 0; justify-content: flex-end; }
+.swipe-body {
+  position: relative;
+  transform: translateX(var(--dx, 0px));
+  transition: transform var(--dur-2) var(--ease);
+  background: var(--card);
+}
+.swipe-wrap.dragging .swipe-body { transition: none; }
+.swipe-act {
+  width: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-size: var(--fs-xs); font-weight: 500; color: #FDFCF7; border: 0; padding: 0; flex: none; white-space: nowrap;
+}
+.swipe-act.postpone { background: var(--warn); }
+.swipe-act.drop { background: var(--list-slate); }
+.swipe-act.delete { background: #C0564A; }
+.swipe-done-mark {
+  width: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-size: var(--fs-xs); font-weight: 600; opacity: var(--p, 0);
+}
+
+/* 长按不许弹系统的「复制 / 全选」气泡，也不许选中文字 */
+.swipe-body, .swipe-body * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

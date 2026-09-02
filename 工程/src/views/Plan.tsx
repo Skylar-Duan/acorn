@@ -14,6 +14,7 @@ import { hardCutRows } from "../core/motion";
 import { isMobile } from "../core/platform";
 import { usePinExpanded } from "../core/pin";
 import RowList, { ROW_PIN, cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
+import MobileHead from "../mobile/MobileHead";
 import QuadrantBoard from "./Quadrant";
 import "../styles/plan.css";
 
@@ -85,49 +86,64 @@ export default function Plan() {
   // 有子任务可以折叠的事——一件都没有就别摆那个按钮
   const foldable = allRows.some((r) => r.sub);
 
+  const sub = (
+    <>
+      {query
+        ? `匹配 ${orderedIds.length} 件 / 共 ${totalOpen} 件`
+        : `${orderedIds.length} 件未完成`}
+      {!query && allRows.length !== orderedIds.length && ` · ${allRows.length} 条待办`}
+    </>
+  );
+  // 这几组控件桌面上跟标题挤在同一行，手机上放不下，交给顶栏另起一行摆（MobileHead 的 extra）。
+  // **同一份 JSX 喂给两边**：分成两份写，早晚有一边少一个按钮
+  const controls = (
+    <>
+      <div className="all-sort">
+        <button className={tab === "list" ? "on" : undefined} onClick={() => pickTab("list")}>列表</button>
+        <button className={tab === "quad" ? "on" : undefined} onClick={() => pickTab("quad")}>四象限</button>
+      </div>
+      {tab === "list" && (
+        <>
+          <div className="all-sort">
+            {SORT_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                className={sortMode === o.id ? "on" : undefined}
+                onClick={() => updateSettings({ sortMode: o.id })}
+              >
+                {o.name}
+              </button>
+            ))}
+          </div>
+          {foldable && (
+            <button
+              className="btn ghost"
+              title={foldAll ? "展开每件事的全部子任务" : "折叠后每件事只显示下一步"}
+              // 这一下可能翻掉上百行。高度过渡不能上合成器，每帧都要重算轨道并回流其下方
+              // 的全部内容——这个按钮存在的理由恰恰是「行太多了」。所以总开关这条路走硬切，
+              // 高度动画只留给单条小三角（它一次只动几行）
+              onClick={() => { hardCutRows(); setFoldAll(!foldAll); }}
+            >
+              {foldAll ? "展开子任务" : "收起子任务"}
+            </button>
+          )}
+        </>
+      )}
+    </>
+  );
+
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>计划</h1>
-        <span className="sub">
-          {query
-            ? `匹配 ${orderedIds.length} 件 / 共 ${totalOpen} 件`
-            : `${orderedIds.length} 件未完成`}
-          {!query && allRows.length !== orderedIds.length && ` · ${allRows.length} 条待办`}
-        </span>
-        <span className="spacer" />
-        <div className="all-sort">
-          <button className={tab === "list" ? "on" : undefined} onClick={() => pickTab("list")}>列表</button>
-          <button className={tab === "quad" ? "on" : undefined} onClick={() => pickTab("quad")}>四象限</button>
+      {isMobile ? (
+        <MobileHead title="计划" sub={sub} extra={controls} />
+      ) : (
+        <div className="view-head">
+          <h1>计划</h1>
+          <span className="sub">{sub}</span>
+          <span className="spacer" />
+          {controls}
         </div>
-        {tab === "list" && (
-          <>
-            <div className="all-sort">
-              {SORT_OPTIONS.map((o) => (
-                <button
-                  key={o.id}
-                  className={sortMode === o.id ? "on" : undefined}
-                  onClick={() => updateSettings({ sortMode: o.id })}
-                >
-                  {o.name}
-                </button>
-              ))}
-            </div>
-            {foldable && (
-              <button
-                className="btn ghost"
-                title={foldAll ? "展开每件事的全部子任务" : "折叠后每件事只显示下一步"}
-                // 这一下可能翻掉上百行。高度过渡不能上合成器，每帧都要重算轨道并回流其下方
-                // 的全部内容——这个按钮存在的理由恰恰是「行太多了」。所以总开关这条路走硬切，
-                // 高度动画只留给单条小三角（它一次只动几行）
-                onClick={() => { hardCutRows(); setFoldAll(!foldAll); }}
-              >
-                {foldAll ? "展开子任务" : "收起子任务"}
-              </button>
-            )}
-          </>
-        )}
-      </div>
+      )}
       {/* 搜索条另起一行：view-head 里已有三组控件，最小窗宽下再塞一个输入框会挤爆。
           Ctrl+F 在这个视图里会聚焦到它（App.tsx 按 DOM 找 .plan-search input），四象限 tab 下不出现 */}
       {tab === "list" && (

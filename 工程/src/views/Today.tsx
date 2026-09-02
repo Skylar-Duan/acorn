@@ -1,13 +1,17 @@
 // 今天：主战场。逾期置顶，可一键全部顺延；底部当日小结。
 // 行来自 DateRow：母任务 + 带自己日期的子任务（「母 › 子」形式）。
+import { useState } from "react";
 import { formatCN, todayYMD } from "../core/dates";
 import { openRows, postponeRows, rowTaskIds, sortRows, tasksForToday, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
+import { isMobile } from "../core/platform";
 import { usePinExpanded } from "../core/pin";
 import { RowCard } from "../components/motion";
 import RowList, { ROW_PIN, cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
+import MobileHead from "../mobile/MobileHead";
+import MobileRow, { useSwipeHint } from "../mobile/MobileRow";
 
 export default function Today() {
   const data = useApp((s) => s.data);
@@ -43,14 +47,28 @@ export default function Today() {
   // 底部进度按「件」算不按「行」算：一件事拆成 3 个子任务时，做掉 1 个不该让分母也跟着缩水
   const total = rowTaskIds(todays).length + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
-
+  /** 手机端：还欠着几件（给顶栏那句副标题用）。桌面照旧只写日期 */
+  const left = Math.max(0, total - doneToday.length);
+  /** 手机端：做完的那一组默认收成一行，点了才摊开（画板 ①） */
+  const [doneOpen, setDoneOpen] = useState(false);
+  /** 手机端：第一次进这一页给最上面那一行演一次「往右滑」 */
+  const hint = useSwipeHint();
 
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>今天</h1>
-        <span className="sub">{formatCN(today)}</span>
-      </div>
+      {isMobile ? (
+        // 进度环取代底部那条「完成 0/1」：手机上底部那一行被导航压着，等于没有
+        <MobileHead
+          title="今天"
+          sub={`${formatCN(today)}${total === 0 ? "" : left > 0 ? ` · 还剩 ${left} 件` : " · 都做完了"}`}
+          ring={{ done: doneToday.length, total }}
+        />
+      ) : (
+        <div className="view-head">
+          <h1>今天</h1>
+          <span className="sub">{formatCN(today)}</span>
+        </div>
+      )}
       <div className="view-body">
         {overdueRows.length > 0 && (
           <>
@@ -60,13 +78,32 @@ export default function Today() {
                 全部推到明天 →
               </button>
             </div>
-            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} />
+            {/* 手机端：整页最上面那一行演一次「往右滑」的示意（hintFirstRow） */}
+            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} />
           </>
         )}
         {todayRows.length > 0 && <div className="group-head">今天</div>}
-        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} />
-        {doneToday.length > 0 && <div className="group-head">已完成 {doneToday.length}</div>}
-        {doneToday.map((t) => (
+        {/* 逾期那组在上面，示意只演一次：那儿有行的时候这儿就不演了 */}
+        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint && overdueRows.length === 0} />
+        {/* 做完的这一组：桌面照旧一条组标题 + 逐行摊开；
+            手机上默认收成一行「已完成 · N 展开」——今天这一屏该留给还没做的事 */}
+        {doneToday.length > 0 && (isMobile ? (
+          <button className="mfoldrow" onClick={() => setDoneOpen(!doneOpen)}>
+            已完成 · {doneToday.length}
+            <span className="more">{doneOpen ? "收起" : "展开"}</span>
+          </button>
+        ) : (
+          <div className="group-head">已完成 {doneToday.length}</div>
+        ))}
+        {isMobile && doneToday.length > 0 && doneOpen && (
+          <div className="mcard">
+            {doneToday.map((t) => (
+              // doneToday 里每一件都是今天做完的（tasksForToday 就是这么筛的），完成日直接就是 today
+              <MobileRow key={t.id} task={t} doneDate={today} />
+            ))}
+          </div>
+        )}
+        {!isMobile && doneToday.map((t) => (
           <RowCard
             key={t.id}
             open={expandedId === t.id}
@@ -93,6 +130,9 @@ export default function Today() {
           <div className="empty">今天没有安排。</div>
         )}
       </div>
+      {/* 手机上整块不画：这一行的两件事（完成进度、快捷键提示）一件搬去了顶栏的进度环，
+          一件在手机上根本没有键盘可按；留着只会被底部导航压掉半截 */}
+      {!isMobile && (
       <div className="day-foot">
         <span
           className="ring"
@@ -108,6 +148,7 @@ export default function Today() {
           <kbd>Ctrl K</kbd> 命令面板 · <kbd>Ctrl F</kbd> 搜索 · <kbd>Ctrl Z</kbd> 撤销
         </span>
       </div>
+      )}
     </section>
   );
 }

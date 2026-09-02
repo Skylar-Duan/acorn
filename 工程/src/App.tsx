@@ -20,11 +20,23 @@ import NewerDataDialog from "./components/NewerDataDialog";
 import ChangelogDialog from "./components/ChangelogDialog";
 import { useLeaving } from "./components/motion";
 import {
-  clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
+  appStore, clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
   hasChain, navigate, postponeTasks, setChainFolded, setChangelogOpen, setPaletteOpen, setSearchOpen,
   setSelection, setTasksList, undo, useApp,
 } from "./core/store";
 import { useUpdate } from "./core/updateCtl";
+import { isMobile } from "./core/platform";
+import { isLoginLater, isPristineLocal, shouldOfferLogin } from "./core/fresh";
+import * as cloud from "./core/cloud";
+// 手机端（v1.11.0）：壳子 + 四张从底下抽出来的纸。桌面上这几个一个都不挂
+import MobileShell from "./mobile/MobileShell";
+import { TaskSheetHost } from "./mobile/TaskSheet";
+import { QuickAddSheetHost } from "./mobile/QuickAddSheet";
+import { ActionSheetHost } from "./mobile/ActionSheet";
+import { ListSettingsSheetHost } from "./mobile/ListSettingsSheet";
+import { openLogin } from "./mobile/sheetStore";
+// 登录页两端都用：手机上是整页，桌面上是居中弹窗（组件自己分叉）
+import { LoginPageHost } from "./components/LoginPage";
 
 function inEditable(): boolean {
   const el = document.activeElement;
@@ -187,6 +199,34 @@ export default function App() {
     if (firstRun === "upgrade") setChangelogOpen(true);
   }, [firstRun]);
 
+  // 第一次装橡果、还什么都没记过的那一刻，请人登录一次（判据全在 core/fresh.ts，纯函数、有单测）：
+  // 没登录 + 本机是全新的 + 没点过「以后再说」，三件事同时成立才弹。
+  // 记了一堆事的老用户不该被一个登录框拦在门口——那是把云账号从「可选的便利」变成进门收费站。
+  //
+  // 登录态**直接问 cloud.loadSession()**，不看 syncCtl 里那个 session：那一份是 initSync
+  // 异步填进去的，应用刚起来时它必然还是 null，照它判会给已经登录的人也弹一次
+  const loginOffered = useRef(false);
+  useEffect(() => {
+    if (!loaded || loadError || loginOffered.current) return;
+    loginOffered.current = true;
+    void cloud
+      .loadSession()
+      .then((session) => {
+        const s = appStore.getState();
+        // 「找回数据」那一屏正等着用户拍板：那件事比登录要紧，别在它上面再压一层
+        if (s.rescue) return;
+        const offer = shouldOfferLogin({
+          signedIn: !!session,
+          pristine: isPristineLocal({ data: s.data, everSynced: !!session?.syncedAt }),
+          later: isLoginLater(),
+        });
+        if (offer) openLogin("first-run");
+      })
+      .catch(() => {
+        /* 读不出登录态就当这次别问了：宁可少问一次，也不能给已登录的人弹一个登录框 */
+      });
+  }, [loaded, loadError]);
+
   // key 是给 B3 用的：随手记/清单/需求方/标签共用 ListView 这一个组件，
   // 不给 key 的话它们之间来回切属于「同一个组件换了个 prop」，.view-body 不重挂，淡入就不播。
   // 光用 view 还不够：清单 A → 清单 B 的 view 一直是 "list"，需求方和标签同理，
@@ -236,13 +276,32 @@ export default function App() {
     dataFromNewer !== null && noticeClosed !== dataFromNewer.schema ? dataFromNewer.schema : null;
 
   return (
-    <div className={`shell${drawer ? " drawer-open" : ""}`}>
+    <div className={`shell${drawer ? " drawer-open" : ""}${isMobile ? " mobile" : ""}`}>
       <ThemeScene theme={theme} />
-      {/* 窄屏才出现：点开左边的抽屉。宽屏由 CSS 藏起来 */}
-      <button className="drawer-btn" title="菜单" onClick={() => setDrawer(true)}>☰</button>
-      <Sidebar drawerOpen={drawer} onNavigate={() => setDrawer(false)} />
-      {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
-      {body}
+      {/* 手机上侧栏整套不上树：那儿走底部五格导航（MobileShell）。
+          **抽屉那一套一个字没删**——桌面把窗口拖窄仍然是桌面，它还得靠 ☰ 拉开侧栏 */}
+      {!isMobile && (
+        <>
+          {/* 窄屏才出现：点开左边的抽屉。宽屏由 CSS 藏起来 */}
+          <button className="drawer-btn" title="菜单" onClick={() => setDrawer(true)}>☰</button>
+          <Sidebar drawerOpen={drawer} onNavigate={() => setDrawer(false)} />
+          {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
+        </>
+      )}
+      {isMobile ? <MobileShell>{body}</MobileShell> : body}
+
+      {/* 手机端那四张纸：任务详情 / 记一条 / 长按的动作单 / 清单设置。
+          都读同一个抽屉栈（mobile/sheetStore），谁在栈顶谁开 */}
+      {isMobile && (
+        <>
+          <TaskSheetHost />
+          <QuickAddSheetHost />
+          <ActionSheetHost />
+          <ListSettingsSheetHost />
+        </>
+      )}
+      {/* 登录页两端都挂：手机上盖满一整页，桌面上是居中弹窗 */}
+      <LoginPageHost />
 
       <DataRescue />
       {/* 排在 DataRescue 后面：两个都在时由 UpdateDialog 自己让位（见组件里那段判断） */}

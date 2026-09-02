@@ -23,11 +23,13 @@ import {
 } from "../core/store";
 import type { PinIds } from "../core/pin";
 import { usePinExpanded } from "../core/pin";
-import { hasDesktopFeatures } from "../core/platform";
+import { hasDesktopFeatures, isMobile } from "../core/platform";
 import { cardAnchor, rowKey } from "../components/RowList";
 import { CardSlot } from "../components/motion";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
+import MobileHead from "../mobile/MobileHead";
+import MobileRow from "../mobile/MobileRow";
 import "../styles/plan.css";
 
 /** 「更早」一上来只画这么多——一次画几千行会卡。**不是上限**：下面有按钮能全展开，
@@ -187,34 +189,46 @@ export default function Done() {
     return out;
   };
 
+  const sub = (
+    <>
+      {total} 条
+      {total !== taskCount && ` · ${taskCount} 件事`}
+      {/* 提示语跟圈圈的实际行为对齐：做完的点圆圈 = 标记未完成，
+          放弃的点圆圈 = 取消放弃放回未完成（见 TaskRow.onCheck），两种都是「放回未完成」 */}
+      {/* 手机上没有右键（长按也只是同一份菜单的另一条路），这句话按平台分叉，
+          别给手机用户指一个他做不到的操作 */}
+      {filter === "dropped"
+        ? ` · 点圆圈${hasDesktopFeatures ? "或右键" : ""}可以取消放弃`
+        : " · 点圆圈可以放回未完成"}
+    </>
+  );
+  // 三选一：桌面跟标题同一行，手机上顶栏底下另起一行（同一份 JSX，不分两处写）
+  const filters = (
+    <div className="all-sort">
+      {FILTERS.map((f) => (
+        <button
+          key={f.id}
+          className={filter === f.id ? "on" : undefined}
+          onClick={() => pickFilter(f.id)}
+        >
+          {f.name}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>已完成</h1>
-        <span className="sub">
-          {total} 条
-          {total !== taskCount && ` · ${taskCount} 件事`}
-          {/* 提示语跟圈圈的实际行为对齐：做完的点圆圈 = 标记未完成，
-              放弃的点圆圈 = 取消放弃放回未完成（见 TaskRow.onCheck），两种都是「放回未完成」 */}
-          {/* 手机上没有右键（长按也只是同一份菜单的另一条路），这句话按平台分叉，
-              别给手机用户指一个他做不到的操作 */}
-          {filter === "dropped"
-            ? ` · 点圆圈${hasDesktopFeatures ? "或右键" : ""}可以取消放弃`
-            : " · 点圆圈可以放回未完成"}
-        </span>
-        <span className="spacer" />
-        <div className="all-sort">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              className={filter === f.id ? "on" : undefined}
-              onClick={() => pickFilter(f.id)}
-            >
-              {f.name}
-            </button>
-          ))}
+      {isMobile ? (
+        <MobileHead title="已完成" sub={sub} extra={filters} />
+      ) : (
+        <div className="view-head">
+          <h1>已完成</h1>
+          <span className="sub">{sub}</span>
+          <span className="spacer" />
+          {filters}
         </div>
-      </div>
+      )}
       <div className="view-body">
         {pinned.map((g) => (
           <Fragment key={g.key}>
@@ -223,7 +237,23 @@ export default function Done() {
                 {g.label} {g.items.length}
               </div>
             )}
-            {g.rows.flatMap(renderRow)}
+            {/* 手机端：一组一张圆角卡，行换成 MobileRow（右滑 = 标记未完成，左滑只剩删除）。
+                展开卡不在这儿画——点一行是从底下抽出任务详情那张纸 */}
+            {isMobile && g.rows.length > 0 && (
+              <div className="mcard">
+                {g.rows.map((x) => (
+                  <MobileRow
+                    key={rowKey(x.row)}
+                    task={x.row.task}
+                    sub={x.row.sub}
+                    // 日子是猜出来的就不写：宁可空着，也不拿一个编出来的完成日糊弄人
+                    doneDate={x.guessed ? null : x.day}
+                  />
+                ))}
+              </div>
+            )}
+            {/* 桌面照旧：行 + 内嵌展开卡，一个字没动 */}
+            {!isMobile && <>{g.rows.flatMap(renderRow)}</>}
             {g.rest > 0 && (
               <button className="done-more" onClick={() => setShowAllOld(true)}>
                 {/* g.rest 数的是 DoneItem（行），不是任务件数——跟顶上「N 条 · M 件事」

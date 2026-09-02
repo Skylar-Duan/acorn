@@ -5,9 +5,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { List, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
 import {
-  aliveTasks, deleteList, purgeTask, purgeTrash, renameList,
+  aliveTasks, deleteList, navigate, purgeTask, purgeTrash, renameList,
   restoreTask, setListColor, sortTasks, trashDaysLeft, useApp,
 } from "../core/store";
+import { isMobile } from "../core/platform";
 import type { ListGroup } from "../core/plan";
 import { listGroups } from "../core/plan";
 import type { PinIds } from "../core/pin";
@@ -18,6 +19,10 @@ import TaskCard from "../components/TaskCard";
 import QuickAddBar from "../components/QuickAddBar";
 import { RowCard } from "../components/motion";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
+import MobileHead from "../mobile/MobileHead";
+import MobileRow from "../mobile/MobileRow";
+import { openSheet } from "../mobile/sheetStore";
+import { IcoDots } from "../mobile/icons";
 
 export type ListKind = "inbox" | "list" | "who" | "tag" | "trash";
 
@@ -166,6 +171,39 @@ export default function ListView({ kind }: { kind: ListKind }) {
 
   return (
     <section className="main">
+      {isMobile ? (
+        // 清单页的手机版顶栏（画板 ⑤）：返回 · 色点 + 名字 · N 件 · 「···」。
+        // 原来摊在这一行上的六颗颜色点和红色的「删除清单」全收进「···」那张纸里
+        // （mobile/ListSettingsSheet）——390px 宽排不下，而删除也不该跟标题挤在一起等着被误碰
+        <MobileHead
+          title={kind === "list" && list ? list.name : title}
+          sub={kind === "list" ? "" : sub}
+          small={kind === "list"}
+          dot={kind === "list" && list ? `var(--list-${list.color})` : null}
+          // 随手记是底部常驻的一格，用不着返回；别的都是从「更多」点进来的，得有路回去
+          onBack={kind === "inbox" ? undefined : () => navigate("today")}
+          search={kind !== "list"}
+          right={
+            kind === "list" && list ? (
+              <>
+                <span className="mhead-count">{tasks.length} 件</span>
+                <button
+                  className="mhead-plain"
+                  aria-label="清单设置"
+                  onClick={() => openSheet({ kind: "listSettings", listId: list.id })}
+                >
+                  <IcoDots />
+                </button>
+              </>
+            ) : undefined
+          }
+          extra={
+            kind === "trash" && tasks.length > 0 ? (
+              <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
+            ) : undefined
+          }
+        />
+      ) : (
       <div className="view-head">
         {kind === "list" && list ? (
           <>
@@ -203,7 +241,12 @@ export default function ListView({ kind }: { kind: ListKind }) {
           <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
         )}
       </div>
-      {showAdd && <QuickAddBar defaults={defaults} withPickers={kind === "inbox"} autoFocus={kind === "inbox"} />}
+      )}
+      {/* 手机上不画这条输入栏：记一条走右下角那颗悬浮 ＋（拉出「记一条」那张纸），
+          一处入口就够了，屏幕顶上再顶一条常驻输入框会把「今天要做什么」挤下去 */}
+      {showAdd && !isMobile && (
+        <QuickAddBar defaults={defaults} withPickers={kind === "inbox"} autoFocus={kind === "inbox"} />
+      )}
       <div className="view-body">
         {groups.map((g) => (
           // key 是组的语义名（overdue / today / later / nodate），不是下标：
@@ -215,7 +258,18 @@ export default function ListView({ kind }: { kind: ListKind }) {
             {g.rows.length > 0 && g.label && (
               <div className={`group-head${g.warn ? " warn" : ""}`}>{g.label}</div>
             )}
-            {g.rows.map((t) =>
+            {/* 手机端：一组一张圆角卡，行换成 MobileRow。回收站不走这条——那儿的行不是任务行，
+                是「还剩 N 天 + 恢复 + 彻底删除」，滑动和详情都用不上 */}
+            {isMobile && kind !== "trash" ? (
+              g.rows.length > 0 && (
+                <div className="mcard">
+                  {g.rows.map((t) => (
+                    <MobileRow key={t.id} task={t} />
+                  ))}
+                </div>
+              )
+            ) : (
+            g.rows.map((t) =>
               kind === "trash" ? (
                 <div key={t.id} className="task-row">
                   {/* 跟别的视图的任务行左边缘对齐（那边行首有个折叠小三角） */}
@@ -250,6 +304,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
                   card={() => <TaskCard task={t} />}
                 />
               ),
+            )
             )}
           </Fragment>
         ))}
@@ -258,8 +313,9 @@ export default function ListView({ kind }: { kind: ListKind }) {
             「卡片明明摆在页面上，底下写着这里没有任务」 */}
         {shown.length === 0 && (
           <div className="empty">
+            {/* 「在上面记一条」说的是那条输入栏。手机上没有它，得指向右下角那颗 ＋ */}
             {kind === "trash" ? "回收站是空的。"
-              : kind === "inbox" ? "还没有记录，在上面记一条。"
+              : kind === "inbox" ? (isMobile ? "还没有记录，点右下角的 ＋ 记一条。" : "还没有记录，在上面记一条。")
               : "这里没有任务。"}
           </div>
         )}

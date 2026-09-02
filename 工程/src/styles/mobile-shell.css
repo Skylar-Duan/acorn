@@ -1,0 +1,572 @@
+/* 手机端壳子（v1.11.0）：顶栏 / 底部导航 / 悬浮＋ / 卡片式列表 / 一行事。
+   共用的尺度与两个原语（抽屉、滑动）在 mobile.css，这里只放壳子自己的东西。
+
+   两条纪律：
+   ① **每一条都挂在 .mshell 或 .shell.mobile 下面**。手机版的 CSS 是组件按需引入的，
+      在打包产物里排在 app.css 前面还是后面并不稳；多一层类名靠优先级赢，不靠加载顺序
+      （syntaxinput.css 那一处踩过同样的坑，见 tests/mobile-layout.test.ts）。
+   ② 颜色一律用 themes.css 的 token，六主题 × 深浅自动成立；
+      时长只认 base.css 的 --dur-1 / --dur-2，一个字面值都不写（tests/motion.test.ts 盯着）。 */
+
+/* ---------- 壳子骨架 ---------- */
+
+/* 手机上不渲染侧栏了，那条 232px 的栏位得收掉，否则正文会挤在左边那一格里 */
+.shell.mobile { grid-template-columns: 1fr; }
+
+.mshell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 各视图的 <section class="main"> 直接当壳子的正文。
+   顶部的安全区留白交给 .mhead 自己（它是每个视图的第一块），左右留白交给各自的内容——
+   列表卡片要贴着 12px、顶栏要 18px，统一压在 .main 上反而两头不对 */
+/* flex: 1 + min-height: 0 这一对不能少：不给 grow，.main 的高度会等于它的内容高度，
+   而它自己 overflow: hidden、外面 body 也 overflow: hidden——列表一长就被整段裁掉，
+   而且**一点都滚不动**（滚动条本来该出在 .view-body 上，它拿到的却是无限高的父盒子） */
+.mshell .main { flex: 1; min-height: 0; padding: 0; }
+.mshell .view-body {
+  padding: 0 0 calc(var(--m-nav-h) + var(--m-safe-bottom) + 28px);
+  margin-top: 0;
+}
+/* ☰ 那颗按钮手机上不再有，给它让出来的 46px 也一起收掉 */
+.mshell .view-head { padding-left: 0; }
+
+/* ---------- 顶栏（画板 ①⑤⑥） ---------- */
+/* 选择器要带上 .mshell：上面那条 `.mshell .view-head { padding-left: 0 }` 是两个类，
+   光写 `.mhead` 只有一个类，会被它把左边的 18px 一起抹掉——标题就贴着屏幕边缘、被切掉半个字 */
+.mshell .mhead {
+  flex: none;
+  padding: calc(var(--m-safe-top) + 14px) 18px 0;
+}
+.mhead-top { display: flex; align-items: center; gap: 10px; }
+.mhead-txt { flex: 1; min-width: 0; }
+.mhead-title {
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 34px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mhead-title.small { font-size: 26px; line-height: 32px; }
+.mhead-sub {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 返回、齿轮、「···」这些光杆按钮：图标看着才 22px，命中区得撑到手指按得准 */
+.mhead-plain {
+  width: var(--m-touch);
+  height: var(--m-touch);
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  margin: 0 -10px;
+}
+/* 搜索那颗圆钮：一张浮起来的小纸片 */
+.mhead-btn {
+  width: var(--m-touch);
+  height: var(--m-touch);
+  flex: none;
+  border-radius: 50%;
+  border: 0;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+}
+.mhead-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.mhead-count { font-size: 13px; color: var(--ink-3); flex: none; }
+
+/* 完成进度环：把桌面沉在底部的「完成 2/6」提到抬头就看得见的地方 */
+.mring { position: relative; width: 44px; height: 44px; flex: none; }
+.mring svg { display: block; }
+.mring .track { stroke: var(--accent-soft); }
+.mring .fill { stroke: var(--ok); transition: stroke-dashoffset var(--dur-2) var(--ease); }
+.mring .num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 顶栏底下那一行筛选键（计划的「列表 / 四象限」、已完成的三选一）。
+   桌面上它们跟标题挤在同一行，手机上放不下，另起一行横着能滑 */
+.mhead-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mhead-extra::-webkit-scrollbar { display: none; }
+/* 这一行是横着滑的，每一件都不许被压扁、不许折行——「收起子任务」被挤成两行是实测出来的 */
+.mhead-extra > * { flex: none; white-space: nowrap; }
+.mshell .all-sort button { padding-top: 8px; padding-bottom: 8px; }
+
+/* ---------- 列表：一组一张卡（画板 ①） ---------- */
+.mshell .group-head {
+  font-size: 12.5px;
+  letter-spacing: .08em;
+  color: var(--ink-3);
+  font-weight: 600;
+  margin: 0;
+  padding: 22px 18px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.mshell .group-head.warn { color: var(--warn); }
+.mshell .group-head .act { margin-left: auto; font-size: 12.5px; letter-spacing: 0; color: var(--accent); }
+
+.mcard {
+  margin: 0 12px;
+  border-radius: var(--m-radius);
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--shadow-sm);
+}
+.mcard + .mcard { margin-top: 8px; }
+/* 行与行之间一根发丝线。画在 .swipe-wrap 上而不是行本体上：
+   行本体会跟着手指左右跑，分隔线得钉在原地 */
+.mcard > .swipe-wrap + .swipe-wrap { border-top: 1px solid var(--hair); }
+
+/* 「已完成 · N  展开」：今天页把做完的那一组默认收成一行 */
+.mfoldrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 36px);
+  margin: 0 18px;
+  padding: 12px 0;
+  font-size: 12.5px;
+  letter-spacing: .08em;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  text-align: left;
+}
+.mfoldrow .more { margin-left: auto; letter-spacing: 0; font-weight: 400; }
+
+.mshell .empty { padding: 48px 18px; }
+
+/* ---------- 一行事（画板 ①②） ---------- */
+.mrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--m-row-h);
+  padding: 0 16px 0 14px;
+  /* 上下留给列表滚动，左右归 useSwipeRow */
+  touch-action: pan-y;
+}
+/* 行首那条重要性色条。没设重要性的也画一条极淡的，一列才不参差 */
+.mrow-bar { width: 3px; height: 22px; border-radius: 2px; flex: none; background: var(--hair); }
+.mrow-bar.p3 { background: #C0564A; }
+.mrow-bar.p2 { background: var(--warn); }
+.mrow-bar.p1 { background: var(--ink-3); }
+
+.mrow-cb {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: 1.6px solid var(--ink-3);
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+  position: relative;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+/* 圈本身照设计稿是 24px，但手指按的是**命中区**不是那个圈：拿一层看不见的伪元素
+   把它撑到 44×44（--m-touch）。用伪元素而不是 padding，是因为这个圈是靠 border 画出来的，
+   加 padding 会把圈本身撑大。往右最多长到标题起笔之前，不会抢走「点一行 = 看详情」那一下 */
+.mrow-cb::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--m-touch);
+  height: var(--m-touch);
+  transform: translate(-50%, -50%);
+}
+.mrow-cb.done { background: var(--ok); border-color: var(--ok); }
+.mrow-cb.done::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 4px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--card);
+  border-width: 0 2px 2px 0;
+  transform: rotate(40deg);
+}
+
+/* 一件事一行，绝不折行——这是手机版最要紧的一条 */
+.mrow-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 子任务行前面那句「母任务名 ›」：小一号的灰字，最多六个字 */
+.mrow-parent {
+  color: var(--ink-3);
+  font-size: 13px;
+  margin-right: 4px;
+}
+.mrow-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.mrow-when.warn { color: var(--warn); font-weight: 500; }
+.mrow.settled .mrow-title { color: var(--ink-3); text-decoration: line-through; }
+/* 手指按住的那一段给点回应，不然「长按能出东西」这件事按下去的头半秒毫无迹象 */
+.mrow.pressing { background: var(--bg); }
+/* 让开的那一行浮起来一点：不投影的话，行和它底下的动作条像是同一张纸被涂了色。
+   .shifted 由 MobileRow 在 dx≠0 时挂上；只在自己这张卡里加，不动 mobile.css 那份共用的 .swipe-body */
+.mcard .swipe-wrap.shifted .swipe-body { box-shadow: 0 0 14px rgba(0, 0, 0, .10); }
+
+/* 首次进「今天」演一次的手势示意（画板 ① 的说明便签：不做横条，做一次性的轻提示）。
+   时长写成 --dur-2 的倍数：全仓不许出现字面时长 */
+@keyframes mrow-hint {
+  0%, 12% { transform: translateX(0); }
+  45% { transform: translateX(24px); }
+  85%, 100% { transform: translateX(0); }
+}
+.mrow-hint > .swipe-body { animation: mrow-hint calc(var(--dur-2) * 9) var(--ease); }
+
+/* ---------- 底部导航（画板 ①⑥） ----------
+   固定不动、不能左右滑。整页里唯一能左右滑的是「一行事」 */
+.mnav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  height: calc(var(--m-nav-h) + var(--m-safe-bottom));
+  padding: 0 6px var(--m-safe-bottom);
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--hair);
+  /* 半透明纸底：底下的内容透一点上来，才像浮在纸上而不是钉了块板。
+     color-mix 不认的老 WebView 吃前一条，退成不透明——不会坏，只是少一层通透 */
+  background: var(--card);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.mnav-tab {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--m-touch);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  padding: 0;
+  transition: color var(--dur-1) var(--ease);
+}
+.mnav-tab.on { color: var(--accent); font-weight: 600; }
+
+/* 悬浮的「记一条」，蹲在导航右上方 */
+.mfab {
+  position: absolute;
+  right: 18px;
+  bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 16px);
+  z-index: 71;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .22), var(--shadow-sm);
+  transition: transform var(--dur-1) var(--ease);
+}
+.mfab:active { transform: scale(.94); }
+
+/* toast 和批量条得抬到导航之上，否则被那条栏压住看不见 */
+.shell.mobile .toast,
+.shell.mobile .bulk-bar {
+  bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 18px);
+}
+
+/* ---------- 抽屉里的通用件（动作单 / 清单设置共用） ---------- */
+.msheet-title {
+  padding: 2px 16px 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msheet-label {
+  padding: 6px 16px 8px;
+  font-size: 12.5px;
+  letter-spacing: .08em;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+/* 四宫格：安排日期 / 重要性 / 换清单 / 需求方 */
+.msheet-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 12px;
+}
+.msheet-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 12px;
+  min-height: var(--m-touch);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.msheet-tile.on { background: var(--accent-soft); color: var(--accent); }
+/* 长按的是一条子任务时只有两格（清单 / 需求方是任务级的），四列会把它们挤在左半边 */
+.msheet-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* 点开某一格之后，选项就在这张纸里展开，不跳页 */
+.msheet-pane { padding: 12px 12px 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+.msheet-chip {
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  padding: 9px 14px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.msheet-chip.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+.msheet-date {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  padding: 0;
+  outline: none;
+}
+.msheet-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+/* 底下那排收场动作：完成 / 放弃 / 推明天 / 复制标题 / 删除 */
+.msheet-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  /* 底下留一截：手势条那边由 .msheet 的 padding-bottom 管，这 20px 是给手指的余量，
+     不然最后一排按钮贴着纸的下缘，按下去像按在屏幕外面 */
+  padding: 14px 12px 20px;
+  margin-top: 8px;
+  border-top: 1px solid var(--hair);
+}
+.msheet-act {
+  flex: 1 1 30%;
+  min-height: var(--m-touch);
+  border-radius: 10px;
+  border: 0;
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  padding: 10px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.msheet-act.danger { color: #C0564A; }
+
+/* ---------- 清单设置（画板 ⑤） ---------- */
+/* 同上：最后一行「删除清单」不该贴着纸的下缘 */
+.mls-body { padding-bottom: 18px; }
+.mls-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  margin: 0 16px 14px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.mls-name > span { font-size: 12.5px; color: var(--ink-3); flex: none; }
+.mls-name input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.mls-colors { display: flex; justify-content: space-between; padding: 0 20px 18px; }
+.mls-sw {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  flex: none;
+  transition: box-shadow var(--dur-1) var(--ease);
+}
+.mls-sw.on { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px currentColor; }
+.mls-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 15px;
+  text-align: left;
+}
+.mls-opt + .mls-opt { border-top: 1px solid var(--hair); }
+.mls-opt.danger { color: #C0564A; }
+.mls-opt.dim { color: var(--ink-3); }
+.mls-opt .why { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+
+/* ---------- 更多（画板 ⑥） ---------- */
+.mmore-acct {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 24px);
+  margin: 18px 12px 0;
+  padding: 14px 16px;
+  border-radius: var(--m-radius);
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+.mmore-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: 16px;
+}
+.mmore-acct .txt { flex: 1; min-width: 0; }
+/* 这两行必须是块级：<span> 默认是行内，行内盒子拿不到 text-overflow，
+   两行会挤成一行接着流下去（实测：邮箱后面直接跟上「已同步 …」） */
+.mmore-acct .name {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 没登录时那句话是一句人话，不是一个邮箱地址，该让它折行说完 */
+.mmore-acct .name.wrap { white-space: normal; }
+.mmore-acct .state { display: block; font-size: 12px; color: var(--accent); margin-top: 2px; }
+.mmore-acct .state.dim { color: var(--ink-2); }
+.mmore-acct .go { color: var(--ink-3); flex: none; }
+
+.mmore-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 12px 0;
+}
+.mmore-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--m-radius);
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  text-align: left;
+}
+.mmore-tile .ico { color: var(--accent); }
+.mmore-tile b { font-size: 15px; font-weight: 600; }
+.mmore-tile span { font-size: 12px; color: var(--ink-3); }
+
+/* 清单 / 需求方 / 标签那三张表 */
+.mli {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 15.5px;
+  text-align: left;
+}
+.mli + .mli { border-top: 1px solid var(--hair); }
+.mli .n { margin-left: auto; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.mli.add { color: var(--accent); }
+.mli .who-ava {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+.mli .hash { width: 10px; color: var(--ink-3); font-size: 13px; text-align: center; flex: none; }

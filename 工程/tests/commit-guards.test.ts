@@ -249,14 +249,18 @@ describe("日期弹层：年份段还在累加的那几拍不许落库", () => {
     expect(onChange).not.toContain("doneRef");
     expect(onChange).not.toContain("setMenu");
 
-    // 四处调用点：任务卡两个（日期弹层 / 子任务日期小签）、侧栏一个、随手记一个。
+    // 七处调用点：任务卡两个（日期弹层 / 子任务日期小签）、侧栏一个、随手记一个，
+    // v1.11.0 起手机端三张抽屉各一个（长按的动作单 / 任务详情的日期段 / 记一条的日期段）。
     // 数字对不上就是新加了一个日期框——它已经被上面那三件套罩住了，改这个数就行
     const spots = allTsx.flatMap(([name, src]) => dateFieldsIn(src).map(() => name));
-    expect(spots.length).toBe(4);
+    expect(spots.length).toBe(7);
     expect([...new Set(spots)].sort()).toEqual([
       "src/components/QuickAddBar.tsx",
       "src/components/Sidebar.tsx",
       "src/components/TaskCard.tsx",
+      "src/mobile/ActionSheet.tsx",
+      "src/mobile/QuickAddSheet.tsx",
+      "src/mobile/TaskSheet.tsx",
     ]);
     // 扫描范围本身也钉一下：三个独立小窗和 src 根上那两个必须在名单里。
     // 少了任何一个就是收 .tsx 那段又退回成「写死目录 + 非递归」了，
@@ -862,8 +866,9 @@ describe("日期框的 onDone：焦点还落在自己那个弹层里，就一下
   it("凡是有 onDone 的日期框，都先判 relatedTarget 还在不在自己那个弹层里", () => {
     const spots = allTsx.flatMap(([name, src]) =>
       dateFieldsIn(src).filter((el) => el.includes("onDone={")).map((el) => [name, el] as const));
-    // 四处调用点里三处有 onDone；任务卡那个日期弹层**不给** onDone（点日历格立刻生效，
-    // 弹层留着好接着设时间）。数字对不上就是新加了一个日期框——先照这条把闸装上再改这张表
+    // 六处调用点里三处有 onDone；任务卡那个日期弹层、手机端两张抽屉的日期段**都不给** onDone
+    // （选完立刻生效，那一段留着好接着设时间 / 循环）。
+    // 数字对不上就是新加了一个日期框——先照这条把闸装上再改这张表
     expect(spots.map(([n]) => n).sort()).toEqual([
       "src/components/QuickAddBar.tsx",
       "src/components/Sidebar.tsx",

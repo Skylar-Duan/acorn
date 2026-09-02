@@ -11,8 +11,10 @@ import type { ReactNode } from "react";
 import type { DateRow, UIState } from "../core/store";
 import { isChainFolded, toggleChain, useApp } from "../core/store";
 import { cardMs } from "../core/motion";
+import { isMobile } from "../core/platform";
 import type { PinIds } from "../core/pin";
 import { CardSlot } from "./motion";
+import MobileRow from "../mobile/MobileRow";
 import TaskRow from "./TaskRow";
 import TaskCard from "./TaskCard";
 
@@ -87,9 +89,11 @@ export interface RowListProps {
   anchor: string | null;
   orderedIds: string[];
   fadeOnDone?: boolean;
+  /** 手机端：给这一组的第一行演一次「往右滑」的示意（只有整页最上面那一组该传，见 mobile/MobileRow） */
+  hintFirstRow?: boolean;
 }
 
-export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone }: RowListProps) {
+export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hintFirstRow }: RowListProps) {
   // 收起卡片也要有动画（B1）：expandedId 一清空就把卡片从树上摘掉的话，
   // 「收起」永远是硬切。所以让它再活一拍，那一拍里 .shut 把高度收回去。
   // 只有卡片本来就落在这一组的那个 RowList 会留住它，别的组从头到尾没画过卡片。
@@ -107,6 +111,26 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone }: 
     const t = setTimeout(() => setClosing(null), cardMs());
     return () => clearTimeout(t);
   }, [closing]);
+
+  // ---- 手机端（v1.11.0）：一组一张圆角卡，行换成 MobileRow ----
+  // 这里**不画展开卡**：手机上点一行是从底下抽出一张纸（mobile/TaskSheet），
+  // 内嵌卡那套（CardSlot / anchor / 钉位置）留给桌面。
+  // 折叠掉的行也不再收成 0 高而是直接不画：0 高的行在卡片里会留下一道多余的分隔线，
+  // 而「收/放都有动画」是鼠标时代的讲究，手指滑动时那点高度过渡反而黏手。
+  // 分支必须排在上面几个 hook 后面——isMobile 是模块常量，但把 return 摆在 hook 前面
+  // 迟早会有人在它上面再加一个 hook
+  if (isMobile) {
+    const shown = rows.filter((r) => !fold.hidden.has(rowKey(r)));
+    // 空组不画：不然会剩一个 0 高但有边框的白盒子
+    if (shown.length === 0) return null;
+    return (
+      <div className="mcard">
+        {shown.map((r, i) => (
+          <MobileRow key={rowKey(r)} task={r.task} sub={r.sub} hint={hintFirstRow && i === 0} />
+        ))}
+      </div>
+    );
+  }
 
   // 手搭一个**平铺**的数组，不用 rows.map 返回数组套数组：嵌套数组会给 key 加一层作用域，
   // 下面那条「卡片按任务 id 认 key」的规矩就白写了

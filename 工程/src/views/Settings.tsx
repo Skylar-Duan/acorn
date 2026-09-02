@@ -12,6 +12,7 @@ import {
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
+import { useSync } from "../core/syncCtl";
 import { hasDesktopFeatures } from "../core/platform";
 import { FOCUS_ENABLED } from "../core/features";
 import ThemeScene from "../components/ThemeScene";
@@ -155,6 +156,8 @@ function buildMarkdown(d: AppData): string {
 export default function Settings() {
   const data = useApp((s) => s.data);
   const settings = data.settings;
+  /** 「云账号」那一节收起来时右边那句话要分登录没登录说，所以这里要知道登录态 */
+  const session = useSync((s) => s.session);
 
   const [status, setStatus] = useState<DataStatus | null>(null);
   /** null = 备份列表收起 */
@@ -369,7 +372,13 @@ export default function Settings() {
         {/* ---------- 云账号 ---------- */}
         {/* anchorId 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找。
             那边滚之前会先 forceFoldOpen("cloud", "acorn-set-") 把这一节打开 */}
-        <SetSection id="cloud" title="云账号" defaultOpen anchorId="set-cloud" summary="登录 · 同步 · 从云端覆盖到这台设备">
+        <SetSection
+          id="cloud"
+          title="云账号"
+          defaultOpen
+          anchorId="set-cloud"
+          summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}
+        >
           <div className="set-desc">
             登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
