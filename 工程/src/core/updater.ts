@@ -334,14 +334,48 @@ export async function installPackage(
   return "handed-off";
 }
 
-/** 备用方案：拿系统浏览器打开下载页，让用户自己下自己装 */
-export async function openFallback(info: UpdateInfo): Promise<void> {
-  const url = info.pageUrl || info.url;
+/**
+ * 备用方案的结果。三种都要让界面说句话——「点了没反应」是最坏的体验（2026-09-02 用户真撞上）。
+ */
+export type FallbackResult = "opened" | "copied" | "failed";
+
+/**
+ * 备用方案：拿系统浏览器直接下安装包，让用户自己装。
+ *
+ * **开的是安装包直链，不是 GitHub 的 Release 页**：直链在浏览器里就是「开始下载」，一步到位；
+ * Release 页要等我们发了 Release 才对得上版本，而且国内打开 GitHub 时好时坏。
+ *
+ * 曾经的病：只给了 `opener:allow-open-url` 这条命令权限，没给 URL 范围（scope），插件直接拒绝；
+ * 兜底的 `window.open` 在 Tauri 的 webview 里又是静默无效——按钮就成了「按了什么都不发生」。
+ * 现在 capabilities 里 `opener:default` 带默认 URL 范围，这里再兜两层：打不开就把地址复制到剪贴板，
+ * 连剪贴板都不行就把地址原文交给界面显示。
+ */
+export async function openFallback(info: UpdateInfo): Promise<FallbackResult> {
+  const url = info.url || info.pageUrl;
   try {
     const { openUrl } = await import("@tauri-apps/plugin-opener");
     await openUrl(url);
+    return "opened";
   } catch {
-    window.open(url, "_blank");
+    try {
+      await navigator.clipboard.writeText(url);
+      return "copied";
+    } catch {
+      return "failed";
+    }
+  }
+}
+
+/** 备用方案点完之后界面上那句话 */
+export function fallbackText(result: FallbackResult, info: UpdateInfo): string {
+  const url = info.url || info.pageUrl;
+  switch (result) {
+    case "opened":
+      return "已在浏览器里开始下载，下完打开安装即可。";
+    case "copied":
+      return "打不开浏览器，下载地址已复制到剪贴板——粘贴到浏览器地址栏就能下。";
+    default:
+      return `打不开浏览器，请自己在浏览器里打开：${url}`;
   }
 }
 

@@ -17,7 +17,9 @@ import {
   CHECK_FAILED_MSG, checkUpdateNow, dismissUpdate, HANDOFF_MSG, skipVersion,
   useUpdate, useUpdateRun, type ManualCheck,
 } from "../core/updateCtl";
-import { isRequiredForSync, openFallback, updaterSupported } from "../core/updater";
+import {
+  fallbackText, isRequiredForSync, openFallback, updaterSupported, type FallbackResult,
+} from "../core/updater";
 import "../styles/overlays.css";
 
 function mb(n: number): string {
@@ -28,6 +30,8 @@ export default function UpdateDialog() {
   const info = useUpdate((s) => s.pending);
   const rescue = useApp((s) => s.rescue);
   const run = useUpdateRun();
+  /** 「改用浏览器下载」点完的回话：开了 / 复制了地址 / 都不行把地址给你 */
+  const [fb, setFb] = useState<FallbackResult | null>(null);
 
   if (!info) return null;
   if (rescue && rescue.length > 0) return null;
@@ -84,6 +88,7 @@ export default function UpdateDialog() {
         )}
         {run.phase === "handed-off" && <p className="update-note">{HANDOFF_MSG}</p>}
         {run.err && <p className="update-err">{run.err}</p>}
+        {fb && <p className="update-note">{fallbackText(fb, info)}</p>}
 
         <div className="update-foot">
           {!working && (
@@ -107,7 +112,7 @@ export default function UpdateDialog() {
             </button>
           )}
           {run.manual && (
-            <button className="btn" onClick={() => void openFallback(info)}>
+            <button className="btn" onClick={() => void openFallback(info).then(setFb)}>
               改用浏览器下载
             </button>
           )}

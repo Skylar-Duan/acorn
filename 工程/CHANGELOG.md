@@ -5,10 +5,25 @@
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
 
-## v1.10.0 · 2026-09-02
+## v1.10.1 · 2026-09-02
 
-> 中等更新（按用户定的分档：手机端追平 + 更新服务联网 = v1.10.0）。**数据格式没动，仍是 schema 6。**
-> 桌面和安卓同一个版本号、同一天发。
+> 中等更新（按用户定的分档：手机端追平 + 更新服务联网 = v1.10.x）。**数据格式没动，仍是 schema 6。**
+> 桌面和安卓同一个版本号、同一天发。**1.10.0 发到服务器后第一次真跑更新就撞上两处 bug，修完以 1.10.1 重发**
+> （1.10.0 可能已经有人装上了，同号重发不会被当成新版本；1.10.0 那个包从服务器清单和 `安装包/` 里都撤了）。
+
+- **应用内更新第一次真跑就挂了的两处**（用户 2026-09-02 报：「Failed to fetch」+「改用浏览器下载」没反应）：
+  - **服务器**：`/download/` 是 nginx 静态目录，没有 CORS 头；橡果在 webview 里（`tauri.localhost` 源）用 `fetch` 拉包，
+    跨源响应缺 `Access-Control-Allow-Origin` 直接被内核拒收，界面只剩一句「Failed to fetch」。`/api/` 那边是 FastAPI 的
+    CORS 中间件在给，静态目录得 nginx 自己给。补了 Allow-Origin `*`、Expose-Headers（进度条要 Content-Length 当分母）、
+    OPTIONS 预检回 204。**这一条改的是服务器，用户手里的 v1.9.1 点「重试」就好了**，用 Playwright 从别的源 fetch 过三个地址确认。
+    以前从没人真跑过这条路（安卓真机一直没验），所以拖到现在才炸。
+  - **客户端**：capabilities 只给了 `opener:allow-open-url` / `allow-open-path` 这两条**命令**权限，没给 URL / 路径**范围**，
+    插件一律拒绝；`openFallback` 兜底的 `window.open` 在 Tauri 的 webview 里静默无效——按钮就成了「按了什么都不发生」。
+    现在 `opener:default`（自带 http/https 默认范围）+ 显式放行 `acorn.cdpandas.com` / `github.com` + `open-path` 放行 `$APPCACHE/**`
+    （安卓装 APK 靠 `openPath` 打开 `write_to_cache` 存下的文件，同一个病，只是还没人撞上）。
+    `openFallback` 改开**安装包直链**（不是 Release 页——Release 没发时那页是旧版本），三种结果都回给界面：
+    开了 / 打不开就把地址复制到剪贴板 / 连剪贴板都不行就把地址原文显示出来。`tests/opener-scope.test.ts` 钉住 capabilities、
+    updater、两个入口和 nginx 配置四处。
 
 - **更新服务上线**。`https://acorn.cdpandas.com/api/desktop/latest` 与 `/api/android/latest` 已部署
   （`deploy.sh --code` 推的是 13ab89d 之后的 `server/app`，含 vaults.schema MAX 棘轮那版；nginx 补了 `.exe` 的 MIME）。

@@ -8,7 +8,8 @@ import { APP_VERSION } from "../core/model";
 import { isAndroid } from "../core/platform";
 import { CHECK_FAILED_MSG, HANDOFF_MSG, useUpdateRun } from "../core/updateCtl";
 import {
-  fetchUpdate, isRequiredForSync, openFallback, shouldOffer, updaterSupported,
+  fallbackText, fetchUpdate, isRequiredForSync, openFallback, shouldOffer, updaterSupported,
+  type FallbackResult,
   type UpdateCheck, type UpdateInfo,
 } from "../core/updater";
 
@@ -22,6 +23,8 @@ function mb(n: number): string {
 export default function UpdatePanel() {
   const [stage, setStage] = useState<Stage>("idle");
   const [info, setInfo] = useState<UpdateInfo | null>(null);
+  /** 「改用浏览器下载」点完的回话：开了 / 复制了地址 / 都不行把地址给你 */
+  const [fb, setFb] = useState<FallbackResult | null>(null);
   const run = useUpdateRun();
 
   // **查不到和已是最新是两回事**：断网时绝不能显示「已经是最新版了」，那是骗人
@@ -122,11 +125,12 @@ export default function UpdatePanel() {
               </button>
             )}
             {run.manual && (
-              <button className="btn" onClick={() => void openFallback(info)}>
+              <button className="btn" onClick={() => void openFallback(info).then(setFb)}>
                 改用浏览器下载
               </button>
             )}
           </div>
+          {fb && <p className="hint">{fallbackText(fb, info)}</p>}
           <p className="hint">
             {isAndroid
               ? "首次安装可能需要在系统弹窗里允许「安装未知来源应用」。数据保存在本机，升级不会改动。"
