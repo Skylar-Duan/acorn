@@ -1,9 +1,12 @@
 // 同步这条出口的闸门。
 //
-// 背景：loadError / dataTooNew / rescue 这三种状态下 loaded 都是 true、data 里那份都不是
+// 背景：loadError / rescue 这两种状态下 loaded 都是 true、data 里那份都不是
 // 用户真正的账本。落盘那条路（store.doSave）和快速添加那条路都堵了，同步这条一度没堵——
 // 后果是每启动一次就把一本空账本合进云端再 PUT 回去，所有设备上都多出东西。
-// 这几条用例就是钉住「三种状态一条都不许往云上推」。
+// 这几条用例就是钉住「这两种状态一条都不许往云上推」。
+//
+// **dataFromNewer 已经不在这个名单里了**（v1.9.1）：更新版本写的那份是**真账本**，
+// 读进来了就该正常同步。拦着它等于把用户的两台设备切断，而且未知字段合并本来就不丢。
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import { defaultData, newTask } from "../src/core/model";
@@ -56,7 +59,7 @@ describe("数据没真正读进来之前，一律不往云上推", () => {
       data: readyData(),
       loaded: true,
       loadError: null,
-      dataTooNew: null,
+      dataFromNewer: null,
       rescue: null,
     });
   });
@@ -66,10 +69,13 @@ describe("数据没真正读进来之前，一律不往云上推", () => {
     expect(syncOnce).toHaveBeenCalledTimes(1);
   });
 
-  it("dataTooNew：磁盘上那份比本机新，一次都不碰云", async () => {
-    appStore.setState({ dataTooNew: { schema: 99 }, data: { ...defaultData(), lists: [], tasks: [] } });
+  it("**反转**：dataFromNewer 不再是闸门，比本机新的那份照样正常同步", async () => {
+    // 以前这里钉的是「一次都不碰云」。那条规则的代价是：另一台设备升级之后，
+    // 这台设备的同步永久停摆，用户在这台上再也看不到那边记的东西——
+    // 而未知字段在合并里本来就不丢（赢家整条走 + 顶层两边都铺），拦着纯亏
+    appStore.setState({ dataFromNewer: { schema: 99 }, data: readyData() });
     await syncNow();
-    expect(syncOnce).not.toHaveBeenCalled();
+    expect(syncOnce).toHaveBeenCalledTimes(1);
   });
 
   it("rescue：数据疑似在别的文件夹，等用户拍板之前不推", async () => {

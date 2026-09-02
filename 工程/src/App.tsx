@@ -15,12 +15,12 @@ import SearchOverlay from "./components/SearchOverlay";
 import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
 import DataRescue from "./components/DataRescue";
-import UpdateDialog, { UpdateNudge } from "./components/UpdateDialog";
+import UpdateDialog from "./components/UpdateDialog";
+import SchemaBanner, { dismissSchemaNotice, schemaNoticeDismissed } from "./components/SchemaBanner";
 import { useLeaving } from "./components/motion";
-import { DATA_VERSION } from "./core/model";
 import {
   clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
-  navigate, postponeTasks, setPaletteOpen, setSearchOpen, setSelection,
+  hasChain, navigate, postponeTasks, setChainFolded, setPaletteOpen, setSearchOpen, setSelection,
   setTasksList, undo, useApp,
 } from "./core/store";
 
@@ -50,7 +50,9 @@ export default function App() {
   const tagFilter = useApp((s) => s.ui.tag);
   const loaded = useApp((s) => s.loaded);
   const loadError = useApp((s) => s.loadError);
-  const dataTooNew = useApp((s) => s.dataTooNew);
+  const dataFromNewer = useApp((s) => s.dataFromNewer);
+  /** 这次会话里用户点掉的那个版本号（localStorage 那份是跨会话的，两个都要看） */
+  const [noticeClosed, setNoticeClosed] = useState<number | null>(null);
   const toast = useApp((s) => s.ui.toast);
   const selectedIds = useApp((s) => s.ui.selectedIds);
   const paletteOpen = useApp((s) => s.ui.paletteOpen);
@@ -137,6 +139,16 @@ export default function App() {
       } else if (mod && e.key === "ArrowRight" && selectedIds.length) {
         e.preventDefault();
         postponeTasks(selectedIds);
+      } else if (
+        !mod && (e.key === "ArrowLeft" || e.key === "ArrowRight") &&
+        selectedIds.length === 1 && hasChain(selectedIds[0])
+      ) {
+        // ←收链 / →摊开（v1.9.1）。这两个键原本完全空着，零冲突：
+        // mod+→ 是「顺延」，在上一条就被接走了，所以这里必须带 !mod 且排在它后面。
+        // 摆状态不 toggle：连按 ← 应该一直收着。
+        // hasChain 先把关：没子任务链的事一个字节都不该写进 foldExcept（那份落 localStorage）
+        e.preventDefault();
+        setChainFolded(selectedIds[0], e.key === "ArrowLeft");
       } else if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length) {
         e.preventDefault();
         deleteTasks(selectedIds);
@@ -181,28 +193,6 @@ export default function App() {
   if (!loaded) {
     return <div className="center-note"><span className="big">橡果</span>正在读取数据…</div>;
   }
-  if (dataTooNew) {
-    return (
-      <div className="center-note">
-        <span className="big">这台设备上的橡果版本过旧</span>
-        <span>
-          数据文件夹里的数据由新版本（模型 v{dataTooNew.schema}）写入，这台设备上的橡果只支持到 v{DATA_VERSION}。
-        </span>
-        <span>
-          数据没有改动，也没有写回磁盘：按旧格式读一遍再存回去，会丢掉新版本才有的字段。
-          把这台设备上的橡果升级到同一版本即可。
-        </span>
-        {/* 这一屏的正事就是让人升级，所以升级入口必须在这儿——设置页此刻根本渲染不到，
-            以前只有一个「重试」，用户在应用里没有任何一条升级的路 */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
-          <button className="btn primary" onClick={() => location.reload()}>重试</button>
-          <UpdateNudge />
-        </div>
-        {/* 查到新版就让它盖在这一屏上（UpdateDialog 不再对 dataTooNew 让位） */}
-        <UpdateDialog />
-      </div>
-    );
-  }
   if (loadError) {
     return (
       <div className="center-note">
@@ -217,13 +207,31 @@ export default function App() {
     );
   }
 
+  // 这份数据由更新版本的橡果写入：**照常渲染整个应用**，只在顶上加一条可关的提示条。
+  // 以前这里是一整屏墙，用户连自己的任务都看不见——那是拒绝加载，是产品原则上的错
+  const schemaNotice =
+    dataFromNewer !== null &&
+    noticeClosed !== dataFromNewer.schema &&
+    !schemaNoticeDismissed(dataFromNewer.schema)
+      ? dataFromNewer.schema
+      : null;
+
   return (
-    <div className={`shell${drawer ? " drawer-open" : ""}`}>
+    <div className={`shell${drawer ? " drawer-open" : ""}${schemaNotice !== null ? " has-banner" : ""}`}>
       <ThemeScene theme={theme} />
       {/* 窄屏才出现：点开左边的抽屉。宽屏由 CSS 藏起来 */}
       <button className="drawer-btn" title="菜单" onClick={() => setDrawer(true)}>☰</button>
       <Sidebar drawerOpen={drawer} onNavigate={() => setDrawer(false)} />
       {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
+      {schemaNotice !== null && (
+        <SchemaBanner
+          schema={schemaNotice}
+          onClose={() => {
+            dismissSchemaNotice(schemaNotice);
+            setNoticeClosed(schemaNotice);
+          }}
+        />
+      )}
       {body}
 
       <DataRescue />

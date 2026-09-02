@@ -7,7 +7,8 @@
 // 骨架分六块：
 //   1. v1~v5 每条升级路径各一条
 //   2. migrate 幂等（migrate(migrate(x)) 深等于 migrate(x)）
-//   3. 未知字段不丢（含 graveyard 会丢字段的显式断言——锁住现状，不是认可它）
+//   3. 未知字段一个不丢：任务 / 子任务 / 设置 / **墓碑** / **顶层未知集合** / version 取 max
+//      （墓碑那条 2026-09-01 从「锁现状：会丢」反转成「不许丢」）
 //   4. 本次新增：子任务的 doneAt
 //   5. migrate 不许集体刷新 updatedAt（刷了 = 下一次同步拿本机盖掉云端）
 //   6. 循环推进时子任务的 done/doneAt 怎么清
@@ -194,16 +195,46 @@ describe("未知字段", () => {
     expect((d.settings as unknown as { futureSetting: number }).futureSetting).toBe(42);
   });
 
-  // 这条锁的是**现状不是理想**：墓碑是 migrate 里唯一显式重建的结构，
-  // 因此也是唯一会丢未知字段的地方。哪天给墓碑加字段（比如「删的是任务还是清单」），
-  // 这条会当场变红，提醒你 migrate 那里也得改——不改的话老客户端过一遍就把它抹了
-  it("【锁现状】墓碑上的额外字段会被丢掉", () => {
+  // 【2026-09-01 反转】以前这条锁的是「墓碑上的额外字段会被丢掉」，注释里写着
+  // 「锁的是现状不是理想，哪天给墓碑加字段这条会变红」——这一天到了。
+  // 墓碑曾是 migrate 里唯一显式重建（`.map(g => ({id, at}))`）的结构，
+  // 而 pruneGraveyard 又是 migrate / mergeData / bury 三条路的共同咽喉，
+  // 于是新版本给墓碑加的字段，每迁移一次、每同步一次、每彻底删一次各丢一遍
+  it("墓碑上的额外字段也原样带走（新版本给墓碑加的字段不能被老版本抹掉）", () => {
     const at = new Date().toISOString();
     const d = migrate({
       version: 5, lists: LISTS, sessions: [], settings: {}, tasks: [],
       graveyard: [{ id: "gone", at, kind: "list" }],
     });
-    expect(d.graveyard).toEqual([{ id: "gone", at }]);
+    expect(d.graveyard).toEqual([{ id: "gone", at, kind: "list" }]);
+  });
+
+  it("**顶层多出来的整个集合也不许吞**（migrate 曾是 6 键字面量，连痕迹都不留）", () => {
+    const d = migrate({
+      version: DATA_VERSION + 1, lists: LISTS, sessions: [], settings: {}, tasks: [],
+      projects: [{ id: "p1", name: "第 7 版才有的" }],
+      notebooks: { a: 1 },
+    });
+    expect((d as unknown as { projects: unknown }).projects).toEqual([{ id: "p1", name: "第 7 版才有的" }]);
+    expect((d as unknown as { notebooks: unknown }).notebooks).toEqual({ a: 1 });
+  });
+
+  it("version 取 max：老数据升上来，新数据**不许降回去**", () => {
+    // 降回去 = 磁盘上那份从此自称第 6 版 = 下次推上云把服务端的 schema 棘轮也拉回去
+    expect(migrate({ version: 2, tasks: [], lists: LISTS }).version).toBe(DATA_VERSION);
+    expect(migrate({ version: DATA_VERSION + 1, tasks: [], lists: LISTS }).version).toBe(DATA_VERSION + 1);
+    expect(migrate({ tasks: [], lists: LISTS }).version).toBe(DATA_VERSION); // 压根没写版本号的老裸数据
+  });
+
+  it("不是对象的东西照旧不许铺开（字符串会被 spread 成 {0:'a'}，那是垃圾不是数据）", () => {
+    for (const junk of ["一个字符串", 42, [], null, undefined]) {
+      const d = migrate(junk);
+      expect(d.tasks).toEqual([]);
+      expect(d.version).toBe(DATA_VERSION);
+      expect(Object.keys(d).sort()).toEqual(
+        ["graveyard", "lists", "sessions", "settings", "tasks", "version"],
+      );
+    }
   });
 });
 
@@ -264,7 +295,7 @@ describe("循环推进：子任务的 done 和 doneAt 一起清", () => {
     while (appStore.getState().undoDepth > 0) undo();
     await flushSave();
     localStorage.clear();
-    appStore.setState({ data: defaultData(), loaded: true, loadError: null, dataTooNew: null, undoDepth: 0 });
+    appStore.setState({ data: defaultData(), loaded: true, loadError: null, dataFromNewer: null, undoDepth: 0 });
   });
 
   const getTask = (id: string): Task => {

@@ -73,10 +73,13 @@ interface AppState {
   data: AppData;
   loaded: boolean;
   loadError: string | null;
-  /** 磁盘上那份数据比本机新（null = 没这回事）。跟 loadError 分开：这不是「坏了」，
-   *  是「这台设备太老」，处理方式也不同——只能升级本机，重试和换文件夹都没用。
-   *  置上之后一律不写盘（见 doSave），免得用户随手改一下就把降级后的数据盖回磁盘 */
-  dataTooNew: { schema: number } | null;
+  /** 这份数据是更新版本的橡果写的（null = 没这回事）。
+   *
+   *  **它只是一条提示条的开关，不是任何闸门**——名字从 `dataTooNew` 改成 `dataFromNewer`
+   *  就是为了这个：旧名字读着像「太新了，不能用」，谁看见都想拿它当拦路条件。
+   *  数据照常读进来、照常改、照常存回去、照常同步；本机不认识的字段一个不丢（见 model.migrate）。
+   *  **绝不许拿它拒绝加载用户的日志**（2026-09-01 用户定的产品原则）。 */
+  dataFromNewer: { schema: number } | null;
   /** 当前数据是空的，但别处找到了有内容的数据文件夹——由用户拍板要不要用（null = 没这回事） */
   rescue: persist.DataCandidate[] | null;
   /** 本机数据已经被清空（登出时的隐私路径）。置上之后一律不再落盘——
@@ -105,7 +108,7 @@ export const appStore = createStore<AppState>(() => ({
   data: defaultData(),
   loaded: false,
   loadError: null,
-  dataTooNew: null,
+  dataFromNewer: null,
   rescue: null,
   wiped: false,
   ui: {
@@ -128,9 +131,10 @@ let inflightSave: Promise<void> | null = null;
 function doSave(): Promise<void> {
   const s = appStore.getState();
   // 数据没加载成功时绝不落盘——否则会拿默认空库覆盖磁盘上的真数据。
-  // 磁盘上那份比本机新时同理：写回去就是把新版本才有的东西抹掉。
-  // wiped：用户刚把本机这份清掉了，任何一次回写都等于白清
-  if (s.wiped || !s.loaded || s.loadError || s.dataTooNew) return Promise.resolve();
+  // wiped：用户刚把本机这份清掉了，任何一次回写都等于白清。
+  // **这里没有 dataFromNewer**（v1.9.1 拆掉）：更新版本写的数据照样存得回去，
+  // 未知字段一个不丢。这三条防的是别的事（空库覆盖、目录不可用、清空后回写），别混为一谈
+  if (s.wiped || !s.loaded || s.loadError) return Promise.resolve();
   const p = persist
     .saveData(s.data)
     .catch((e) => {
@@ -325,23 +329,11 @@ export async function initStore(): Promise<void> {
       await new Promise((r) => setTimeout(r, 800));
       res = await persist.loadData();
     }
-    // 磁盘上那份比本机新：到此为止。不落库、不写盘、不做每日备份——
-    // 降级读进来的数据一旦被写回去，新版本才有的东西就没了，用户毫不知情
-    if (res.tooNew) {
-      // 连内存里那份也换成真正的空账本（lists/tasks 全空）。
-      // 模块初始化时的 defaultData() 带着两条**每次启动都换新 id** 的默认清单「工作」「生活」，
-      // 那不是用户的账本——数据没真正读进来之前，内存里这份谁都不代表。
-      // 将来万一又漏掉某条出口（云同步就漏过一次），推出去的至少不是两条凭空冒出来的清单
-      appStore.setState({
-        data: { ...defaultData(), lists: [], tasks: [] },
-        loaded: true,
-        dataTooNew: { schema: res.schema },
-        loadError: null,
-      });
-      return;
-    }
+    // 磁盘上那份比本机新：**照常读进来**（v1.9.1 拆墙）。本机不认识的字段原样留着，
+    // 界面顶上出一条可关的提示条（App.tsx 的 SchemaBanner），仅此而已。
+    // 以前这里换空账本 + return，用户打开橡果看见的是一屏「版本过旧」，自己的日志一条也进不来
     const loadedData = res.data;
-    // 刚清空过（freshStart）就用真正的空账本，跟 tooNew 那支一个写法
+    // 刚清空过（freshStart）就用真正的空账本
     const data =
       loadedData ?? (freshStart ? { ...defaultData(), lists: [], tasks: [] } : defaultData());
     // 回收站 30 天自动清理。清掉的同样立墓碑，否则另一台设备同步过来会把它们又拉回来
@@ -355,7 +347,16 @@ export async function initStore(): Promise<void> {
     }
     undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
     coalesce = null;
-    appStore.setState({ data, loaded: true, loadError: null, dataTooNew: null });
+    appStore.setState({
+      data,
+      loaded: true,
+      loadError: null,
+      // 栈清了计数也必须跟着清。**两者一旦对不上，undo() 就是个空转的死循环**：
+      // 它拿不到栈顶就直接 return，一个字都不动，undoDepth 却永远大于 0
+      undoDepth: 0,
+      // 只点亮提示条，不拦任何东西
+      dataFromNewer: res.tooNew ? { schema: res.schema } : null,
+    });
 
     // 这里空空如也的时候，先别急着建一本空账本落盘——指针指歪 / 换了机器 / 数据在另一个
     // 文件夹时，那本空账本会盖在真数据前面，让人以为数据没了。先去别处找找，找到就让用户选。
@@ -1117,14 +1118,31 @@ export function setFoldAll(v: boolean) {
   appStore.setState({ ui: { ...ui, foldAll: v, foldExcept: [] } });
 }
 
-/** 单条的小三角：跟总开关反着来 */
-export function toggleChain(taskId: string) {
+/** 这件事有没有「子任务链」可折——未完成且没放弃的子任务两条以上（判据跟 openRows 一致）。
+ *  给 App.tsx 的 ←/→ 把关用：那是全局键，选中的多半是普通任务，
+ *  不挡的话 foldExcept 会被一堆压根没有子任务的 id 撑大，而那份是要落 localStorage 的。
+ *  折叠状态本身仍然按任务记、跟数据无关，所以这个判断只放在**入口**，不放进 setChainFolded */
+export function hasChain(taskId: string): boolean {
+  const t = appStore.getState().data.tasks.find((x) => x.id === taskId);
+  return !!t && t.subtasks.filter((s) => !s.done && !s.droppedAt).length >= 2;
+}
+
+/** 把这件事的链**摆到**指定状态（不是 toggle）。键盘 ←/→ 用：
+ *  连按 ← 得一直是「收着」，第二下不能又给摊开。已经是那个状态就一个字节都不写 */
+export function setChainFolded(taskId: string, folded: boolean) {
   const ui = appStore.getState().ui;
+  if (isChainFolded(ui, taskId) === folded) return;
   const next = ui.foldExcept.includes(taskId)
     ? ui.foldExcept.filter((x) => x !== taskId)
     : [...ui.foldExcept, taskId];
   saveFold(ui.foldAll, next);
   appStore.setState({ ui: { ...ui, foldExcept: next } });
+}
+
+/** 单条的小三角：跟总开关反着来 */
+export function toggleChain(taskId: string) {
+  const ui = appStore.getState().ui;
+  setChainFolded(taskId, !isChainFolded(ui, taskId));
 }
 
 export function expandTask(id: string | null) {

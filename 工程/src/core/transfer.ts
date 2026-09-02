@@ -4,9 +4,11 @@
 // 信封长这样：{ app:"acorn", schema:2, appVersion:"1.2.1", exportedAt:"…", data:{…} }
 // 老版本导出的是**裸的 AppData**（没有信封），必须继续认——不然用户去年的备份就废了。
 //
-// 反过来那一头同样要认真：**比本机新的数据不许硬吃**。桌面版会跑在手机版前面，
-// 手机上那份旧橡果如果把 v6 的数据按 v5 理解着填回去，新版本才有的东西就被悄悄抹掉了。
-// 所以 unpack 只负责把「这份比我新」这个事实报上来（tooNew），由调用方拒绝或明确问用户。
+// 反过来那一头同样要认真，但**认真不等于拒收**（v1.9.1 起的产品原则）：
+// 比本机新的数据一律照常读进来——多出来的字段空着、原样留着，等用户升级了自然看得见。
+// **绝不许因为「这份比我新」就不给用户看他自己的日志。**
+// 不丢是靠 migrate 那边保的（顶层先铺开、墓碑不重建、version 取 max），
+// unpack 这里只负责把「这份比我新」这个事实报上来（tooNew），供调用方提示，**不得据此拒绝加载**。
 
 import type { AppData } from "./model";
 import { DATA_VERSION, migrate } from "./model";
@@ -24,10 +26,16 @@ export interface Envelope {
   data: AppData;
 }
 
+/** 信封上盖的 schema 是 `max(本机 DATA_VERSION, 这份数据自称的版本)`。
+ *
+ *  为什么不是写死 DATA_VERSION：一台 v6 的设备读进了 schema 7 的数据（内容一个字没丢），
+ *  推上云时若报 6，服务端那道「schema < stored」当场 409，而云端的 `MAX(schema, ?)` 棘轮
+ *  又保证报 7 不会把云端降级——报 max 是让棘轮和无损读取共存的唯一取值。
+ *  版本号跟着数据本身走，不需要额外的持久化状态：重启、导出导入、云同步一路带着。 */
 export function pack(data: AppData, appVersion: string, now: Date = new Date()): Envelope {
   return {
     app: TRANSFER_APP,
-    schema: DATA_VERSION,
+    schema: Math.max(DATA_VERSION, typeof data?.version === "number" ? data.version : 0),
     appVersion,
     exportedAt: now.toISOString(),
     data,
@@ -44,8 +52,9 @@ export interface UnpackOk {
   /** 这份数据的模型版本（老式裸数据按 1 算） */
   schema: number;
   /** **这份数据比本机新**：里面有本机这个版本还不认识的东西。
-   *  调用方必须当回事——同步要直接拒绝并提示升级，导入要明确问过用户。
-   *  绝不能装作看懂了照老格式填进去，那会把新版本才有的东西悄悄抹掉。 */
+   *  调用方据此**提示**用户（顶上一条可关的横幅、导入前的确认框里加一句），
+   *  **不得据此拒绝加载**——拒绝读取客户之前的日志是产品原则上的错。
+   *  数据本身不会因为读进来就损坏：未知字段由 migrate/mergeData 原样保留。 */
   tooNew: boolean;
 }
 export interface UnpackErr {

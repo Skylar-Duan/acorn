@@ -9,6 +9,11 @@
 // 为什么不逐字段合并：任务是一个整体（改了日期往往连带改了提醒和顺延计数），
 // 逐字段拼会产出「日期是 A 机的、提醒是 B 机的」这种自相矛盾的记录。
 // 整条替换最多丢掉「晚的那次改动之前、早的那次改动之后」的一点内容，代价可预期。
+//
+// **未知字段随赢家整条走**（v1.9.1）：赢的那条记录是原对象直接放进结果，不重建，
+// 所以更新版本的橡果写进去的字段老客户端合一遍也一个不少。顶层同理——
+// 返回值先铺 remote 再铺 local 再覆盖已知键，两边任何一边的顶层未知集合都留得住
+// （同名时听本机的，跟「设置不同步」一个口径）。
 
 import type { AppData, FocusSession, List, Task, Tombstone } from "./model";
 import { DATA_VERSION, pruneGraveyard } from "./model";
@@ -92,7 +97,12 @@ export function mergeData(local: AppData, remote: AppData, now = Date.now()): Me
 
   return {
     data: {
-      version: DATA_VERSION,
+      // 先 remote 后 local：两边的顶层未知集合都带走，同名时本机那份赢
+      ...remote,
+      ...local,
+      // 版本号取三者最大。写死 DATA_VERSION 的那些年，本机每同步一次就把
+      // 「这份是第 7 版」降回 6，云端的 schema 棘轮也跟着被这台老设备拉回去
+      version: Math.max(local.version || 0, remote.version || 0, DATA_VERSION),
       lists,
       tasks,
       sessions: mergeSessions(local.sessions ?? [], remote.sessions ?? []),

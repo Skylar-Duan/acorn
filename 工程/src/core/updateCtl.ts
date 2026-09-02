@@ -81,9 +81,9 @@ export type ManualCheck = "found" | "latest" | "failed" | "unsupported";
 /**
  * 手动查一次，查到就把弹窗顶出来。
  *
- * 给的是设置页之外的入口用的——比如「这台设备上的橡果版本过旧」那一屏：
- * 那一屏替换掉了整个界面，设置页里的 UpdatePanel 根本渲染不到，
- * 不给这条路的话，那一屏一边劝人升级、一边把升级入口全挡住了。
+ * 给的是设置页之外的入口用的——现在是顶上那条 SchemaBanner（「这份数据是新版本写的」）。
+ * 那条横幅劝人升级，就得当场给一条升级的路，不能只说不给。
+ * （v1.9.1 之前它服务的是「版本过旧」那一整屏墙，那屏把设置页整个挡住了。墙已经拆了。）
  */
 export async function checkUpdateNow(): Promise<ManualCheck> {
   if (!updaterSupported) return "unsupported";

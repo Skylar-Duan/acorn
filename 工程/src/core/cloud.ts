@@ -18,7 +18,8 @@ export const API_BASE: string =
   (import.meta.env?.VITE_ACORN_API as string | undefined)?.replace(/\/+$/, "") ||
   "https://acorn.cdpandas.com";
 
-/** 这台设备认得的数据版本。比它新的数据一律拒绝处理 */
+/** 这台设备认得的数据版本。比它新的数据**照常收下**（v1.9.1）——
+ *  本机看不见的字段原样保留、原样推回去，这个数字只用来在界面上说清「你看到的可能不全」 */
 export const CLIENT_SCHEMA = DATA_VERSION;
 
 const AUTH_LS_KEY = "acorn-auth";
@@ -186,6 +187,10 @@ interface PullOut {
   rev: number;
   data: unknown | null;
   updatedAt: string | null;
+  /** 云端那份的模型版本（服务端 GET /api/sync 一并给）。
+   *  暂不往上抛：合并后 data.version 已经取了两边的 max，落盘后下次启动
+   *  persist.loadData 自然会报 tooNew，提示条照样出得来 */
+  schema?: number;
 }
 
 interface ConflictBody {
@@ -211,20 +216,16 @@ export function deviceName(): string {
 
 /** 把服务器上那份解开成 AppData。
  *  · 解不开 → 当云端还没有数据（绝不拿坏数据去合并）
- *  · **比本机新 → 直接抛错**，不合并也不推。桌面版会跑在手机版前面，旧客户端把新数据
- *    按自己认识的格式理解一遍再推回去，新版本才有的东西就被悄悄抹掉了。宁可不同步。 */
+ *  · **比本机新 → 照常收下**（v1.9.1 拆墙）。以前这里抛 `client_too_old`，同步整个停摆，
+ *    用户在这台设备上再也看不到另一台记的东西。现在合并不丢未知字段（merge.ts 赢家整条走、
+ *    顶层两边都铺、墓碑不重建），推回去时信封上盖的是 max 后的 schema（transfer.pack），
+ *    所以既不会把云端降级，也不会撞服务端那道 409。
+ *  · `client_too_old` 这个 slug **仍要认得**：服务端对付的是已经发出去的 v1.9.0 及更老客户端，
+ *    它还会返回，syncCtl 那边照旧要处理。 */
 function unpackRemote(raw: unknown): AppData | null {
   if (raw == null) return null;
   const r = unpack(raw);
   if (!r.ok) return null;
-  if (r.tooNew) {
-    throw new ApiError(
-      0,
-      "client_too_old",
-      `云端数据由更新版本的橡果写入（数据版本 ${r.schema}，这台设备只支持到 ${CLIENT_SCHEMA}）。` +
-        `请先升级这台设备上的橡果；升级前不会同步，本地数据不受影响。`,
-    );
-  }
   return r.data;
 }
 

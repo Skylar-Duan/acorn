@@ -31,10 +31,13 @@ export function cardAnchor(allRows: DateRow[], expandedId: string | null): strin
 export interface FoldPlan {
   /** 被折叠掉、这一轮不该出现的行 */
   hidden: Set<string>;
-  /** 链头行 → 它替多少条没露面的行说话（+N） */
+  /** 链头行 → 它替多少条没露面的行说话（+N）。**只有收起来的链才有条目** */
   more: Map<string, number>;
   /** 链头行：给它画小三角 */
   head: Set<string>;
+  /** 链头行 → 这条链除了它自己还有几条，收着摊着都算。
+   *  摊开态那个「−N（点了收起）」要用它——more 只在收起时才有值，摊开时是空的 */
+  total: Map<string, number>;
 }
 
 /** 整个视图算一次折叠。传进来的必须是**全部**行（跨组），不是某一组 */
@@ -50,10 +53,12 @@ export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
   const hidden = new Set<string>();
   const more = new Map<string, number>();
   const head = new Set<string>();
+  const total = new Map<string, number>();
   for (const [id, n] of count) {
     if (n <= 1) continue; // 就一行，谈不上链
     const headKey = first.get(id)!;
     head.add(headKey);
+    total.set(headKey, n - 1);
     if (!isChainFolded(ui, id)) continue;
     more.set(headKey, n - 1);
     for (const r of allRows) {
@@ -62,7 +67,7 @@ export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
       if (k !== headKey) hidden.add(k);
     }
   }
-  return { hidden, more, head };
+  return { hidden, more, head, total };
 }
 
 export interface RowListProps {
@@ -119,6 +124,8 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone }: 
             ? {
                 folded: fold.more.has(key),
                 more: fold.more.get(key) ?? 0,
+                // 摊开态的「−N」得知道这条链一共有几条：more 那份收起来才有值
+                total: fold.total.get(key) ?? 0,
                 onToggle: () => toggleChain(r.task.id),
               }
             : undefined

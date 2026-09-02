@@ -78,7 +78,7 @@ beforeEach(async () => {
     data: localData(),
     loaded: true,
     loadError: null,
-    dataTooNew: null,
+    dataFromNewer: null,
     rescue: null,
     wiped: false,
   });
@@ -267,11 +267,13 @@ describe("侧栏那行同步指示", () => {
     expect(foot?.text).toContain("已同步");
   });
 
-  it("版本太老同步停摆：明确可见", () => {
+  it("服务端把这台设备挡回来了：明确可见，但口径是「暂停」不是「已停」", () => {
+    // v1.9.1：这个状态不再是终态（退避到点、重开橡果都会自己再试一次），
+    // 文案也跟着改——「同步已停，需升级」读着像「不升级就永远别想同步了」
     const foot = syncFootState({
       session: { ...SESSION, syncedAt: at(60000) }, phase: "idle", needsUpgrade: true,
     });
-    expect(foot).toEqual({ bad: true, text: "同步已停，需升级" });
+    expect(foot).toEqual({ bad: true, text: "同步暂停，升级后恢复" });
   });
 
   it("同步失败：明确可见", () => {

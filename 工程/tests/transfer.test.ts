@@ -111,12 +111,26 @@ describe("导入解包", () => {
     }
   });
 
-  it("信封里 schema 比本机新也照样尽力读（只补不删）", () => {
+  it("信封里 schema 比本机新也照样尽力读（只补不删），**而且版本号不许被降回去**", () => {
     const env = { app: TRANSFER_APP, schema: 99, appVersion: "9.9.9", exportedAt: "x", data: { ...sample(), version: 99 } };
     const r = unpack(env);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.data.tasks.length).toBe(3);
-    expect(r.data.version).toBe(DATA_VERSION);
+    // 曾经这里写死 DATA_VERSION：读一遍就把「这份本来是第 99 版」这个事实抹掉了
+    expect(r.data.version).toBe(99);
+  });
+});
+
+describe("信封上盖的 schema", () => {
+  it("本机自己的数据：盖本机版本", () => {
+    expect(pack(sample(), "1.9.1").schema).toBe(DATA_VERSION);
+  });
+
+  it("**读进来的是第 99 版：盖 99，不盖本机的**", () => {
+    // 报本机版本会撞服务端「schema < stored」那道 409，而云端的 MAX(schema, ?) 棘轮
+    // 又保证报 99 不会把云端降级 —— 报 max 是让棘轮和无损读取共存的唯一取值
+    const d = { ...sample(), version: 99 };
+    expect(pack(d, "1.9.1").schema).toBe(99);
   });
 });

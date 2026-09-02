@@ -9,6 +9,38 @@
   isolation: isolate;
 }
 
+/* ---------- 顶上那条「数据是新版本写的」提示条 ---------- */
+/* 有横幅时多开一行。**必须显式排位**：.shell 里除了 .side 和 .main 之外
+   全是 position:fixed 的浮层（overlay / toast / bulk-bar / ctx-menu / theme-scene），
+   不占格子；靠自动排布的话 .main 会被挤到第一列去 */
+.shell.has-banner { grid-template-rows: auto minmax(0, 1fr); }
+.shell.has-banner > .side { grid-column: 1; grid-row: 1 / span 2; }
+.shell.has-banner > .schema-banner { grid-column: 2; grid-row: 1; }
+.shell.has-banner > .main { grid-column: 2; grid-row: 2; }
+
+.schema-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px 30px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--accent-soft);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.schema-banner .sb-text { flex: 1 1 260px; min-width: 0; }
+.schema-banner .sb-text b { color: var(--ink); }
+.schema-banner .sb-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  /* 换行到第二行时也贴右边，别孤零零杵在左下角（窄屏看图看出来的） */
+  margin-left: auto;
+}
+
 /* ---------- 主题风景水印 ---------- */
 .theme-scene {
   position: fixed;
@@ -180,16 +212,59 @@
   overflow: hidden;
   transition: grid-template-rows var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
 }
-.row-slot > .task-row { min-height: 0; }
-.row-slot.shut { grid-template-rows: 0fr; opacity: 0; }
+/* padding 的过渡挂在**行自己身上**（下面 .shut 那条要用），所以这里得把 .task-row 原来
+   那条 background 过渡一起写回来：这条选择器比 .task-row 更具体，只写 padding 会把
+   hover 变底色的过渡顶掉 */
+/* min-width: 0 是 v1.9.1 最值钱的一行（tests/row-tail.test.ts 钉着它）。
+   .task-row 是 grid item，默认 min-width: auto —— 整行不能收缩到 min-content 以下，
+   于是 .title 上那条早就写好的 text-overflow: ellipsis **从来没生效过**：
+   长标题不是缩短加省略号，而是整行往右溢出，再被 .view-body 的 overflow-x: hidden 一刀切掉。
+   实测 980 视口下长标题那行右缘 1261 vs 视口 950，溢出 311px，整个右侧信息区全看不见。
+   min-height 那句作者当年只写了一半，两个方向都得写 */
+.row-slot > .task-row {
+  min-height: 0;
+  min-width: 0;
+  transition: background var(--dur-1) var(--ease), padding var(--dur-2) var(--ease);
+}
+/* v1.9.1 · 折叠行收不到 0 的那个 bug。
+   0fr 的轨道**解算不到 0**：.task-row 自己有 padding: 8px 10px，加上全局 border-box，
+   一个盒子的高度永远不可能小于它自己的 padding —— 于是每条被折叠的行残留 16px
+   （手机 18px）。上面那句 min-height: 0 管不住 padding，作者当初想到了一半。
+   后果有三：收起 n 条子任务后母行下面躺着 (n-1)×16px 的死白（「段后间距长」）；
+   某个时间段的行全被折叠时组标题不画、死行还在（「段前距更夸张」）；
+   .card-slot 同病残留 42px（见下面 .card-slot > .task-card）。
+   **压 padding 和过渡 padding 必须同时做**：只压不过渡的话硬跳不会消失，
+   只会从动画尾部搬到第 0 帧，观感更糟。
+   opacity: 0 照样命中测试，那条 16px 死带原本是能点能拖的（点下去会打开母任务卡），
+   顺手用 pointer-events 堵掉 */
+.row-slot.shut {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition-timing-function: var(--ease-shut);
+}
+.row-slot.shut > .task-row {
+  padding-top: 0;
+  padding-bottom: 0;
+  transition-timing-function: var(--ease-shut);
+}
 /* 勾掉一件事：先停 --dur-1 让人看见勾上了，再用 --dur-2 收走。
    JS 那边等多久读的是同一对变量（core/motion.ts 的 doneRowMs），不会一处改一处漏 */
-.row-slot.leaving { animation: row-leave var(--dur-2) var(--ease) var(--dur-1) forwards; }
+.row-slot.leaving { animation: row-leave var(--dur-2) var(--ease-shut) var(--dur-1) forwards; }
 @keyframes row-leave { to { grid-template-rows: 0fr; opacity: 0; } }
+/* 这一条是最容易漏的：上面那句是 **animation**，不吃 .row-slot.shut 里的 transition，
+   而且关键帧只作用于挂它的那个元素。padding 归零得在**子元素上另起一条动画**再写一遍，
+   漏了的话勾掉一件事仍然收到 16px 就停、然后行被卸载，尾部照样硬跳一下 */
+.row-slot.leaving > .task-row { animation: row-leave-pad var(--dur-2) var(--ease-shut) var(--dur-1) forwards; }
+@keyframes row-leave-pad { to { padding-top: 0; padding-bottom: 0; } }
 /* 「收起/展开子任务」那个总开关走硬切（B5）：一次翻掉上百行，每帧全列表重算轨道 + 回流，
    正好在行最多时最卡，而这个按钮存在的理由就是「行太多了」。一次性翻掉整列本来也不该有动画。
    只挂一拍，由 core/motion.ts 的 hardCutRows 摘掉；单条小三角一次只动几行，照旧有动画 */
 :root.no-row-anim .row-slot { transition: none; }
+/* 硬切这条路**必须连子元素一起关**：padding 过渡挂在 .task-row 上，只关外层的话
+   总开关会在上百行上同时做 padding 动画——正是 B5 当初撤回时要躲的那个卡顿，
+   等于把已经修好的性能问题重新引回来 */
+:root.no-row-anim .row-slot > .task-row { transition: none; }
 
 /* ---------- 任务行 ---------- */
 .task-row {
@@ -235,6 +310,22 @@
 .task-row .meta .list-tag { display: inline-flex; align-items: center; gap: 5px; }
 .task-row .meta .warn { color: var(--warn); }
 .task-row .meta .overdue { color: var(--warn); font-weight: 600; }
+/* 「完成于 X」那一格的固定右列（v1.9.1）。88px = 实测最宽的一档「完成于 12月28日」86px
+   加 2px 余量；**文字左对齐**，这样每一行的「完成于」都从同一个 x 起笔——
+   用户要的「前面的已完成全部对齐」靠的是这个，不是右对齐。
+   🔴 定宽只许挂在这个 span 上，**绝不能挂到 .task-row .meta**：
+   ListView 那个手搓的回收站行共用 .meta，里面装的是「还剩 N 天」+ 恢复 + 彻底删除两个按钮，
+   给 .meta 定宽会当场把那一行挤烂。 */
+.task-row .meta .when {
+  flex: none;
+  width: 88px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+/* 超过一年那一档要多写两位年（「完成于 25年12月28日」），塞不进 88px。
+   给它单独放宽而不是把整列按最宽的划：99% 的行仍然落在 88px 那条线上，
+   符合用户说的「正好容纳完成于 x月x日」 */
+.task-row .meta .when.wide { width: auto; }
 
 /* 完成动画搬到上面的 .row-slot.leaving 去了：原来写在这儿的 height:auto→0 不可插值，
    浏览器只能在中途硬跳一格 */
@@ -251,7 +342,17 @@
   /* 换主题不做底色渐变（B7 已撤回）：卡里的标题用的是瞬切的 --ink，
      只渐底色时前 ~80ms 是浅字压浅底，标题整个糊掉。见 base.css body 那处 */
 }
-@keyframes card-in { from { opacity: 0; transform: translateY(-4px); } }
+/* margin / padding / border 也写进关键帧（v1.9.1）：它们跟下面 .card-slot.shut 里那份
+   是**同一次修复的两个方向**。不写的话展开的第一帧就凭空冒出 42px 的卡片边框再长大 */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    margin-top: 0; margin-bottom: 0;
+    padding-top: 0; padding-bottom: 0;
+    border-top-width: 0; border-bottom-width: 0;
+  }
+}
 
 /* 任务卡的外壳（B1）：卡片是「长出来」的，不是糊上去的。
    行和卡同时挂在树上，一个收成 0fr 另一个长到 1fr，所以**收起也有动画**——
@@ -265,16 +366,59 @@
 }
 .card-slot > * { min-height: 0; }
 .card-slot.clip { overflow: hidden; }
+/* 跟 .row-slot 一样的病，只是更贵：0fr 的轨道被 .task-card 自己的
+   margin(4+10) + padding(14+12) + border(1+1) = **42px** 顶住，收不到 0。
+   于是收起一件事时动画走到 42px 就停、React 一卸载再啪地塌掉那 42px ——
+   这就是「卡片收缩体验不好」最大的单一来源。
+   选择器**指名 .task-card**，不写 .card-slot.shut > *：这个槽以后还会塞别的东西进来。
+   过渡也只能挂在这条（.card-slot 的后代）上——.task-card 自己那块规矩是
+   「卡片本体不带 transition」（B7 撤回时定的，polish-fixes 有断言钉着） */
+.card-slot > .task-card {
+  transition:
+    margin var(--dur-2) var(--ease),
+    padding var(--dur-2) var(--ease),
+    border-width var(--dur-2) var(--ease);
+}
 .card-slot.shut {
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+  pointer-events: none;
+  transition: grid-template-rows var(--dur-2) var(--ease-shut), opacity var(--dur-2) var(--ease-shut);
+}
+.card-slot.shut > .task-card {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  transition-timing-function: var(--ease-shut);
 }
 @keyframes slot-open { from { grid-template-rows: 0fr; } }
-.task-card .row1 { display: flex; align-items: center; gap: 11px; }
-.task-card .row1 input {
+/* 标题从 input 换成了自动撑高的 textarea（v1.9.1），所以这一行不能再居中对齐：
+   标题长到两三行时，圈圈和小旗会漂到那一坨字的正中间去。改成顶部对齐，
+   再把那三个小件按标题第一行的行高往下顶一点点，单行时看上去跟以前一模一样 */
+.task-card .row1 { display: flex; align-items: flex-start; gap: 11px; }
+.task-card .row1 > .chain-caret,
+.task-card .row1 > .flag,
+.task-card .row1 > .cb { margin-top: 3px; }
+.task-card .row1 > .drop-tag { margin-top: 4px; }
+/* ⚠️ 选择器必须连 textarea 一起写。原来这条只写了 input，
+   换元素之后不改的话字号、字重、去边框全部丢掉，标题当场变成一个默认样式的框 */
+.task-card .row1 input,
+.task-card .row1 textarea {
   flex: 1; border: none; outline: none; background: transparent;
   font-size: var(--fs-lg); font-weight: 600; color: var(--ink); min-width: 0;
+}
+.task-card .row1 textarea {
+  /* 高度由 JS 按内容算（growArea），这儿只负责别让它自己长出滚动条和拖拽把手 */
+  resize: none;
+  overflow: hidden;
+  font-family: var(--sans);
+  line-height: 1.45;
+  padding: 0;
+  margin: 0;
+  display: block;
 }
 /* 备注外面包了一层，只为给提交回执的「✓」一个落脚点。左边那 28px 缩进从 textarea
    挪到外层：留在 textarea 上的话 width:100% 会连着缩进一起超出去 28px */
@@ -286,14 +430,18 @@
 }
 .task-card .tc-notes-ok { left: auto; right: 4px; top: 10px; }
 .task-card .subs { margin: 8px 0 4px 28px; }
-.task-card .subs .sub-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
-.task-card .subs .sub-row input[type="text"] {
+/* 子任务标题也换成了自动撑高的 textarea，同理改顶部对齐 */
+.task-card .subs .sub-row { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: 13px; }
+.task-card .subs .sub-row > .sb { margin-top: 3px; }
+.task-card .subs .sub-row textarea {
   border: none; outline: none; background: transparent; flex: 1; color: var(--ink); font-size: 13px;
+  resize: none; overflow: hidden; font-family: var(--sans); line-height: 1.5;
+  padding: 0; margin: 0; min-width: 0; display: block;
 }
-.task-card .subs .sub-row.done input[type="text"] { color: var(--ink-3); text-decoration: line-through; }
+.task-card .subs .sub-row.done textarea { color: var(--ink-3); text-decoration: line-through; }
 /* 放弃了的那一步：划掉、变淡，圈圈不动 */
-.task-card .subs .sub-row.dropped input[type="text"] { color: var(--ink-3); text-decoration: line-through; }
-.task-card .row1 input.dropped { color: var(--ink-3); text-decoration: line-through; }
+.task-card .subs .sub-row.dropped textarea { color: var(--ink-3); text-decoration: line-through; }
+.task-card .row1 textarea.dropped { color: var(--ink-3); text-decoration: line-through; }
 .task-card .subs .sb {
   width: 13px; height: 13px; border: 1.4px solid var(--ink-3); border-radius: 4px;
   flex: none; background: transparent; padding: 0; position: relative;
@@ -513,6 +661,12 @@
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
 
+  /* 侧栏此时是 position:fixed（下面那条），不占格子，横幅和正文都归第一列。
+     ☰ 也是 fixed 且压在左上角，所以横幅左边要给它让出位置 */
+  .shell.has-banner > .schema-banner { grid-column: 1; grid-row: 1; }
+  .shell.has-banner > .main { grid-column: 1; grid-row: 2; }
+  .schema-banner { padding: 10px 14px 10px 54px; }
+
   /* 侧栏浮在内容之上，默认推到屏幕外；.open 才滑进来 */
   .side {
     position: fixed;
@@ -584,11 +738,15 @@
   /* basis 必须是 0：写 auto 的话长标题的「天然宽度」超过剩余空间，
      flex 容器会把它整条挪到下一行（挪到最左边，比勾选框还靠左），而不是缩短加省略号 */
   .task-row .title { flex: 1 1 0; min-width: 0; }
-  /* 窄屏寸土寸金：小三角整体收窄，但**占位的不能不画**——
-     只去掉占位的话，有链的那行比别的行多缩一格，一列参差不齐 */
-  .chain-caret { width: 9px; }
+  /* 小三角的窄屏版**不在这儿**：它得写在 .chain-caret 本体后面才盖得住（同为一个类名，
+     谁在后面谁赢，而本体在这个 @media 块之后几百行）。原来那句把宽度压到 9px 的声明
+     就写在这里，等于一直没生效——实测手机上量到的是桌面那份 13px。搬到本体旁边了，
+     见文件末尾「子任务链折叠」那一节 */
   .task-row { gap: 9px; }
   .task-row .meta { flex: 1 0 100%; margin-left: 30px; justify-content: flex-start; }
+  /* 这儿 meta 已经换行到第二行、整块左对齐了，「完成于 X」自己就对齐了。
+     再留着桌面那 88px 定宽只会在它右边开一个空洞（后面还跟着别的东西时更明显） */
+  .task-row .meta .when { width: auto; }
 
   /* 折叠头是手指点的，12px 的一行字太薄，撑到跟任务行一个厚度 */
   .task-card .subs .tc-donefold { padding: 10px 0; font-size: 13px; }
@@ -606,29 +764,69 @@
 /* 新增前缀备忘：.gd-（用法页 guide.css）· .chain-（子任务链）· .tc-（任务卡内部件） */
 
 /* ---------- 子任务链折叠（今天 / 计划） ---------- */
-/* 链头行左边那个小三角。不是链头的行占一个等宽空位，免得标题左边缘参差不齐 */
+/* 链头行左边那个小三角。不是链头的行占一个等宽空位，免得标题左边缘参差不齐。
+   v1.9.1：命中区从 10×13 撑到 24×24（低于 24 的按钮鼠标都要瞄，手指更别提），
+   多出来的那圈**用负 margin 吐回行首留白**——margin 盒仍是 13×16，
+   所以行高（由 17px 的勾选圈定）和标题左缘一格没动，
+   上面 .ghost 那条「不是链头的行也占等宽空位免得一列参差」的老口径照旧成立 */
 .chain-caret {
-  width: 13px;
+  width: 24px;
+  height: 24px;
+  margin: -4px -5.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
   font-size: 10px;
   line-height: 1;
   color: var(--ink-2);
   text-align: center;
-  transition: transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  border-radius: 50%;
+  transition: transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-button.chain-caret:hover { color: var(--accent); }
+button.chain-caret:hover { color: var(--accent); background: var(--accent-soft); }
 button.chain-caret.folded { transform: rotate(-90deg); }
 .chain-caret.ghost { visibility: hidden; }
-/* 收起时行尾的「后面还有 N 条」 */
+/* 窄屏版必须写在本体**后面**：同为一个类名，谁在后面谁赢。
+   原来这句放在上面那个 @media (max-width: 760px) 大块里，而大块在本体之前，
+   于是它一直没生效（实测手机上量到的是桌面那 13px）。
+   占的位收窄到 9px（窄屏寸土寸金），命中区反而撑到 28×28（手指不是鼠标）——
+   margin 盒 9×18，18 小于手机上 20px 的勾选圈，所以行高一格不动 */
+@media (max-width: 760px) {
+  .chain-caret { width: 28px; height: 28px; margin: -5px -9.5px; }
+}
+
+/* 链头行上那句灰色的「母任务 › 」前缀，在**链头行**上兼任第二个折叠热区：
+   它够宽、天生就代表母任务，跟「点子任务标题 = 打开这件事的卡片」在语义上不打架。
+   不是链头的行上它只是一段灰字（.chain-parent 不带 .hit），一个像素都没变 */
+.task-row .chain-parent { color: var(--ink-3); }
+.task-row .chain-parent.hit { cursor: pointer; text-underline-offset: 2px; }
+.task-row .chain-parent.hit:hover { color: var(--accent); text-decoration: underline; }
+
+/* 行尾那个徽标：收起时是「+N（点开摊开）」，摊开时是「−N（点了收起）」。
+   两个方向都得有可点物，不然只有收得进去、没有原地收回来的对称入口。
+   它躺在 .meta 里——那一整块挂着 stopPropagation（防止点日期误开卡片），
+   所以徽标的点击在它自己身上处理，绝不去拆 .meta 那句 */
 .task-row .meta .chain-more {
   background: var(--accent-soft);
   color: var(--accent);
   border-radius: 999px;
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
-  /* 收起来的时候「+N」是长出来的一小下（B5），不是凭空冒出来 */
-  animation: badge-in var(--dur-1) var(--ease);
+  /* 收起来的时候「+N」是长出来的一小下（B5），不是凭空冒出来。
+     v1.9.1 从 --dur-1 改到 --dur-2：跟行同一拍，否则徽标先站定、行还在动 */
+  animation: badge-in var(--dur-2) var(--ease);
+  transition: filter var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
+button.chain-more:hover { filter: brightness(.94); }
+/* 摊开态那个「−N」压得很淡：它是个补齐对称的小出口，不该比收起态的 +N 还抢眼 */
+.task-row .meta .chain-more.plain {
+  background: transparent;
+  color: var(--ink-3);
+  border: 1px solid var(--hair);
+  padding: 0 6px;
+}
+button.chain-more.plain:hover { color: var(--accent); border-color: var(--accent); filter: none; }
 @keyframes badge-in { from { opacity: 0; transform: scale(.7); } }
 
 /* ---------- 任务卡底部的「整句改」 ----------
@@ -636,7 +834,9 @@ button.chain-caret.folded { transform: rotate(-90deg); }
    不给外框的话它读起来就是一行说明文字，没人会去点 */
 .tc-sentence {
   display: flex;
-  align-items: center;
+  /* 里面那个框 v1.9.1 起会换行长高（长句子不再被切掉半截），所以左边那个「整句改」小签
+     和右边的 ↺ 得贴着第一行走，不能跟着整坨居中 */
+  align-items: flex-start;
   gap: 8px;
   margin: 10px 0 2px 28px;
   padding: 3px 10px 3px 8px;

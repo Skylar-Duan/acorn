@@ -19,6 +19,15 @@
   color: var(--ink);
 }
 .si-input::placeholder { color: var(--ink-3); }
+/* multiline 那条路（v1.9.1，目前只有任务卡的「整句改」开）：底下是 textarea，
+   高度由 JS 按内容算（autogrow.ts 的 growArea），这儿只管别让它自己长出滚动条和拖拽把手。
+   字体不用管：base.css 有一条 `input, textarea, button { font: inherit }` 兜着 */
+textarea.si-input {
+  resize: none;
+  overflow: hidden;
+  display: block;
+  line-height: 1.5;
+}
 
 /* 解析 chips：视觉与 app.css 的 .chip 一致；这里再声明一份，供未载入 app.css 的小窗使用 */
 .si-chips { display: flex; gap: 6px; flex: none; align-items: center; }

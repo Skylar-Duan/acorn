@@ -248,11 +248,11 @@ export default function Settings() {
         return;
       }
       const from = res.appVersion ? `由 v${res.appVersion} 导出` : "旧版格式";
-      // 文件比本机新：这台橡果读不全它。**不能装作看懂**——照老格式填进来，
-      // 新版本才有的东西（比如习惯的打卡记录）会被悄悄抹掉。把代价说清楚，由用户拍板
+      // 文件比本机新：这台橡果**显示**不全它，但一个字都不会丢（v1.9.1 起 migrate 顶层先铺开、
+      // 墓碑不重建、version 取 max）。把这句话如实说清楚，别再拿「会丢」吓人
       const warn = res.tooNew
-        ? `\n\n⚠️ 这份文件是更新版本的橡果导出的（数据版本 ${res.schema}，这台设备只认到 ${DATA_VERSION}）。` +
-          `导进来的话，新版本才有的东西会丢。建议先把这台设备上的橡果升级再导。`
+        ? `\n\n这份文件是更新版本的橡果导出的（数据版本 ${res.schema}，这台设备只认到 ${DATA_VERSION}）。` +
+          `新版本才有的内容在这台设备上看不见也编辑不了，但会原样保留，升级后就能看到。`
         : "";
       const ok = await dlg.ask(
         `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件${from}，含 ${res.data.tasks.length} 条任务。${warn}\n\n确定继续吗？`,

@@ -142,6 +142,36 @@ export function formatShort(ymd: string, now: Date = new Date()): string {
   return d.getFullYear() === now.getFullYear() ? base : `${d.getFullYear()}年${base}`;
 }
 
+/** 「完成于 / 放弃于」后面那半句（v1.9.1）：今天 / 昨天 / 8月28日 / 25年12月28日。
+ *
+ *  **刻意跟 formatShort 分家，不是图省事复制**。两处口径本来就不一样：
+ *   ① formatShort 认「明天 / 后天」——收场日期不可能在未来，写「完成于 后天」是句胡话；
+ *   ② 年份的门槛不同。formatShort 是「**不是今年**就带年份」，1 月 2 日回头看去年 12 月 31 日
+ *      会写成「2025年12月31日」（实测 122px，塞不进为「完成于 12月28日」划的那条 88px 右侧线）；
+ *      这里按用户说的「**超出一年**才显示年份」，跨年那两天照旧写「12月31日」。
+ *   ③ 带年份时只写两位（25年12月28日），四位年那一档太宽。
+ *  formatShort 有 8 处调用（语法高亮 chip、任务卡的日期按钮 ×2、快捷记、搜索、四象限、任务行 ×2），
+ *  在它身上改年份规则会把「记一条」时的日期 chip 和四象限的日期口径一起改掉。别动它。
+ *
+ *  返回值里带不带年份，调用方要拿来决定右列放不放宽 —— 见 doneShortIsWide */
+export function formatDoneShort(ymd: string, now: Date = new Date()): string {
+  const t = todayYMD(now);
+  const diff = diffDays(t, ymd);
+  if (diff === 0) return "今天";
+  if (diff === -1) return "昨天";
+  const d = fromYMD(ymd);
+  const base = `${d.getMonth() + 1}月${d.getDate()}日`;
+  return doneShortIsWide(ymd, now) ? `${String(d.getFullYear()).slice(2)}年${base}` : base;
+}
+
+/** 这个日子归到「超过一年」那一档吗（= formatDoneShort 会给它加年份）。
+ *  门槛取「今天往前推整一年的那一天」：那天本身还算一年之内，再早一天才带年份。
+ *  分成两个函数是因为 UI 要**先知道宽不宽**才能决定给不给那一格放宽 */
+export function doneShortIsWide(ymd: string, now: Date = new Date()): boolean {
+  const cut = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+  return fromYMD(ymd).getTime() < cut.getTime();
+}
+
 /** 'YYYY-MM-DDTHH:mm'（本地）；reminder 存储用 */
 export function toLocalDT(ymd: string, hm: string): string {
   return `${ymd}T${hm}`;

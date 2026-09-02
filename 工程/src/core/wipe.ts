@@ -116,7 +116,7 @@ export async function restoreFromCloud(): Promise<CloudRestore> {
   await persist.saveData(pulled.data);
   // 不清的话 Ctrl+Z 一按就把覆盖前那份整份写回盘，等于白覆盖
   clearUndo();
-  appStore.setState({ data: pulled.data, loaded: true, loadError: null, dataTooNew: null, rescue: null });
+  appStore.setState({ data: pulled.data, loaded: true, loadError: null, dataFromNewer: null, rescue: null });
   // 版本号跟着走：下一轮同步要报「我是基于第几版改的」，报错了会白白撞一次 409
   const next = { ...session, rev: pulled.rev, syncedAt: new Date().toISOString() };
   await cloud.saveSession(next);

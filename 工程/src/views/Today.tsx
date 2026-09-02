@@ -56,7 +56,18 @@ export default function Today() {
             key={t.id}
             open={expandedId === t.id}
             row={(collapsed) => (
-              <TaskRow task={t} orderedIds={orderedIds} fadeOnDone={false} collapsed={collapsed} />
+              // doneToday 里的每一件都是**今天**做完的（tasksForToday 就是这么筛的），
+              // 所以完成日直接就是 today。以前这儿没传 doneDate，右边写的还是截止日期——
+              // 同一件事在这儿写「今天 15:30」、切到「已完成」写「完成于 今天」，两个口径。
+              // 现在统一成「完成于 X」，也跟着走 tail="date" 那条只留一格日期的规矩
+              <TaskRow
+                task={t}
+                orderedIds={orderedIds}
+                fadeOnDone={false}
+                collapsed={collapsed}
+                doneDate={today}
+                tail="date"
+              />
             )}
             card={() => <TaskCard task={t} />}
           />

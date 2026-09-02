@@ -102,9 +102,9 @@ void (async () => {
     await listen<AddTaskInput & { listName?: string | null }>("quickadd:submit", (e) => {
       const s = appStore.getState();
       // 数据没加载成功时不接收——此时任何写入都会拿空库覆盖磁盘真数据。
-      // 磁盘上那份比本机新时同样不收（收了也存不下去，见 store.doSave）。
-      // wiped：用户刚清空了本机，正等着 reload，这会儿收下也只会石沉大海
-      if (!s.loaded || s.loadError || s.dataTooNew || s.wiped) {
+      // wiped：用户刚清空了本机，正等着 reload，这会儿收下也只会石沉大海。
+      // **更新版本写的数据不在此列**（v1.9.1）：它是真读进来的账本，这一条必须收下
+      if (!s.loaded || s.loadError || s.wiped) {
         showToast("数据尚未就绪（数据文件夹不可用），这一条没有保存", false);
         return;
       }

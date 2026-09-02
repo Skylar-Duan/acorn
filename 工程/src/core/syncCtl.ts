@@ -18,8 +18,15 @@ interface SyncStore {
   message: string;
   /** 有没有攒着还没同步上去的改动 */
   dirty: boolean;
-  /** 云端数据比这台设备新，同步已停摆——只有升级才能解除，重试没用 */
+  /** **服务端**说这台设备太老，把这一次推送挡回来了（409 client_too_old）。
+   *
+   *  客户端自己不再判这件事（v1.9.1：比本机新的数据照读照推，见 cloud.unpackRemote）——
+   *  这个标记只可能来自服务端，而服务端守的是那些已经发出去、改不了的老客户端。
+   *  **它是软状态，不是终态**：置上之后只暂停 UPGRADE_RETRY_MS，到点自己再试一次，
+   *  重开橡果也清零。原来只有重新登录/退出登录才解得开，重启都不行，那才叫「永久停摆」 */
   needsUpgrade: boolean;
+  /** needsUpgrade 的解除时刻（epoch ms）。null = 没被挡过 */
+  upgradeRetryAt: number | null;
   /** 最近一次「每天补一轮」真发出去的时刻（**成功失败都记**）。只活在进程内。
    *  失败时 session.syncedAt 一动不动，光看它的话离线时每次切回窗口都会重跑一整轮 */
   lastAttemptAt: string | null;
@@ -31,11 +38,27 @@ export const syncStore = createStore<SyncStore>(() => ({
   message: "未登录，数据只保存在这台设备上",
   dirty: false,
   needsUpgrade: false,
+  upgradeRetryAt: null,
   lastAttemptAt: null,
 }));
 
 export function useSync<T>(selector: (s: SyncStore) => T): T {
   return useStore(syncStore, selector);
+}
+
+/** 被服务端挡回来之后歇多久再试。**不是「永不再试」**：
+ *  桌面版常驻托盘好几天不重启，永不再试等于用户升级完了同步也不会自己回来。
+ *  退避的理由跟 dailySyncIfNeeded 里 lastAttemptAt 那段一样——
+ *  不退避的话侧栏那行会一直闪「正在同步…」→「同步失败」 */
+export const UPGRADE_RETRY_MS = 6 * 60 * 60 * 1000;
+
+/** 这会儿还在「被服务端挡着」的窗口里吗。到点了就当没挡过，让它再试一次 */
+export function upgradeBlocked(
+  s: Pick<SyncStore, "needsUpgrade" | "upgradeRetryAt">,
+  now = Date.now(),
+): boolean {
+  if (!s.needsUpgrade) return false;
+  return s.upgradeRetryAt === null || now < s.upgradeRetryAt;
 }
 
 /** 改完东西静置多久才同步。太短会把每个字都发上去，太长又怕关机前没传上 */
@@ -84,7 +107,8 @@ export function syncFootState(
   now = Date.now(),
 ): SyncFoot {
   if (!s.session) return null;
-  if (s.needsUpgrade) return { bad: true, text: "同步已停，需升级" };
+  // 「暂停」不是「已停」：升级完（或退避到点）它自己会回来，用户不用做别的
+  if (s.needsUpgrade) return { bad: true, text: "同步暂停，升级后恢复" };
   if (s.phase === "error") return { bad: true, text: "同步失败" };
   if (s.phase === "syncing") return { bad: false, text: "正在同步…" };
   const at = s.session.syncedAt;
@@ -105,7 +129,12 @@ export async function initSync(): Promise<void> {
     set({ session: null, phase: "off", message: idleMessage(null) });
     return;
   }
-  set({ session, phase: "idle", message: idleMessage(session) });
+  // 重开一次橡果就该重新试一次：升级往往正是「关掉 → 装新版 → 打开」，
+  // 不在这里清零的话，装完新版同步照旧不动，用户只能靠重新登录去撞开
+  set({
+    session, phase: "idle", message: idleMessage(session),
+    needsUpgrade: false, upgradeRetryAt: null,
+  });
   watchData();
   void syncNow();
 }
@@ -115,7 +144,7 @@ export async function adoptSession(session: Session): Promise<void> {
   await cloud.saveSession(session);
   set({
     session, phase: "idle", message: idleMessage(session),
-    dirty: false, needsUpgrade: false, lastAttemptAt: null,
+    dirty: false, needsUpgrade: false, upgradeRetryAt: null, lastAttemptAt: null,
   });
   watchData();
   await syncNow();
@@ -135,7 +164,7 @@ export async function signOut(): Promise<void> {
   await cloud.saveSession(null);
   set({
     session: null, phase: "off", message: idleMessage(null),
-    dirty: false, needsUpgrade: false, lastAttemptAt: null,
+    dirty: false, needsUpgrade: false, upgradeRetryAt: null, lastAttemptAt: null,
   });
 }
 
@@ -148,9 +177,10 @@ export type SyncGate = { ok: true; rev: number } | { ok: false; why: string };
 export async function syncNowChecked(): Promise<SyncGate> {
   const before = syncStore.getState();
   if (!before.session) return { ok: false, why: "这台设备没有登录云账号，数据从来没上过云" };
-  if (before.needsUpgrade) return { ok: false, why: before.message };
+  if (upgradeBlocked(before)) return { ok: false, why: before.message };
   const a = appStore.getState();
-  if (!a.loaded || a.loadError || a.dataTooNew || a.rescue) {
+  // **dataFromNewer 不在这里**：那份数据是真读进来的账本，推得上去也判得了
+  if (!a.loaded || a.loadError || a.rescue) {
     return { ok: false, why: "数据还没正常读进来，这会儿判断不了云端是不是全了" };
   }
   // 闸门要的是「**当前这份**上去了」，所以走 force：不许搭一轮早就在飞的旧同步，
@@ -183,7 +213,7 @@ export async function syncNowChecked(): Promise<SyncGate> {
  *  **调用方一律 void 不 await**：这是后台行为，挡不得启动；没网就静默跳过，不打扰。 */
 export async function dailySyncIfNeeded(today = todayYMD()): Promise<boolean> {
   const st = syncStore.getState();
-  if (!st.session || st.needsUpgrade || st.phase === "syncing") return false;
+  if (!st.session || upgradeBlocked(st) || st.phase === "syncing") return false;
   const last = st.session.syncedAt;
   if (last && toYMD(new Date(last)) === today) return false;
   // **失败也算「今天试过了」**：syncedAt 只在成功时前进，只看它的话，
@@ -214,15 +244,17 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
     return running.catch(() => {}).then(() => syncNow(opts));
   }
   const st = syncStore.getState();
-  if (st.needsUpgrade) return Promise.resolve(); // 版本不够，同步已停摆
+  // 服务端刚把我们挡回来，退避窗口内不再撞（到点了 upgradeBlocked 自己放行）
+  if (upgradeBlocked(st)) return Promise.resolve();
   const session = st.session;
   if (!session) return Promise.resolve();
   const state = appStore.getState();
   // 数据没真正读进来之前，内存里那份不代表用户的账本——既不许写盘，也不许推云。
-  // 理由同 store.doSave：loadError（读不出来）、dataTooNew（磁盘上那份比本机新）、
-  // rescue（疑似指错文件夹，等用户拍板）这三种状态下 loaded 都是 true，
-  // 光看 loaded 拦不住，会把一本空账本合并进云端再 PUT 回去
-  if (!state.loaded || state.loadError || state.dataTooNew || state.rescue) return Promise.resolve();
+  // 理由同 store.doSave：loadError（读不出来）、rescue（疑似指错文件夹，等用户拍板）
+  // 这两种状态下 loaded 都是 true，光看 loaded 拦不住，会把一本空账本合并进云端再 PUT 回去。
+  // **dataFromNewer 已从这里去掉**（v1.9.1）：更新版本写的那份是真账本，
+  // 未知字段合并不丢、推上去信封盖的是 max 后的 schema，拦着它反而是把用户的两台设备切断
+  if (!state.loaded || state.loadError || state.rescue) return Promise.resolve();
 
   set({ phase: "syncing", message: "正在同步…" });
   /** 这一轮结束后要不要立刻再跑一轮：往返期间用户又改了东西，那部分还没上云 */
@@ -275,9 +307,15 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
       syncedRef = null;
       const err = e as cloud.ApiError;
       if (err?.slug === "client_too_old") {
-        // 不重试、不再自动同步：这不是网络抖动，重试一百次也一样。
-        // 本地数据一个字不动，用户照常用，等升级完重启就恢复。
-        set({ phase: "error", needsUpgrade: true, message: err.message });
+        // 这一条只可能来自**服务端**（客户端自己不再判，见 cloud.unpackRemote）。
+        // 不是网络抖动，立刻重试没意义，所以歇 UPGRADE_RETRY_MS——但**只是歇着**：
+        // 到点自己再试一次，重开橡果也清零。本地数据一个字不动，用户照常用。
+        set({
+          phase: "error",
+          needsUpgrade: true,
+          upgradeRetryAt: Date.now() + UPGRADE_RETRY_MS,
+          message: err.message,
+        });
         return;
       }
       if (err?.needsLogin) {
@@ -307,7 +345,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
 /** 数据变过就排一次同步（静置 QUIET_MS 后真发） */
 export function requestSync(): void {
   const st = syncStore.getState();
-  if (!st.session || st.needsUpgrade) return;
+  if (!st.session || upgradeBlocked(st)) return;
   set({ dirty: true });
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(() => {

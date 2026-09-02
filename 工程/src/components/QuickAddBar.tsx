@@ -10,6 +10,7 @@ import { LIST_COLORS } from "../core/model";
 import { dayOfWeek, duePresets, formatShort, todayYMD } from "../core/dates";
 import { addList, addTask, allTags, allWho, useApp } from "../core/store";
 import SyntaxInput from "./SyntaxInput";
+import type { SyntaxInputEl } from "./SyntaxInput";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
@@ -165,7 +166,9 @@ export default function QuickAddBar({
    *  那一下正是在给这条事补日期/清单，抢先落库等于帮倒忙。
    *  **窗口失焦同样不算点走**：alt-tab 出去时 relatedTarget 是 null，
    *  拦不住就是打了一半的那句被当场记成一条事 */
-  function commitOnBlur(parsed: ParseResult, e: ReactFocusEvent<HTMLInputElement>): boolean {
+  // 事件的元素类型跟着 SyntaxInput 走：那个框开了 multiline 之后底下可能是 textarea
+  // （随手记这处没开，但类型得对得上，不然 TS 那边参数逆变直接不给过）
+  function commitOnBlur(parsed: ParseResult, e: ReactFocusEvent<SyntaxInputEl>): boolean {
     if (!document.hasFocus()) return false;
     const next = e.relatedTarget as Node | null;
     if (next && wrapRef.current?.contains(next)) return false;

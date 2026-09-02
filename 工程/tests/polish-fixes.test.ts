@@ -72,10 +72,22 @@ describe("B5：一次性翻掉整列走硬切，单条小三角照旧有动画",
     expect(appCss).toContain(":root.no-row-anim .row-slot { transition: none; }");
   });
 
+  // v1.9.1：硬切必须连子元素一起关。padding 的过渡挂在 .task-row 上（见下一组），
+  // 只关外层的话「收起子任务」总开关会在上百行上同时做 padding 动画，
+  // 正是 B5 撤回时要躲的那个卡顿——等于把已经修好的性能问题重新引回来
+  it("硬切连行自己那条 padding 过渡一起关，不然总开关又会卡", () => {
+    expect(appCss).toContain(":root.no-row-anim .row-slot > .task-row { transition: none; }");
+  });
+
   it("行本身的高度过渡还在（单条小三角、让位给任务卡、勾掉收行都靠它）", () => {
     const slot = block(appCss, ".row-slot");
     expect(slot).toContain("transition: grid-template-rows var(--dur-2) var(--ease)");
-    expect(appCss).toContain(".row-slot.shut { grid-template-rows: 0fr; opacity: 0; }");
+    // v1.9.1 之前这里钉的是一行字面量 `.row-slot.shut { grid-template-rows: 0fr; opacity: 0; }`。
+    // 那条规则**本身没错、也没被删**，只是从一行摊成了一块（多了 pointer-events 和收起方向的曲线），
+    // 所以改成按块断言。0fr 和 opacity:0 这两句仍然是这一块的核心，一句都不许少
+    const shut = block(appCss, ".row-slot.shut");
+    expect(shut).toContain("grid-template-rows: 0fr;");
+    expect(shut).toContain("opacity: 0;");
   });
 
   it("总开关这条路先硬切再翻状态，顺序不能反", () => {

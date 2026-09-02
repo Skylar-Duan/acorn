@@ -11,8 +11,10 @@
 // 2026-09-01 起这里也是「放弃」的归宿：顶上一个三选一（做完的 / 放弃的 / 全部），默认「做完的」。
 // **不新开侧栏项**——放弃跟完成一样是「这件事收场了」，收场的东西住同一个屋子，
 // 只是进门时分一下是做成的还是不做了。
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { todayYMD } from "../core/dates";
+import { cardMs } from "../core/motion";
 import { doneGroups } from "../core/plan";
 import type { DateRow } from "../core/store";
 import {
@@ -20,6 +22,7 @@ import {
   rowDroppedAt, rowDroppedDay, rowTaskIds, useApp,
 } from "../core/store";
 import { cardAnchor, rowKey } from "../components/RowList";
+import { CardSlot } from "../components/motion";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
 import "../styles/plan.css";
@@ -116,29 +119,58 @@ export default function Done() {
   // 一件事占好几行时，展开卡只能出现一次——落点整页算一次，各组照着认领
   const anchor = cardAnchor(shown.map((x) => x.row), expandedId);
 
-  const renderRow = (x: DoneItem, i: number, arr: DoneItem[]) => {
+  // 收起卡片也要有动画（B1）。v1.9.1 之前这个视图是**直接拿 TaskCard 顶掉那一行**——
+  // 点开是硬切、那一行整个消失，跟今天/清单/计划三处的做法都不一样。
+  // 现在跟 RowList 同一个口径：行和卡同时挂着，一个收成 0 高另一个长出来，
+  // 卡片从 anchor 上撤走之后再多活一拍，那一拍里 .shut 把高度收回去。
+  // 状态得在渲染里翻、不能放 useEffect：放那儿卡片已经被卸载了，动画没机会开始
+  const [prevAnchor, setPrevAnchor] = useState<string | null>(anchor);
+  const [closing, setClosing] = useState<string | null>(null);
+  if (prevAnchor !== anchor) {
+    setPrevAnchor(anchor);
+    if (anchor) setClosing(null);
+    else if (prevAnchor) setClosing(prevAnchor);
+  }
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(() => setClosing(null), cardMs());
+    return () => clearTimeout(t);
+  }, [closing]);
+
+  // 返回的是**一个平铺数组**（下面用 flatMap 摊开），不是一个 Fragment 套两件东西：
+  // 包一层 Fragment 的话卡片的 key 会活在行 key 的作用域里，
+  // 「卡片按任务 id 认 key」那条规矩当场失效——在卡里勾一条子任务，行没了、
+  // anchor 落到下一行，整张卡会被卸载重建（草稿、折叠状态全清空）
+  const renderRow = (x: DoneItem, i: number, arr: DoneItem[]): ReactNode[] => {
     const key = rowKey(x.row);
-    if (anchor === key) {
-      return (
-        <Fragment key={x.row.task.id}>
-          <TaskCard task={x.row.task} />
-        </Fragment>
-      );
-    }
+    const expanded = anchor === key;
     // 紧挨着的同一件事：需求方/清单只由头一行交代，不逐行重复
     const bundled = !!x.row.sub && i > 0 && arr[i - 1].row.task.id === x.row.task.id;
-    return (
-      <Fragment key={key}>
-        <TaskRow
-          task={x.row.task}
-          sub={x.row.sub}
-          orderedIds={orderedIds}
-          bundled={bundled}
-          fadeOnDone={false}
-          doneDate={x.guessed ? null : x.day}
-        />
-      </Fragment>
-    );
+    const out: ReactNode[] = [
+      <TaskRow
+        key={`row:${key}`}
+        task={x.row.task}
+        sub={x.row.sub}
+        orderedIds={orderedIds}
+        bundled={bundled}
+        fadeOnDone={false}
+        doneDate={x.guessed ? null : x.day}
+        // 右边只留一格「完成于 X」：这个视图里截止日期已经没有意义了，
+        // 归类/@/标签/进度/循环/顺延展开卡片自然看得到
+        tail="date"
+        collapsed={expanded}
+      />,
+    ];
+    // 一件事在这个视图里可能占好几行（母 + 各个子任务），但 anchor 整页只认一行，
+    // 所以这里照样只会画出一张卡
+    if (expanded || key === closing) {
+      out.push(
+        <CardSlot key={`card:${x.row.task.id}`} shut={!expanded}>
+          <TaskCard task={x.row.task} />
+        </CardSlot>,
+      );
+    }
+    return out;
   };
 
   return (
@@ -173,7 +205,7 @@ export default function Done() {
                 {g.label} {g.items.length}
               </div>
             )}
-            {g.shown.map(renderRow)}
+            {g.shown.flatMap(renderRow)}
             {g.rest > 0 && (
               <button className="done-more" onClick={() => setShowAllOld(true)}>
                 {/* g.rest 数的是 DoneItem（行），不是任务件数——跟顶上「N 条 · M 件事」

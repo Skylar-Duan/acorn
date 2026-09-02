@@ -78,8 +78,10 @@ describe("B2：完成动画的时长 JS 和 CSS 共用一份", () => {
   });
 
   it("CSS 那条 row-leave 用的就是同一对变量，顺序也对得上（先停 --dur-1 再收 --dur-2）", () => {
+    // v1.9.1 起曲线是 --ease-shut（收的方向用加速型，见 base.css）。
+    // 时长和延迟这两个数才是跟 JS 的 doneRowMs 配对的那一对，曲线不参与
     expect(readCss("app.css")).toContain(
-      "animation: row-leave var(--dur-2) var(--ease) var(--dur-1) forwards;",
+      "animation: row-leave var(--dur-2) var(--ease-shut) var(--dur-1) forwards;",
     );
   });
 
@@ -95,6 +97,12 @@ describe("B2：完成动画的时长 JS 和 CSS 共用一份", () => {
   it("收行改成了可插值的写法：不再动 height:auto", () => {
     const app = readCss("app.css");
     expect(app).toContain("@keyframes row-leave { to { grid-template-rows: 0fr; opacity: 0; } }");
+    // ⚠️ 这一句禁的是**旧那套 `height: auto → 0` 的不可插值写法**（它连着 padding-top 一起写，
+    //    浏览器只能在中途硬跳一格）。它**不是**在禁「过渡 padding」本身：
+    //    v1.9.1 那套是「0fr 驱动高度 + 顺带把 padding 过渡到 0」，padding 是可插值的，
+    //    而且不压 padding 的话 0fr 的轨道根本收不到 0（盒子高度不可能小于自己的 padding，
+    //    折叠行会永远残留 16px）。两者是相反的两件事，别看到 padding 就照着这条删修复。
+    //    下面「v1.9.1」那一组钉的就是那份修复，删了它这里会一起红
     expect(app).not.toContain("height: 0; padding-top: 0");
   });
 
@@ -135,5 +143,146 @@ describe("B1：行和卡同时挂着，收起也有动画", () => {
     expect(onDoc.indexOf("expandedId")).toBeLessThan(onDoc.indexOf("cardRef.current.contains"));
     // 那条监听的闭包停在首帧，任务 id 只能靠每次渲染刷新的 ref 送进去
     expect(taskCardSource).toContain("taskIdRef.current = task.id;");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// v1.9.1：折叠行收不到 0 的那个 bug（一个 CSS 病根解释了三件用户抱怨的事）
+//
+// 0fr 的轨道**解算不到 0**——.task-row 自己有 padding: 8px 10px，加上全局 border-box，
+// 盒子高度永远不可能小于它自己的 padding，于是每条被折叠的行残留 16px（手机 18px）：
+//   · 收起 n 条子任务 → 母行下面躺着 (n-1)×16px 死白（用户说的「段后间距长」）
+//   · 某个时间段的行全被折叠 → 组标题不画、死行还在（「段前距更夸张」）
+//   · .card-slot 同病，残留 42px（.task-card 的 margin+padding+border）→「卡片感不好」
+//
+// ⚠️ 修法是「0fr 驱动高度 + 把 padding 一起过渡到 0」。它跟上面那条
+//    `not.toContain("height: 0; padding-top: 0")` 禁的**不是一回事**：那条禁的是旧的
+//    `height: auto → 0`（不可插值，中途硬跳）。别看到 padding 就把这份修复删回去。
+describe("v1.9.1：折叠行/收起的卡片必须真收到 0 高", () => {
+  const app = readCss("app.css");
+
+  it("行的上下 padding 跟着一起压掉——只压 min-height 管不住 padding", () => {
+    expect(app).toContain(".row-slot.shut > .task-row {");
+    const shutRow = app.slice(app.indexOf(".row-slot.shut > .task-row {"));
+    const body = shutRow.slice(0, shutRow.indexOf("}"));
+    expect(body).toContain("padding-top: 0;");
+    expect(body).toContain("padding-bottom: 0;");
+  });
+
+  it("padding 必须被**过渡**着收，只压不过渡等于把硬跳从尾部搬到第 0 帧", () => {
+    const rowInSlot = app.slice(app.indexOf("\n.row-slot > .task-row {"));
+    const body = rowInSlot.slice(0, rowInSlot.indexOf("}"));
+    expect(body).toContain("padding var(--dur-2)");
+    // 这条选择器比 .task-row 更具体，只写 padding 会把 hover 变底色那条过渡顶掉
+    expect(body).toContain("background var(--dur-1)");
+  });
+
+  it("勾掉一件事那条是 animation，不吃 transition —— padding 必须在关键帧里再写一遍", () => {
+    expect(app).toContain(".row-slot.leaving > .task-row { animation: row-leave-pad");
+    expect(app).toContain("@keyframes row-leave-pad { to { padding-top: 0; padding-bottom: 0; } }");
+  });
+
+  it("opacity:0 照样能点：那条死带补上了 pointer-events", () => {
+    expect(app.slice(app.indexOf(".row-slot.shut {"), app.indexOf(".row-slot.shut >")))
+      .toContain("pointer-events: none;");
+  });
+
+  it("任务卡那 42px 同样收掉，而且**指名 .task-card**（那个槽以后还会塞别的东西）", () => {
+    expect(app).toContain(".card-slot.shut > .task-card {");
+    expect(app).not.toContain(".card-slot.shut > * {");
+    const card = app.slice(app.indexOf(".card-slot.shut > .task-card {"));
+    const body = card.slice(0, card.indexOf("}"));
+    for (const d of ["margin-top: 0;", "margin-bottom: 0;", "padding-top: 0;", "padding-bottom: 0;", "border-top-width: 0;", "border-bottom-width: 0;"]) {
+      expect(body).toContain(d);
+    }
+    // 展开方向也得对上，否则第一帧凭空冒出 42px 的卡片边框再长大
+    expect(app).toMatch(/@keyframes card-in \{[\s\S]*?padding-top: 0;[\s\S]*?\n\}/);
+  });
+
+  it("侧栏折叠**不许**被顺手并进来：它的子元素是无 padding 的 ul，本来就是 0", () => {
+    expect(app).toContain(".side-fold.shut { grid-template-rows: 0fr; }");
+    expect(app).not.toContain(".side-fold.shut > ");
+  });
+
+  it("收起方向有自己的加速型曲线，而且只在 base.css 定义一处", () => {
+    expect(baseCss).toContain("--ease-shut:");
+    // 别处不许再写第二条 cubic-bezier
+    expect(readCss("app.css")).not.toContain("cubic-bezier");
+    for (const s of [".row-slot.shut", ".row-slot.leaving", ".card-slot.shut"]) {
+      expect(app.slice(app.indexOf(`\n${s}`), app.indexOf(`\n${s}`) + 400)).toContain("--ease-shut");
+    }
+  });
+
+  it("+N 徽标跟行同一拍（原来 --dur-1，徽标先站定、行还在动）", () => {
+    expect(app).toContain("animation: badge-in var(--dur-2) var(--ease);");
+  });
+});
+
+describe("v1.9.1：折叠的点击热区（候选 A）", () => {
+  const app = readCss("app.css");
+
+  it("小三角撑到 24×24，用负 margin 吃行首留白——行高和标题左缘一格不动", () => {
+    const caret = app.slice(app.indexOf("\n.chain-caret {"));
+    const body = caret.slice(0, caret.indexOf("}"));
+    expect(body).toContain("width: 24px;");
+    expect(body).toContain("height: 24px;");
+    expect(body).toContain("margin: -4px -5.5px;"); // 24-11=13 宽、24-8=16 高，跟改前一模一样
+    // 不是链头的行照旧占等宽空位，一列不参差
+    expect(app).toContain(".chain-caret.ghost { visibility: hidden; }");
+  });
+
+  it("手机端跟着改：占位还是 9px，命中区 28×28", () => {
+    expect(app).toContain(".chain-caret { width: 28px; height: 28px; margin: -5px -9.5px; }");
+  });
+
+  // 顺手修的老 bug：窄屏那句原来写在文件中段那个 @media 大块里，而 .chain-caret 本体在它**后面**，
+  // 同一个类名谁在后面谁赢 —— 于是窄屏版一直没生效（实测手机上量到的是桌面那 13px）
+  it("窄屏版写在 .chain-caret 本体之后，否则盖不住（老 bug）", () => {
+    // 本体（行首那条）必须排在窄屏那条**前面**
+    const base = app.search(/(^|\r?\n)\.chain-caret \{/);
+    const narrow = app.indexOf(".chain-caret { width: 28px;");
+    expect(base).toBeGreaterThan(-1);
+    expect(narrow).toBeGreaterThan(base);
+    // 全仓只剩这一条窄屏声明：中段那个 @media 大块里再留一份也是死的，
+    // 留着下一个人会以为它在生效
+    expect(app.split(/\.chain-caret \{ width:/).length - 1).toBe(1);
+  });
+
+  it("「母任务 › 」前缀在链头行上是第二个热区，不是链头的行一个像素没变", () => {
+    expect(taskRowSource).toContain('className={`chain-parent${chain ? " hit" : ""}`}');
+    expect(taskRowSource).toContain("onClick={chain ? onFoldHit : undefined}");
+    expect(app).toContain(".task-row .chain-parent.hit:hover");
+  });
+
+  it("徽标两个方向都有：收起是 +N，摊开是 −N", () => {
+    expect(taskRowSource).toContain("`+${chain.more}`");
+    expect(taskRowSource).toContain("`−${chain.total}`");
+    expect(rowListSource).toContain("total: fold.total.get(key) ?? 0,");
+  });
+
+  it("绝不为了让徽标可点就拆掉 .meta 那句 stopPropagation（点日期会误开卡片）", () => {
+    expect(taskRowSource).toContain('<span className="meta" onClick={(e) => e.stopPropagation()}>');
+  });
+
+  it("每一块新热区都先放行 Ctrl/Shift 连选——连选是「按件不按行」的设计基石", () => {
+    const hit = taskRowSource.slice(
+      taskRowSource.indexOf("function onFoldHit"),
+      taskRowSource.indexOf("function onCtx"),
+    );
+    expect(hit).toContain("if (multiSelect(e)) return;");
+    // 整行点击仍然是「打开任务卡」，没被改成折叠
+    expect(taskRowSource).toContain("onClick={onRowClick}");
+    expect(taskRowSource).toMatch(/function onRowClick[\s\S]*?expandTask\(task\.id\);/);
+  });
+});
+
+describe("v1.9.1：键盘 ←收链 / →摊开", () => {
+  it("挂在原本空着的 ←/→ 上，而且排在 mod+→（顺延）后面、自己带 !mod", () => {
+    const src = readFileSync("src/App.tsx", "utf8");
+    expect(src).toContain('setChainFolded(selectedIds[0], e.key === "ArrowLeft");');
+    // 必须在「顺延」之后，否则 Ctrl+→ 会被这条先接走
+    expect(src.indexOf('mod && e.key === "ArrowRight"'))
+      .toBeLessThan(src.indexOf('e.key === "ArrowLeft" || e.key === "ArrowRight"'));
+    expect(src).toContain("hasChain(selectedIds[0])");
   });
 });

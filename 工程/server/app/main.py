@@ -346,7 +346,15 @@ def push(body: PushIn, user: CurrentUser) -> dict:
 
     # 旧客户端不许把新数据按老格式盖回来。桌面版会跑在手机版前面，手机上那份旧橡果
     # 如果把新版模型的数据按自己认识的样子理解一遍再推上来，新版本才有的东西就没了。
-    # 客户端那边也会拒绝（见 cloud.ts 的 unpackRemote），这里是第二道闸。
+    #
+    # **这道 409 在 v1.9.1 之后仍然保留，而且必须保留**（2026-09-01 定）：
+    # 它守的不再是新客户端，而是**已经发到用户机器上、再也改不了的 v1.9.0 及更老客户端**——
+    # 那些版本的 migrate/mergeData 会把顶层未知集合和墓碑上的未知字段整块吃掉，
+    # 让它们把 schema 更高的库盖回来就是真丢数据。
+    # v1.9.1 起的客户端不会撞到这里：它读进 schema 7 就照 7 报（transfer.pack 取
+    # max(DATA_VERSION, data.version)），schema < stored 天然不成立。
+    # 所以判据一个字都不用改，也不用加 lossless 之类的新标记 —— 靠客户端报对数字就够了。
+    # db.put_vault 那个 schema = MAX(旧, 新) 的棘轮跟这条是配套的，一起别动。
     vault = db.get_vault(int(user["id"]))
     stored = int(vault["schema"] or 0)
     if schema < stored:

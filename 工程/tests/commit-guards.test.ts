@@ -824,8 +824,11 @@ describe("「失焦即提交」不许把「窗口失焦」当成「点走」（a
     expect(quick.slice(0, 200)).toContain("if (!document.hasFocus()) return false;");
     const habitsBlur = habitsSource.slice(habitsSource.indexOf("onBlur={(e) => {"));
     expect(habitsBlur.indexOf("document.hasFocus()")).toBeLessThan(habitsBlur.indexOf("create();"));
-    // SyntaxInput 是一处盖住三个调用方的总闸，必须挡在 onBlurCommit 之前
-    const siBlur = syntaxInputSource.slice(syntaxInputSource.indexOf("onBlur={(e: ReactFocusEvent"));
+    // SyntaxInput 是一处盖住三个调用方的总闸，必须挡在 onBlurCommit 之前。
+    // v1.9.1 起这个框有 input / textarea 两条路（整句改开了 multiline），
+    // 两条路共用一份属性对象，blur 抽成了具名的 handleBlur——闸门还是同一道，只是搬了个家
+    expect(syntaxInputSource).toContain("onBlur: handleBlur,");
+    const siBlur = syntaxInputSource.slice(syntaxInputSource.indexOf("function handleBlur"));
     expect(siBlur).toContain("if (!document.hasFocus()) return;");
     expect(siBlur.indexOf("document.hasFocus()")).toBeLessThan(siBlur.indexOf("onBlurCommit(parsed, e)"));
   });

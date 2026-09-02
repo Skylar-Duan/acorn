@@ -125,7 +125,10 @@ export const APP_VERSION: string =
 export const DATA_VERSION = 6;
 
 export interface AppData {
-  version: 6;
+  /** 这份数据本来是第几版。**不是字面量 6**：更新版本的橡果写的数据被老客户端读进来时，
+   *  这个数字必须原样活下来（migrate 取 max，见下），否则「这份是第 7 版」这个事实
+   *  会被老客户端一次保存就抹成 6，云端的 schema 棘轮也会被它拉回去 */
+  version: number;
   lists: List[];
   tasks: Task[];
   sessions: FocusSession[];
@@ -229,12 +232,23 @@ export function normalizeWho(v: unknown): string[] {
  *  v5 → v6：子任务补 doneAt、任务与子任务各补 droppedAt（都补 null，不补「现在」）。
  *           之所以为可选字段升版本：老客户端不只是「读进来看不见新字段」，它还会**持续写入**
  *           勾掉却没有 doneAt 的已完成子任务，新客户端拿到只能猜日子；「放弃」它更是整个不认，
- *           在它那边一件已放弃的事会照旧躺在待办里。升版本把老客户端挡在同步之外
+ *           在它那边一件已放弃的事会照旧躺在待办里。升版本是为了让新客户端知道该防着谁，
+ *           **不是为了把老客户端挡在门外**（v1.9.1 起：比本机新的数据照读，见下）
+ *
+ *  **比本机新的数据一律照常读进来，一个字段都不许丢**（v1.9.1 的产品原则）：
+ *  · 顶层先铺开原始对象再覆盖已知键 —— 新版本才有的顶层集合（projects/notebooks…）不被吞掉
+ *  · 墓碑只过滤不重建 —— 墓碑上的未知字段跟着走
+ *  · version 取 `max(DATA_VERSION, 读到的)` —— 「这份本来是第几版」这个事实活下来
+ *  丢掉其中任何一条，老客户端读一次、存一次就把新版本的数据吃掉一层，用户毫不知情。
  *
  *  **字段差异表、转化规则、升不升版本的判据都在 `docs/数据模型变更.md`**，
  *  这段注释只留一句摘要，改模型时以那份台账为准。 */
 export function migrate(raw: unknown): AppData {
-  const d = (raw ?? {}) as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };
+  // 只有「真正的对象」才配被铺开。字符串会被 spread 成 {0:'a',1:'b'}、数组会被铺成下标键，
+  // 那不是数据是垃圾——这一层过滤就是老那个 6 键字面量顺带起过的「消毒」作用
+  const src: Record<string, unknown> =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const d = src as Partial<AppData> & { tasks?: (Task & { someday?: boolean })[] };
   const base = defaultData();
   const settings = { ...defaultSettings(), ...(d.settings ?? {}) };
   const epoch = new Date(0).toISOString();
@@ -265,20 +279,23 @@ export function migrate(raw: unknown): AppData {
   const lists = (Array.isArray(d.lists) && d.lists.length ? (d.lists as List[]) : base.lists).map(
     (l) => ({ ...l, updatedAt: typeof l.updatedAt === "string" && l.updatedAt ? l.updatedAt : epoch }),
   );
-  const graveyard = (Array.isArray(d.graveyard) ? d.graveyard : [])
-    .filter(
-      (g): g is Tombstone =>
-        !!g && typeof (g as Tombstone).id === "string" && typeof (g as Tombstone).at === "string",
-    )
-    .map((g) => ({ id: g.id, at: g.at }));
+  // **只过滤，不重建**。以前这里跟着一个 `.map(g => ({id, at}))`，墓碑因此是全代码
+  // 唯一会丢未知字段的结构——给墓碑加字段（比如「删的是任务还是清单」），老客户端过一遍就抹了
+  const graveyard = (Array.isArray(d.graveyard) ? d.graveyard : []).filter(
+    (g): g is Tombstone =>
+      !!g && typeof (g as Tombstone).id === "string" && typeof (g as Tombstone).at === "string",
+  );
+  // 先铺开原始对象、再覆盖已知键：这样新版本才有的**顶层集合**原样留着。
+  // 写成 6 键字面量的那些年，schema 7 的 projects/notebooks 每读一次就整个消失，连痕迹都没有
   return {
-    version: 6,
+    ...src,
+    version: Math.max(DATA_VERSION, typeof d.version === "number" ? d.version : 0),
     lists,
     tasks,
     sessions: Array.isArray(d.sessions) ? (d.sessions as FocusSession[]) : [],
     settings,
     graveyard: pruneGraveyard(graveyard),
-  };
+  } as AppData;
 }
 
 /** 打卡日期归一：只留合法的 'YYYY-MM-DD'，去重升序。
@@ -292,15 +309,18 @@ export function normalizeCheckIns(v: unknown): string[] {
   return [...out].sort();
 }
 
-/** 太老的墓碑清掉——所有设备早就同步过了，再留着只是白占地方 */
+/** 太老的墓碑清掉——所有设备早就同步过了，再留着只是白占地方。
+ *
+ *  **留的是原对象，不是 `{id, at}` 重建件**：它是 migrate / mergeData / bury 三条路的共同咽喉，
+ *  在这里重建一次，墓碑上的未知字段就每次迁移、每次同步、每次彻底删除各丢一次 */
 export function pruneGraveyard(graves: Tombstone[], now = Date.now()): Tombstone[] {
   const cutoff = now - TOMBSTONE_DAYS * 86400000;
-  const seen = new Map<string, string>();
+  const seen = new Map<string, Tombstone>();
   for (const g of graves) {
     const at = new Date(g.at).getTime();
     if (!Number.isFinite(at) || at < cutoff) continue;
     const prev = seen.get(g.id);
-    if (prev === undefined || prev < g.at) seen.set(g.id, g.at);
+    if (prev === undefined || prev.at < g.at) seen.set(g.id, g);
   }
-  return [...seen.entries()].map(([id, at]) => ({ id, at }));
+  return [...seen.values()];
 }

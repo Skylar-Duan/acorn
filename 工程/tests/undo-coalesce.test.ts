@@ -36,7 +36,7 @@ beforeEach(async () => {
     data: defaultData(),
     loaded: true,
     loadError: null,
-    dataTooNew: null,
+    dataFromNewer: null,
     rescue: null,
     wiped: false,
     ui: {

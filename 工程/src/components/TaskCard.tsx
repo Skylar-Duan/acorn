@@ -1,7 +1,7 @@
 // 展开的任务卡：原地编辑一切字段。Esc / 点击卡外收起。
 // v1.1：日期选择用草稿态（翻月不再立刻保存）；子任务可带自己的日期/优先级（默认继承）；
 // 底部「快捷改」——用快速添加同款语法改任务（出现哪类要素就改哪类，其余不动）。
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { cmpYMD, duePresets, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
@@ -17,6 +17,7 @@ import {
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
 import SyntaxInput from "./SyntaxInput";
+import { growArea, oneLine } from "./autogrow";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
@@ -80,7 +81,8 @@ export default function TaskCard({ task }: { task: Task }) {
    *  用 ref 保证结算的永远是最新那一份 */
   const settleDueRef = useRef<() => void>(() => {});
   const cardRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
+  // v1.9.1 起标题是 textarea 不是 input（长标题在卡里换行显示，不再被截断）
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   /** 需求方 / 标签这两个内联框：卡片被点没了的时候要能把里面的字捞出来（A1） */
   const whoInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +143,19 @@ export default function TaskCard({ task }: { task: Task }) {
       if (subFlashTimer.current) clearTimeout(subFlashTimer.current);
     };
   }, []);
+
+  // 标题框的高度跟着内容走。自己打字那一路 onChange 里已经算过一遍了，这条管的是
+  // **别处改进来的**：底下「整句改」改了标题、撤销、云同步拉回一份、或者换了一件事
+  // （卡片按任务 id 认 key，同一件事换标题时组件是不重建的）
+  useLayoutEffect(() => {
+    growArea(titleRef.current);
+  }, [task.title]);
+  // 子任务那一堆同理。它们没有各自的 ref（是个 map 出来的列表），
+  // ref={growArea} 只在挂载那一下调一次，所以外部改动（撤销/同步/整句改）得在这儿补一遍。
+  // 只扫这张卡自己的 .subs，不动别处
+  useLayoutEffect(() => {
+    cardRef.current?.querySelectorAll<HTMLTextAreaElement>(".subs textarea").forEach((el) => growArea(el));
+  }, [task.subtasks]);
 
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   const today = todayYMD();
@@ -400,13 +415,25 @@ export default function TaskCard({ task }: { task: Task }) {
     return (
       <div key={s.id} className={`sub-row${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}`} style={{ position: "relative" }}>
         <button className={`sb${s.done ? " done" : ""}`} onClick={() => toggleSubtask(task.id, s.id)} />
-        <input
-          type="text"
+        {/* 子任务标题跟母任务标题同一个待遇：长了就换行，不再单行截断（v1.9.1）。
+            ref 直接给 growArea——它是个模块级的稳定函数，React 只在元素挂/卸时调它，
+            不会每渲染一次就重挂一遍 */}
+        <textarea
+          rows={1}
+          ref={growArea}
           className={subFlash === s.id ? "commit-lit" : undefined}
           value={s.title}
           onChange={(e) => {
-            updateSubtask(task.id, s.id, { title: e.target.value });
+            growArea(e.currentTarget);
+            updateSubtask(task.id, s.id, { title: oneLine(e.target.value) });
             touchSub(s.id);
+          }}
+          // 换成 textarea 之后 Enter 默认是换行，得拦下来：子任务标题是一行字段。
+          // Shift+Enter 收卡，跟母任务标题和备注一个规矩
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            if (e.shiftKey) expandTask(null);
           }}
         />
         <CommitMark on={subFlash === s.id} />
@@ -497,14 +524,24 @@ export default function TaskCard({ task }: { task: Task }) {
           className={`cb${task.done ? " done" : ""}`}
           onClick={() => (task.done ? uncompleteTask(task.id) : completeTask(task.id))}
         />
-        <input
+        {/* v1.9.1：input → 自动撑高的 textarea。用户原话「点开后能够多行显示」——
+            长标题在列表行上是一行省略号，点开这张卡才是看全的地方，
+            它自己再截断一次就等于没地方看全了。
+            rows={1} 起步，高度由 growArea 按内容算；键盘约定原样保住（见下面 onKeyDown） */}
+        <textarea
           ref={titleRef}
+          rows={1}
           className={`${task.droppedAt ? "dropped" : ""}${titleFlash ? " commit-lit" : ""}`.trim() || undefined}
           value={task.title}
           placeholder="任务标题"
-          onChange={(e) => updateTask(task.id, { title: e.target.value })}
+          onChange={(e) => {
+            growArea(e.currentTarget);
+            updateTask(task.id, { title: oneLine(e.target.value) });
+          }}
           // A8「一路回车敲完一张卡」：回车不再是收卡片，而是走到下一个框（备注）。
-          // 想收卡片按 Shift+Enter——收卡这件事从「最容易误触的键」挪成「要多按一个键」
+          // 想收卡片按 Shift+Enter——收卡这件事从「最容易误触的键」挪成「要多按一个键」。
+          // ⚠️ 换成 textarea 之后这段更不能少：Enter 在 textarea 里默认是插一个换行，
+          // 不拦的话敲回车不是跳备注，而是把标题敲成两行
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             e.preventDefault();
@@ -832,6 +869,10 @@ export default function TaskCard({ task }: { task: Task }) {
           tags={tagNames}
           whos={whoNames}
           showChips
+          // 长句子在这儿换行显示，不再被右边界切掉半截（v1.9.1）。
+          // 只有这一处开：随手记那条是个一行高的横条、快捷记浮窗是固定大小的系统窗口，
+          // 那两处长高了会把宿主的版式顶变形
+          multiline
           inputStyle={{ fontSize: 12.5, padding: "5px 9px" }}
         />
         {sentence.safe && live !== baseText && (

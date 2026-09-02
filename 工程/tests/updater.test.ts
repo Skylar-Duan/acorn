@@ -391,10 +391,11 @@ describe("交接途中的取消", () => {
   });
 });
 
-// ---------- 「版本过旧」那一屏上的检查更新 ----------
+// ---------- 提示条上的「检查更新」 ----------
 //
-// 那一屏替换掉了整个界面，设置页里的 UpdatePanel 渲染不到；不给这条路的话，
-// 它就是一边写着「升级到同一版本即可」、一边把升级入口全挡了。
+// 去处是顶上那条 SchemaBanner（「这份数据是新版本写的」）。横幅劝人升级，
+// 就得当场给一条升级的路，不能只说不给。
+// （v1.9.1 之前它服务的是「版本过旧」那一整屏墙——那屏把设置页整个挡住了，墙已经拆了。）
 
 describe("手动查一次", () => {
   afterEach(() => {
@@ -402,7 +403,7 @@ describe("手动查一次", () => {
     updateStore.setState({ pending: null });
   });
 
-  it("查到新版就把弹窗顶出来（那一屏上这是唯一的升级入口）", async () => {
+  it("查到新版就把弹窗顶出来（横幅上这是唯一的升级入口）", async () => {
     vi.stubGlobal("fetch", () => Promise.resolve(okResponse(manifest({ version: "99.0.0" }))));
     expect(await checkUpdateNow()).toBe("found");
     expect(updateStore.getState().pending?.version).toBe("99.0.0");

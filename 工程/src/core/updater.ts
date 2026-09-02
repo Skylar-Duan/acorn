@@ -73,7 +73,11 @@ export function shouldOffer(info: UpdateInfo | null, local: string = APP_VERSION
   return isNewer(info.version, local);
 }
 
-/** 这次更新是不是「非升不可」——新版数据模型比本机高，不升就同步不了 */
+/** 新版本的数据模型比本机高。
+ *
+ *  **语义在 v1.9.1 降了一级**：以前是「不升就同步不了」（老客户端遇到新数据整个停摆），
+ *  现在是「升了才看得见新内容」——数据照读照存照同步，只是本机不认识的部分显示不出来。
+ *  名字保留是为了不动 UpdateDialog / UpdatePanel 那几处引用，文案已经跟着改。 */
 export function isRequiredForSync(info: UpdateInfo | null): boolean {
   return info !== null && info.schema > DATA_VERSION;
 }

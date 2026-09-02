@@ -164,8 +164,42 @@ describe("设置不同步", () => {
 });
 
 describe("合并结果的形状", () => {
-  it("版本号永远是当前版本", () => {
+  it("版本号取 local / remote / 本机三者最大，**不许降回本机版本**", () => {
     expect(mergeData(base([]), base([])).data.version).toBe(DATA_VERSION);
+    // 云端那份是更新版本的橡果写的：合完还得是第 7 版。写死 DATA_VERSION 的话，
+    // 这台老设备每同步一次就把云端的 schema 棘轮往回拽一次
+    const newer = { ...base([]), version: DATA_VERSION + 1 };
+    expect(mergeData(base([]), newer).data.version).toBe(DATA_VERSION + 1);
+    expect(mergeData(newer, base([])).data.version).toBe(DATA_VERSION + 1);
+  });
+
+  it("顶层未知集合两边都留得住（同名时听本机的，跟「设置不同步」一个口径）", () => {
+    const local = { ...base([]), projects: [{ id: "p1" }] } as unknown as AppData;
+    const remote = { ...base([]), notebooks: [{ id: "n1" }] } as unknown as AppData;
+    const out = mergeData(local, remote).data as unknown as Record<string, unknown>;
+    expect(out.projects).toEqual([{ id: "p1" }]);
+    expect(out.notebooks).toEqual([{ id: "n1" }]);
+
+    const both = mergeData(
+      { ...base([]), projects: ["本机的"] } as unknown as AppData,
+      { ...base([]), projects: ["云端的"] } as unknown as AppData,
+    ).data as unknown as Record<string, unknown>;
+    expect(both.projects).toEqual(["本机的"]);
+  });
+
+  it("墓碑上的未知字段合并后仍在（pruneGraveyard 每同步一次就重建一遍，是重灾区）", () => {
+    const at = T2;
+    const local = { ...base([]), graveyard: [{ id: "gone", at, kind: "list" }] } as unknown as AppData;
+    const out = mergeData(local, base([])).data;
+    expect(out.graveyard).toEqual([{ id: "gone", at, kind: "list" }]);
+  });
+
+  it("赢家整条替换时，赢家身上的未知字段跟着走", () => {
+    const local = base([task("a", "本机的旧版", T1)]);
+    const winner = { ...task("a", "云端的新版", T2), energy: "high" } as unknown as Task;
+    const remote = base([winner]);
+    const out = mergeData(local, remote).data;
+    expect((out.tasks[0] as unknown as { energy?: string }).energy).toBe("high");
   });
 
   it("summary 说清这次实际发生了什么", () => {

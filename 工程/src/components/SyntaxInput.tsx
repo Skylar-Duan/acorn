@@ -1,6 +1,6 @@
 // 可复用的「快捷语法输入框」：边打字边解析 chips 预览，# 标签 · @ 需求方 · / 清单 自动补全。
 // 纯受控组件：不碰 store，候选与文本全走 props；回车把 ParseResult 交还调用方落库。
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangeEvent,
   CSSProperties,
@@ -11,6 +11,7 @@ import type {
 import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
 import { CommitMark, useCommitFlash } from "./commitFlash";
+import { growArea } from "./autogrow";
 import "../styles/syntaxinput.css";
 
 export interface SyntaxInputProps {
@@ -35,13 +36,25 @@ export interface SyntaxInputProps {
    *  随手记要躲开自己那排点选按钮、浮窗根本不能在失焦时落库——各家自己判。
    *  不给这个 prop 就是老样子：失焦只关补全下拉，什么都不提交。
    *  返回 true = 真的存下去了，这边才闪回执 */
-  onBlurCommit?: (parsed: ParseResult, e: ReactFocusEvent<HTMLInputElement>) => boolean;
+  onBlurCommit?: (parsed: ParseResult, e: ReactFocusEvent<SyntaxInputEl>) => boolean;
   /** 补全下拉没开着时按 Esc。返回 true = 这一下我吃掉了（不再往外冒泡）。
    *  整句改那处第一下 Esc 是「还原本句」，浮窗那处是「隐藏窗口」，语义各不相同 */
   onEscape?: () => boolean;
   /** Shift+Enter（A8「一路回车敲完一张卡」里的收卡那一下）。不给就当普通回车 */
   onShiftEnter?: () => void;
+  /** 长句子换行显示，不再单行截断（v1.9.1）。底下的元素从 input 换成自动撑高的 textarea。
+   *
+   *  **默认关着，只有任务卡那条「整句改」开它**。随手记那条是个一行高的横条、
+   *  快捷记浮窗更是一个固定大小的系统窗口——那两处长高了就会把宿主的版式顶变形。
+   *  开着的时候语义一点不变：回车照旧是提交（在 textarea 里得自己拦掉默认的换行），
+   *  粘进来的换行符照旧当空格吃掉（一句话就是一句话，不能是两行）。 */
+  multiline?: boolean;
 }
+
+/** 这个框底下那个真实元素。开了 multiline 是 textarea，否则还是 input——
+ *  两条路的事件、光标 API（selectionStart / setSelectionRange）完全一致，
+ *  所以上面那一整套补全/提交逻辑一份就够，不必分家 */
+export type SyntaxInputEl = HTMLInputElement | HTMLTextAreaElement;
 
 // chips 图标：与 QuickAddBar 保持一致
 const CHIP_ICON: Record<ParseChip["kind"], string> = {
@@ -82,9 +95,9 @@ interface DropMatch {
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
   placeholder, autoFocus, showChips = true, skip, inputStyle,
-  onBlurCommit, onEscape, onShiftEnter,
+  onBlurCommit, onEscape, onShiftEnter, multiline = false,
 }: SyntaxInputProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<SyntaxInputEl | null>(null);
   const { on: flashOn, flash } = useCommitFlash();
   const [caret, setCaret] = useState(0);
   /** Esc 关掉的那个下拉的签名：签名不变就不再弹，继续敲字换了签名会重开 */
@@ -133,6 +146,15 @@ export default function SyntaxInput({
     }
   }, [value]);
 
+  // multiline 那条路的高度跟着内容走。ref 回调只在挂载那一下调一次，
+  // 所以每次 value 变了都得再算一遍——**受控组件**，句子还会被调用方从外面改
+  // （任务卡的「整句改」按 ↺ 还原、改完别的字段之后那句话自己重算）
+  useLayoutEffect(() => {
+    if (!multiline) return;
+    const el = inputRef.current;
+    if (el instanceof HTMLTextAreaElement) growArea(el);
+  }, [value, multiline]);
+
   /** 把部分 token 替换成完整值 + 尾随空格，焦点留在输入框继续打 */
   function accept(item: string) {
     if (drop === null) return;
@@ -144,7 +166,7 @@ export default function SyntaxInput({
     onChange(next);
   }
 
-  function handleKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: ReactKeyboardEvent<SyntaxInputEl>) {
     if (e.nativeEvent.isComposing) return; // IME 组字中不抢按键
     if (open && drop !== null) {
       const n = drop.items.length;
@@ -168,8 +190,10 @@ export default function SyntaxInput({
       return;
     }
     if (e.key === "Enter") {
+      // multiline 那条路底下是 textarea，Enter 默认是插一个换行。
+      // 这个框写的是**一句话**，回车的意思从头到尾都是「就这样，存」，不是换行
+      e.preventDefault();
       if (e.shiftKey && onShiftEnter) {
-        e.preventDefault();
         onShiftEnter();
         return;
       }
@@ -192,36 +216,54 @@ export default function SyntaxInput({
     if (stored !== false && value.trim()) flash();
   }
 
+  function handleBlur(e: ReactFocusEvent<SyntaxInputEl>) {
+    if (dropKey !== null) setDismissedKey(dropKey);
+    // 点补全项不会走到这儿：那边 onMouseDown 已经 preventDefault，焦点根本没离开。
+    //
+    // **窗口失焦不是点走**（A1 的统一口径，一处盖住所有 onBlurCommit 的调用方）：
+    // alt-tab 去别的程序时浏览器照样发 blur。任务卡那条「整句改」尤其凶——它做的是
+    // 整句全量对齐，打到一半失焦就会把日期/重要性/清单/需求方/标签整片写成空。
+    // 正确的行为是**原样悬着**，等用户回来自己了结（回车提交 / Esc 丢弃）
+    if (!document.hasFocus()) return;
+    if (onBlurCommit && value.trim() && onBlurCommit(parsed, e)) flash();
+  }
+
+  function handleChange(e: ChangeEvent<SyntaxInputEl>) {
+    setCaret(e.target.selectionStart ?? e.target.value.length);
+    setDismissedKey(null);
+    // 一句话就是一句话：粘进来的换行符当空格吃掉（input 那边本来是浏览器替我们吃的）
+    onChange(multiline ? e.target.value.replace(/[\r\n]+/g, " ") : e.target.value);
+  }
+
+  // 两条路共用同一份属性：分开写两遍迟早有一处漏改（少个 onSelect，光标一挪补全就错位）
+  const shared = {
+    className: `si-input${flashOn ? " commit-lit" : ""}`,
+    value,
+    placeholder,
+    autoFocus,
+    style: inputStyle,
+    onChange: handleChange,
+    onSelect: (e: SyntheticEvent<SyntaxInputEl>) => {
+      setCaret(e.currentTarget.selectionStart ?? 0);
+    },
+    onKeyDown: handleKeyDown,
+    onBlur: handleBlur,
+  };
+
   return (
     <div className="si-wrap">
-      <input
-        ref={inputRef}
-        className={`si-input${flashOn ? " commit-lit" : ""}`}
-        value={value}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        style={inputStyle}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-          setCaret(e.target.selectionStart ?? e.target.value.length);
-          setDismissedKey(null);
-          onChange(e.target.value);
-        }}
-        onSelect={(e: SyntheticEvent<HTMLInputElement>) => {
-          setCaret(e.currentTarget.selectionStart ?? 0);
-        }}
-        onKeyDown={handleKeyDown}
-        onBlur={(e: ReactFocusEvent<HTMLInputElement>) => {
-          if (dropKey !== null) setDismissedKey(dropKey);
-          // 点补全项不会走到这儿：那边 onMouseDown 已经 preventDefault，焦点根本没离开。
-          //
-          // **窗口失焦不是点走**（A1 的统一口径，一处盖住所有 onBlurCommit 的调用方）：
-          // alt-tab 去别的程序时浏览器照样发 blur。任务卡那条「整句改」尤其凶——它做的是
-          // 整句全量对齐，打到一半失焦就会把日期/重要性/清单/需求方/标签整片写成空。
-          // 正确的行为是**原样悬着**，等用户回来自己了结（回车提交 / Esc 丢弃）
-          if (!document.hasFocus()) return;
-          if (onBlurCommit && value.trim() && onBlurCommit(parsed, e)) flash();
-        }}
-      />
+      {multiline ? (
+        <textarea
+          ref={(el) => {
+            inputRef.current = el;
+            growArea(el);
+          }}
+          rows={1}
+          {...shared}
+        />
+      ) : (
+        <input ref={(el) => { inputRef.current = el; }} {...shared} />
+      )}
       <CommitMark on={flashOn} />
       {showChips && parsed.chips.length > 0 && (
         <span className="si-chips">

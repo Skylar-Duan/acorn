@@ -5,7 +5,7 @@
 import { useRef, useState } from "react";
 import type { Subtask, Task } from "../core/model";
 import { doneRowMs } from "../core/motion";
-import { formatShort, todayYMD, cmpYMD } from "../core/dates";
+import { formatShort, formatDoneShort, doneShortIsWide, todayYMD, cmpYMD } from "../core/dates";
 import { describeRepeat } from "../core/recur";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
@@ -33,16 +33,25 @@ export interface TaskRowProps {
   bundled?: boolean;
   /** 完成后是否播放淡出（今天/清单视图 true；已完成视图 false） */
   fadeOnDone?: boolean;
-  /** 子任务链的头一行：给它一个小三角，收起时后面几条并成 +N。undefined = 这行不是链头 */
-  chain?: { folded: boolean; more: number; onToggle: () => void };
+  /** 子任务链的头一行：给它一个小三角，收起时后面几条并成 +N。undefined = 这行不是链头。
+   *  more = 现在被折起来的条数（摊开时是 0）；total = 这条链除自己外一共几条（两态都有值） */
+  chain?: { folded: boolean; more: number; total: number; onToggle: () => void };
   /** 「已完成」视图用：右边显示完成日期而不是截止日期（都做完了，还看截止日没意义） */
   doneDate?: string | null;
   /** 这行让位：收成 0 高。两种情况——它摊成任务卡了（B1），或者被「只看下一步」收起来了（B5）。
    *  不是从树上摘掉而是收起来，收/放才都有动画 */
   collapsed?: boolean;
+  /** 行尾那块信息区画多少（v1.9.1）。用户原话：「归类、@ 统一都隐藏」「能够显示 ddl 和重要性」。
+   *   · "lean"（默认，全局口径）—— 不画清单色点、需求方徽标、#标签。
+   *     行首的重要性小旗和右边的日期都留着，那两样是用户点名要的。
+   *   · "date" —— 右边**只剩一格日期**（已完成视图 / 今天视图的「已完成 N」那组）。
+   *     用户原话：「已完成界面右侧太乱，只留下完成日期，不是 ddl 日期，其他的展开自然能看到」。
+   *   · "full" —— v1.9.0 以前的老样子，全画。**留着不是摆设**：这是一条退路，
+   *     哪天觉得清单色点还是得有，改回来只要在调用处传一个词，不用把代码再抄一遍。 */
+  tail?: "full" | "lean" | "date";
 }
 
-export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed }: TaskRowProps) {
+export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed, tail = "lean" }: TaskRowProps) {
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -66,6 +75,13 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   // 「N/total」是进度，放弃掉的那几步既不算做完也不该占分母——不然一件事永远差那么一两条
   const counted = task.subtasks.filter((s) => !s.droppedAt);
   const subDone = counted.filter((s) => s.done).length;
+  // 「了结」= 做完了 **或者** 不做了。顺延徽标原来的判据是 `!task.done`，
+  // 而放弃的那件事 done 仍然是 false，于是「顺延×4」照样跟去「已完成」视图里站着——
+  // 一件已经不做了的事没有「又往后拖了几次」这回事
+  const settled = task.done || !!task.droppedAt;
+  // 行尾画多少（见 tail 那条 prop 的注释）
+  const leanTail = tail !== "full";
+  const dateOnlyTail = tail === "date";
 
   function onCheck(e: React.MouseEvent) {
     e.stopPropagation();
@@ -116,13 +132,15 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   }
 
   // 多选按「件」不按「行」：分拆出来的子任务行也能 Ctrl/Shift 连选，选中的是它那件母任务，
-  // 否则一旦任务都有子任务、母任务行全收起，多选就整个用不了了
-  function onRowClick(e: React.MouseEvent) {
+  // 否则一旦任务都有子任务、母任务行全收起，多选就整个用不了了。
+  // 独立成一个函数是给折叠热区用的：**每加一块新热区都得先问它一句**，
+  // 不然行上多一块「Ctrl 点了没反应」的地方，连选就被啃掉一口。命中并处理掉了才返回 true
+  function multiSelect(e: React.MouseEvent): boolean {
     if (e.ctrlKey || e.metaKey) {
       const next = selected ? selectedIds.filter((i) => i !== task.id) : [...selectedIds, task.id];
       anchor.current = task.id;
       setSelection(next);
-      return;
+      return true;
     }
     if (e.shiftKey && selectedIds.length) {
       const last = anchor.current ?? selectedIds[selectedIds.length - 1];
@@ -131,11 +149,24 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
       if (a >= 0 && b >= 0) {
         const [lo, hi] = a < b ? [a, b] : [b, a];
         setSelection(orderedIds.slice(lo, hi + 1));
-        return;
+        return true;
       }
     }
+    return false;
+  }
+
+  function onRowClick(e: React.MouseEvent) {
+    if (multiSelect(e)) return;
     anchor.current = task.id;
     expandTask(task.id);
+  }
+
+  // 收/摊子任务链的热区（小三角、「母任务 › 」前缀、行尾的 +N/−N 徽标）共用这一个。
+  // 绝不能把「整行点击」改成折叠：那会顶掉打开任务卡的唯一鼠标入口，还会砸掉上面那套连选
+  function onFoldHit(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (multiSelect(e)) return;
+    chain?.onToggle();
   }
 
   function onCtx(e: React.MouseEvent) {
@@ -181,11 +212,9 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
       {chain ? (
         <button
           className={`chain-caret${chain.folded ? " folded" : ""}`}
-          title={chain.folded ? "摊开这件事剩下的子任务" : "只看下一步"}
-          onClick={(e) => {
-            e.stopPropagation();
-            chain.onToggle();
-          }}
+          title={chain.folded ? "摊开这件事剩下的子任务（→）" : "只看下一步（←）"}
+          aria-expanded={!chain.folded}
+          onClick={onFoldHit}
         >
           ▾
         </button>
@@ -200,7 +229,18 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
       />
       {sub ? (
         <span className="title">
-          <span style={{ color: "var(--ink-3)" }}>{task.title || "（未命名）"} › </span>
+          {/* 链头行上这句「母任务 › 」兼任第二个折叠热区：它够宽、天生代表母任务，
+              跟「点子任务标题 = 打开这件事的卡片」不打架。不是链头的行上只是一段灰字。
+              保持 <span> 而不是 <button>：标题那一行有 text-overflow: ellipsis，
+              换成按钮会在里面开一个新的行内块，长标题就不省略号而是被硬裁。
+              键盘那一路走 App.tsx 的 ←/→ 和上面那个真按钮（带 aria-expanded） */}
+          <span
+            className={`chain-parent${chain ? " hit" : ""}`}
+            title={chain ? (chain.folded ? "摊开这件事剩下的子任务（→）" : "只看下一步（←）") : undefined}
+            onClick={chain ? onFoldHit : undefined}
+          >
+            {task.title || "（未命名）"} ›{" "}
+          </span>
           {sub.title || "（未命名）"}
         </span>
       ) : (
@@ -211,39 +251,67 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           已放弃
         </span>
       )}
+      {/* .meta 整块吞掉点击（防止点日期/清单标签误开卡片）。这句是全块的规矩，
+          绝不为了让下面那个徽标可点就把它拆掉——拆了整条右侧信息区都会变成「点了就开卡」。
+          徽标自己带 onClick，本来就跑在这句之前 */}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
-        {chain?.folded && chain.more > 0 && (
-          <span className="chain-more" title={`这件事后面还有 ${chain.more} 条待办`}>+{chain.more}</span>
+        {chain && (chain.folded ? chain.more > 0 : chain.total > 0) && (
+          // 收起时「+N」= 摊开，摊开时「−N」= 收起。两个方向都得有个可点物，
+          // 否则只有 +N 一个入口，收回去只能回头去找行首那个小三角
+          <button
+            className={`chain-more${chain.folded ? "" : " plain"}`}
+            title={
+              chain.folded
+                ? `这件事后面还有 ${chain.more} 条待办，点开摊开（→）`
+                : `把这件事剩下的 ${chain.total} 条收起来，只看下一步（←）`
+            }
+            onClick={onFoldHit}
+          >
+            {chain.folded ? `+${chain.more}` : `−${chain.total}`}
+          </button>
         )}
-        {!bundled && task.who.map((w) => <WhoBadge key={w} who={w} />)}
-        {!sub && task.tags.map((t) => (
+        {/* 归类（清单色点）、@（需求方徽标）、#标签：v1.9.1 起列表行上一律不画（tail="lean"）。
+            用户原话「归类、@ 统一都隐藏」——这三样都是**这件事属于哪一堆**，
+            点开卡片一眼就看得到，逐行重复只是把右边挤满。留 tail="full" 是退路，不是死代码 */}
+        {!leanTail && !bundled && task.who.map((w) => <WhoBadge key={w} who={w} />)}
+        {!leanTail && !sub && task.tags.map((t) => (
           <span key={t}># {t}</span>
         ))}
-        {!hideList && !bundled && list && (
+        {!leanTail && !hideList && !bundled && list && (
           <span className="list-tag">
             <span className="dot" style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${list.color})`, display: "inline-block" }} />
             {list.name}
           </span>
         )}
-        {!sub && counted.length > 0 && (
+        {!dateOnlyTail && !sub && counted.length > 0 && (
           <span title={counted.length === task.subtasks.length ? undefined : "放弃的那几步不算进这个进度"}>
             {subDone}/{counted.length}
           </span>
         )}
-        {!sub && task.repeat && <span title={describeRepeat(task.repeat)}>↻</span>}
-        {!sub && task.postponeCount >= 2 && !task.done && (
+        {!dateOnlyTail && !sub && task.repeat && <span title={describeRepeat(task.repeat)}>↻</span>}
+        {/* 判据是「还没了结」不是「还没做完」：放弃掉的那件事 done 一直是 false，
+            按老写法「顺延×4」会跟着它一起出现在「已完成」视图里 */}
+        {!dateOnlyTail && !sub && task.postponeCount >= 2 && !settled && (
           <span className="warn" title={`已顺延 ${task.postponeCount} 次`}>
             顺延×{task.postponeCount}
           </span>
         )}
         {doneDate ? (
           // 「已完成」视图里同一个位置写两种事：做完的写完成日，放弃的写放弃日。
-          // 别把放弃的写成「完成」，那正是这个功能要避免的谎
-          <span title={`${isDropped ? "放弃于" : "完成于"} ${doneDate}`}>
-            {isDropped ? "放弃" : "完成"} {formatShort(doneDate)}
+          // 别把放弃的写成「完成」，那正是这个功能要避免的谎。
+          // .when 是那条固定右列（88px 左对齐），所有行的「完成于」从同一个 x 起笔；
+          // 超过一年的那一档要多写两位年，塞不下，单独给它 .wide 放开
+          <span
+            className={`when${doneShortIsWide(doneDate) ? " wide" : ""}`}
+            title={`${isDropped ? "放弃于" : "完成于"} ${doneDate}`}
+          >
+            {isDropped ? "放弃于" : "完成于"} {formatDoneShort(doneDate)}
           </span>
         ) : (
-          due && (
+          // tail="date" 时**连截止日期都不画**：用户点名「只留下完成日期，不是 ddl 日期」。
+          // 走到这儿只剩一种情况——完成日是猜的（老子任务没有完成时刻），
+          // 那就宁可空着，也不能拿截止日冒充完成日
+          !dateOnlyTail && due && (
             <span
               className={overdue ? "overdue" : undefined}
               title={dueInherited ? "日期继承自母任务，改母任务会一起动" : undefined}
