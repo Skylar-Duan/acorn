@@ -1,6 +1,6 @@
 {
   "name": "acorn",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "description": "橡果 Acorn · 温暖纸感的 Windows 待办工具",
   "type": "module",
   "private": true,
@@ -21,7 +21,6 @@
     "@tauri-apps/plugin-global-shortcut": "^2.0.0",
     "@tauri-apps/plugin-notification": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
-    "lxgw-wenkai-lite-webfont": "^1.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"

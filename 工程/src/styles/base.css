@@ -1,10 +1,11 @@
 /* 基础：排版尺度、重置、共用元件。主题变量见 themes.css */
 
-@import "lxgw-wenkai-lite-webfont/style.css";
+@import "./fonts.css";
 
 :root {
-  --serif: "LXGW WenKai Lite", "LXGW WenKai", "KaiTi", "楷体", serif;
-  --sans: "Segoe UI", "Microsoft YaHei", "微软雅黑", system-ui, sans-serif;
+  /* 标题文楷、正文思源黑体（v1.11.0，两端一致，见 fonts.css）。后面是子集外生僻字的回落 */
+  --serif: "LXGW WenKai", "LXGW WenKai Screen", "KaiTi", "楷体", serif;
+  --sans: "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "微软雅黑", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
   --side-w: 232px;
   --r-sm: 7px; --r-md: 10px; --r-lg: 14px;

@@ -5,11 +5,19 @@
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
 
-## 未发布（下一版 v1.11.0 进行中，2026-09-02 起）
+## v1.11.0 · 2026-09-02
 
 > 用户 9/2 在真机上第一次看手机版，整体打回（「像十几年前的学生作业」）。**手机端界面改为先出稿对齐再动手**：
-> 设计稿在 `acorn/方案/手机端设计稿/`（Claude Design 画布 + PNG 预览 + `手机端方案（等你定）.md`），等用户定导航 A/B、详情抽屉 vs 整页、字体（MiSans 体积 vs 思源子集）。
-> 下面是不依赖设计决策、已经做掉的数据 / 状态层改动。
+> 设计稿在 `acorn/方案/手机端设计稿/`（Claude Design 画布 + PNG 预览 + `手机端方案（等你定）.md`）。
+> 用户定了：导航 A（底部五格 + 悬浮 ＋）、详情用底部抽屉、手机上不用快捷语法全靠点选、登录做独立页（验证码 / 密码）、字体选开源的（文楷 + 思源黑体）。
+> 中等更新（手机端重做 + 字体 + 登录）= v1.11.0，数据格式仍 schema 6。
+
+- **字体**：标题文楷（LXGW WenKai Regular + Medium）、正文思源黑体（Noto Sans SC Regular + Bold），都是 OFL，按
+  「GB2312 全字 + 界面源码用字 + ASCII / 常用标点符号」（8055 字）子集成 woff2，四个文件合计 5.5 MB（`src/assets/fonts/`、`styles/fonts.css`）。
+  **撤掉 `lxgw-wenkai-lite-webfont` 切片包**——它在 dist 里是 582 个 woff2、35 MB，是安装包 27 MB 的大头；正文以前一直是系统字体，两端不一致。
+  粗细映射：正文 500–900 → Bold（界面 46 处 600、4 处 700、1 处 500，不值得多带一档）；文楷 501–900 → Medium（文楷没有 Bold）。
+  子集外生僻字回落系统字体。重跑：`python -m fontTools.subset <font> --text-file=chars.txt --flavor=woff2 --layout-features='*' --no-hinting --desubroutinize`。
+  用户 9/2 先选了 MiSans，我说明它不开源且许可不许改字体文件（不能子集、整份 15 MB）后改选思源。`tests/fonts.test.ts`。
 
 - **登录时的本机数据处置**（用户报：新装手机登录后两个「工作」）：新增 `core/fresh.ts`（`isPristineLocal` / `planLoginData` / `shouldOfferLogin`，
   判严不判松：无任务、无墓碑、无专注、`whoOrder` 空、清单为空或恰好是默认两条且未改名、从未同步）与 `core/loginCtl.ts`

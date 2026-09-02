@@ -1,0 +1,38 @@
+/* 字体（v1.11.0，用户 2026-09-02 定：标题文楷、正文思源黑体，都选开源的）。
+   两族都是 OFL 许可，可以只打包用到的字——这里是按「GB2312 全部汉字 + 界面源码里出现过的每个字 +
+   ASCII / 常用标点符号」子集出来的 woff2（约 8000 字），四个文件合计约 5.5 MB；
+   以前那套按 unicode-range 切成 582 片的文楷 Lite 在安装包里占 35 MB，而且正文一直是系统字体，两端不一致。
+   子集外的生僻字会回落到后面的系统字体（微软雅黑 / 安卓自带的思源），不会缺字，只是那一个字风格略有出入。
+   子集化脚本与字符集见 CHANGELOG v1.11.0；重跑：fontTools.subset --text-file=chars.txt --flavor=woff2。 */
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/notosanssc-regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  /* 500–900 全落到这一档：界面里 46 处 600、4 处 700，只有 1 处 500，不值得多带一档 */
+  font-weight: 500 900;
+  font-display: swap;
+  src: url("../assets/fonts/notosanssc-bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "LXGW WenKai";
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url("../assets/fonts/lxgwwenkai-regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "LXGW WenKai";
+  font-style: normal;
+  /* 文楷没有 Bold，Medium 就是它最重的一档；标题的 600 / 700 都用它 */
+  font-weight: 501 900;
+  font-display: swap;
+  src: url("../assets/fonts/lxgwwenkai-medium.woff2") format("woff2");
+}
