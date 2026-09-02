@@ -9,37 +9,8 @@
   isolation: isolate;
 }
 
-/* ---------- 顶上那条「数据是新版本写的」提示条 ---------- */
-/* 有横幅时多开一行。**必须显式排位**：.shell 里除了 .side 和 .main 之外
-   全是 position:fixed 的浮层（overlay / toast / bulk-bar / ctx-menu / theme-scene），
-   不占格子；靠自动排布的话 .main 会被挤到第一列去 */
-.shell.has-banner { grid-template-rows: auto minmax(0, 1fr); }
-.shell.has-banner > .side { grid-column: 1; grid-row: 1 / span 2; }
-.shell.has-banner > .schema-banner { grid-column: 2; grid-row: 1; }
-.shell.has-banner > .main { grid-column: 2; grid-row: 2; }
-
-.schema-banner {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  padding: 10px 30px;
-  border-bottom: 1px solid var(--hair);
-  background: var(--accent-soft);
-  color: var(--ink-2);
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-}
-.schema-banner .sb-text { flex: 1 1 260px; min-width: 0; }
-.schema-banner .sb-text b { color: var(--ink); }
-.schema-banner .sb-acts {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  /* 换行到第二行时也贴右边，别孤零零杵在左下角（窄屏看图看出来的） */
-  margin-left: auto;
-}
+/* 「数据是新版本写的」那条提示在 v1.9.1 收口时从常驻横幅改成了弹一次的框
+   （components/NewerDataDialog，样式在 overlays.css）。横幅那套 .has-banner 布局跟着撤了 */
 
 /* ---------- 主题风景水印 ---------- */
 .theme-scene {
@@ -88,8 +59,28 @@
 .side .brand img { width: 22px; height: 22px; }
 /* 设置齿轮靠右贴在标题这一行。no-drag 不能省：.brand 整块是窗口拖拽区，
    不排除的话点击会被系统当成拖窗口吃掉——按钮看得见、按不动 */
+/* 版本号小标签（v1.9.1）。同样在拖拽区里，no-drag 不能省；
+   .brand 的 3px 字距会把「v1.9.1」拉散，得复位 */
+.side .brand .ver {
+  margin-left: 6px;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink-3);
+  background: var(--bg);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 2px 7px;
+  -webkit-app-region: no-drag;
+}
+.side .brand .ver:hover { color: var(--accent); border-color: var(--accent); }
+/* margin-right:-4px 抵掉自己的 padding-right，⚙ 字形右缘才跟下面 .side nav li .n 那些数字
+   的右缘落在同一条竖线上（用户 2026-09-01 点名要对齐；手机段早就这么写了，桌面段漏了） */
 .side .brand .gear {
   margin-left: auto;
+  margin-right: -4px;
   color: var(--ink-3);
   font-size: 14px;
   line-height: 1;
@@ -660,12 +651,6 @@
 
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
-
-  /* 侧栏此时是 position:fixed（下面那条），不占格子，横幅和正文都归第一列。
-     ☰ 也是 fixed 且压在左上角，所以横幅左边要给它让出位置 */
-  .shell.has-banner > .schema-banner { grid-column: 1; grid-row: 1; }
-  .shell.has-banner > .main { grid-column: 1; grid-row: 2; }
-  .schema-banner { padding: 10px 14px 10px 54px; }
 
   /* 侧栏浮在内容之上，默认推到屏幕外；.open 才滑进来 */
   .side {

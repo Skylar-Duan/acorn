@@ -81,8 +81,8 @@ export type ManualCheck = "found" | "latest" | "failed" | "unsupported";
 /**
  * 手动查一次，查到就把弹窗顶出来。
  *
- * 给的是设置页之外的入口用的——现在是顶上那条 SchemaBanner（「这份数据是新版本写的」）。
- * 那条横幅劝人升级，就得当场给一条升级的路，不能只说不给。
+ * 给的是设置页之外的入口用的——现在是 NewerDataDialog（「已有更新版橡果」那个框）的「现在更新」键。
+ * 那个框劝人升级，就得当场给一条升级的路，不能只说不给。
  * （v1.9.1 之前它服务的是「版本过旧」那一整屏墙，那屏把设置页整个挡住了。墙已经拆了。）
  */
 export async function checkUpdateNow(): Promise<ManualCheck> {

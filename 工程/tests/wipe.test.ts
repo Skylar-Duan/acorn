@@ -308,7 +308,11 @@ describe("侧栏那行同步指示", () => {
     expect(foot).toContain("revealCloudSection()");
     // 落点得真的在设置页上，不然滚了个寂寞
     expect(sidebarSource).toContain('getElementById("set-cloud")');
-    expect(settingsSource).toContain('id="set-cloud"');
+    // v1.9.1 起那一节是可折叠的 SetSection，id 经 anchorId 透传渲染到 DOM
+    expect(settingsSource).toContain('anchorId="set-cloud"');
+    expect(settingsSource).toContain("id={anchorId}");
+    // 滚过去之前得先把那一节打开，不然滚到一个收着的标题上等于没滚
+    expect(sidebarSource).toContain('forceFoldOpen("cloud", "acorn-set-")');
   });
 });
 

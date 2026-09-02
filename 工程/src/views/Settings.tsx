@@ -4,7 +4,8 @@ import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from
 import { APP_VERSION, DATA_VERSION } from "../core/model";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
-import { aliveTasks, navigate, showToast, updateSettings, useApp } from "../core/store";
+import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
+import { useFold } from "../core/useFold";
 import {
   dataStatus, getDataDir, inTauri, listBackups, readTextFile, restoreBackup,
   saveData, setDataDir, writeTextFile,
@@ -20,6 +21,49 @@ import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import UpdatePanel from "../components/UpdatePanel";
 import { updaterSupported } from "../core/updater";
 import "../styles/settings.css";
+
+/**
+ * 设置页的一节（v1.9.1 起可折叠）。
+ *
+ * 用户原话「设置界面审美，至少条款要收缩展开做出来」——「条款」就是这一节一节的条目
+ * （全库没有任何法律条款文本）。
+ *
+ * **正文用高度收（grid 0fr↔1fr），不下树。** 条件渲染会把数据节的备份列表 state 清掉、
+ * 让行为节里打了一半的快捷键输入框重挂并被 useEffect 复位——用户打的东西当场没。
+ * 开合记在本机 localStorage（`acorn-set-<id>`），跟侧栏折叠同一套（core/useFold）。
+ * 收起时标题右边给一行摘要，不点开也知道里面是什么。
+ */
+function SetSection({
+  id,
+  title,
+  defaultOpen = false,
+  summary,
+  anchorId,
+  children,
+}: {
+  id: string;
+  title: string;
+  defaultOpen?: boolean;
+  /** 收起时显示在标题右边的一句话 */
+  summary?: string;
+  /** 给别处 scrollIntoView 用的 DOM id（侧栏同步指示滚到「云账号」靠它） */
+  anchorId?: string;
+  children: React.ReactNode;
+}) {
+  const [open, toggle] = useFold(id, defaultOpen, "acorn-set-");
+  return (
+    <div className={`set-section${open ? "" : " set-closed"}`} id={anchorId}>
+      <button type="button" className="set-head" aria-expanded={open} onClick={toggle}>
+        <h2>{title}</h2>
+        {!open && summary && <span className="set-summary">{summary}</span>}
+        <span className={`set-caret${open ? " up" : ""}`}>▾</span>
+      </button>
+      <div className={`set-fold${open ? "" : " shut"}`}>
+        <div className="set-fold-inner">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 const THEMES: { id: ThemeName; name: string; note: string }[] = [
   { id: "forest", name: "森林", note: "晨雾里的针叶林" },
@@ -281,8 +325,12 @@ export default function Settings() {
       </div>
       <div className="view-body set-body">
         {/* ---------- 外观 ---------- */}
-        <div className="set-section">
-          <h2>外观</h2>
+        <SetSection
+          id="look"
+          title="外观"
+          defaultOpen
+          summary={`${THEMES.find((t) => t.id === settings.theme)?.name ?? ""} · ${MODES.find((m) => m.id === settings.mode)?.name ?? ""}`}
+        >
           <div className="set-desc">六款主题，每款配一幅背景画，淡淡地垫在任务下面。</div>
           <div className="set-themes">
             {THEMES.map((t) => (
@@ -316,33 +364,31 @@ export default function Settings() {
               </div>
             </div>
           </div>
-        </div>
+        </SetSection>
 
         {/* ---------- 云账号 ---------- */}
-        {/* id 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找 */}
-        <div className="set-section" id="set-cloud">
-          <h2>云账号</h2>
+        {/* anchorId 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找。
+            那边滚之前会先 forceFoldOpen("cloud", "acorn-set-") 把这一节打开 */}
+        <SetSection id="cloud" title="云账号" defaultOpen anchorId="set-cloud" summary="登录 · 同步 · 从云端覆盖到这台设备">
           <div className="set-desc">
             登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
           <AccountPanel />
-        </div>
+        </SetSection>
 
         {/* ---------- 版本更新（手机和桌面都有） ---------- */}
         {updaterSupported && (
-          <div className="set-section">
-            <h2>版本更新</h2>
+          <SetSection id="update" title="版本更新" summary={`当前 v${APP_VERSION}`}>
             <div className="set-desc">
               每次启动会自动检查一次，有新版本会提示；这里也可以手动检查。新版本在应用内下载安装。
               {hasDesktopFeatures && "电脑上安装前橡果会先退出，否则新版本装不进来。"}
             </div>
             <UpdatePanel />
-          </div>
+          </SetSection>
         )}
 
         {/* ---------- 数据 ---------- */}
-        <div className="set-section">
-          <h2>数据</h2>
+        <SetSection id="data" title="数据" summary={status ? status.dir : "正在检查…"}>
           <div className="set-desc">每天首次保存时自动留一份备份，保留 30 份。</div>
           <div className="set-row">
             <span
@@ -380,11 +426,10 @@ export default function Settings() {
                 ))}
               </div>
             ))}
-        </div>
+        </SetSection>
 
         {/* ---------- 导出与导入 ---------- */}
-        <div className="set-section">
-          <h2>导出与导入</h2>
+        <SetSection id="io" title="导出与导入" summary={hasDesktopFeatures ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}>
           {hasDesktopFeatures ? (
             <>
           <div className="set-desc">导出为通用格式；导入会整体替换现有数据。</div>
@@ -402,14 +447,13 @@ export default function Settings() {
               使用的就是同一份数据。
             </div>
           )}
-        </div>
+        </SetSection>
 
         {/* ---------- 行为 ---------- */}
         {/* 整节一起判空：手机上前两行本来就被 hasDesktopFeatures 挡掉，
             专注那行再收起来（core/features.ts）就只剩一个空壳卡片 */}
         {(hasDesktopFeatures || FOCUS_ENABLED) && (
-        <div className="set-section">
-          <h2>行为</h2>
+        <SetSection id="behavior" title="行为" summary={hasDesktopFeatures ? `全局快捷键 ${settings.quickAddShortcut}` : undefined}>
           {hasDesktopFeatures && (
           <div className="set-row">
             <div className="set-row-label">
@@ -473,12 +517,11 @@ export default function Settings() {
             </div>
           </div>
           )}
-        </div>
+        </SetSection>
         )}
 
         {/* ---------- 一句话记事 ---------- */}
-        <div className="set-section">
-          <h2>一句话记事</h2>
+        <SetSection id="syntax" title="一句话记事" summary="日期、清单、需求方写在同一句里 · 打开用法说明">
           <div className="set-desc">
             日期、清单、需求方、重要性、循环，可以写在同一句里；也可以用随手记下面那排按钮点选。
           </div>
@@ -491,12 +534,12 @@ export default function Settings() {
               <button className="btn" onClick={guide.open}>打开用法</button>
             </div>
           </div>
-        </div>
+        </SetSection>
+        {/* 用法那个 sheet 必须留在折叠容器之外：容器 overflow:hidden 会把它裁掉 */}
         {guide.sheet}
 
         {/* ---------- 回收站 ---------- */}
-        <div className="set-section">
-          <h2>回收站</h2>
+        <SetSection id="trash" title="回收站" summary="已删除的任务保留 30 天">
           <div className="set-row">
             <div className="set-row-label">
               已删除的任务
@@ -506,12 +549,14 @@ export default function Settings() {
               <button className="btn" onClick={() => navigate("trash")}>打开回收站</button>
             </div>
           </div>
-        </div>
+        </SetSection>
 
-        {/* ---------- 关于 ---------- */}
+        {/* ---------- 关于（不折叠） ---------- */}
         <div className="set-section set-about">
           <span className="set-about-brand">橡果 Acorn</span>
           <span className="set-about-line">v{APP_VERSION} · 本地优先的待办工具 · 数据保存在你自己的磁盘上。</span>
+          {/* 跟侧栏版本号点开的是同一个弹窗，别三处各讲一遍 */}
+          <button className="btn ghost" onClick={() => setChangelogOpen(true)}>查看更新日志</button>
         </div>
       </div>
     </section>

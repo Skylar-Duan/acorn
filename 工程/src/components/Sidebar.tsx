@@ -13,10 +13,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { duePresets, todayYMD, cmpYMD } from "../core/dates";
 import {
   addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
-  moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setTasksDue,
-  setTasksList, updateSubtask, updateTask, useApp, type ViewId,
+  moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
+  setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
 } from "../core/store";
-import { LIST_COLORS } from "../core/model";
+import { APP_VERSION, LIST_COLORS } from "../core/model";
+import { forceFoldOpen, useFold } from "../core/useFold";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
@@ -37,6 +38,9 @@ import iconUrl from "../../src-tauri/icons/32x32.png";
  *  只压 animation-duration / transition-duration，管不了脚本发起的滚动；
  *  而滚动动画正是 reduced-motion 首要要抑制的一类（前庭不适）。 */
 function revealCloudSection(): void {
+  // 设置页现在分节可折叠（v1.9.1）：那一节要是收着，滚到一个收起的标题上用户什么也看不见。
+  // 先把它打开（写进记忆 + 广播给已挂载的那一页），再滚
+  forceFoldOpen("cloud", "acorn-set-");
   const still =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
@@ -73,30 +77,8 @@ const ICONS = {
 /** 折叠组默认只露几个 */
 const PEEK = 3;
 
-/** 侧栏的展开/收起状态。存本机、不同步——换台设备用什么样子是那台设备自己的事 */
-function useFold(key: string, initial: boolean): [boolean, () => void] {
-  const lsKey = `acorn-side-${key}`;
-  const [open, setOpen] = useState<boolean>(() => {
-    try {
-      const raw = localStorage.getItem(lsKey);
-      return raw === null ? initial : raw === "1";
-    } catch {
-      return initial;
-    }
-  });
-  return [
-    open,
-    () =>
-      setOpen((v) => {
-        try {
-          localStorage.setItem(lsKey, v ? "0" : "1");
-        } catch {
-          /* 隐私模式之类存不了就算了，只是这次会话不记住 */
-        }
-        return !v;
-      }),
-  ];
-}
+// 侧栏的展开/收起状态用 core/useFold（2026-09-01 抽出去共用，设置页分节折叠也是它）。
+// 存本机、不同步——换台设备用什么样子是那台设备自己的事
 
 /** 从拖拽事件里取任务 id 组（TaskRow onDragStart 放进去的，多选拖拽是逗号串） */
 function draggedTaskIds(e: React.DragEvent): string[] {
@@ -501,6 +483,9 @@ export default function Sidebar(
       <div className="brand">
         <img src={iconUrl} alt="" />
         橡果
+        {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
+            跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
+        <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>v{APP_VERSION}</button>
         {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
             .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
         <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>

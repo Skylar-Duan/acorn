@@ -8,7 +8,8 @@
 import { Fragment, useMemo, useState } from "react";
 import { todayYMD } from "../core/dates";
 import { planGroups } from "../core/plan";
-import { openRows, rowTaskIds, setFoldAll, updateSettings, useApp } from "../core/store";
+import { searchTasks } from "../core/search";
+import { aliveTasks, openRows, rowTaskIds, setFoldAll, updateSettings, useApp } from "../core/store";
 import { hardCutRows } from "../core/motion";
 import RowList, { cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import QuadrantBoard from "./Quadrant";
@@ -43,8 +44,25 @@ export default function Plan() {
     }
   };
 
-  const groups = useMemo(() => planGroups(openRows(data), sortMode, today), [data, sortMode, today]);
+  // 计划里的搜索（v1.9.1）。本地 state，不入 store、不落盘——它是「这一眼想找什么」，不是偏好
+  const [q, setQ] = useState("");
+  const query = q.trim();
+  const openAll = useMemo(() => openRows(data), [data]);
+  // **过滤必须发生在 planGroups 之前**：下面 fold / anchor / orderedIds / foldable 四个派生值
+  // 全都得吃过滤后的行——否则折叠链头被搜掉之后 anchor 会指向没渲染的行，展开卡凭空消失，
+  // 键盘上下也会走到看不见的任务上。
+  // 当筛选器用：limit 不设上限（截断了就是静默丢事）、只认子串（子序列会把整页都留下）。
+  // 按**件**过滤：一件事只要标题 / 子任务 / 备注 / 标签 / 需求方任一命中，它的所有行都留下
+  const rows = useMemo(() => {
+    if (!query) return openAll;
+    const hit = new Set(
+      searchTasks(aliveTasks(data), data.lists, query, { limit: Infinity, exact: true }).map((h) => h.task.id),
+    );
+    return openAll.filter((r) => hit.has(r.task.id));
+  }, [openAll, data, query]);
+  const groups = useMemo(() => planGroups(rows, sortMode, today), [rows, sortMode, today]);
   const allRows = useMemo(() => groups.flatMap((g) => g.rows), [groups]);
+  const totalOpen = useMemo(() => rowTaskIds(openAll).length, [openAll]);
   // 折叠和展开卡的落点都得**整页算一次**：子任务各带日期时会散落在不同的时间段里，
   // 一段一段各算各的，「收起」就变成了「每段收一次」，等于没收
   const fold = useFoldPlan(allRows);
@@ -59,8 +77,10 @@ export default function Plan() {
       <div className="view-head">
         <h1>计划</h1>
         <span className="sub">
-          {orderedIds.length} 件未完成
-          {allRows.length !== orderedIds.length && ` · ${allRows.length} 条待办`}
+          {query
+            ? `匹配 ${orderedIds.length} 件 / 共 ${totalOpen} 件`
+            : `${orderedIds.length} 件未完成`}
+          {!query && allRows.length !== orderedIds.length && ` · ${allRows.length} 条待办`}
         </span>
         <span className="spacer" />
         <div className="all-sort">
@@ -95,6 +115,47 @@ export default function Plan() {
           </>
         )}
       </div>
+      {/* 搜索条另起一行：view-head 里已有三组控件，最小窗宽下再塞一个输入框会挤爆。
+          Ctrl+F 在这个视图里会聚焦到它（App.tsx 按 DOM 找 .plan-search input），四象限 tab 下不出现 */}
+      {tab === "list" && (
+        <div className="plan-search">
+          <span className="ps-glyph">🔍</span>
+          <input
+            className="input"
+            value={q}
+            placeholder="搜索计划里的事：标题、子任务、备注、标签、需求方"
+            // 每敲一个字行集合都大改，跟总开关一样走硬切，不然上百行的高度过渡每次击键重跑
+            onChange={(e) => {
+              hardCutRows();
+              setQ(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                // 不让它冒到 App 的全局 Escape——那儿会清选中 + 收起展开的任务卡
+                e.stopPropagation();
+                if (q) {
+                  hardCutRows();
+                  setQ("");
+                } else {
+                  (e.target as HTMLInputElement).blur();
+                }
+              }
+            }}
+          />
+          {q && (
+            <button
+              className="ps-clear"
+              title="清空"
+              onClick={() => {
+                hardCutRows();
+                setQ("");
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
       {tab === "quad" ? (
         <QuadrantBoard />
       ) : (
@@ -116,7 +177,7 @@ export default function Plan() {
             );
           })}
           {allRows.length === 0 && (
-            <div className="empty">没有未完成的事。</div>
+            <div className="empty">{query ? `没有匹配「${query}」的事。` : "没有未完成的事。"}</div>
           )}
         </div>
       )}

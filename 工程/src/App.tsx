@@ -16,7 +16,8 @@ import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
 import DataRescue from "./components/DataRescue";
 import UpdateDialog from "./components/UpdateDialog";
-import SchemaBanner, { dismissSchemaNotice, schemaNoticeDismissed } from "./components/SchemaBanner";
+import NewerDataDialog from "./components/NewerDataDialog";
+import ChangelogDialog from "./components/ChangelogDialog";
 import { useLeaving } from "./components/motion";
 import {
   clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
@@ -51,12 +52,14 @@ export default function App() {
   const loaded = useApp((s) => s.loaded);
   const loadError = useApp((s) => s.loadError);
   const dataFromNewer = useApp((s) => s.dataFromNewer);
-  /** 这次会话里用户点掉的那个版本号（localStorage 那份是跨会话的，两个都要看） */
+  /** 「已有更新版橡果」那个框这次会话里点过取消的版本号。**只记这次会话**：
+   *  每次冷启动都要再弹一次——它带着「现在更新」这条行动，不该关一次就永远不提 */
   const [noticeClosed, setNoticeClosed] = useState<number | null>(null);
   const toast = useApp((s) => s.ui.toast);
   const selectedIds = useApp((s) => s.ui.selectedIds);
   const paletteOpen = useApp((s) => s.ui.paletteOpen);
   const searchOpen = useApp((s) => s.ui.searchOpen);
+  const changelogOpen = useApp((s) => s.ui.changelogOpen);
   const lists = useApp((s) => s.data.lists);
   const theme = useApp((s) => s.data.settings.theme);
   const [bulkListMenu, setBulkListMenu] = useState(false);
@@ -102,6 +105,14 @@ export default function App() {
       }
       if (mod && e.key.toLowerCase() === "f") {
         e.preventDefault();
+        // 计划视图里 Ctrl+F = 聚焦它自己那个搜索框（同一个动作只给一种界面）；
+        // 别的视图照旧弹全局搜索浮层。看 DOM 而不看 view：搜索框只在计划的「列表」tab 下才挂着
+        const planBox = document.querySelector<HTMLInputElement>(".plan-search input");
+        if (planBox) {
+          planBox.focus();
+          planBox.select();
+          return;
+        }
         setSearchOpen(true);
         return;
       }
@@ -207,36 +218,28 @@ export default function App() {
     );
   }
 
-  // 这份数据由更新版本的橡果写入：**照常渲染整个应用**，只在顶上加一条可关的提示条。
+  // 这份数据由更新版本的橡果写入：**照常渲染整个应用**，弹一次「已有更新版橡果」的框，
+  // 给「现在更新 / 取消」两条路，取消了照常用（用户 2026-09-01 定的口径）。
   // 以前这里是一整屏墙，用户连自己的任务都看不见——那是拒绝加载，是产品原则上的错
   const schemaNotice =
-    dataFromNewer !== null &&
-    noticeClosed !== dataFromNewer.schema &&
-    !schemaNoticeDismissed(dataFromNewer.schema)
-      ? dataFromNewer.schema
-      : null;
+    dataFromNewer !== null && noticeClosed !== dataFromNewer.schema ? dataFromNewer.schema : null;
 
   return (
-    <div className={`shell${drawer ? " drawer-open" : ""}${schemaNotice !== null ? " has-banner" : ""}`}>
+    <div className={`shell${drawer ? " drawer-open" : ""}`}>
       <ThemeScene theme={theme} />
       {/* 窄屏才出现：点开左边的抽屉。宽屏由 CSS 藏起来 */}
       <button className="drawer-btn" title="菜单" onClick={() => setDrawer(true)}>☰</button>
       <Sidebar drawerOpen={drawer} onNavigate={() => setDrawer(false)} />
       {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
-      {schemaNotice !== null && (
-        <SchemaBanner
-          schema={schemaNotice}
-          onClose={() => {
-            dismissSchemaNotice(schemaNotice);
-            setNoticeClosed(schemaNotice);
-          }}
-        />
-      )}
       {body}
 
       <DataRescue />
       {/* 排在 DataRescue 后面：两个都在时由 UpdateDialog 自己让位（见组件里那段判断） */}
       <UpdateDialog />
+      {schemaNotice !== null && (
+        <NewerDataDialog schema={schemaNotice} onClose={() => setNoticeClosed(schemaNotice)} />
+      )}
+      {changelogOpen && <ChangelogDialog />}
       {paletteOpen && <CommandPalette />}
       {searchOpen && <SearchOverlay />}
       <ContextMenu />

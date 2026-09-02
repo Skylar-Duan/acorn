@@ -11,7 +11,7 @@
   padding: 16px 20px 14px;
   margin: 14px 0;
 }
-.set-section > h2 {
+.set-section h2 {
   font-family: var(--serif);
   font-size: var(--fs-h2);
   font-weight: 600;
@@ -167,3 +167,45 @@
   border-radius: 999px;
   transition: width var(--dur-2) var(--ease);
 }
+
+/* ---------- 分节折叠（v1.9.1）：标题行可点，正文用高度收，不下树 ----------
+   为什么不用条件渲染：数据节的备份列表 state、行为节里打了一半的快捷键都会被清掉。
+   用 grid 0fr↔1fr 收高度，内容一直在树上 */
+.set-section .set-head {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+.set-section .set-head h2 { margin-bottom: 0; }
+.set-section .set-head .set-summary {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.set-section .set-head .set-caret {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--ink-3);
+  display: inline-block;
+  transition: transform var(--dur-1) var(--ease);
+}
+.set-section .set-head .set-caret.up { transform: rotate(180deg); }
+.set-section .set-head:hover h2,
+.set-section .set-head:hover .set-caret { color: var(--accent); }
+.set-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease);
+}
+.set-fold > .set-fold-inner { min-height: 0; padding-top: 3px; }
+.set-fold.shut { grid-template-rows: 0fr; }
+.set-section.set-closed { padding-bottom: 14px; }

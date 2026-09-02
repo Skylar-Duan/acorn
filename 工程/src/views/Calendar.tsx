@@ -4,7 +4,7 @@
 // 得落在真正做完那天）。头上三选一：全部 / 计划 / 已完成。
 import { useMemo, useState } from "react";
 import type { Task } from "../core/model";
-import { addDays, dayOfWeek, daysInMonth, monthStart, todayYMD } from "../core/dates";
+import { addDays, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
 import type { DateRow } from "../core/store";
 import {
   addTask, aliveTasks, byPriorityThenOrder, doneRows, expandTask, rowDoneDay, rowDoneGuessed,
@@ -16,7 +16,30 @@ import TaskCard from "../components/TaskCard";
 import "../styles/calendar.css";
 
 const WEEK_HEAD = ["一", "二", "三", "四", "五", "六", "日"];
-const MAX_SHOWN = 3;
+/** 一格最多列几条。周视图一行七格、格子高约六倍，给多得多——否则一格空着一大片却挂着「+N」 */
+const MAX_SHOWN_MONTH = 3;
+const MAX_SHOWN_WEEK = 10;
+
+/** 月 / 周（v1.9.1）。周视图只是「7 格横排、格子更高」，不带时间轴 */
+type CalMode = "month" | "week";
+const MODE_KEY = "acorn-calendar-mode";
+function loadMode(): CalMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === "week" ? "week" : "month";
+  } catch {
+    return "month";
+  }
+}
+/** anchor 的口径按模式归一：月视图是月首、周视图是周一。切模式必须过这一道，
+ *  否则 anchor 停在周一去算月网格会整片错位且不报错 */
+function normalizeAnchor(ymd: string, mode: CalMode): string {
+  return mode === "week" ? weekStart(ymd) : monthStart(ymd);
+}
+function mdLabel(ymd: string, withYear: boolean): string {
+  const m = Number(ymd.slice(5, 7));
+  const d = Number(ymd.slice(8, 10));
+  return `${withYear ? `${ymd.slice(0, 4)}年` : ""}${m}月${d}日`;
+}
 
 /** 日格里显示哪一类。默认「全部」——先让人看见东西，再让他自己收窄 */
 const FILTERS = [
@@ -40,8 +63,19 @@ export default function Calendar() {
   const data = useApp((s) => s.data);
   const expandedId = useApp((s) => s.ui.expandedId);
   const today = todayYMD();
-  /** 当前展示月份的一号 */
-  const [anchor, setAnchor] = useState(() => monthStart(today));
+  const [mode, setMode] = useState<CalMode>(loadMode);
+  /** 月视图：当前展示月份的一号；周视图：当前展示那一周的周一 */
+  const [anchor, setAnchor] = useState(() => normalizeAnchor(today, loadMode()));
+  const pickMode = (m: CalMode) => {
+    setMode(m);
+    setAnchor((a) => normalizeAnchor(a, m));
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {
+      /* 存不了就这次会话记得 */
+    }
+  };
+  const maxShown = mode === "week" ? MAX_SHOWN_WEEK : MAX_SHOWN_MONTH;
   const [dropYmd, setDropYmd] = useState<string | null>(null);
   const [quickYmd, setQuickYmd] = useState<string | null>(null);
   const [quickText, setQuickText] = useState("");
@@ -57,15 +91,16 @@ export default function Calendar() {
     }
   };
 
-  // 本月格子：周一开头，前后补齐到整周
+  // 格子：月视图整月（周一开头，前后补齐到整周）；周视图就是 anchor 那一周的七天
   const cells = useMemo(() => {
+    if (mode === "week") return Array.from({ length: 7 }, (_, i) => addDays(anchor, i));
     const y = Number(anchor.slice(0, 4));
     const m = Number(anchor.slice(5, 7));
     const lead = (dayOfWeek(anchor) + 6) % 7;
     const start = addDays(anchor, -lead);
     const weeks = Math.ceil((lead + daysInMonth(y, m)) / 7);
     return Array.from({ length: weeks * 7 }, (_, i) => addDays(start, i));
-  }, [anchor]);
+  }, [anchor, mode]);
 
   // 按日期归堆，两个桶各按各的日子：
   //   · 计划桶按截止日 t.due（维持原样）
@@ -99,14 +134,25 @@ export default function Calendar() {
   }, [data]);
 
   const expanded = expandedId ? aliveTasks(data).find((t) => t.id === expandedId) : undefined;
-  const ymLabel = `${anchor.slice(0, 4)}年${Number(anchor.slice(5, 7))}月`;
+  // 周视图的标题是一段区间，可能跨月跨年：年份只在跟今年不同、或起止跨年时才带
+  const ymLabel = (() => {
+    if (mode === "month") return `${anchor.slice(0, 4)}年${Number(anchor.slice(5, 7))}月`;
+    const end = addDays(anchor, 6);
+    const thisYear = today.slice(0, 4);
+    const crossYear = anchor.slice(0, 4) !== end.slice(0, 4);
+    const startYear = crossYear || anchor.slice(0, 4) !== thisYear;
+    const endYear = crossYear || end.slice(0, 4) !== thisYear;
+    return `${mdLabel(anchor, startYear)} – ${mdLabel(end, endYear)}`;
+  })();
 
   function goPrev() {
-    setAnchor((a) => monthStart(addDays(a, -1)));
+    setAnchor((a) => (mode === "week" ? addDays(a, -7) : monthStart(addDays(a, -1))));
   }
   function goNext() {
-    // 一号加上当月天数正好落到下月一号
-    setAnchor((a) => addDays(a, daysInMonth(Number(a.slice(0, 4)), Number(a.slice(5, 7)))));
+    // 月视图：一号加上当月天数正好落到下月一号
+    setAnchor((a) =>
+      mode === "week" ? addDays(a, 7) : addDays(a, daysInMonth(Number(a.slice(0, 4)), Number(a.slice(5, 7)))),
+    );
   }
 
   /** 日历格里补记一条。回车之后**框留在原地清空**，接着记下一条同一天的事；
@@ -147,9 +193,14 @@ export default function Calendar() {
           ))}
         </div>
         <div className="cal-nav">
-          <button className="arr" onClick={goPrev} title="上个月">‹</button>
-          <button onClick={() => setAnchor(monthStart(todayYMD()))}>今天</button>
-          <button className="arr" onClick={goNext} title="下个月">›</button>
+          {/* 月 / 周 跟前后翻页放一起：都是「我在看哪一段时间」 */}
+          <div className="all-sort">
+            <button className={mode === "month" ? "on" : undefined} onClick={() => pickMode("month")}>月</button>
+            <button className={mode === "week" ? "on" : undefined} onClick={() => pickMode("week")}>周</button>
+          </div>
+          <button className="arr" onClick={goPrev} title={mode === "week" ? "上一周" : "上个月"}>‹</button>
+          <button onClick={() => setAnchor(normalizeAnchor(todayYMD(), mode))}>今天</button>
+          <button className="arr" onClick={goNext} title={mode === "week" ? "下一周" : "下个月"}>›</button>
         </div>
       </div>
 
@@ -160,7 +211,7 @@ export default function Calendar() {
           ))}
         </div>
 
-        <div className="cal-grid">
+        <div className={`cal-grid${mode === "week" ? " week" : ""}`}>
           {cells.map((ymd) => {
             const slot = byDay.get(ymd);
             const open = filter === "done" ? [] : slot?.open ?? [];
@@ -170,10 +221,11 @@ export default function Calendar() {
             // 数字的含义从来是「几件事」，别让它跟着按行列的改动悄悄换口径
             const doneCount = slot ? rowTaskIds(slot.done).length : 0;
             // 计划的先占位，剩下的位子给已完成——一格就那么高，不能两边都硬塞
-            const shownOpen = open.slice(0, MAX_SHOWN);
-            const shownDone = done.slice(0, Math.max(0, MAX_SHOWN - shownOpen.length));
+            const shownOpen = open.slice(0, maxShown);
+            const shownDone = done.slice(0, Math.max(0, maxShown - shownOpen.length));
             const hidden = open.length - shownOpen.length + (done.length - shownDone.length);
-            const inMonth = ymd.slice(0, 7) === anchor.slice(0, 7);
+            // 周视图里七天全是「这一周的」，不发灰；月视图才把补齐用的邻月日子压暗
+            const inMonth = mode === "week" || ymd.slice(0, 7) === anchor.slice(0, 7);
             return (
               <div
                 key={ymd}

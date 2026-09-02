@@ -25,3 +25,37 @@
   font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
+
+/* 计划里的搜索条（v1.9.1）。另起一行放在 .view-head 下面：
+   head 里已有三组控件，最小窗宽 880 时主区只剩约 600px，再塞一个输入框会挤爆 */
+.plan-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 30px 6px;
+  padding: 0 10px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+}
+.plan-search .ps-glyph { font-size: 13px; opacity: .6; flex: none; }
+.plan-search input.input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 7px 0;
+}
+.plan-search .ps-clear {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.plan-search .ps-clear:hover { color: var(--accent); background: var(--bg); }
+@media (max-width: 760px) {
+  .plan-search { margin: 0 14px 6px; }
+}

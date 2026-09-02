@@ -30,21 +30,35 @@ function isSubsequence(word: string, text: string): boolean {
  * 单词在单个任务上的得分；0 表示未命中。
  * word 已小写；各域文本在此处小写后比较（中文不受影响）。
  */
-function wordScore(task: Task, listName: string | null, word: string): number {
+function wordScore(task: Task, listName: string | null, word: string, exact: boolean): number {
   const title = task.title.toLowerCase();
   const idx = title.indexOf(word);
   if (idx >= 0) return W_TITLE_SUB + (idx === 0 ? W_TITLE_PREFIX_BONUS : 0);
-  if (isSubsequence(word, title)) return W_TITLE_SUBSEQ;
+  // 子序列命中（「ab」匹配任何含 a…b 的标题）作为浮层排序尚可，
+  // 当筛选器用会把整页都留下——筛选路径只认子串
+  if (!exact && isSubsequence(word, title)) return W_TITLE_SUBSEQ;
   const metaHit =
     task.who.some((w) => w.toLowerCase().includes(word)) ||
     task.tags.some((t) => t.toLowerCase().includes(word)) ||
-    (listName !== null && listName.toLowerCase().includes(word));
+    (listName !== null && listName.toLowerCase().includes(word)) ||
+    // 子任务标题也算：计划视图是把子任务拆成独立行的，那一行明明在屏幕上、
+    // 搜它的名字却一无所获，用户会当成坏了（2026-09-01 补）
+    task.subtasks.some((s) => s.title.toLowerCase().includes(word));
   if (metaHit) return W_META_SUB;
   if (task.notes.toLowerCase().includes(word)) return W_NOTES_SUB;
   return 0;
 }
 
-export function searchTasks(tasks: Task[], lists: List[], query: string): SearchHit[] {
+export type SearchOptions = {
+  /** 最多返回几条。浮层默认 50；当**筛选器**用要传 Infinity——截断了就是静默丢事 */
+  limit?: number;
+  /** true = 只认子串，不认子序列（筛选器用） */
+  exact?: boolean;
+};
+
+export function searchTasks(tasks: Task[], lists: List[], query: string, opts: SearchOptions = {}): SearchHit[] {
+  const limit = opts.limit ?? MAX_RESULTS;
+  const exact = opts.exact ?? false;
   const q = query.trim().toLowerCase();
   if (q === "") return [];
   const words = q.split(/\s+/);
@@ -59,7 +73,7 @@ export function searchTasks(tasks: Task[], lists: List[], query: string): Search
     let score = 0;
     let allHit = true;
     for (const w of words) {
-      const s = wordScore(task, listName, w);
+      const s = wordScore(task, listName, w, exact);
       if (s === 0) {
         allHit = false;
         break;
@@ -76,5 +90,5 @@ export function searchTasks(tasks: Task[], lists: List[], query: string): Search
     return a.task.createdAt < b.task.createdAt ? 1 : a.task.createdAt > b.task.createdAt ? -1 : 0;
   });
 
-  return hits.slice(0, MAX_RESULTS);
+  return Number.isFinite(limit) ? hits.slice(0, limit) : hits;
 }

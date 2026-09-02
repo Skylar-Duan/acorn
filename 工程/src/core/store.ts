@@ -30,6 +30,8 @@ export interface UIState {
   selectedIds: string[];
   searchOpen: boolean;
   paletteOpen: boolean;
+  /** 侧栏版本号点开的那份更新日志 */
+  changelogOpen: boolean;
   toast: { msg: string; undoable: boolean; key: number } | null;
   /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义 */
   ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null } | null;
@@ -113,7 +115,7 @@ export const appStore = createStore<AppState>(() => ({
   wiped: false,
   ui: {
     view: "today", listId: null, who: null, tag: null, ...loadFold(),
-    expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
+    expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, changelogOpen: false, toast: null,
     ctxMenu: null,
   },
   focus: { taskId: null, running: false, endsAt: null, totalMinutes: 0 },
@@ -330,7 +332,7 @@ export async function initStore(): Promise<void> {
       res = await persist.loadData();
     }
     // 磁盘上那份比本机新：**照常读进来**（v1.9.1 拆墙）。本机不认识的字段原样留着，
-    // 界面顶上出一条可关的提示条（App.tsx 的 SchemaBanner），仅此而已。
+    // 界面弹一次「已有更新版橡果」的框（App.tsx 的 NewerDataDialog），取消了照常用，仅此而已。
     // 以前这里换空账本 + return，用户打开橡果看见的是一屏「版本过旧」，自己的日志一条也进不来
     const loadedData = res.data;
     // 刚清空过（freshStart）就用真正的空账本
@@ -1168,6 +1170,11 @@ export function setSearchOpen(open: boolean) {
 export function setPaletteOpen(open: boolean) {
   const ui = appStore.getState().ui;
   appStore.setState({ ui: { ...ui, paletteOpen: open, searchOpen: false } });
+}
+
+export function setChangelogOpen(open: boolean) {
+  const ui = appStore.getState().ui;
+  appStore.setState({ ui: { ...ui, changelogOpen: open } });
 }
 
 export function setFocusState(patch: Partial<FocusState>) {

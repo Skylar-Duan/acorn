@@ -91,3 +91,9 @@
 
 /* 网格下方的展开卡 */
 .cal-detail { flex: none; max-height: 45%; overflow-y: auto; margin-top: 8px; }
+
+/* 月 / 周 切换（v1.9.1）。周视图一行七格、格子高，一格能列的条目多得多 */
+.cal-nav .all-sort { margin-right: 6px; }
+.cal-nav .all-sort button { padding: 3px 10px; }
+.cal-grid.week .cal-cell { padding: 8px 9px; }
+.cal-grid.week .cal-num { font-size: 15px; }
