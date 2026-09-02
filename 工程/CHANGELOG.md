@@ -42,8 +42,31 @@
   **没接的**：四象限（卡在格子里硬换、连收起动画都没有，改重要性会换格重挂——下一轮）；习惯只在改循环规则那条罕见路径会换组。
   有意为之的两处：已完成的组标题数字和今天底部的进度圈照旧数真实数据，不算被钉在别处的那一件。
 
-- **手机端追平**：安卓 APK 从 v1.7.0 直接跳到 v1.10.0，把 v1.8 → v1.9.1 的全部桌面改动带过去，
-  手机宽度下走查修的东西见下面「手机端走查」一节。README 的「手机跟随清单」清空。
+- **手机端追平**：安卓 APK 从 v1.7.0 直接跳到 v1.10.0，把 v1.8 → v1.9.1 的全部桌面改动带过去。README 的「手机跟随清单」清空。
+  先只读走查（390×844，P0 × 7 / P1 × 6 / P2 × 8），再全部修掉，桌面 1280 逐像素比对无连带变化。要点：
+  - **根因一处管三件**：v1.8/v1.9 那批 grid `0fr↔1fr` 折叠容器只写了 `min-height: 0`，漏了 `min-width: 0`
+    （grid item 默认 `min-width: auto`，收不到 min-content 以下）。补齐 `.card-slot > *`、`.set-fold > .set-fold-inner`、`.side-fold > *`。
+    实测任务卡 839→362px、卡内出界元素 71→0；设置「云账号」块 429→332px，「立即同步」从屏外回到屏内。
+  - `.tc-sentence` 的解析 chips（`flex: none` + nowrap）是顶宽任务卡的直接原因，窄屏改为输入框与 chips 各占整行可换行，圆角 999px→`--r-md`。
+  - `TaskRow` 把子任务链的 `›` 与子任务名各包一层 span（裸文本是匿名 flex 项拿不到 `text-overflow`），窄屏 `.chain-parent` 限 45%、两段各自省略。
+  - 子任务 `.rm` / `.sub-drop` 只在 `:hover` 显形 → `@media (hover: hover)` 包住，`(hover: none)` 常驻 `opacity: .55` 且 30×30；`.sb` 13→18px。
+  - `index.html` 补 `viewport-fit=cover`（targetSdk 36，Android 15 起强制 edge-to-edge，否则六处 `env(safe-area-inset-*)` 恒为 0）；`.view-body` 补底部安全区。
+  - `base.css` 的 `.modal` `min-width` 改 `min(480px, calc(100vw - 24px))`，`overlays.css` 窄屏块补 `.cp-modal / .so-modal / .rescue` 豁免。
+  - `quadrant.css` / `calendar.css` / `statsview.css` / `contextmenu.css` 各补 760px 断点：四象限单列四段；日历窄屏格内只画日期 + 优先级圆点 + 计数，
+    新增 `.cal-daylist` 当天清单（`Calendar.tsx` 加 `picked` 状态），周视图七列拍成七行。
+  - `TaskRow` 接入长按唤右键菜单（复用 `core/touchSort` 的 `LONG_PRESS_MS` / `SLOP_PX`），抬手时对 `touchend` `preventDefault()`
+    掐掉兼容鼠标事件——否则补发的 `mousedown` 会被 `ContextMenu` 的「点外面就关」当场关掉（`stopPropagation` 无效，两个监听在同一个 document 上）。
+    `.task-row` 加 `-webkit-touch-callout: none` 防系统「复制 / 全选」气泡抢戏。
+  - `StatsView.onExport` 判据 `inTauri` → `inTauri && hasDesktopFeatures`（安卓 `save()` 返回 `content://`，Rust `fs::write` 写不了），按钮文案随之切换。
+  - 折叠收起的 `.side-fold` / `.set-fold` 加 `visibility: hidden`（挂容器不挂子元素，`motion.test.ts` 钉着），`transition` 必须与 `grid-template-rows` 同一条简写。
+  - `tests/mobile-layout.test.ts` 44 条源码结构断言（含「窄屏规则必须写在本体之后 / 写在各自 CSS 文件里」的位置断言）。
+  - **真机还没验的**（这台没有安卓设备）：安全区真值、键盘弹起（Manifest 没声明 `windowSoftInputMode`）、长按菜单在真机 WebView 上留不留得住、
+    `:has()` 在 WebView < 105 上失效会退回「子任务名看不见」（不崩）、状态栏图标配色、签名仍是 debug 密钥。
+  - 遗留一个小 nit：手机上已放弃的子任务那一行，`×` 会单独掉到下一行（pill 太多挤的），下一轮收。
+
+- **发包**：`publish-exe.sh` / `publish-apk.sh` 已发到服务器，两个接口都回 `available: true, version: 1.10.0, schema: 6`。
+  安装包也放在 `acorn/安装包/`（exe + apk）。**GitHub Release 没发**（等用户验收）——所以清单里 `pageUrl` 指的 releases/latest 暂时还是 v1.7.0 那页。
+  **这台笔记本故意留在 v1.9.1**：让用户从 v1.9.1 走一次应用内更新到 v1.10.0，那是这一版最该验的路。
 
 - **字体方案**先给用户选（`acorn/方案/字体方案（待你定）.html`，四个候选，推荐 A：思源黑体正文 + 文楷 Screen 标题），
   这一版**不动字体**。
