@@ -39,9 +39,20 @@
 /* ---------- 顶栏（画板 ①⑤⑥） ---------- */
 /* 选择器要带上 .mshell：上面那条 `.mshell .view-head { padding-left: 0 }` 是两个类，
    光写 `.mhead` 只有一个类，会被它把左边的 18px 一起抹掉——标题就贴着屏幕边缘、被切掉半个字 */
+/* 顶部安全区**全应用只在这一条里留**（v1.11.1）。每个视图各写各的，迟早漏掉一个——
+   v1.11.0 漏的就是习惯页：它当时还挂着桌面那个 .view-head，而手机上 .main 的内边距是 0，
+   标题直接钻到系统状态栏底下。现在的规矩是：手机上每个视图的第一块都必须是 .mhead。
+   env() 在没有刘海/状态栏的环境返回 0，所以给一个 12px 的地板；真机上状态栏多高就让多少，
+   再加 6px 才不至于让标题贴着状态栏下沿（画板 Main.dc.html 那份是 48 + 6 = 54） */
 .mshell .mhead {
   flex: none;
-  padding: calc(var(--m-safe-top) + 14px) 18px 0;
+  /* display 必须掰成 block（v1.11.1）。.mhead 同时挂着 .view-head，而那个类是
+     `display: flex`——于是里面的 .mhead-top 只有内容那么宽（实测 390 的屏上只占 277），
+     进度环和搜索钮就吊在标题右边、离屏幕右缘还差 95px，看着像没对齐；
+     .mhead-extra 也会被塞到同一行的剩余空隙里（回收站那颗「清空回收站」就挤在搜索钮旁边）。
+     掰成 block 之后：第一行满宽（环和搜索贴右），第二行的筛选控件老老实实排在下面 */
+  display: block;
+  padding: calc(max(var(--m-safe-top), 12px) + 6px) 18px 0;
 }
 .mhead-top { display: flex; align-items: center; gap: 10px; }
 .mhead-txt { flex: 1; min-width: 0; }
@@ -49,7 +60,10 @@
   font-family: var(--serif);
   font-size: 30px;
   line-height: 34px;
-  font-weight: 600;
+  /* 常规字重，照画板（Main.dc.html 那个 .serif 标题没写 font-weight）。
+     600 会取到文楷的 Medium 那一档——30px 的中文一上 Medium 就发闷，
+     用户说的「比例怪怪的」有一半是这个。字号不动，只把这一档卸掉 */
+  font-weight: 400;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
@@ -95,7 +109,12 @@
 /* 完成进度环：把桌面沉在底部的「完成 2/6」提到抬头就看得见的地方 */
 .mring { position: relative; width: 44px; height: 44px; flex: none; }
 .mring svg { display: block; }
-.mring .track { stroke: var(--accent-soft); }
+/* 轨道（那圈没走完的底）必须看得见，否则整个环只剩中间一个数字——用户 v1.11.0 真机反馈。
+   画板用的是 --accent-soft，但那个色在浅色主题里跟底纸只差一点点，手机屏幕上等于没画。
+   改成「accent 兑进发丝线」：还是同一族的柔和色，六主题 × 深浅都拉得开。
+   前一条是给不认 color-mix 的老 WebView 的退路，退成发丝线本身也是看得见的 */
+.mring .track { stroke: var(--hair); }
+.mring .track { stroke: color-mix(in srgb, var(--accent) 30%, var(--hair)); }
 .mring .fill { stroke: var(--ok); transition: stroke-dashoffset var(--dur-2) var(--ease); }
 .mring .num {
   position: absolute;
@@ -143,13 +162,31 @@
   border-radius: var(--m-radius);
   overflow: hidden;
   background: var(--card);
+  /* 跟桌面的卡片、弹窗、输入条同一层纸的颗粒（base.css 那条 `.modal, .task-card…`）。
+     手机上整页最大的一块面就是这张卡，少了这层颗粒，近看就是一块塑料 */
+  background-image: var(--paper);
   border: 1px solid var(--hair);
   box-shadow: var(--shadow-sm);
 }
 .mcard + .mcard { margin-top: 8px; }
-/* 行与行之间一根发丝线。画在 .swipe-wrap 上而不是行本体上：
-   行本体会跟着手指左右跑，分隔线得钉在原地 */
-.mcard > .swipe-wrap + .swipe-wrap { border-top: 1px solid var(--hair); }
+/* 「更多」里那张单独一行的卡（随手记）：前面是四宫格，得自己隔开一段 */
+.mcard-solo { margin-top: 14px; }
+/* 行与行之间一根发丝线，**从圆圈之后起**（14 左内距 + 3 色条 + 12 + 24 圆圈 + 12 = 65px）。
+   通栏那种一刀切下来的线把一张卡切成好几片；缩进之后一列圆圈是连着的，整张卡才是一张纸。
+   画在 .swipe-wrap 上而不是行本体上：行本体会跟着手指左右跑，分隔线得钉在原地。
+   用伪元素而不是 border-top：border 没法只画一截。z-index 是必需的——
+   行本体（.swipe-body）是定位元素且底色不透明，不抬上来这根线会被它盖掉 */
+.mcard > .swipe-wrap + .swipe-wrap::before {
+  content: "";
+  position: absolute;
+  left: 65px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--hair);
+  z-index: 2;
+  pointer-events: none;
+}
 
 /* 「已完成 · N  展开」：今天页把做完的那一组默认收成一行 */
 .mfoldrow {
@@ -191,7 +228,8 @@
   width: 24px;
   height: 24px;
   flex: none;
-  border: 1.6px solid var(--ink-3);
+  /* 1.5 而不是 1.6：一列圆圈是这一屏出现次数最多的东西，描边细一点整页就轻一点 */
+  border: 1.5px solid var(--ink-3);
   border-radius: 50%;
   background: transparent;
   padding: 0;
@@ -248,8 +286,11 @@
 }
 .mrow-when.warn { color: var(--warn); font-weight: 500; }
 .mrow.settled .mrow-title { color: var(--ink-3); text-decoration: line-through; }
-/* 手指按住的那一段给点回应，不然「长按能出东西」这件事按下去的头半秒毫无迹象 */
-.mrow.pressing { background: var(--bg); }
+/* 按下去要有回应：轻点那一下底色微微变深，长按的头半秒也是同一个色
+   （不同的话，同一根手指按在同一行上会看到两种反应）。
+   前一条是给不认 color-mix 的老 WebView 的退路 */
+.mrow:active, .mrow.pressing { background: var(--bg); }
+.mrow:active, .mrow.pressing { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
 /* 让开的那一行浮起来一点：不投影的话，行和它底下的动作条像是同一张纸被涂了色。
    .shifted 由 MobileRow 在 dx≠0 时挂上；只在自己这张卡里加，不动 mobile.css 那份共用的 .swipe-body */
 .mcard .swipe-wrap.shifted .swipe-body { box-shadow: 0 0 14px rgba(0, 0, 0, .10); }
@@ -291,7 +332,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   font-size: 11px;
   color: var(--ink-3);
   background: none;
@@ -299,23 +340,41 @@
   padding: 0;
   transition: color var(--dur-1) var(--ease);
 }
+/* 当前那一格的小胶囊：光靠变色说「我在这儿」太轻，一颗底垫把它坐实。
+   垫的是图标那一格而不是整颗按钮——文字也垫上的话，五格就成了五颗药丸挤在一条上 */
+.mnav-ico {
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  transition: background var(--dur-1) var(--ease);
+}
+/* 图标 22px：24 在 60px 高的一格里跟文字挨得太紧 */
+.mnav-ico svg { width: 22px; height: 22px; }
 .mnav-tab.on { color: var(--accent); font-weight: 600; }
+.mnav-tab.on .mnav-ico { background: var(--accent-soft); }
 
-/* 悬浮的「记一条」，蹲在导航右上方 */
+/* 悬浮的「记一条」，蹲在导航右上方。
+   54px 而不是 56：跟 46px 的胶囊、44px 的命中区站在一条尺度线上，56 在 390 宽的屏上略显笨。
+   投影用 accent 兑出来的那一档（画板那份写死的值正好是森林主题 accent 的 28%）——
+   黑色投影压在纸底上是脏的，同色系的才像这颗按钮自己的影子。
+   前一条是给不认 color-mix 的老 WebView 的退路 */
 .mfab {
   position: absolute;
   right: 18px;
   bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 16px);
   z-index: 71;
-  width: 56px;
-  height: 56px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   border: 0;
   background: var(--accent);
   color: var(--on-accent);
   display: grid;
   place-items: center;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, .22), var(--shadow-sm);
+  box-shadow: 0 8px 20px rgba(102, 135, 90, .28), var(--shadow-sm);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow-sm);
   transition: transform var(--dur-1) var(--ease);
 }
 .mfab:active { transform: scale(.94); }
@@ -539,6 +598,8 @@
 .mmore-tile .ico { color: var(--accent); }
 .mmore-tile b { font-size: 15px; font-weight: 600; }
 .mmore-tile span { font-size: 12px; color: var(--ink-3); }
+/* 纸片也带一层颗粒，跟 .mcard 一套 */
+.mmore-acct, .mmore-tile { background-image: var(--paper); }
 
 /* 清单 / 需求方 / 标签那三张表 */
 .mli {
@@ -570,3 +631,78 @@
   font-weight: 600;
 }
 .mli .hash { width: 10px; color: var(--ink-3); font-size: 13px; text-align: center; flex: none; }
+/* 「随手记」那一行行首的图标：宽度跟需求方的首字圆徽一样，两张表的文字才对得齐 */
+.mli-ico { width: 24px; flex: none; display: grid; place-items: center; color: var(--ink-3); }
+.mli:active { background: var(--bg); }
+.mli:active { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
+
+/* ---------- 不是「一组一张卡」的那几页（v1.11.1） ----------
+   习惯 / 统计 / 设置 / 四象限 / 日历 / 回收站的正文不是卡片列表，而是自带边框的大块。
+   .mshell .view-body 把左右内边距压成了 0（卡片自带 12px 外边距），这几页得自己补回来，
+   不然整块贴着屏幕边——用户 v1.11.0 真机上看到的「页面从最顶上开始、卡贴着边」就是这一类。
+   一律 12px，跟 .mcard 的外边距对齐：整个手机端只有一条纵向对齐线 */
+.mshell .view-body.hb-body,
+.mshell .view-body.stats-body,
+.mshell .view-body.set-body,
+.mshell .view-body.quad-body,
+.mshell .view-body.cal-body {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+/* 顶栏底下要留一口气：这几页的第一块紧挨着标题，不像列表页有一条组标题垫着。
+   设置页不在里面——它的 .set-section 自带 14px 上外边距，再叠一层就空出一道沟 */
+.mshell .view-body.hb-body,
+.mshell .view-body.stats-body,
+.mshell .view-body.quad-body,
+.mshell .view-body.cal-body { padding-top: 14px; }
+/* 四象限那份 padding-bottom 是给桌面写的 16px，手机上会被底部导航压掉最后一格 */
+.mshell .view-body.quad-body {
+  padding-bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 28px);
+}
+/* 正文已经有 12px 内边距了，组标题不能再叠一层 18px——那样标题会比卡片还往里缩 */
+.mshell .view-body.hb-body .group-head { padding-left: 6px; padding-right: 6px; }
+
+/* 这几块也都是「纸」，一屏里只该有一种纸：圆角跟 .mcard 一样是 16，都带同一层颗粒。
+   桌面上它们各有各的圆角（--r-md 10 / --r-lg 14），那边一个字没动 */
+.mshell .quad-cell,
+.mshell .stats-card,
+.mshell .stats-week,
+.mshell .set-section,
+.mshell .cal-daylist {
+  border-radius: var(--m-radius);
+  background-image: var(--paper);
+}
+
+/* 习惯：新建那张卡和每一行习惯，跟别处的卡片同一副长相（圆角 / 纸纹 / 小投影 / 12px 外边距）。
+   左右外边距归上面那条 padding 管，这儿只管圆角和纸 */
+.mshell .hb-add,
+.mshell .hb-row {
+  border-radius: var(--m-radius);
+  background-image: var(--paper);
+  box-shadow: var(--shadow-sm);
+}
+.mshell .hb-add { padding: 12px 14px; margin-bottom: 12px; }
+/* 输入框在窄屏下自己独占一行（habits.css 的 700px 那一段），剩这颗「＋」孤零零挂在第二行，
+   跟周期下拉挤在一起。手机上收掉它——那一行本来就写着「加一个习惯」 */
+.mshell .hb-add .plus { display: none; }
+.mshell .hb-row { margin-bottom: 8px; }
+
+/* 回收站：手机上唯一还在用桌面那份 .task-row 的地方（行里是「还剩 N 天 / 恢复 / 彻底删除」，
+   不是任务行，滑动和详情都用不上）。给它套一张卡的外观，别让按钮贴着屏幕边 */
+.mshell .view-body .task-row {
+  margin: 0 12px 8px;
+  padding: 12px 14px;
+  border-radius: var(--m-radius);
+  background: var(--card);
+  background-image: var(--paper);
+  border: 1px solid var(--hair);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 计划页那条搜索框：narrow 那一版给的是 14px，手机上跟卡片对齐到 12px */
+.mshell .plan-search { margin-left: 12px; margin-right: 12px; }
+
+/* 顶栏底下第一块要是卡片，自己留一口气：随手记 / 清单 / 回收站这几页没有组标题垫着，
+   卡片会直接顶在标题下沿。有组标题的那几页不受影响（组标题自带 22px 上内距） */
+.mshell .view-body > .mcard:first-child,
+.mshell .view-body > .task-row:first-child { margin-top: 14px; }

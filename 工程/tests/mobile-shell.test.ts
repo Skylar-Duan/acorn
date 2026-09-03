@@ -128,6 +128,36 @@ describe("② RowList：手机上走 MobileRow，不画内嵌展开卡", () => {
     expect(doneSource).toContain("{g.rows.flatMap(renderRow)}");
     expect(listViewSource).toContain("card={() => <TaskCard task={t} />}");
   });
+
+  it("卡片带纸纹、小投影，跟桌面那几张纸一套（v1.11.1）", () => {
+    const card = shellCss.slice(shellCss.indexOf("\n.mcard {"), shellCss.indexOf(".mcard + .mcard"));
+    // base.css 里 `.modal, .task-card, .set-section, .quick-add` 就是这一层颗粒
+    expect(card).toContain("background-image: var(--paper);");
+    expect(card).toContain("box-shadow: var(--shadow-sm);");
+    expect(read("src/styles/base.css")).toContain("background-image: var(--paper); }");
+    // 「更多」那两块纸片也跟上
+    expect(shellCss).toContain(".mmore-acct, .mmore-tile { background-image: var(--paper); }");
+  });
+
+  it("行与行的分隔线从圆圈之后起（inset），不是通栏一刀切", () => {
+    const sep = shellCss.slice(
+      shellCss.indexOf(".mcard > .swipe-wrap + .swipe-wrap::before {"),
+      shellCss.indexOf("/* 「已完成 · N  展开」"),
+    );
+    // 14 左内距 + 3 色条 + 12 + 24 圆圈 + 12 = 65
+    expect(sep).toContain("left: 65px;");
+    expect(sep).toContain("background: var(--hair);");
+    // 行本体是定位元素且底色不透明，不抬上来这根线会被它盖掉
+    expect(sep).toContain("z-index: 2;");
+    expect(shellCss).not.toContain(".mcard > .swipe-wrap + .swipe-wrap { border-top:");
+  });
+
+  it("按下去有回应：行底色微微变深（老 WebView 退成 --bg）", () => {
+    expect(shellCss).toContain(".mrow:active, .mrow.pressing { background: var(--bg); }");
+    expect(shellCss).toContain(
+      ".mrow:active, .mrow.pressing { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }",
+    );
+  });
 });
 
 describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归各的", () => {
@@ -210,15 +240,44 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
 });
 
 describe("④ 底部导航：固定五项、固定不动", () => {
-  it("常驻四格 + 更多，一共五项", () => {
+  it("常驻四格 + 更多，一共五项；顺序是 今天 / 习惯 / 计划 / 已完成", () => {
     const tabs = shellSource.slice(shellSource.indexOf("const TABS = ["), shellSource.indexOf("] as const;"));
-    for (const id of ["inbox", "today", "plan", "done"]) expect(tabs).toContain(`id: "${id}"`);
-    for (const label of ["随手记", "今天", "计划", "已完成"]) expect(tabs).toContain(label);
+    // v1.11.1：「随手记」退出常驻位（用户：「加号标签就能随手记」），空出来那格给「习惯」
+    expect(tabs).not.toContain('id: "inbox"');
+    expect(tabs).not.toContain("随手记");
+    const order = [...tabs.matchAll(/id: "(\w+)"/g)].map((m) => m[1]);
+    expect(order).toEqual(["today", "habits", "plan", "done"]);
+    for (const label of ["今天", "习惯", "计划", "已完成"]) expect(tabs).toContain(label);
     // 第五格是「更多」，它不是 ViewId，走壳子自己的一个本地开关
     expect(shellSource).toContain("const [moreOpen, setMoreOpen] = useState(false);");
     expect(shellSource).toContain("更多");
     // 一共五颗 .mnav-tab（四颗 map 出来 + 更多那一颗）
     expect(shellSource.split("mnav-tab").length - 1).toBe(2);
+  });
+
+  it("习惯那格是线性 SVG 图标，跟另外四个同一套笔画（不是 emoji、不是钟面）", () => {
+    const icons = read("src/mobile/icons.tsx");
+    expect(shellSource).toContain("IcoHabits");
+    const habit = icons.slice(icons.indexOf("export function IcoHabits"), icons.indexOf("export function IcoStats"));
+    expect(habit).toContain("<Ico size={size}>");
+    // 钟面那版是「一个圆 + 两根针」，换成了转一圈的箭头
+    expect(habit).not.toContain('<circle cx="12" cy="12" r="8" />');
+  });
+
+  it("随手记没被藏起来：「更多」里留了一行进 inbox，计数口径跟 ListView 一字不差", () => {
+    expect(moreSource).toContain('navigate("inbox")');
+    expect(moreSource).toContain("const inboxCount = open.filter((t) => !t.listId && !t.due).length;");
+    // ListView 的 inbox 分支就是这个条件（open 已经把 done / dropped 滤掉了）
+    expect(nl(listViewSource)).toContain("!t.done && !t.droppedAt && !t.listId && !t.due");
+  });
+
+  it("当前那一格有个 --accent-soft 的小胶囊垫在图标底下", () => {
+    expect(shellSource).toContain('<span className="mnav-ico">');
+    expect(shellCss).toContain(".mnav-tab.on .mnav-ico { background: var(--accent-soft); }");
+    // 图标 22px、文字 11px（画板 Main.dc.html 那一套）
+    expect(shellCss).toContain(".mnav-ico svg { width: 22px; height: 22px; }");
+    const tab = shellCss.slice(shellCss.indexOf(".mnav-tab {"), shellCss.indexOf(".mnav-ico {"));
+    expect(tab).toContain("font-size: 11px;");
   });
 
   it("「更多」不许扩 store 的 ViewId：桌面上根本没有这一页", () => {
@@ -271,18 +330,23 @@ describe("⑤ 悬浮「记一条」：只在记得下东西的页面出现", () 
     expect(shellSource).toContain('openSheet({ kind: "quickAdd", listId: view === "list" ? listId : null })');
   });
 
-  it("已完成 / 更多 / 设置 / 统计 / 回收站 上不画它", () => {
+  it("习惯 / 已完成 / 日历 / 更多 / 设置 / 统计 / 回收站 上不画它", () => {
     const noFab = shellSource.slice(shellSource.indexOf("const NO_FAB"), shellSource.indexOf("export default function MobileShell"));
-    for (const v of ["done", "settings", "stats", "trash"]) expect(noFab).toContain(`"${v}"`);
+    // 习惯页有自己的「加上」（从那儿加出来的才是习惯），日历是回头看的，两处都不该再摆一颗 ＋
+    for (const v of ["habits", "done", "calendar", "settings", "stats", "trash"]) expect(noFab).toContain(`"${v}"`);
     expect(shellSource).toContain("const showFab = !moreOpen && !NO_FAB.includes(view);");
+    // 「更多」不是 ViewId，靠 moreOpen 那一半挡住
+    expect(shellSource).toContain("const showFab = !moreOpen");
   });
 
-  it("56px 的圆、accent 色，蹲在导航右上方", () => {
+  it("54px 的圆、accent 色、同色系投影，蹲在导航右上方", () => {
     const fab = shellCss.slice(shellCss.indexOf(".mfab {"), shellCss.indexOf(".mfab:active"));
-    expect(fab).toContain("width: 56px;");
-    expect(fab).toContain("height: 56px;");
+    expect(fab).toContain("width: 54px;");
+    expect(fab).toContain("height: 54px;");
     expect(fab).toContain("background: var(--accent);");
     expect(fab).toContain("bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 16px);");
+    // 黑色投影压在纸底上是脏的；老 WebView 不认 color-mix 就吃前一条
+    expect(fab).toContain("box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow-sm);");
   });
 
   it("清单页那条常驻输入栏手机上不画（记一条只留 ＋ 一个入口）", () => {
@@ -308,6 +372,22 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     expect(headSource).toContain("{ring && ring.total > 0 && <ProgressRing");
   });
 
+  it("🔴 轨道要看得见：只剩中间一个数字就等于没画（v1.11.0 真机反馈）", () => {
+    expect(headSource).toContain('<circle className="track"');
+    // --accent-soft 在浅色主题里跟底纸差得太少，改成「accent 兑进发丝线」；
+    // 前一条是给不认 color-mix 的老 WebView 的退路，退成发丝线本身也看得见
+    expect(shellCss).toContain(".mring .track { stroke: var(--hair); }");
+    expect(shellCss).toContain(".mring .track { stroke: color-mix(in srgb, var(--accent) 30%, var(--hair)); }");
+  });
+
+  it("习惯页也有进度环，跟「今天」一个形制", () => {
+    const habits = read("src/views/Habits.tsx");
+    expect(habits).toContain("ring={{ done: doneCount, total: dueToday.length }}");
+    // 副标题同一份喂两边，别让手机和桌面各算一遍
+    expect(habits).toContain("const sub =");
+    expect(nl(habits)).toContain("<span className=\"sub\">{sub}</span>");
+  });
+
   it("搜索钮走现成的全局搜索浮层，不另做一个", () => {
     expect(headSource).toContain('import { setSearchOpen } from "../core/store";');
     expect(headSource).toContain("onClick={() => setSearchOpen(true)}");
@@ -319,8 +399,57 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     // 这条必须带 .mshell：上面那条 `.mshell .view-head { padding-left: 0 }` 是两个类，
     // 光写 `.mhead` 会被它把左边的 18px 抹掉，标题贴边被切掉半个字（实测过）
     expect(shellCss).toContain(".mshell .mhead {");
-    expect(shellCss).toContain("padding: calc(var(--m-safe-top) + 14px) 18px 0;");
+    // v1.11.1：安全区**只在这一条里留一份**（每个视图各写各的，迟早漏掉一个——
+    // v1.11.0 漏的就是习惯页）。env() 在没状态栏的环境返回 0，所以有个 12px 的地板
+    expect(shellCss).toContain("padding: calc(max(var(--m-safe-top), 12px) + 6px) 18px 0;");
     expect(mobileCss).toContain("--m-safe-top: env(safe-area-inset-top, 0px);");
+    // 大标题是常规字重（画板那个 .serif 标题没写 font-weight）：600 会取到文楷 Medium，30px 的中文一上 Medium 就发闷
+    const title = shellCss.slice(shellCss.indexOf(".mhead-title {"), shellCss.indexOf(".mhead-title.small"));
+    expect(title).toContain("font-weight: 400;");
+  });
+
+  it("🔴 每一个视图在手机上都走 MobileHead——安全区在它那儿，漏一个就顶到状态栏底下", () => {
+    const views: [string, string][] = [
+      ["今天", todaySource],
+      ["计划", read("src/views/Plan.tsx")],
+      ["已完成", doneSource],
+      ["清单 / 随手记 / 回收站", listViewSource],
+      ["更多", moreSource],
+      ["习惯", read("src/views/Habits.tsx")],
+      ["日历", read("src/views/Calendar.tsx")],
+      ["统计", read("src/views/StatsView.tsx")],
+      ["设置", read("src/views/Settings.tsx")],
+    ];
+    for (const [name, src] of views) {
+      expect(src, name).toContain('import MobileHead from "../mobile/MobileHead";');
+      expect(src, name).toContain("<MobileHead");
+    }
+    // 「更多」不判 isMobile（它只存在于手机上），别的八个都得分叉，桌面那份 .view-head 一个字没动
+    for (const [name, src] of views.filter(([n]) => n !== "更多")) {
+      expect(nl(stripComments(src)), name).toMatch(/isMobile \? \(\s*<MobileHead/);
+      expect(src, name).toContain('<div className="view-head">');
+    }
+  });
+
+  it("四象限是「计划」里的一个 tab，沿用计划的顶栏；它只管自己别贴边", () => {
+    const quad = read("src/views/Quadrant.tsx");
+    expect(quad).not.toContain("MobileHead");
+    expect(quad).toContain('<div className="view-body quad-body">');
+    expect(shellCss).toContain(".mshell .view-body.quad-body,");
+  });
+
+  it("不是「一组一张卡」的那几页，正文自己补 12px（.view-body 的左右内边距是 0）", () => {
+    for (const cls of ["hb-body", "stats-body", "set-body", "quad-body", "cal-body"]) {
+      expect(shellCss, cls).toContain(`.mshell .view-body.${cls}`);
+    }
+    const pad = shellCss.slice(shellCss.indexOf(".mshell .view-body.hb-body,"), shellCss.indexOf("/* 顶栏底下要留一口气"));
+    expect(pad).toContain("padding-left: 12px;");
+    expect(pad).toContain("padding-right: 12px;");
+    // 习惯页那两张卡跟别处同一副长相
+    expect(shellCss).toContain(".mshell .hb-add,");
+    expect(shellCss).toContain("border-radius: var(--m-radius);");
+    // 回收站还在用桌面那份 .task-row，得自己套一张卡
+    expect(shellCss).toContain(".mshell .view-body .task-row {");
   });
 
   it("☰ 让出来的那 46px 缩进也收掉了（手机上没有那颗按钮）", () => {

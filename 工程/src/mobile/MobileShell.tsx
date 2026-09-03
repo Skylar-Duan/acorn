@@ -17,20 +17,27 @@ import { navigate, useApp } from "../core/store";
 import type { ViewId } from "../core/store";
 import { openSheet } from "./sheetStore";
 import MobileMore from "../views/MobileMore";
-import { IcoDone, IcoInbox, IcoMore, IcoPlan, IcoPlus, IcoToday } from "./icons";
+import { IcoDone, IcoHabits, IcoMore, IcoPlan, IcoPlus, IcoToday } from "./icons";
 import "../styles/mobile-shell.css";
 
-/** 底部那五格。顺序照设计稿，**固定五项**——常驻位再多一个就谁都记不住了 */
+/** 底部那五格。**固定五项**——常驻位再多一个就谁都记不住了。
+ *
+ *  v1.11.1 起「随手记」退出常驻位（用户原话：「手机版随手记没必要，那个加号标签就能随手记了」）：
+ *  记一条走右下角那颗 ＋，一个入口就够了；那些没归清单的事在「计划」里照常排着，
+ *  「更多」里也留了一行「随手记 · N」直接进这一页，一条都没藏起来。
+ *  空出来的那格给「习惯」——它是每天都要点开打卡的，收在「更多」里等于逼人每天多点两下。 */
 const TABS = [
-  { id: "inbox", label: "随手记", Icon: IcoInbox },
   { id: "today", label: "今天", Icon: IcoToday },
+  { id: "habits", label: "习惯", Icon: IcoHabits },
   { id: "plan", label: "计划", Icon: IcoPlan },
   { id: "done", label: "已完成", Icon: IcoDone },
 ] as const;
 
-/** 这几页上不出现「记一条」：它们要么是回头看的（已完成 / 统计 / 回收站），
- *  要么根本不是记事的地方（设置 / 更多）。摆一颗按了没意义的按钮比不摆更糟 */
-const NO_FAB: ViewId[] = ["done", "settings", "stats", "trash"];
+/** 这几页上不出现「记一条」：它们要么是回头看的（已完成 / 统计 / 回收站 / 日历），
+ *  要么根本不是记事的地方（设置 / 更多），要么自己已经有一个更合适的入口
+ *  （习惯页顶上那张卡里的「加上」——从那儿加出来的才是习惯，从 ＋ 加出来的是任务）。
+ *  摆一颗按了没意义、或者按了给错东西的按钮，比不摆更糟 */
+const NO_FAB: ViewId[] = ["habits", "done", "calendar", "settings", "stats", "trash"];
 
 export default function MobileShell({ children }: { children: ReactNode }) {
   const view = useApp((s) => s.ui.view);
@@ -71,7 +78,11 @@ export default function MobileShell({ children }: { children: ReactNode }) {
             aria-current={!moreOpen && view === id ? "page" : undefined}
             onClick={() => go(id)}
           >
-            <Icon />
+            {/* 图标外面这层是当前项那颗小胶囊的落脚点（.mnav-ico，见 mobile-shell.css）：
+                垫在图标底下而不是整颗按钮底下，五格才不会变成五颗挤在一起的药丸 */}
+            <span className="mnav-ico">
+              <Icon />
+            </span>
             {label}
           </button>
         ))}
@@ -80,7 +91,9 @@ export default function MobileShell({ children }: { children: ReactNode }) {
           aria-current={moreOpen ? "page" : undefined}
           onClick={() => setMoreOpen(true)}
         >
-          <IcoMore />
+          <span className="mnav-ico">
+            <IcoMore />
+          </span>
           更多
         </button>
       </nav>

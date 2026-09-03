@@ -4,7 +4,7 @@
 // （手机整页 / 桌面居中弹窗，components/LoginPage.tsx），设置页里那块只剩一个入口。
 // 两处要是各写一份请求与错误处理，改一处必漏一处；更要紧的是「登录成功那一刻本机数据怎么办」——
 // 那一段是数据安全级别的分叉（core/loginCtl.signInWithLocalData：本机全新就用云端覆盖、
-// 两边都有内容就停下来问、其余合并），**全应用只许有一份实现**——
+// 两边都有内容就把两份档案摆出来让他挑、其余合并），**全应用只许有一份实现**——
 // 谁都不许绕过它自己去把登录态装上（绕过去 = 跳过那道判断 = 侧栏又冒出两个「工作」）。
 //
 // 这里只管三件事：表单状态、调哪个接口、出错说什么。长什么样、问法怎么问由界面决定——
@@ -58,13 +58,18 @@ export function errText(e: unknown): string {
 
 /** 登录完给用户的那句回执。三条路各说各的，别让人猜刚才到底发生了什么 */
 export function signInToast(out: SignInOutcome): string {
-  const tail = out.folded > 0 ? `；顺手把 ${out.folded} 条重名的清单并成了一条` : "";
-  if (out.action === "replace" && out.restored) {
+  const tail =
+    (out.folded > 0 ? `；顺手把 ${out.folded} 条重名的清单并成了一条` : "") +
+    (out.foldedTasks > 0 ? `；${out.foldedTasks} 件两边都有的事只留了一份` : "");
+  if (out.action === "cloud" && out.restored) {
     return (
       `已把云端第 ${out.restored.rev} 版取回这台设备（${out.restored.tasks} 条事）` +
       (out.restored.backup ? `，覆盖前那份存进了 backups/${out.restored.backup}` : "") +
       tail
     );
+  }
+  if (out.action === "local") {
+    return `已经把云端那份换成这台设备上的这一份${tail}`;
   }
   return `登录成功，正在合并两端数据${tail}`;
 }
@@ -85,9 +90,10 @@ export function canSubmit(step: AuthStep, f: AuthFields): boolean {
 }
 
 export interface AuthFlowOptions {
-  /** 「本机有内容、云端也有内容」时的问法：合并还是覆盖。界面自己弹，别用系统确认框 */
+  /** 「本机有内容、云端也有内容」时的问法：两份档案摆出来，留一份还是合并。
+   *  界面自己画（components/LoginPage.tsx），别用系统确认框 */
   ask: (info: LoginAsk) => Promise<LoginChoice>;
-  /** 登录成功且**没有走覆盖**时的收尾（走覆盖那条会整页刷新，收尾没有意义） */
+  /** 登录成功且**没有走「用云端的」**时的收尾（那条会整页刷新，收尾没有意义） */
   onSignedIn?: () => void;
 }
 
@@ -166,13 +172,16 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
   }
 
   /** 登录 / 验证 / 改密码之后统一走这条：本机是全新的就用云端整份覆盖，
-   *  两边都有内容就停下来问一句，其余照常合并。判据全在 core/fresh.ts */
+   *  两边都有内容就停下来把两份档案摆出来让他挑（用云端的 / 用这台设备上的 / 合并），
+   *  其余照常合并。判据全在 core/fresh.ts */
   async function settleSignIn(s: cloud.Session, fallbackMsg: string): Promise<void> {
     const out = await signInWithLocalData(s, cb.current.ask);
-    showToast(out.action === "merge" && out.folded === 0 ? fallbackMsg : signInToast(out), false);
-    // 覆盖过就得刷一遍界面：ui 里记着的当前清单可能已经被云端那份换掉，
-    // 留在原地会是一屏空白。刷之前先把攒着的写完、推完，否则刚清好的那份云端还不知道
-    if (out.action === "replace") {
+    const plain = out.action === "merge" && out.folded === 0 && out.foldedTasks === 0;
+    showToast(plain ? fallbackMsg : signInToast(out), false);
+    // 用云端那份覆盖过就得刷一遍界面：ui 里记着的当前清单可能已经被云端那份换掉，
+    // 留在原地会是一屏空白。刷之前先把攒着的写完、推完，否则刚清好的那份云端还不知道。
+    // 另外两条路（用本机的 / 合并）本机内容还在原地，不用刷
+    if (out.action === "cloud") {
       await flushSync();
       location.reload();
       return;

@@ -15,7 +15,7 @@ import loginPageSource from "../src/components/LoginPage.tsx?raw";
 import authFlowSource from "../src/core/useAuthFlow.ts?raw";
 import accountPanelSource from "../src/components/AccountPanel.tsx?raw";
 import settingsSource from "../src/views/Settings.tsx?raw";
-import { dismissLogin } from "../src/components/LoginPage";
+import { dismissLogin, profileLines } from "../src/components/LoginPage";
 import { closeLogin, loginStore, openLogin } from "../src/mobile/sheetStore";
 import { LOGIN_LATER_KEY, isLoginLater } from "../src/core/fresh";
 import {
@@ -66,13 +66,52 @@ describe("文案：用户定过的那几句，一个字都不许改", () => {
     expect(loginPageSource).toContain("注册时会设一个密码，之后用密码登录；忘了就用邮箱收一个验证码，重设一个新的。");
   });
 
-  it("「合并还是覆盖」是这一页自己画的一段，不再是系统确认框", () => {
-    expect(loginPageSource).toContain("合起来（推荐，什么都不丢）");
-    expect(loginPageSource).toContain("用云端那份覆盖这台");
-    expect(loginPageSource).toContain("这台设备上已经记了 {ask.info.localTasks} 件事。");
+  it("「两份档案」是这一页自己画的一段，不再是系统确认框", () => {
+    // 2026-09-03 用户定的口径：通用现代 App 的「云端档案 / 本地档案」，
+    // 各写自己的最新更新日期，选一份点确定，或者合并。「合起来」那种自造词不许再出现
+    expect(loginPageSource).toContain("云端和这台设备上各有一份。");
+    expect(loginPageSource).toContain("云端的那份");
+    expect(loginPageSource).toContain("这台设备上的那份");
+    expect(loginPageSource).toContain("用这份");
+    expect(loginPageSource).toContain("合并两份（重复的只留一份）");
+    expect(loginPageSource).not.toContain("合起来");
     // 系统确认框那两条路一条都不许留在这一页里
     expect(loginPageSource).not.toContain("window.confirm");
     expect(loginPageSource).not.toContain("plugin-dialog");
+  });
+
+  it("两张档案卡各写「几件事 · 几个清单」和「最近更新什么时候」，同一个写法才好比", () => {
+    // 存的是 UTC，显示的是**本机时刻**——用户对得上的只有自己的钟
+    const at = new Date(2026, 8, 2, 14, 30).toISOString();
+    expect(profileLines({ tasks: 12, lists: 3, updatedAt: at }))
+      .toEqual(["12 件事 · 3 个清单", "最近更新 9月2日 14:30"]);
+  });
+
+  it("那份还什么都没有时不写时刻（写「最近更新 —」比不写更让人犯嘀咕）", () => {
+    expect(profileLines({ tasks: 0, lists: 0, updatedAt: null })).toEqual(["0 件事 · 0 个清单"]);
+  });
+
+  it("默认选中云端那张——会走到这一问的多半是换了新设备的人", () => {
+    expect(loginPageSource).toContain('useState<"cloud" | "local">("cloud")');
+  });
+});
+
+describe("左上角那个标志就是桌面上那只橡果", () => {
+  // 用户 2026-09-03：「这个标志也要换成橡果的」。原来画的是一枚手绘线条橡果，
+  // 跟任务栏、桌面快捷方式上那只对不上，看着像另一个软件
+  it("用的是应用图标本身，不是另画一枚", () => {
+    expect(loginPageSource).toContain('import appIconUrl from "../assets/app-icon.svg";');
+    expect(loginPageSource).toContain("<img src={appIconUrl} alt=\"\" />");
+    expect(loginPageSource).not.toContain("M6.5 9c0 6 2.5 9 5.5 11"); // 手绘那三条线
+  });
+
+  it("assets 里那份跟 Tauri 打包用的那份一个字节不差（换图标时别只换一处）", () => {
+    expect(readFileSync("src/assets/app-icon.svg", "utf8"))
+      .toBe(readFileSync("src-tauri/icons/icon.svg", "utf8"));
+  });
+
+  it("图标填满那个圆角框（框自己不再画卡片底，图标自带底板）", () => {
+    expect(loginCss).toContain(".login-mark > img { width: 100%; height: 100%; display: block; }");
   });
 });
 
@@ -155,9 +194,11 @@ describe("登录成功那一刻，判断还是那一份", () => {
   it("走了覆盖就先落盘再刷界面（顺序反了，刚清好的那份云端不知道）", () => {
     const settle = authFlowSource.slice(authFlowSource.indexOf("async function settleSignIn"));
     expect(settle.indexOf("await flushSync();")).toBeLessThan(settle.indexOf("location.reload();"));
+    // 只有「用云端的」那条才刷界面：另外两条本机内容还在原地，刷了只是白闪一下
+    expect(settle).toContain('out.action === "cloud"');
   });
 
-  it("「合并还是覆盖」的问法由界面给，hook 自己不弹任何框", () => {
+  it("「两份档案」的问法由界面给，hook 自己不弹任何框", () => {
     expect(authFlowSource).toContain("ask: (info: LoginAsk) => Promise<LoginChoice>;");
     expect(authFlowSource).not.toContain("window.confirm");
     expect(loginPageSource).toContain("new Promise<LoginChoice>");
@@ -322,9 +363,9 @@ describe("出错说什么", () => {
 });
 
 describe("登录完那句回执，三条路各说各的", () => {
-  it("走了覆盖：说清取回的是第几版、多少条、备份存哪儿", () => {
+  it("用了云端那份：说清取回的是第几版、多少条、备份存哪儿", () => {
     const msg = signInToast({
-      action: "replace", asked: true, folded: 0, plan: "ask",
+      action: "cloud", asked: true, folded: 0, foldedTasks: 0, plan: "ask",
       restored: { rev: 7, tasks: 12, backup: "pre-restore-20260902-101010.json" },
     });
     expect(msg).toContain("第 7 版");
@@ -332,10 +373,20 @@ describe("登录完那句回执，三条路各说各的", () => {
     expect(msg).toContain("backups/pre-restore-20260902-101010.json");
   });
 
-  it("走了合并：说合并，顺手折掉的重名清单也报一句", () => {
-    const msg = signInToast({ action: "merge", asked: false, folded: 2, plan: "merge", restored: null });
+  it("用了这台设备上那份：说清云端已经换成本机这份", () => {
+    const msg = signInToast({
+      action: "local", asked: true, folded: 0, foldedTasks: 0, plan: "ask", restored: null,
+    });
+    expect(msg).toContain("换成这台设备上的这一份");
+  });
+
+  it("走了合并：说合并，顺手折掉的重名清单和重复的事都报一句", () => {
+    const msg = signInToast({
+      action: "merge", asked: false, folded: 2, foldedTasks: 3, plan: "merge", restored: null,
+    });
     expect(msg).toContain("正在合并两端数据");
     expect(msg).toContain("2 条重名的清单");
+    expect(msg).toContain("3 件两边都有的事");
   });
 });
 

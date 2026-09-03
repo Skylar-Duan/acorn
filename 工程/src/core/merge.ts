@@ -6,9 +6,11 @@
 //   · 专注记录只增不减 → 两边合并去重
 //   · 设置（主题、快捷键这些）**不同步**，各机器各的
 //
-// 文件末尾还住着一件相关但**不在每轮同步里跑**的事：同名清单去重（dedupeListsByName）。
-// 合并只认 id 不认名字，所以两台设备各自的默认清单「工作」会并排站着；
-// 那件事只在登录那一刻收拾一次，见 loginCtl.ts。
+// 文件末尾还住着三件相关但**不在每轮同步里跑**的事，全都只在登录那一刻用一次（见 loginCtl.ts）：
+//   · dedupeListsByName —— 同名清单并一条。合并只认 id 不认名字，
+//     两台设备各自的默认清单「工作」会并排站着；
+//   · dedupeSameTasks   —— 两边各存了一份的同一件事只留一条（用户 2026-09-03 要的「交集不要重复」）；
+//   · keepLocalOverCloud —— 用户选「用这台设备上的那份」时，给云端独有的东西立墓碑。
 //
 // 为什么不逐字段合并：任务是一个整体（改了日期往往连带改了提醒和顺延计数），
 // 逐字段拼会产出「日期是 A 机的、提醒是 B 机的」这种自相矛盾的记录。
@@ -204,4 +206,132 @@ export function dedupeListsByName(data: AppData, at = new Date().toISOString()):
 export function bury(graveyard: Tombstone[], ids: string[], at: string): Tombstone[] {
   if (ids.length === 0) return graveyard;
   return pruneGraveyard([...graveyard, ...ids.map((id) => ({ id, at }))]);
+}
+
+// ---------- 同一件事的跨档案去重 ----------
+
+export interface TaskDedupe {
+  data: AppData;
+  /** 折掉了几件重复的事 */
+  folded: number;
+}
+
+/** 「同一件事」的身份。四样全一样才算同一件：
+ *  种类（事 / 习惯）、标题（前后空格不算）、在哪条清单、哪一天。
+ *
+ *  清单比的是**名字不是 id**：两台设备各自的「工作」本来就是两个 id，比 id 永远对不上。
+ *  这也让这件事跟同名清单去重的先后无关——dedupeListsByName 会给搬过家的任务
+ *  重新盖改动时刻戳，先跑它的话「留改得晚的那条」当场被那一下盖乱。
+ *
+ *  为什么把种类也算进去：一条叫「喝水」的习惯和一条叫「喝水」的事不是一回事，
+ *  折掉一个用户就少了一个打卡记录。判据宁可严一点——严了最多留下一条重复，
+ *  松了就是把用户的东西吃掉。 */
+function taskIdentity(t: Task, listName: Map<string, string>): string {
+  const where = t.listId === null ? "" : listName.get(t.listId) ?? t.listId;
+  return JSON.stringify([t.kind, t.title.trim(), where, t.due ?? ""]);
+}
+
+/** 同一件事留哪条：改得晚的留下；一样晚就比 id。
+ *  比 id 纯粹是为了「几台设备各自算一遍得出同一个答案」，没有别的含义 */
+function taskKeeperRank(a: Task, b: Task): number {
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt > b.updatedAt ? -1 : 1;
+  return a.id < b.id ? -1 : 1;
+}
+
+/**
+ * 登录时选了「合并两份」之后，把**两边各存了一份的同一件事**并成一条。
+ *
+ * 为什么要有这件事（用户 2026-09-03 实测反馈）：两台设备各自记过同样的事，
+ * 两条记录的 id 不一样，mergeData 只认 id，于是合完侧栏里同一件事并排站着两条。
+ * 「合并」在用户嘴里的意思是「两边的东西都留着，**但交集不要重复**」。
+ *
+ * 只折**跨档案**的那种：一组里必须既有只属于本机的、又有只属于云端的，才动手。
+ * 用户自己在一台设备上故意记了两条一模一样的（比如两趟一样的差事），
+ * 那是他的事，一次登录不许替他做主删掉。
+ *
+ * 回收站里的（deletedAt 非空）一概不参与：它跟活着的那条不是「重复」，
+ * 把活的那条折成删掉的那条，等于当场丢事。
+ *
+ * 被折掉的那条立墓碑——多设备收敛全靠它，不立的话别的设备下一轮同步又把它推回来。
+ * 代价是那一条上的备注、子任务、专注时长跟着走，所以只留改得晚的那条。
+ *
+ * **没有重复时原样返回同一个对象**（口径同 dedupeListsByName）。
+ */
+export function dedupeSameTasks(
+  data: AppData,
+  sides: { local: ReadonlySet<string>; remote: ReadonlySet<string> },
+  at = new Date().toISOString(),
+): TaskDedupe {
+  const listName = new Map(data.lists.map((l) => [l.id, l.name.trim()]));
+  const groups = new Map<string, Task[]>();
+  for (const t of data.tasks) {
+    if (t.deletedAt) continue;
+    const key = taskIdentity(t, listName);
+    const g = groups.get(key);
+    if (g) g.push(t);
+    else groups.set(key, [t]);
+  }
+
+  const drop = new Set<string>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    // 「只属于这一边」才算数：两边都有的那个 id（以前同步过的同一条）既不算本机独有、
+    // 也不算云端独有，否则一条同步过的事加上一条本机的手误重复，也会被当成跨档案重复折掉
+    const fromLocal = g.some((t) => sides.local.has(t.id) && !sides.remote.has(t.id));
+    const fromRemote = g.some((t) => sides.remote.has(t.id) && !sides.local.has(t.id));
+    if (!fromLocal || !fromRemote) continue;
+    const keep = [...g].sort(taskKeeperRank)[0];
+    for (const t of g) if (t.id !== keep.id) drop.add(t.id);
+  }
+  if (drop.size === 0) return { data, folded: 0 };
+
+  return {
+    data: {
+      ...data,
+      tasks: data.tasks.filter((t) => !drop.has(t.id)),
+      graveyard: bury(data.graveyard ?? [], [...drop], at),
+    },
+    folded: drop.size,
+  };
+}
+
+// ---------- 「用这台设备上的那份」 ----------
+
+/**
+ * 登录时选了「用这台设备上的那份」：本机内容一个字不动，**把云端换成本机这份**。
+ *
+ * 两件事一起做，少一件都不成：
+ * ① 云端有、本机没有的事和清单**立墓碑**——不立的话，随后那一轮同步会把它们
+ *    原样合回本机（合并只会多不会少），用户选的「用这份」当场落空；
+ *    别的设备下次同步也会把它们再推回来。
+ * ② 两边都有、云端却改得更晚的那几条，**重新盖上本机的时刻戳**——不盖的话
+ *    同步那一轮里「谁改得晚听谁的」会让云端那条赢，用户选的这份又被翻案。
+ *    只盖有冲突的那几条，不盖整库：整库盖戳等于把这台设备标成「刚全改过」。
+ *
+ * 专注记录没有墓碑机制（它只增不减、也没有 id），云端那些会在下一轮同步里并进来。
+ * 那是统计数字，不是「事」，不在这次选择的范围内。
+ *
+ * 返回一份新的数据，调用方**落一次 state 就够**，随后照常推一轮上去。
+ */
+export function keepLocalOverCloud(local: AppData, remote: AppData, at = new Date().toISOString()): AppData {
+  const localTaskIds = new Set(local.tasks.map((t) => t.id));
+  const localListIds = new Set(local.lists.map((l) => l.id));
+  const doomed = [
+    ...remote.tasks.filter((t) => !localTaskIds.has(t.id)).map((t) => t.id),
+    ...remote.lists.filter((l) => !localListIds.has(l.id)).map((l) => l.id),
+  ];
+
+  const remoteTasks = new Map(remote.tasks.map((t) => [t.id, t]));
+  const remoteLists = new Map(remote.lists.map((l) => [l.id, l]));
+  const restamp = <T extends Stamped>(x: T, other: T | undefined): T =>
+    other !== undefined && other.updatedAt > x.updatedAt ? { ...x, updatedAt: at } : x;
+
+  return {
+    ...local,
+    // 版本号取三者最大，口径同 mergeData：本机是老版本时不许把云端的 schema 棘轮拉回去
+    version: Math.max(local.version || 0, remote.version || 0, DATA_VERSION),
+    tasks: local.tasks.map((t) => restamp(t, remoteTasks.get(t.id))),
+    lists: local.lists.map((l) => restamp(l, remoteLists.get(l.id))),
+    graveyard: bury(local.graveyard ?? [], doomed, at),
+  };
 }

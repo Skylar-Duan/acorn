@@ -8,7 +8,7 @@
 // 三条得守住的：
 // ① 请求全部走 core/useAuthFlow（它再走 core/cloud），这里一行网络代码都没有；
 // ② 登录成功那一刻本机数据怎么办，走的是现成的 loginCtl.signInWithLocalData，
-//    「合并还是覆盖」那一问由这一页自己画（不再是系统确认框），但**判断本身一个字没动**；
+//    「两份档案」那一问由这一页自己画（不再是系统确认框），但**判断本身一个字没动**；
 // ③ 首启自动弹的那一次，用户点「先看看，不登录」要记下 markLoginLater——
 //    不记的话每次开机都被同一个框拦一道，云账号就从「可选的便利」变成「进门收费站」。
 //
@@ -24,7 +24,11 @@ import { markLoginLater } from "../core/fresh";
 import { isMobile } from "../core/platform";
 import { looksLikeEmail, useAuthFlow } from "../core/useAuthFlow";
 import type { AuthStep } from "../core/useAuthFlow";
-import type { LoginAsk, LoginChoice } from "../core/loginCtl";
+import type { LoginAsk, LoginChoice, ProfileSummary } from "../core/loginCtl";
+// 桌面上那只橡果，登录页左上角摆的就该是同一只（用户 2026-09-03：「这个标志也要换成橡果的」）。
+// 用的是 src-tauri/icons/icon.svg 的一份副本（矢量，放大不糊），跟字体一样归 src 自己管；
+// 换图标时两处一起换
+import appIconUrl from "../assets/app-icon.svg";
 import "../styles/login.css";
 
 /** 关掉登录页。**首启自动弹的那一次**要顺手记下「以后别再自动弹」：
@@ -57,6 +61,23 @@ const lockIcon = (
   </svg>
 );
 
+/** 档案卡上那两行：「12 件事 · 3 个清单」/「最近更新 9月2日 14:30」。
+ *  两张卡同一个写法，用户才好一眼比出哪份新、哪份大。
+ *
+ *  为什么拆成两行而不是一整句：卡片只有半屏宽，一整句会在「最」和「近」中间断开，
+ *  行尾还挂着一个孤零零的间隔点。
+ *  时刻一律带月日、按本机时区：两份档案本来就是拿来比先后的，只写钟点比不出来 */
+export function profileLines(p: ProfileSummary): string[] {
+  const lines = [`${p.tasks} 件事 · ${p.lists} 个清单`];
+  const d = p.updatedAt ? new Date(p.updatedAt) : null;
+  if (d && !Number.isNaN(d.getTime())) {
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    lines.push(`最近更新 ${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`);
+  }
+  return lines;
+}
+
 /** 一格输入。icon + 输入框 +（可选）右边那颗小动作 */
 function Field({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
@@ -79,10 +100,14 @@ function LoginPage() {
   /** 「这台设备上有内容、云端也有内容」那一问。开着的时候表单让位给它——
    *  在他拍板之前登录流程停在原地（signInWithLocalData 正 await 这个 Promise） */
   const [ask, setAsk] = useState<{ info: LoginAsk; decide: (c: LoginChoice) => void } | null>(null);
+  /** 两张档案卡上选中的是哪张。**默认云端**：会走到这一问的多半是换了新设备的人，
+   *  云端那份才是他这些年记下来的账本 */
+  const [pick, setPick] = useState<"cloud" | "local">("cloud");
 
   const flow = useAuthFlow({
     ask: (info) =>
       new Promise<LoginChoice>((resolve) => {
+        setPick("cloud"); // 上一次登录没成功留下的选择不带到这一次
         setAsk({ info, decide: (c) => { setAsk(null); resolve(c); } });
       }),
     onSignedIn: () => closeLogin(),
@@ -113,11 +138,7 @@ function LoginPage() {
   const brand = (
     <>
       <div className="login-mark" aria-hidden>
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M7 9c0-3 2.2-5 5-5s5 2 5 5" />
-          <path d="M5 9h14" />
-          <path d="M6.5 9c0 6 2.5 9 5.5 11 3-2 5.5-5 5.5-11" />
-        </svg>
+        <img src={appIconUrl} alt="" />
       </div>
       <div className="login-title serif">你好，这里是橡果。</div>
       <p className="login-sub">电脑上记的，手机上接着做。登录一次，两边就是同一本。</p>
@@ -242,13 +263,24 @@ function LoginPage() {
 
   const askPane = ask && (
     <div className="login-ask">
-      <div className="login-ask-title">这台设备上已经记了 {ask.info.localTasks} 件事。</div>
-      <p className="login-ask-line">
-        云端也存着一份（第 {ask.info.rev} 版
-        {ask.info.updatedAt ? `，${ask.info.updatedAt.slice(0, 10)} 更新` : ""}）。
-      </p>
-      <button className="login-go" onClick={() => ask.decide("merge")}>合起来（推荐，什么都不丢）</button>
-      <button className="login-second" onClick={() => ask.decide("replace")}>用云端那份覆盖这台</button>
+      <div className="login-ask-title">云端和这台设备上各有一份。</div>
+      <div className="login-picks">
+        {(["cloud", "local"] as const).map((side) => (
+          <button
+            key={side}
+            className={`login-pick${pick === side ? " on" : ""}`}
+            aria-pressed={pick === side}
+            onClick={() => setPick(side)}
+          >
+            <span className="login-pick-name">{side === "cloud" ? "云端的那份" : "这台设备上的那份"}</span>
+            {profileLines(side === "cloud" ? ask.info.cloud : ask.info.local).map((line) => (
+              <span key={line} className="login-pick-meta">{line}</span>
+            ))}
+          </button>
+        ))}
+      </div>
+      <button className="login-go" onClick={() => ask.decide(pick)}>用这份</button>
+      <button className="login-second" onClick={() => ask.decide("merge")}>合并两份（重复的只留一份）</button>
     </div>
   );
 

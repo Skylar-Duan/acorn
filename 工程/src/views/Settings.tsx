@@ -4,7 +4,7 @@ import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from
 import { APP_VERSION, DATA_VERSION } from "../core/model";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
-import { aliveTasks, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
+import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
 import { useFold } from "../core/useFold";
 import {
   dataStatus, getDataDir, inTauri, listBackups, readTextFile, restoreBackup,
@@ -13,7 +13,7 @@ import {
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
 import { useSync } from "../core/syncCtl";
-import { hasDesktopFeatures } from "../core/platform";
+import { hasDesktopFeatures, isMobile } from "../core/platform";
 import { FOCUS_ENABLED } from "../core/features";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
@@ -21,6 +21,7 @@ import { useGuideEntry } from "../components/GuideSheet";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import UpdatePanel from "../components/UpdatePanel";
 import { updaterSupported } from "../core/updater";
+import MobileHead from "../mobile/MobileHead";
 import "../styles/settings.css";
 
 /**
@@ -322,10 +323,21 @@ export default function Settings() {
 
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>设置</h1>
-        <span className="sub">外观、账号、数据与行为</span>
-      </div>
+      {/* 手机上走 MobileHead：顶部安全区统一在它那儿留（桌面那个 .view-head 没有）。
+          这一页只从「更多」右上角那颗齿轮进得来，所以给一条回去的路 */}
+      {isMobile ? (
+        <MobileHead
+          title="设置"
+          sub="外观、账号、数据与行为"
+          search={false}
+          onBack={() => navigate("today")}
+        />
+      ) : (
+        <div className="view-head">
+          <h1>设置</h1>
+          <span className="sub">外观、账号、数据与行为</span>
+        </div>
+      )}
       <div className="view-body set-body">
         {/* ---------- 外观 ---------- */}
         <SetSection

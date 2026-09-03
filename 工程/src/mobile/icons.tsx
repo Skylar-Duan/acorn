@@ -181,12 +181,17 @@ export function IcoCalendar({ size = 22 }: IconProps) {
   );
 }
 
-/** 习惯：钟面 */
+/** 习惯：转一圈的两支箭头（v1.11.1 起进底部导航常驻位）。
+ *  为什么不是钟面：钟说的是「几点」，而习惯这一页说的是「反复做」——
+ *  一圈箭头正是这本 App 自己给习惯下的定义（「需要反复做的事放在这里，每天打卡」）。
+ *  笔画跟另外四格同一套：24 网格、1.8 描边、圆头圆角 */
 export function IcoHabits({ size = 24 }: IconProps) {
   return (
     <Ico size={size}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M12 8v4l3 2" />
+      <path d="M20.5 12a8.5 8.5 0 00-14.5-6L3.5 8.5" />
+      <path d="M3.5 4v4.5H8" />
+      <path d="M3.5 12a8.5 8.5 0 0014.5 6l2.5-2.5" />
+      <path d="M20.5 20v-4.5H16" />
     </Ico>
   );
 }

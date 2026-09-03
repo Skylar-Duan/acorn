@@ -7,12 +7,14 @@ import type { Task } from "../core/model";
 import { addDays, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
 import type { DateRow } from "../core/store";
 import {
-  addTask, aliveTasks, byPriorityThenOrder, doneRows, expandTask, rowDoneDay, rowDoneGuessed,
-  rowTaskIds, setTasksDue, useApp,
+  addTask, aliveTasks, byPriorityThenOrder, doneRows, expandTask, navigate, rowDoneDay,
+  rowDoneGuessed, rowTaskIds, setTasksDue, useApp,
 } from "../core/store";
 import { rowKey } from "../components/RowList";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import TaskCard from "../components/TaskCard";
+import { isMobile } from "../core/platform";
+import MobileHead from "../mobile/MobileHead";
 import "../styles/calendar.css";
 
 const WEEK_HEAD = ["一", "二", "三", "四", "五", "六", "日"];
@@ -179,34 +181,60 @@ export default function Calendar() {
     setDropYmd(null);
   }
 
+  // 这两组控件桌面上跟标题挤在同一行，手机上放不下，交给顶栏另起一行摆（MobileHead 的 extra）。
+  // **同一份 JSX 喂给两边**：分成两份写，早晚有一边少一个按钮
+  const filters = (
+    <div className="all-sort">
+      {FILTERS.map((f) => (
+        <button
+          key={f.id}
+          className={filter === f.id ? "on" : undefined}
+          onClick={() => pickFilter(f.id)}
+        >
+          {f.name}
+        </button>
+      ))}
+    </div>
+  );
+  const nav = (
+    <div className="cal-nav">
+      {/* 月 / 周 跟前后翻页放一起：都是「我在看哪一段时间」 */}
+      <div className="all-sort">
+        <button className={mode === "month" ? "on" : undefined} onClick={() => pickMode("month")}>月</button>
+        <button className={mode === "week" ? "on" : undefined} onClick={() => pickMode("week")}>周</button>
+      </div>
+      <button className="arr" onClick={goPrev} title={mode === "week" ? "上一周" : "上个月"}>‹</button>
+      <button onClick={() => setAnchor(normalizeAnchor(todayYMD(), mode))}>今天</button>
+      <button className="arr" onClick={goNext} title={mode === "week" ? "下一周" : "下个月"}>›</button>
+    </div>
+  );
+
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>日历</h1>
-        <span className="cal-ym">{ymLabel}</span>
-        <span className="spacer" />
-        <div className="all-sort">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              className={filter === f.id ? "on" : undefined}
-              onClick={() => pickFilter(f.id)}
-            >
-              {f.name}
-            </button>
-          ))}
+      {/* 手机上走 MobileHead：顶部安全区统一在它那儿留。
+          「哪一个月」当副标题，月/周 与 全部/计划/已完成 落到顶栏第二行（那一行横着能滑） */}
+      {isMobile ? (
+        <MobileHead
+          title="日历"
+          sub={ymLabel}
+          search={false}
+          onBack={() => navigate("today")}
+          extra={
+            <>
+              {nav}
+              {filters}
+            </>
+          }
+        />
+      ) : (
+        <div className="view-head">
+          <h1>日历</h1>
+          <span className="cal-ym">{ymLabel}</span>
+          <span className="spacer" />
+          {filters}
+          {nav}
         </div>
-        <div className="cal-nav">
-          {/* 月 / 周 跟前后翻页放一起：都是「我在看哪一段时间」 */}
-          <div className="all-sort">
-            <button className={mode === "month" ? "on" : undefined} onClick={() => pickMode("month")}>月</button>
-            <button className={mode === "week" ? "on" : undefined} onClick={() => pickMode("week")}>周</button>
-          </div>
-          <button className="arr" onClick={goPrev} title={mode === "week" ? "上一周" : "上个月"}>‹</button>
-          <button onClick={() => setAnchor(normalizeAnchor(todayYMD(), mode))}>今天</button>
-          <button className="arr" onClick={goNext} title={mode === "week" ? "下一周" : "下个月"}>›</button>
-        </div>
-      </div>
+      )}
 
       {/* 模式挂在容器上：窄屏周视图要把七列拍成七行，那时候上面那排「一二三…」的
           列头就没有意义了，得能选中它关掉，而列头自己不知道现在是月还是周 */}

@@ -16,7 +16,7 @@ import { syncFootState, useSync } from "../core/syncCtl";
 import MobileHead from "../mobile/MobileHead";
 import { openLogin } from "../mobile/sheetStore";
 import {
-  IcoCalendar, IcoGear, IcoHabits, IcoNext, IcoPlus, IcoStats, IcoTrash,
+  IcoCalendar, IcoGear, IcoHabits, IcoInbox, IcoNext, IcoPlus, IcoStats, IcoTrash,
 } from "../mobile/icons";
 import "../styles/mobile-shell.css";
 
@@ -36,6 +36,10 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
   const whoList = allWho({ tasks, settings });
   const tagList = allTags({ tasks });
   const trashCount = tasks.filter((t) => t.deletedAt).length;
+  // 「随手记」v1.11.1 起不在底部常驻位了，这一行就是它的入口。
+  // 口径必须跟 ListView 的 inbox 分支一字不差（没归清单、也没定日子的），
+  // 否则这儿写着 3 件、点进去只有 2 件
+  const inboxCount = open.filter((t) => !t.listId && !t.due).length;
   // 习惯不在 aliveTasks 里（那儿把 kind==="habit" 排除了），得单独数
   const habitCount = aliveHabits({ tasks }).length;
 
@@ -110,6 +114,18 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
             </span>
             <b>回收站</b>
             <span>{trashCount > 0 ? `${trashCount} 件，删掉的留 30 天` : "删掉的留 30 天"}</span>
+          </button>
+        </div>
+
+        {/* 随手记：底部导航腾位置给「习惯」之后，这一行是它在手机上的门。
+            摆在清单那一段的上面而不是里面——它不是一张清单，是「还没归清单的那些」 */}
+        <div className="mcard mcard-solo">
+          <button className="mli" onClick={go(() => navigate("inbox"))}>
+            <span className="mli-ico">
+              <IcoInbox size={20} />
+            </span>
+            随手记
+            <span className="n">{inboxCount || ""}</span>
           </button>
         </div>
 

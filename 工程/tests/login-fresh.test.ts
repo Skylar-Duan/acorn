@@ -20,12 +20,14 @@ import { appStore, clearUndo, flushSave } from "../src/core/store";
 import * as cloud from "../src/core/cloud";
 import * as persist from "../src/core/persist";
 import { signOut, syncStore } from "../src/core/syncCtl";
-import { dedupeListsByName, mergeData } from "../src/core/merge";
+import {
+  dedupeListsByName, dedupeSameTasks, keepLocalOverCloud, mergeData,
+} from "../src/core/merge";
 import {
   DEFAULT_LIST_NAMES, LOGIN_LATER_KEY, isLoginLater, isPristineLocal, markLoginLater,
   planLoginData, shouldOfferLogin,
 } from "../src/core/fresh";
-import { signInWithLocalData } from "../src/core/loginCtl";
+import { signInWithLocalData, summarizeProfile } from "../src/core/loginCtl";
 import type { LoginAsk } from "../src/core/loginCtl";
 import {
   firstRunKind, readLastVersion, rememberLaunch, updateFootState,
@@ -283,6 +285,182 @@ describe("A · 同名清单去重", () => {
   });
 });
 
+// ------------------------------------------------------- A · 两份档案的门面数
+
+describe("A · 档案摘要（摆给用户看的三个数）", () => {
+  it("数的是还活着的事、清单条数，和两者 updatedAt 的最大值", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [list("a", "工作", 0, "2026-08-01T00:00:00.000Z"), list("b", "生活", 1, OLD)],
+      tasks: [
+        task("t1", "甲", "a", { updatedAt: "2026-09-02T14:30:00.000Z" }),
+        task("t2", "乙", "a"),
+      ],
+    };
+    expect(summarizeProfile(d)).toEqual({
+      tasks: 2, lists: 2, updatedAt: "2026-09-02T14:30:00.000Z",
+    });
+  });
+
+  it("回收站里的不算——用户在界面上数不到它们", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [],
+      tasks: [task("t1", "甲", null), task("t2", "删掉的", null, { deletedAt: OLD })],
+    };
+    expect(summarizeProfile(d).tasks).toBe(1);
+  });
+
+  it("一条内容都没有时 updatedAt 是 null（界面那行就不写时刻）", () => {
+    expect(summarizeProfile({ ...brandNew(), lists: [], tasks: [] }).updatedAt).toBeNull();
+  });
+});
+
+// ------------------------------------------------------- A · 同一件事去重（「合并两份」那条路）
+
+describe("A · 同一件事两边各一份，只留一份", () => {
+  const AT = "2026-09-03T10:00:00.000Z";
+  const NEW = "2026-09-02T00:00:00.000Z";
+  const sides = (localIds: string[], remoteIds: string[]) => ({
+    local: new Set(localIds), remote: new Set(remoteIds),
+  });
+
+  it("标题 / 清单 / 日期都一样、id 不同 → 并成一条，留改得晚的那条", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [list("w", "工作", 0)],
+      tasks: [
+        task("mine", "交周报", "w", { due: "2026-09-10" }),
+        task("theirs", "交周报", "w", { due: "2026-09-10", updatedAt: NEW }),
+      ],
+    };
+    const out = dedupeSameTasks(d, sides(["mine"], ["theirs"]), AT);
+    expect(out.folded).toBe(1);
+    expect(out.data.tasks.map((t) => t.id)).toEqual(["theirs"]);
+    // 被折掉的那条立墓碑，别的设备下一轮同步不会把它推回来
+    expect(out.data.graveyard.map((g) => g.id)).toEqual(["mine"]);
+  });
+
+  it("日期不一样就不是同一件事——「周五交周报」和「下周五交周报」是两件", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [],
+      tasks: [
+        task("mine", "交周报", null, { due: "2026-09-10" }),
+        task("theirs", "交周报", null, { due: "2026-09-17" }),
+      ],
+    };
+    expect(dedupeSameTasks(d, sides(["mine"], ["theirs"]), AT).folded).toBe(0);
+  });
+
+  it("两台设备各自的「工作」是两个 id，按**名字**算才对得上", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [list("local-work", "工作", 0), list("cloud-work", "工作", 1)],
+      tasks: [
+        task("mine", "交周报", "local-work"),
+        task("theirs", "交周报", "cloud-work", { updatedAt: NEW }),
+      ],
+    };
+    const out = dedupeSameTasks(d, sides(["mine"], ["theirs"]), AT);
+    expect(out.folded).toBe(1);
+    expect(out.data.tasks.map((t) => t.id)).toEqual(["theirs"]);
+  });
+
+  it("清单不一样也不是同一件事", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [list("w", "工作", 0), list("h", "生活", 1)],
+      tasks: [task("mine", "打电话", "w"), task("theirs", "打电话", "h")],
+    };
+    expect(dedupeSameTasks(d, sides(["mine"], ["theirs"]), AT).folded).toBe(0);
+  });
+
+  it("习惯不跟同名的事并——那是两种东西", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [],
+      tasks: [
+        task("mine", "喝水", null),
+        task("theirs", "喝水", null, { kind: "habit" }),
+      ],
+    };
+    expect(dedupeSameTasks(d, sides(["mine"], ["theirs"]), AT).folded).toBe(0);
+  });
+
+  it("同一台设备上自己记了两条一模一样的：不动——那是他自己的事", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [],
+      tasks: [task("a", "买菜", null), task("b", "买菜", null)],
+    };
+    expect(dedupeSameTasks(d, sides(["a", "b"], ["z"]), AT).folded).toBe(0);
+  });
+
+  it("回收站里那条不参与——否则活着的那条会被折成一条删掉的", () => {
+    const d: AppData = {
+      ...brandNew(),
+      lists: [],
+      tasks: [
+        task("mine", "交周报", null),
+        task("theirs", "交周报", null, { updatedAt: NEW, deletedAt: NEW }),
+      ],
+    };
+    const out = dedupeSameTasks(d, sides(["mine"], ["theirs"]), AT);
+    expect(out.folded).toBe(0);
+    expect(out.data.tasks.map((t) => t.id)).toEqual(["mine", "theirs"]);
+  });
+
+  it("没有重复时原样返回同一个对象（同步那边靠对象身份判断动没动过）", () => {
+    const d = brandNew();
+    expect(dedupeSameTasks(d, sides([], []), AT).data).toBe(d);
+  });
+});
+
+// ------------------------------------------------------- A · 「用这台设备上的那份」
+
+describe("A · 用这台设备上的那份（云端换成本机这份）", () => {
+  const AT = "2026-09-03T10:00:00.000Z";
+  const NEWER = "2026-09-02T00:00:00.000Z";
+
+  it("云端有、本机没有的事和清单一律立墓碑——不立的话下一轮同步又把它们合回来", () => {
+    const local: AppData = {
+      ...brandNew(), lists: [list("mine", "工作", 0)], tasks: [task("t1", "本机的事", "mine")],
+    };
+    const remote: AppData = {
+      ...brandNew(), lists: [list("theirs", "读书", 0)], tasks: [task("c1", "云端的事", "theirs")],
+    };
+    const out = keepLocalOverCloud(local, remote, AT);
+    expect(out.tasks.map((t) => t.id)).toEqual(["t1"]);
+    expect(out.graveyard.map((g) => g.id).sort()).toEqual(["c1", "theirs"]);
+    // 立完墓碑再跟云端合一轮：云端独有的那条不许复活
+    const merged = mergeData(out, remote).data;
+    expect(merged.tasks.map((t) => t.id)).toEqual(["t1"]);
+    expect(merged.lists.map((l) => l.id)).toEqual(["mine"]);
+  });
+
+  it("两边都有、云端改得更晚的那条重新盖本机的戳——否则合并时云端那条会赢，选择当场被翻案", () => {
+    const local: AppData = {
+      ...brandNew(), lists: [], tasks: [task("t1", "本机写的", null), task("t2", "没冲突的", null)],
+    };
+    const remote: AppData = {
+      ...brandNew(), lists: [], tasks: [task("t1", "云端写的", null, { updatedAt: NEWER })],
+    };
+    const out = keepLocalOverCloud(local, remote, AT);
+    expect(out.tasks.find((t) => t.id === "t1")!.updatedAt).toBe(AT);
+    expect(out.tasks.find((t) => t.id === "t1")!.title).toBe("本机写的");
+    // 没冲突的那条不许被顺手盖戳：一次登录把整库标成「本机刚改过」是另一种祸
+    expect(out.tasks.find((t) => t.id === "t2")!.updatedAt).toBe(OLD);
+    expect(mergeData(out, remote).data.tasks.find((t) => t.id === "t1")!.title).toBe("本机写的");
+  });
+
+  it("数据版本号取两边最大——本机是老版本时不许把云端的 schema 拉回去", () => {
+    const local = { ...brandNew(), version: 6 };
+    const remote = { ...brandNew(), version: 9 };
+    expect(keepLocalOverCloud(local, remote, AT).version).toBe(9);
+  });
+});
+
 // ------------------------------------------------------- A · 登录那一刻的实际走向
 
 describe("A · 登录时怎么处置本机数据", () => {
@@ -319,7 +497,7 @@ describe("A · 登录时怎么处置本机数据", () => {
 
   it("本机全新 + 云端有内容 → 用云端整份覆盖，**不是**合并", async () => {
     const out = await signInWithLocalData({ ...SESSION });
-    expect(out.action).toBe("replace");
+    expect(out.action).toBe("cloud");
     expect(pullOnly).toHaveBeenCalledTimes(1);
     // 合并那条路一次都不许走：走了就会把本机的默认清单推上云
     expect(syncOnce).not.toHaveBeenCalled();
@@ -339,31 +517,61 @@ describe("A · 登录时怎么处置本机数据", () => {
     expect(out.restored?.rev).toBe(7);
   });
 
-  it("本机有内容 + 云端有内容 → 停下来问用户，不擅自决定", async () => {
+  it("本机有内容 + 云端有内容 → 停下来把两份档案摆出来，不擅自决定", async () => {
     appStore.setState({ data: { ...brandNew(), tasks: [task("t1", "本机的事", null)] } });
     const ask = vi.fn(async (_info: LoginAsk) => "merge" as const);
     const out = await signInWithLocalData({ ...SESSION }, ask);
     expect(out.plan).toBe("ask");
     expect(out.asked).toBe(true);
     expect(ask).toHaveBeenCalledTimes(1);
-    // 问法里得有料：云端第几版、本机有几条，用户才判得了
-    expect(ask.mock.calls[0][0]).toMatchObject({ rev: 7, localTasks: 1 });
+    // 问法里得有料：两边各几件事、几个清单、最近什么时候动过，用户才判得了。
+    // 这些只有把云端那份真拉下来才算得出——但**只拉不落**，拍板之前本机一个字不动
+    expect(ask.mock.calls[0][0]).toMatchObject({
+      rev: 7,
+      cloud: { tasks: 1, lists: 1, updatedAt: OLD },
+      local: { tasks: 1, lists: 2 },
+    });
+    expect(pullOnly).toHaveBeenCalledTimes(1);
   });
 
-  it("用户选了合并 → 走合并，本机那条事还在", async () => {
+  it("问的那一下只拉不落：拍板之前本机数据一个字没变", async () => {
+    const mine = { ...brandNew(), tasks: [task("t1", "本机的事", null)] };
+    appStore.setState({ data: mine });
+    let seenWhileAsking: AppData | null = null;
+    await signInWithLocalData({ ...SESSION }, async () => {
+      seenWhileAsking = appStore.getState().data;
+      return "merge";
+    });
+    expect(seenWhileAsking).toBe(mine);
+  });
+
+  it("用户选了合并 → 两边的东西都在", async () => {
     appStore.setState({ data: { ...brandNew(), tasks: [task("t1", "本机的事", null)] } });
     const out = await signInWithLocalData({ ...SESSION }, async () => "merge");
     expect(out.action).toBe("merge");
     expect(syncOnce).toHaveBeenCalledTimes(1);
-    expect(pullOnly).not.toHaveBeenCalled();
+    expect(appStore.getState().data.tasks.map((t) => t.title).sort()).toEqual(["云端记的事", "本机的事"]);
   });
 
-  it("用户选了覆盖 → 走覆盖", async () => {
+  it("用户选了「用云端的」→ 走覆盖", async () => {
     appStore.setState({ data: { ...brandNew(), tasks: [task("t1", "本机的事", null)] } });
-    const out = await signInWithLocalData({ ...SESSION }, async () => "replace");
-    expect(out.action).toBe("replace");
-    expect(pullOnly).toHaveBeenCalledTimes(1);
+    const out = await signInWithLocalData({ ...SESSION }, async () => "cloud");
+    expect(out.action).toBe("cloud");
+    // 一次是问之前算摘要那一拉，一次是 restoreFromCloud 自己那一拉
+    expect(pullOnly).toHaveBeenCalledTimes(2);
     expect(appStore.getState().data.tasks.map((t) => t.title)).toEqual(["云端记的事"]);
+  });
+
+  it("用户选了「用这台设备上的」→ 本机内容原样留着，云端独有的立墓碑再推上去", async () => {
+    appStore.setState({ data: { ...brandNew(), tasks: [task("t1", "本机的事", null)] } });
+    const out = await signInWithLocalData({ ...SESSION }, async () => "local");
+    expect(out.action).toBe("local");
+    const d = appStore.getState().data;
+    expect(d.tasks.map((t) => t.title)).toEqual(["本机的事"]);
+    // 云端那条事和那条清单都立了碑：不立的话下一轮同步又把它们合回来
+    expect(d.graveyard.map((g) => g.id).sort()).toEqual(["c1", "cloud-work"]);
+    // 推送走的是现成那条路（base_rev 与 409 重试都在里面），没有另写一套
+    expect(syncOnce).toHaveBeenCalledTimes(1);
   });
 
   it("界面还没接上问法时默认合并——绝不在没人拍板的时候覆盖", async () => {
@@ -371,14 +579,26 @@ describe("A · 登录时怎么处置本机数据", () => {
     const out = await signInWithLocalData({ ...SESSION });
     expect(out.asked).toBe(true);
     expect(out.action).toBe("merge");
-    expect(pullOnly).not.toHaveBeenCalled();
+    expect(appStore.getState().data.tasks.map((t) => t.title).sort()).toEqual(["云端记的事", "本机的事"]);
+  });
+
+  it("云端那份拉不下来（断网）→ 不问了，退回合并，登录照样成功", async () => {
+    appStore.setState({ data: { ...brandNew(), tasks: [task("t1", "本机的事", null)] } });
+    pullOnly.mockRejectedValue(new cloud.ApiError(0, "offline", "连不上服务器"));
+    const ask = vi.fn(async (_info: LoginAsk) => "cloud" as const);
+    const out = await signInWithLocalData({ ...SESSION }, ask);
+    expect(ask).not.toHaveBeenCalled(); // 没有第二份档案可挑，问了也白问
+    expect(out.action).toBe("merge");
+    expect(out.asked).toBe(false);
+    expect(syncStore.getState().session?.email).toBe("a@b.c");
+    expect(appStore.getState().data.tasks.map((t) => t.title)).toEqual(["本机的事"]);
   });
 
   it("云端还是空的 → 照常合并，不问也不覆盖（第一台设备开账号）", async () => {
     whoAmI.mockResolvedValue({
       email: "a@b.c", rev: 0, updatedAt: null, device: "", hasData: false,
     });
-    const ask = vi.fn(async (_info: LoginAsk) => "replace" as const);
+    const ask = vi.fn(async (_info: LoginAsk) => "cloud" as const);
     const out = await signInWithLocalData({ ...SESSION }, ask);
     expect(out.plan).toBe("merge");
     expect(ask).not.toHaveBeenCalled();
@@ -415,6 +635,62 @@ describe("A · 登录时怎么处置本机数据", () => {
     expect(appStore.getState().data.lists.map((l) => l.name)).toEqual(["工作"]);
     // 清干净的这份得推回云端，否则下次换台设备又是两条
     expect(syncOnce).toHaveBeenCalled();
+  });
+
+  it("合并那条路上，同一件事两边各一份的只留一份（改得晚的那条）", async () => {
+    // 本机和云端各有一条「交周报」：清单同名、日期一样，只有 id 不同——
+    // 这正是用户 2026-09-03 说的「确保交集不要重复」
+    appStore.setState({
+      data: {
+        ...brandNew(),
+        lists: [list("local-work", "工作", 0)],
+        tasks: [task("mine", "交周报", "local-work", { due: "2026-09-10" })],
+      },
+    });
+    pullOnly.mockResolvedValue({
+      rev: 7,
+      data: {
+        ...defaultData(),
+        lists: [list("cloud-work", "工作", 0)],
+        tasks: [
+          task("theirs", "交周报", "cloud-work", {
+            due: "2026-09-10", updatedAt: "2026-09-02T00:00:00.000Z",
+          }),
+        ],
+      },
+      updatedAt: OLD,
+    });
+    const out = await signInWithLocalData({ ...SESSION }, async () => "merge");
+    expect(out.foldedTasks).toBe(1);
+    const d = appStore.getState().data;
+    expect(d.tasks.map((t) => t.id)).toEqual(["theirs"]); // 改得晚的那条留下
+    expect(d.lists.map((l) => l.name)).toEqual(["工作"]); // 同名清单也并成了一条
+    expect(d.graveyard.map((g) => g.id)).toContain("mine"); // 折掉的立了碑
+  });
+
+  it("合并整套只落一次 state——侧栏不许先 double counting 再恢复", async () => {
+    // 老做法是「先落合并结果、再落去重结果」，中间那一拍侧栏把两份都数了一遍，
+    // 用户看见的就是数字先翻倍随后才恢复（2026-09-03 实测反馈）
+    appStore.setState({
+      data: {
+        ...brandNew(),
+        lists: [list("local-work", "工作", 0)],
+        tasks: [task("mine", "交周报", "local-work", { due: "2026-09-10" })],
+      },
+    });
+    pullOnly.mockResolvedValue({
+      rev: 7,
+      data: {
+        ...defaultData(),
+        lists: [list("cloud-work", "工作", 0)],
+        tasks: [task("theirs", "交周报", "cloud-work", { due: "2026-09-10" })],
+      },
+      updatedAt: OLD,
+    });
+    const spy = vi.spyOn(appStore, "setState");
+    await signInWithLocalData({ ...SESSION }, async () => "merge");
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("三个入口（登录/验证/改密码）都走这条判断，没有漏网的 adoptSession", () => {

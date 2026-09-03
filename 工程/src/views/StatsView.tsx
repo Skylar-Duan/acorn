@@ -4,10 +4,11 @@ import { useMemo } from "react";
 import { addDays, formatCN, fromYMD, todayYMD, weekStart } from "../core/dates";
 import { byList, byWho, completionByDay, exportWeekMarkdown, weeklyReview } from "../core/stats";
 import * as persist from "../core/persist";
-import { showToast, useApp } from "../core/store";
+import { navigate, showToast, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
-import { hasDesktopFeatures } from "../core/platform";
+import { hasDesktopFeatures, isMobile } from "../core/platform";
 import { WhoBadge } from "../components/TaskRow";
+import MobileHead from "../mobile/MobileHead";
 
 const HEAT_WEEKS = 13;
 const HEAT_DAYS = HEAT_WEEKS * 7; // 91
@@ -90,10 +91,21 @@ export default function StatsView() {
 
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>统计</h1>
-        <span className="sub">最近的完成情况</span>
-      </div>
+      {/* 手机上走 MobileHead：顶部安全区统一在它那儿留（桌面那个 .view-head 没有），
+          而且这一页是从「更多」点进来的，得给一条回去的路 */}
+      {isMobile ? (
+        <MobileHead
+          title="统计"
+          sub="最近做完了多少、连着做了几天"
+          search={false}
+          onBack={() => navigate("today")}
+        />
+      ) : (
+        <div className="view-head">
+          <h1>统计</h1>
+          <span className="sub">最近的完成情况</span>
+        </div>
+      )}
       <div className="view-body stats-body">
         {/* 数字卡的枚数是活的：专注收起来时少一枚，本周一件都没放弃时也少一枚。
             列数跟着枚数走（statsview.css 的 .n2 / .n3 / .n4），不然会剩个半格 */}

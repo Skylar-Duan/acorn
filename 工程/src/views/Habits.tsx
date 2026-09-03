@@ -18,6 +18,8 @@ import {
   sortHabitsForDay, streak, weekMarks, type DayMark,
 } from "../core/habits";
 import { CommitMark, useCommitFlash, useTypingFlash } from "../components/commitFlash";
+import { isMobile } from "../core/platform";
+import MobileHead from "../mobile/MobileHead";
 import "../styles/habits.css";
 
 const WEEK_LABEL = ["一", "二", "三", "四", "五", "六", "日"];
@@ -232,20 +234,34 @@ export default function Habits() {
     setExpandedId(id);
   }
 
+  // 副标题**同一份喂给两边**：分成两处写，早晚有一边的口径跟另一边对不上
+  const sub =
+    habits.length === 0
+      ? "需要反复做的事放在这里，每天打卡"
+      : dueToday.length === 0
+        ? "今天没有要打卡的习惯"
+        : doneCount === dueToday.length
+          ? `今天的 ${dueToday.length} 个已全部打卡`
+          : `今天 ${doneCount}/${dueToday.length}`;
+
   return (
     <section className="main">
-      <div className="view-head">
-        <h1>习惯</h1>
-        <span className="sub">
-          {habits.length === 0
-            ? "需要反复做的事放在这里，每天打卡"
-            : dueToday.length === 0
-              ? "今天没有要打卡的习惯"
-              : doneCount === dueToday.length
-                ? `今天的 ${dueToday.length} 个已全部打卡`
-                : `今天 ${doneCount}/${dueToday.length}`}
-        </span>
-      </div>
+      {/* 手机上必须走 MobileHead：顶部安全区只在它那儿留了一份。
+          v1.11.0 这一页还挂着桌面那个 .view-head，而手机上 .main 的内边距是 0——
+          标题直接顶到系统状态栏底下（用户真机截图点名的就是这一条） */}
+      {isMobile ? (
+        <MobileHead
+          title="习惯"
+          sub={sub}
+          // 打卡进度也用同一个环：跟「今天」一个形制，扫一眼就知道今天还欠几个
+          ring={{ done: doneCount, total: dueToday.length }}
+        />
+      ) : (
+        <div className="view-head">
+          <h1>习惯</h1>
+          <span className="sub">{sub}</span>
+        </div>
+      )}
 
       <div className="view-body hb-body">
         <div className="hb-add">

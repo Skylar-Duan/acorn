@@ -48,10 +48,11 @@ function CheckControl() {
 
   if (today?.result === "latest" && stage !== "failed") {
     return (
+      // 用户 9/3 定的顺序与叫法：按钮叫「检查更新」，放在那句话前面
       <span className="cl-check cl-check-ok" title="今天已经查过一次">
+        <button className="cl-again" onClick={() => void go()}>检查更新</button>
         <span className="cl-tick" aria-hidden>✓</span>
         你用的已经是最新版本
-        <button className="cl-again" onClick={() => void go()}>再查一次</button>
       </span>
     );
   }

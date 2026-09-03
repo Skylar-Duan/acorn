@@ -1254,7 +1254,22 @@ export const SUB_DONE_PEEK = 3;
  *  filter 保留原数组顺序，所以两堆接起来跟原先「做完的沉到最下面」的稳定排序逐条等价，
  *  改成折叠之后视觉上不会有「东西自己动了」。只管显示，存的那份数组一个字节都不动 */
 export function splitSubtasks(subs: Subtask[]): { open: Subtask[]; done: Subtask[] } {
-  return { open: subs.filter((s) => !s.done), done: subs.filter((s) => s.done) };
+  // 没做完的按日期排（用户 2026-09-03：「子任务按照时间顺序自动排列」）：有日期的早的在前，
+  // 没日期的沉到后面、彼此保持原来的先后（没填日期的继承母任务的日期，互相之间本来就分不出先后）。
+  // sort 是稳定的，同一天的也保持原序。做完的那堆不动：它们按「做完」的先后堆着更符合直觉
+  const open = subs
+    .filter((s) => !s.done)
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => {
+      const da = a.s.due ?? "";
+      const db = b.s.due ?? "";
+      if (da && db && da !== db) return da < db ? -1 : 1;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
+      return a.i - b.i;
+    })
+    .map((x) => x.s);
+  return { open, done: subs.filter((s) => s.done) };
 }
 
 /** 已完成那堆默不默认收起。

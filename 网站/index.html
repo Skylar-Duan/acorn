@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>橡果 Acorn · 记得每件事是谁交办的待办工具 · cdpandas</title>
+<meta name="description" content="Windows 待办工具，免费开源。打一句「周五下午3点 提交周报 /工作 @李哥 !高」，日期、时间、清单、需求方、重要性五样一次到位；侧栏按人分栏，一眼看清欠了哪位同事几件事。习惯单独打卡，电脑和手机同一份事，数据在你自己的机器上。">
+<link rel="icon" href="assets/icon.svg">
+<link rel="canonical" href="https://acorn.cdpandas.com/">
+
+<!-- 统一模板：结构与样式见 /utilities/_shared/TEMPLATE.md
+     文案真源：02-Gadgets/acorn/工程/网站文案.md（页面上每一句中文以它为准，这里只做排版）
+     发布通道：finance/UTILITIES.md（publish_utility.py --tool acorn）
+     线上地址：https://acorn.cdpandas.com/（2026-09-02 起独立域名；旧址 cdpandas.com/utilities/acorn/ 自动跳过来） -->
+<link rel="stylesheet" href="/utilities/_shared/tool-page.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <a href="https://cdpandas.com/" class="home">← cdpandas</a>
+    <a href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap with-icon">
+    <img class="app-icon" src="assets/icon.svg" alt="橡果 Acorn 应用图标">
+    <div>
+      <div class="kicker">Windows 桌面应用 · 免费开源</div>
+      <h1>橡果 Acorn</h1>
+      <p class="lede">多数待办工具都假设事情是你自己给自己安排的。橡果不是——它记得每件事是<b>谁交办的</b>，侧栏按人分栏，一眼看清欠了哪位同事几件事。</p>
+
+      <div class="panel" style="margin-top:18px">
+        <p>打一句话进去：</p>
+        <pre>周五下午3点 提交周报 /工作 @李哥 !高</pre>
+        <p>日期、时间、清单、需求方、重要性，<b>五样一次到位</b>，不用先选再选。<br>
+        不想记这套写法，输入框下面就是一排按钮，点着选一样。</p>
+      </div>
+
+      <p class="meta">当前版本 <span data-release="version">v1.11.1</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
+      <div class="cta-row">
+        <a class="btn" href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe">↓ 下载 Windows 版</a>
+        <a class="btn btn-ghost" href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">查看源码</a>
+        <span class="cta-note">安装包 <span data-release="size">7MB</span>，装的时候不需要管理员权限，装完会自己检查更新</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ① 功能介绍 -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>它能做什么</h2>
+      <p>下面这些是橡果每天真正在替你干的事。</p>
+    </div>
+    <div class="grid">
+
+      <div class="card">
+        <h3>一句话记一件事</h3>
+        <p>不用先选日期、再选清单、再点重要性。把话打完就行：</p>
+        <ul>
+          <li>日期：明天 / 下周三 / 8月20日 / 十月底之前</li>
+          <li>时间与循环：下午3点、每周一三五</li>
+          <li><code>/清单</code> · <code>#标签</code> · <code>@需求方</code> · <code>!高</code></li>
+        </ul>
+        <p style="margin-top:8px">边打边显示解析出来的结果，不对当场改。</p>
+      </div>
+
+      <div class="card">
+        <h3>记得每件事是谁交办的 <span class="tag">需求方</span></h3>
+        <p>橡果把「为谁做」当成和日期、清单同一级的东西。侧栏按人分栏，点开某个人就是欠他的全部事情；统计里也各算各的。</p>
+        <p style="margin-top:8px">如果你的事大多是别人交办的，按人看比按重要性排更管用。</p>
+      </div>
+
+      <div class="card">
+        <h3>习惯和待办分开算</h3>
+        <p>喝水、背单词、健身这类重复着做的事，有自己的一屏：一个大圈点一下就是打卡，旁边是连续多少次和本周七格，点开能看整月日历。</p>
+        <p style="margin-top:8px">习惯不会逾期。昨天没做就是没做，不会滚成一笔债堵在今天。忘了打卡可以补，「每周一三五」这种也数得对——连续三次数的是该做的日子，不是自然日。</p>
+      </div>
+
+      <div class="card">
+        <h3>计划按「还有多久」分段</h3>
+        <p>一周内 / 一个月内 / 半年内 / 更远。不用在一条长列表里翻哪件是这周要交的。</p>
+        <p style="margin-top:8px">换一个看法，就变成按重要性分成高 / 中 / 低 / 普通四段，每段里再按时间排。</p>
+      </div>
+
+      <div class="card">
+        <h3>有子任务的事，按「下一步干什么」排</h3>
+        <p>一件事还剩几个子任务没做，列表里就占几行（「写周报 › 画趋势图」），母任务先收起来，全做完了它才回来收尾。</p>
+        <p style="margin-top:8px">子任务没单独填日期和重要性时就等于母任务的：母任务定在周五，它的子任务周五当天自己出现在「今天」。</p>
+      </div>
+
+      <div class="card">
+        <h3>改一整句话，就是改这件事</h3>
+        <p>点开任何一件事，底下那栏已经写好了它的完整一句话。删掉「!高」就降级，删掉「@李哥」就把人摘了，旁边一个按钮随时还原。</p>
+      </div>
+
+      <div class="card">
+        <h3>电脑和手机同一份事 <span class="tag">可选</span></h3>
+        <p>一个邮箱就能跨设备。新装的设备登录后直接拿到云端那份；这台设备上已经记了事的话，登录时会问你是把两边合起来还是用云端那份。同一件事两边都改过，以改得晚的那次为准。</p>
+        <p style="margin-top:8px">断网、服务器出问题都不影响你继续用，本机那份照常读写。不注册的话跟以前完全一样，一个字都不会往外传。</p>
+        <p style="margin-top:8px">登录之后，退出登录会把这台设备上的数据一起清掉，只留云端那一份——清之前橡果会先跟服务器对一次账，没对上就一条都不清。</p>
+      </div>
+
+      <div class="card">
+        <h3>数据在你自己的机器上</h3>
+        <p>默认存在本机，装完就能用。想让数据跟着移动硬盘走，去设置里换个文件夹就行。</p>
+        <p style="margin-top:8px">保存时先写好副本再替换，写到一半断电也不会碰坏原来那份；每天留一份备份共 30 份，删掉的东西在回收站里放 30 天，日常的每一步操作都能撤销。</p>
+        <p style="margin-top:8px">唯一不能撤销的是设置里那两个明确写着「会覆盖 / 会清空」的动作，点之前会让你确认。</p>
+      </div>
+
+      <div class="card">
+        <h3>六款主题，各有一幅画</h3>
+        <p>森林的针叶林、海洋的浪、星空的银河、沙漠的落日沙丘、雪山的冰川、南极的极光，淡淡地垫在任务下面。每款都有深浅两色。</p>
+      </div>
+
+      <div class="card">
+        <h3>键盘、右键、拖拽都通</h3>
+        <p><kbd>Ctrl</kbd><kbd>K</kbd> 命令面板，<kbd>Alt</kbd><kbd>Space</kbd> 在任何地方叫出随手记。</p>
+        <p style="margin-top:8px">任务右键：完成、推明天、改日期、改重要性、移清单、换人、复制、删除。</p>
+        <p style="margin-top:8px">拖到侧栏「今天」就是改今天，拖到某个人名下就是改需求方。</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ② 展示 -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>长这个样子</h2>
+      <p>真机截图，里面的任务是演示数据。</p>
+    </div>
+    <div class="shots">
+
+      <figure class="shot">
+        <img src="assets/shot-today.webp" width="1280" height="860" loading="lazy" decoding="async"
+             alt="今天视图：逾期的事在最上面，今天的事按子任务一行一行列出，做完的沉到下面；左侧栏按清单、需求方、标签各分一栏，森林主题的针叶林垫在任务下面">
+        <figcaption><b>今天</b>：逾期在上，今天在中，做完的沉下去；侧栏按清单、需求方、标签各分一栏。</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <img src="assets/shot-changelog.webp" width="1280" height="860" loading="lazy" decoding="async"
+             alt="更新日志弹窗：最新版本一张主卡，一句话概括加几张新能力小卡；之前的版本折成一行一版">
+        <figcaption><b>更新日志</b>：打开橡果会自己查有没有新版，这里也能手动查；之前的版本折成一行一版。</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <img src="assets/shot-calendar.webp" width="1280" height="860" loading="lazy" decoding="async"
+             alt="日历月视图：任务按到期日落在格子里，做完的打勾；顶上可以切到按周看，也能只看计划或只看已完成">
+        <figcaption><b>日历</b>：顶上切月 / 周两种看法，全部 / 计划 / 已完成三档筛。</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <img src="assets/shot-settings.webp" width="1280" height="690" loading="lazy" decoding="async"
+             alt="设置页：外观区六款主题各配一张风景缩略图，深浅模式可选；云账号一节可注册或登录，不登录也完全能用">
+        <figcaption><b>设置</b>：六款主题各配一幅画，深浅两色随手切；云账号可选，不登录一切照旧。</figcaption>
+      </figure>
+
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>怎么打这一句</h2>
+      <p>随便打，认得出来的部分会变成对应的字段，剩下的就是任务标题。不想记这套写法，输入框下面就是一排按钮。</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>你打的</th><th>它记下的</th></tr></thead>
+        <tbody>
+          <tr><td>明天 / 下周三 / 8月20日 / 十月底之前</td><td>到期日</td></tr>
+          <tr><td>下午3点 / 晚上八点</td><td>具体时间，到点弹系统通知</td></tr>
+          <tr><td>每天 / 每周一三五 / 每月10号</td><td>循环，做完自动生成下一次</td></tr>
+          <tr><td><code>/工作</code></td><td>归到「工作」清单，没有这个清单会自动建</td></tr>
+          <tr><td><code>#汇报</code></td><td>打上「汇报」标签</td></tr>
+          <tr><td><code>@李哥</code></td><td>需求方是李哥，一件事可以挂好几个人</td></tr>
+          <tr><td><code>!高</code> / <code>！！！</code></td><td>重要性（全角半角都认）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:26px">
+      <h3>一整句长这样</h3>
+      <pre>周五下午3点 提交周报 /工作 #汇报 @李哥 !高</pre>
+      <p>输入时已有的清单、标签、需求方会自动补全，不用怕打错名字建出重复的一份。</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>快捷键</h2>
+      <p>手不离键盘的那一套。</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>快捷键</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Alt</kbd><kbd>Space</kbd></td><td>在任何地方叫出「随手记一条」小窗（可改成别的键）</td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>K</kbd></td><td>命令面板</td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>F</kbd></td><td>搜索；在计划页里直接跳进计划的搜索框</td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>1</kbd> … <kbd>Ctrl</kbd><kbd>5</kbd></td><td>随手记 / 今天 / 习惯 / 计划 / 已完成</td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>D</kbd> / <kbd>Ctrl</kbd><kbd>→</kbd></td><td>完成 / 推到明天</td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>Z</kbd></td><td>撤销，撤的是刚才那件事</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:26px">
+      <h3>安装须知</h3>
+      <p>点上面的「下载 Windows 版」，双击安装即可，<b>装完开箱即用</b>。</p>
+      <ul style="margin-top:10px;padding-left:18px;color:var(--fg2);font-size:14px">
+        <li>Windows 10 / 11（64 位）；<b>按用户安装，不需要管理员权限</b></li>
+        <li>装完会自己检查更新：打开橡果会查有没有新版，查到就地下载安装</li>
+        <li>用系统自带的 WebView2 渲染界面，Win11 出厂即有；Win10 若缺会提示装一次</li>
+        <li>没买代码签名证书，Windows SmartScreen 会提示「未知发布者」→ 点<b>更多信息</b> → <b>仍要运行</b>（仅首次）</li>
+        <li>任务默认存在<b>本机的应用数据区</b>；想让数据随移动硬盘走，去<b>设置 → 更换文件夹</b></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ③ 更新日志 -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>更新日志</h2>
+      <p>完整记录见仓库的 CHANGELOG。</p>
+    </div>
+    <!-- data-release-api：页面加载时读更新服务器，把版本号 / 安装包大小 / 发布日期
+         填进上面的 [data-release=…]；服务器上的版本比 data-release-static 新时，
+         用接口里的更新说明在最上面补一条。逻辑在 /utilities/_shared/tool-release.js。 -->
+    <div class="releases"
+         data-release-api="https://acorn.cdpandas.com/api/desktop/latest"
+         data-release-static="1.11.1">
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.11.1</div><div class="date" data-release="date">2026-09-03</div></div>
+        <div>
+          <p><b>手机版第一轮试用后的修整。</b></p>
+          <ul>
+            <li>登录时如果云端和这台设备上都有东西，两份档案并排给你看，选一份用，或者合并（重复的只留一份）</li>
+            <li>手机上每一页都有了顶栏；底部导航改为 今天 / 习惯 / 计划 / 已完成 / 更多</li>
+            <li>子任务按日期自动排，没填日期的排在后面</li>
+            <li>登录页换上橡果图标；另有一些细节调整</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.11.0</div><div class="date">2026-09-02</div></div>
+        <div>
+          <p><b>手机版从头做了一遍。</b></p>
+          <ul>
+            <li>一件事一行，右滑完成，左滑推明天 / 放弃 / 删除，长按弹出常用操作</li>
+            <li>点一件事从底下拉出详情，改日期、清单、需求方都在同一张纸上</li>
+            <li>记一条全靠点：打完事情本身，日期、清单、需求方、重要性点一下就选好</li>
+            <li>第一次打开会问要不要登录，不登录也能用；电脑上是同一套登录页</li>
+            <li>标题换文楷，正文换思源黑体，手机和电脑一样</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.10.1</div><div class="date">2026-09-02</div></div>
+        <div>
+          <p><b>手机版跟上来了，更新也不用再去网页找。</b></p>
+          <ul>
+            <li>安卓版追到了和电脑一样的版本，登录同一个账号，两边看到的是同一份</li>
+            <li>打开橡果会自己查有没有新版，查到就地下载安装；更新日志顶上也能手动查</li>
+            <li>在任务卡里连着加子任务，卡片会停在原地，收起后再归位</li>
+            <li>更新日志换了新样子；设置页去掉了重复的回收站入口</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 默认只展开最近三版（Skylar 2026-09-02 定），更早的收进这里；样式 .rel-more 在共用 tool-page.css -->
+      <details class="rel-more">
+      <summary>更早的版本（11）</summary>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.9.1</div><div class="date">2026-09-01</div></div>
+        <div>
+          <p><b>计划页能搜了，日历有了周视图。</b></p>
+          <ul>
+            <li>计划页标题下多了搜索框，标题、子任务、备注、标签、需求方都搜得到</li>
+            <li>日历可以切到按周看</li>
+            <li>设置页每一节都能收起展开，收起时留一句摘要</li>
+            <li>「橡果」旁边多了版本号，点开就是更新日志</li>
+            <li>另一台设备先升级了也不要紧，这台照常打开、照常用</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.9.0</div><div class="date">2026-09-01</div></div>
+        <div>
+          <p><b>一件事可以放弃了，安排日期也更快。</b></p>
+          <ul>
+            <li>做完之外多了「放弃」：收进「已完成」里的「放弃的」一栏，随时能放回来</li>
+            <li>安排日期的快捷预设换成 今天 / 本周五 / 本周日 / 本月末，过了的自动往后推</li>
+            <li>在任何输入框里打完字，点到别处就算存下；撤销一次撤的是刚才那件事</li>
+            <li>「已完成」按子任务列，做完的事也落到日历上真正做完的那一天，日历顶上可以筛</li>
+            <li>每天自动跟云端对一次账；新增「从云端覆盖到这台设备」；退出登录会把这台设备上的数据一起清掉，清之前先对账</li>
+          </ul>
+        </div>
+      </div>
+
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.8.0</div><div class="date">2026-08-28</div></div>
+        <div>
+          <p><b>侧栏重排；一件事可以用一句话改完。</b></p>
+          <ul>
+            <li>「全部」改叫计划，接下来分成 一周内 / 一个月内 / 半年内 / 更远</li>
+            <li>「日志」改叫已完成，挪到侧栏一眼看得见的位置</li>
+            <li>四象限并进计划，成为它的一种看法</li>
+            <li>子任务链可以收起来，只留「下一步」那条</li>
+            <li>任务卡里改一整句话就是改这件事</li>
+            <li>勾掉一件事会告诉你它去哪了，并且能直接撤销</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.7.0</div><div class="date">2026-08-24</div></div>
+        <div>
+          <p><b>手机版可以自己更新了；版本对不上时不再闷头硬来。</b></p>
+          <ul>
+            <li>手机版在设置里直接下载安装新版，下完自动拉起</li>
+            <li>下下来的包会先校验完整性再装</li>
+            <li>旧版本遇到读不懂的新数据会停下来提醒你升级，绝不按老格式理解一遍再存回去</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.6.0</div><div class="date">2026-08-24</div></div>
+        <div>
+          <p><b>多了「习惯」，也第一次有了安卓版。</b></p>
+          <ul>
+            <li>新增习惯分类：打卡、连续天数、本周七格、整月日历</li>
+            <li>习惯不会逾期，漏了可以补，每周一三五这种也数得对</li>
+            <li>侧栏瘦身：常驻只剩几项，其余收进「更多」</li>
+            <li>安卓版（自己装着试用）</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.5.0</div><div class="date">2026-08-21</div></div>
+        <div>
+          <p><b>橡果有账号了。</b></p>
+          <ul>
+            <li>邮箱注册，多台设备看同一份事</li>
+            <li>登录不会覆盖你已有的事，两边是合起来的</li>
+            <li>不登录的话跟以前完全一样</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.4.0</div><div class="date">2026-08-21</div></div>
+        <ul>
+          <li>一件事可以挂好几个需求方</li>
+          <li>回收站搬到侧栏，能单条恢复、单条彻底删除</li>
+          <li>加子任务时也能一句话记全日期、时间、重要性</li>
+        </ul>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.3.0</div><div class="date">2026-08-19</div></div>
+        <ul>
+          <li>有子任务的事，从这版起按「下一步具体要干什么」来排</li>
+          <li>子任务没单独设日期和重要性时就等于母任务的</li>
+        </ul>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.2.1</div><div class="date">2026-08-17</div></div>
+        <ul>
+          <li>数据文件夹是空的时候，<b>先去别处找找有没有你以前的账本</b>——找到就列出来让你挑（多少条、在哪、什么时候改的），你不点它一个字节都不写</li>
+          <li>换过的文件夹位置会记住，指路的那张条子丢了也找得回来</li>
+          <li>导出的 JSON 换成带版本信息的标准格式，<b>老版本导出的文件照样能导入</b></li>
+          <li>修复升级后偶尔新建一本空账本挡在真数据前面的问题</li>
+        </ul>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.2.0</div><div class="date">2026-08-17</div></div>
+        <ul>
+          <li><b>六款主题各配了一幅画</b>：针叶林 / 浪 / 银河与月亮 / 落日沙丘 / 冰川 / 极光，淡淡地垫在任务下面；底纸与卡片加了纸的颗粒</li>
+          <li>设置页的主题选择变成<b>一排小风景</b>，选之前先看见它长什么样</li>
+          <li>「收件箱」更名<b>「随手记」</b>，成为统一的记录入口；今天 / 计划 / 全部三个视图不再各带一个输入框</li>
+          <li><b>不想记写法就点</b>：输入框下面一排按钮可选日期 / 清单 / 需求方 / 重要性 / 重复，选中会一直生效，方便连记好几条</li>
+          <li>应用图标重画：摆正、提亮，小尺寸下也认得出</li>
+          <li>数据默认存到本机应用数据区，<b>装完开箱即用</b>；想让数据随移动硬盘走，去设置换文件夹即可</li>
+        </ul>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.1.0</div><div class="date">2026-08-17</div></div>
+        <ul>
+          <li>符号分工更清晰：<code>/清单名</code> 归清单（不存在自动新建）、<code>#</code> 打标签、<code>@</code> 记需求方，输入时都有自动补全</li>
+          <li>新增<b>「全部」总览视图</b>；列表可切换按时间或按重要性排序</li>
+          <li>任务行<b>右键菜单</b>：完成、推明天、改日期、重要性、移清单、需求方、复制、删除</li>
+          <li>任务可<b>拖到侧栏</b>改期或归属；任务卡里输一句「明天 15点 !高」也能改</li>
+          <li>日期识别增强：十月底 / 月初 / 月中 / 年底 /「之前」后缀，全角 <code>！！！</code> 也认重要性</li>
+          <li>子任务可带自己的日期与重要性，到期时单独出现在今天 / 计划里</li>
+          <li>旧数据自动无损升级，本地数据永不上云</li>
+        </ul>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.0.0</div><div class="date">2026-08-17</div></div>
+        <ul>
+          <li>首个版本：中文自然语言快速添加（日期 / 时间 / 循环 / 清单 / 需求方 / 重要性）</li>
+          <li>收件箱 / 今天 / 计划 / 日志 / 日历（拖拽改期）/ 四象限 / 统计</li>
+          <li>需求方维度：记录每件事为谁做，按人聚合与统计</li>
+          <li>循环任务、子任务、到点提醒、顺延计数</li>
+          <li>托盘常驻 + <kbd>Alt</kbd><kbd>Space</kbd> 全局随手记</li>
+          <li>六款自然主题（森林 / 海洋 / 星空 / 沙漠 / 雪山 / 南极）× 深浅双模式</li>
+          <li>数据安全：原子写入、每日备份 30 份、回收站 30 天、撤销、导入导出</li>
+        </ul>
+      </div>
+
+      </details>
+
+    </div>
+  </div>
+</section>
+
+<!-- ④ 留言板 -->
+<section>
+  <div class="wrap">
+    <div id="board" data-project="tool:acorn"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>橡果 Acorn · 开源 · <a href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">GitHub</a></div>
+    <div><a href="https://cdpandas.com/">← 回到 cdpandas.com</a></div>
+  </div>
+</footer>
+
+<script src="/utilities/_shared/tool-release.js" defer></script>
+<script src="/utilities/_shared/tool-board.js" defer></script>
+</body>
+</html>
