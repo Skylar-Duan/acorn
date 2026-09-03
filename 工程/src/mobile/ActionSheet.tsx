@@ -155,7 +155,7 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
             onClick={() => setTasksList([task.id], null)}
           >
             <span className="msheet-dot" style={{ background: "var(--ink-3)" }} />
-            随手记
+            移出清单
           </button>
           {lists.map((l) => (
             <button

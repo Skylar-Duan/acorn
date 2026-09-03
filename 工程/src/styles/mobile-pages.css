@@ -1,0 +1,257 @@
+/* 手机端那几页自己的排布（v1.11.2）：习惯 / 四象限 / 「更多」的格子 / 「加一个习惯」那张纸。
+   壳子（顶栏 / 底部导航 / ＋）在 mobile-shell.css，抽屉原语在 mobile.css，那两份不动，
+   这里只放这一轮重排出来的东西。要盖掉旧规则就在这儿用更具体的选择器盖，别回头改那几个文件。
+
+   四条规矩：
+     ① 一律钉在 .mshell 里 —— 桌面一个像素都不许受影响；
+     ② 尺度全走 mobile.css 那套 --m-* 变量并带回退值，样式统一时这几页自动跟上；
+     ③ 颜色只用 themes.css 的 token（六主题 × 深浅自动成立），一个十六进制都不写；
+        时长只认 base.css 的 --dur-1 / --dur-2 + --ease；
+     ④ 360px 宽也得是一行：写死宽度的只有两头，中间一律 flex: 1 + min-width: 0 + 省略号。 */
+
+/* ═══════════ 习惯页 ═══════════
+   v1.11.1 这一页是桌面那套原样搬过来的：一张「输入框 + 周期下拉 + 加上」的横条，
+   加上每个习惯一张卡（标题 / 周期 / 连续 / 本周七格挤一行）。390px 上 habits.css 的
+   窄屏规则会把打卡圈甩到标题下面第二行——用户说的「比例不对」就是这个。
+   现在改成跟「今天」一模一样的形制：一组一张卡，一件事一行，绝不折行。 */
+
+/* 一行习惯。左圈 · 中名字 · 右最近七天，三块横着排，中间那块吃掉所有剩余宽度 */
+.mshell .mhb-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--m-row-h, 58px);
+  /* 16 而不是 14：跟「今天」那一列圈站在同一条竖线上（.mrow 也是 0 16px）。
+     差 2px 在切页签的时候看得出来——一列圈会整体挪一下 */
+  padding: 0 16px;
+}
+/* 行与行之间那根发丝线从圆圈之后起，跟 .mcard 里的任务行**同一个数**（16 + 26 + 14 = 56）。
+   用伪元素而不是 border-top：border 没法只画一截 */
+.mshell .mhb-card > .mhb-row + .mhb-row::before {
+  content: "";
+  position: absolute;
+  left: 56px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--m-sep, var(--hair));
+}
+
+/* 打卡圈。今天该做的可点，今天不用做的灰着按不动——
+   按下去会打出一次「计划外」的卡，而这一页正在说的是「今天该做哪几个」 */
+.mshell .mhb-cb {
+  width: var(--m-cb, 26px);
+  height: var(--m-cb, 26px);
+  flex: none;
+  border-radius: 50%;
+  /* --m-cb-bw 是描边宽度、--m-cb-border 是描边**颜色**（两个都在 mobile.css 那一块里）。
+     别把颜色当成 border 的简写用——`border: <颜色>` 的 border-style 默认是 none，圈会整个消失 */
+  border: var(--m-cb-bw, 1.6px) solid var(--m-cb-border, var(--ink-3));
+  background: transparent;
+  padding: 0;
+  position: relative;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+/* 看着是 26，按得着的是 44（--m-touch）。圈是 border 画出来的，加 padding 会把圈本身撑大，
+   所以命中区靠一层看不见的伪元素撑开，不动圈本身 */
+.mshell .mhb-cb::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--m-touch, 44px);
+  height: var(--m-touch, 44px);
+  transform: translate(-50%, -50%);
+}
+.mshell .mhb-cb.on {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+/* 打上的勾跟任务详情那张纸同一个写法（.msh-cb.done::after） */
+.mshell .mhb-cb.on::before {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--on-accent);
+  font-size: 14px;
+  line-height: 1;
+}
+.mshell .mhb-cb:disabled { opacity: .45; }
+
+/* 中间：名字一行 + 底下一行小字（周期 · 🔥 连续）。整块是个按钮，点了拉出那张纸改名字/改周期 */
+.mshell .mhb-main {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+}
+.mshell .mhb-title {
+  max-width: 100%;
+  font-size: 15.5px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mshell .mhb-meta {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mshell .mhb-streak { color: var(--warn); }
+/* 今天不用做的那一组整体退后一步，但仍然读得清——不是「关掉了」，是「今天轮不到」 */
+.mshell .mhb-row.off .mhb-title { color: var(--ink-2); }
+
+/* 右边最近 7 天：一天一个 8px 的点，间距 6px，右起第一个是今天。
+   做过的实心 accent，今天那个套一圈虚线（outline 不占位，不会把这一列撑宽） */
+.mshell .mhb-dots {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mshell .mhb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hair);
+  transition: background var(--dur-1) var(--ease);
+}
+.mshell .mhb-dot.on { background: var(--accent); }
+.mshell .mhb-dot.now { outline: 1px dashed var(--ink-3); outline-offset: 2px; }
+
+/* 一个习惯都没有：一张卡一句话，顺手指一下右下角那颗 ＋ */
+.mshell .mcard.mhb-blank {
+  padding: 22px 18px;
+  font-size: 14px;
+  line-height: 23px;
+  color: var(--ink-2);
+}
+
+/* ═══════════ 四象限页 ═══════════
+   2026-09-03 起手机上它是自己的一页（从「更多」进），不再是「计划」顶栏里的一个 tab。
+   单列四段那套已经写在 quadrant.css 的窄屏块里，这里只补手机上的手感：格子当纸看，
+   一行够手指点，标题和日期都不许把格子撑破。 */
+.mshell .quad-cell {
+  padding: 12px 14px 10px;
+  box-shadow: var(--m-card-shadow, var(--shadow-sm));
+  /* 手机上所有的纸都是「无边框 + 两层投影」（方向 A）。这一格留着桌面那圈发丝线的话，
+     它就是整个手机端唯一一张描边的纸，深色底上还会露出一道发白的沿 */
+  border-color: transparent;
+}
+.mshell .quad-name { font-size: 14px; letter-spacing: .04em; }
+.mshell .quad-count, .mshell .quad-hint { font-size: 12px; }
+.mshell .quad-row {
+  min-height: var(--m-touch, 44px);
+  padding: 8px;
+  /* 14：跟抽屉里那些小方块（.msh-opt / .msheet-tile / .msheet-act）同一档圆角 */
+  border-radius: 14px;
+}
+/* 这一页的行还在用桌面那副勾选框和旗标（Quadrant.tsx 这一轮不动），
+   手机上换成「今天」那一套：26 的圈 + 8px 的小圆点，一眼看得出是同一个 App 的行 */
+.mshell .quad-row .cb {
+  width: var(--m-cb, 26px);
+  height: var(--m-cb, 26px);
+  /* --m-cb-bw 是描边宽度、--m-cb-border 是描边**颜色**，别把颜色当 border 简写用 */
+  border-width: var(--m-cb-bw, 1.6px);
+  border-color: var(--m-cb-border, var(--ink-3));
+  background: var(--card);
+}
+.mshell .quad-row .cb.done { background: var(--ok); border-color: var(--ok); }
+/* 勾的位置是按 17px 的圈算的，圈放大到 26 得跟着挪（跟 .mrow-cb.done::after 一个写法） */
+.mshell .quad-row .cb.done::after {
+  left: 8px;
+  top: 5px;
+  width: 5px;
+  height: 10px;
+  border-width: 0 2px 2px 0;
+}
+.mshell .quad-row .flag { width: 8px; height: 8px; border-radius: 50%; }
+/* 顺序也跟「今天」对齐：先圈、再小圆点、然后标题（DOM 里旗标排在圈前面）。
+   四件都得写 order，不写的默认是 0，会整个跑到 order:1 前面去 */
+.mshell .quad-row .cb { order: 1; }
+.mshell .quad-row .flag { order: 2; }
+.mshell .quad-row .quad-title { order: 3; }
+.mshell .quad-row .quad-due { order: 4; }
+/* 日期那一行是换行到第二行的（quadrant.css 窄屏块给了 flex: 1 0 100%），
+   缩进得跟标题的起笔对齐：圈 26 + 间距 10 + 点 8 + 间距 10 = 54 */
+.mshell .quad-row .quad-due { padding-left: 54px; }
+/* 没设重要性的也画一颗极淡的，一列才不参差（跟 .mrow-bar 一个口径）。
+   写成 :not 三连是为了**不碰** .flag.p1/.p2/.p3 那三个颜色——那三条在 base.css 里，
+   一条更泛的 background 会把它们全盖掉 */
+.mshell .quad-row .flag:not(.p1):not(.p2):not(.p3) { background: var(--hair); }
+.mshell .quad-row .quad-title {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 15px;
+}
+/* 日期那一行走的是 flex: 1 0 100%（quadrant.css 窄屏块），配 border-box 不会撑破格子 */
+.mshell .quad-row .quad-due { font-size: 12px; }
+.mshell .quad-empty { padding: 16px 0; }
+
+/* ═══════════ 「更多」的四宫格 ═══════════
+   四格文案长短不一（「按重要和紧急分四格」比别的长一截），不管的话第一排两格会比第二排高出一行。
+   grid-auto-rows: 1fr 让四格一样高——它们是并列的四个入口，不该有一个看着比别的重要 */
+.mshell .mmore-tiles { grid-auto-rows: 1fr; }
+.mshell .mmore-tile { min-width: 0; }
+.mshell .mmore-tile b,
+.mshell .mmore-tile span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* ═══════════ 「加一个习惯」那张纸 ═══════════
+   跟「记一条」一个规矩：名字一个框，周期一排胶囊，底下一颗主按钮，全靠点。
+   胶囊本体复用 mobile-sheet.css 的 .msh-opt / .msh-chips，这里只管这张纸自己的间架 */
+.mhs-body { padding-bottom: 16px; }
+.mhs-line { padding: 0 20px; }
+.mhs-input {
+  width: 100%;
+  min-height: var(--m-touch, 44px);
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 26px;
+  font-family: inherit;
+  transition: border-color var(--dur-1) var(--ease);
+}
+.mhs-input:focus { border-bottom-color: var(--accent); }
+.mhs-seg { padding: 0 20px; }
+.mhs-foot { padding: 18px 20px 6px; }
+.mhs-go {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.mhs-go:disabled { opacity: .38; }
+/* 「删除这个习惯」那一行跟清单设置那张纸同一副长相（.mls-opt），上面隔一根线 */
+.mhs-body .mls-opt { margin-top: 6px; border-top: 1px solid var(--hair); }

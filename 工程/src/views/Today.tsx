@@ -60,8 +60,10 @@ export default function Today() {
         // 进度环取代底部那条「完成 0/1」：手机上底部那一行被导航压着，等于没有
         <MobileHead
           title="今天"
-          sub={`${formatCN(today)}${total === 0 ? "" : left > 0 ? ` · 还剩 ${left} 件` : " · 都做完了"}`}
+          sub={`${formatCN(today)}${total === 0 ? "" : left > 0 ? ` · 还剩 ${left} 件，慢慢来` : " · 都做完了"}`}
           ring={{ done: doneToday.length, total }}
+          // 那颗有表情的小橡果只在这一页露一次脸（画板 PolishA）
+          mascot
         />
       ) : (
         <div className="view-head">
@@ -72,8 +74,10 @@ export default function Today() {
       <div className="view-body">
         {overdueRows.length > 0 && (
           <>
-            <div className="group-head warn">
-              逾期 {overdue.length}
+            {/* split + .group-label：手机上标题收成一颗胶囊贴左、这句链接贴右缘（画板 A）。
+                桌面上这两个类名都没有样式，一个像素不变 */}
+            <div className="group-head warn split">
+              <span className="group-label">逾期 {overdue.length}</span>
               <button className="act" onClick={() => postponeRows(overdue)}>
                 全部推到明天 →
               </button>
@@ -82,14 +86,16 @@ export default function Today() {
             <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} />
           </>
         )}
-        {todayRows.length > 0 && <div className="group-head">今天</div>}
+        {todayRows.length > 0 && (
+          <div className="group-head split"><span className="group-label">今天</span></div>
+        )}
         {/* 逾期那组在上面，示意只演一次：那儿有行的时候这儿就不演了 */}
         <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint && overdueRows.length === 0} />
         {/* 做完的这一组：桌面照旧一条组标题 + 逐行摊开；
             手机上默认收成一行「已完成 · N 展开」——今天这一屏该留给还没做的事 */}
         {doneToday.length > 0 && (isMobile ? (
           <button className="mfoldrow" onClick={() => setDoneOpen(!doneOpen)}>
-            已完成 · {doneToday.length}
+            <span className="group-label">已完成 · {doneToday.length}</span>
             <span className="more">{doneOpen ? "收起" : "展开"}</span>
           </button>
         ) : (

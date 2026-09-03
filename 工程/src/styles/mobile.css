@@ -1,15 +1,71 @@
-/* 手机端（v1.11.0 按体验重做）——共用的尺度与两个原语：底部抽屉、滑动行。
+/* 手机端（v1.11.0 按体验重做，v1.11.2 换成「方向 A · 软糯可爱」）
+   ——共用的尺度与两个原语：底部抽屉、滑动行。
    壳子（顶栏 / 底部导航 / ＋）、任务详情、记一条各自的样式在 mobile-*.css 里，这里只放大家都用的。
-   颜色一律用 themes.css 的 token，六主题 × 深浅自动成立；时长只认 base.css 的 --dur-1 / --dur-2。 */
+   颜色一律用 themes.css 的 token，六主题 × 深浅自动成立；时长只认 base.css 的 --dur-1 / --dur-2。
+
+   ═══ 这一块 --m-* 就是「方向 A」的全部尺度与颜色 ═══
+   手机端所有页面、所有抽屉都从这儿取值，谁也不许再各写各的（habits / 四象限 / 更多那几页
+   在 mobile-pages.css 里引的是同一批名字）。改一档观感，只改这里。
+
+   一条铁律：**custom property 里不许藏 color-mix**。
+   老 WebView 不认 color-mix 时，写在自定义属性里的那个值不会「降级到上一条声明」，
+   而是让**用到它的那条属性整个作废**（invalid at computed-value time），结果是边框直接消失。
+   所以下面先给一套一定认得的保底值，再在 @supports 里整体升级成 color-mix 那一档。 */
 
 :root {
-  --m-row-h: 58px;            /* 一件事一行的高度，手指点得准 */
-  --m-radius: 16px;           /* 列表卡片的圆角 */
-  --m-sheet-radius: 22px;     /* 抽屉顶部的圆角 */
+  /* ---------- 尺度（画板 PolishA.dc.html） ---------- */
+  --m-row-h: 60px;            /* 一件事一行的高度，手指点得准 */
+  --m-card-radius: 22px;      /* 列表卡片的圆角：A 比之前圆一档，是「软糯」的主要来源 */
+  --m-radius: var(--m-card-radius);  /* 旧名字，留着不动老规则；两个名字永远同一个值 */
+  --m-sheet-radius: 26px;     /* 抽屉顶部的圆角，跟卡片一个语言（比卡片再圆一点） */
   --m-nav-h: 60px;            /* 底部导航本体高度（不含手势条） */
+  --m-cb: 26px;               /* 打卡圈的直径 */
+  --m-cb-bw: 2px;             /* 打卡圈的描边宽度 */
   --m-safe-top: env(safe-area-inset-top, 0px);
   --m-safe-bottom: env(safe-area-inset-bottom, 0px);
   --m-touch: 44px;            /* 任何可点的东西的最小尺寸 */
+  /* 顶栏后面那片主题风景的高度（画板 PolishC 那一片）。
+     这个数同时决定画面有多大：ThemeScene 是 1200×420 的横幅、按 slice 铺满，
+     盒子越矮，整幅画就越小越宽、横向裁得越少（190 时看得见约 72% 的宽度）。
+     230 那一档太阳会被放大成一颗突兀的淡圆——正是我们刚从导航底下赶走的那种东西 */
+  --m-scene-h: 190px;
+  --m-scene-a: .32;           /* 风景的透明度：垫在标题后面，不许抢字 */
+
+  /* ---------- 颜色（一律由 themes.css 的 token 兑出来） ---------- */
+  /* --m-cb-border 是打卡圈的**描边颜色**（宽度另有 --m-cb-bw）。
+     保底值取发丝线：六主题 × 深浅都看得见，不会像 --accent-soft 那样在浅色里糊掉 */
+  --m-cb-border: var(--hair);
+  --m-sep: var(--hair);       /* 行与行之间那根分隔线的颜色 */
+  --m-pill-bg: var(--accent-soft);   /* 段标题胶囊的底 */
+  --m-pill-ink: var(--accent);       /* 段标题胶囊的字 */
+  --m-pill-warn-bg: var(--bg);       /* 「逾期」那颗胶囊的底（warn 变体） */
+  --m-pill-warn-ink: var(--warn);
+  --m-pill-dim-bg: var(--bg);        /* 「已完成」那颗淡下去的胶囊 */
+  --m-pill-dim-ink: var(--ink-3);
+  --m-chip-bg: var(--bg);            /* 母任务前缀那颗更小更淡的胶囊 */
+  --m-chip-ink: var(--ink-2);
+
+  /* ---------- 投影 ---------- */
+  /* 两层：一层贴身的、一层散开的。A 的卡片没有边框，全靠这两层把纸托起来 */
+  --m-card-shadow: 0 2px 6px rgba(62, 74, 52, .06), 0 12px 28px rgba(62, 74, 52, .06);
+}
+
+/* 深色模式：同一份投影得换成更深的 alpha。
+   浅色那份 6% 的墨绿压在深底上根本看不见，反而会在卡片边缘露出一圈发白的边 */
+[data-mode="dark"] {
+  --m-card-shadow: 0 2px 6px rgba(0, 0, 0, .26), 0 12px 28px rgba(0, 0, 0, .34);
+}
+
+/* 认得 color-mix 的引擎（WebView2 / 新版安卓 WebView）整体升一档：
+   圈的描边从「发丝线」变成「accent 兑进卡片底」那一档柔和的同色系，
+   胶囊也从纯 --bg 变成带一点主题色的底。不认的引擎吃上面那套保底值，一样成立 */
+@supports (color: color-mix(in srgb, #000 50%, #fff)) {
+  :root {
+    --m-cb-border: color-mix(in srgb, var(--accent) 35%, var(--card));
+    --m-pill-warn-bg: color-mix(in srgb, var(--warn) 20%, var(--card));
+    --m-pill-dim-bg: color-mix(in srgb, var(--ink-3) 16%, var(--card));
+    --m-chip-bg: color-mix(in srgb, var(--accent-soft) 58%, var(--card));
+  }
 }
 
 /* ---------- 底部抽屉 ---------- */
@@ -23,7 +79,9 @@
 .msheet {
   width: 100%; max-width: 560px;
   max-height: calc(100dvh - var(--m-safe-top) - 24px);
-  background: var(--card); background-image: var(--paper);
+  /* A 是干净的：整个手机端都不再铺纸纹（桌面那几张纸一个字没动）。
+     一张纸上同时有颗粒和 22px 的圆角，近看是「磨砂塑料」而不是「软」 */
+  background: var(--card);
   border-radius: var(--m-sheet-radius) var(--m-sheet-radius) 0 0;
   box-shadow: 0 -12px 40px rgba(0, 0, 0, .18);
   display: flex; flex-direction: column;

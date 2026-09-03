@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThemeName } from "../core/model";
 import type { ViewId } from "../core/store";
-import { navigate, setPaletteOpen, undo, updateSettings } from "../core/store";
+import { navigate, setPaletteOpen, setQuickAddOpen, undo, updateSettings } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
 import "../styles/overlays.css";
 
@@ -14,9 +14,10 @@ interface Command {
   run: () => void;
 }
 
-// [视图, 图标, 名称, 说明]
+// [视图, 图标, 名称, 说明]。
+// 「随手记」v1.11.2 从这张表里退出去了——它现在不是一个能跳过去的地方，
+// 而是下面 COMMANDS 里那条「记一条」（开弹窗）
 const NAV: [ViewId, string, string, string][] = [
-  ["inbox", "✍️", "随手记", "没有日期、也没有归入清单的任务"],
   ["today", "🌞", "今天", "今日安排与逾期"],
   ["plan", "🗂", "计划", "全部未完成任务（含四象限）"],
   ["done", "✔", "已完成", "已完成的任务"],
@@ -45,6 +46,12 @@ const MODES: ["light" | "dark" | "system", string, string][] = [
 ];
 
 const COMMANDS: Command[] = [
+  // 排在最前面：记一条是这个面板里唯一一条「当场就能做完」的事，
+  // 别让它排在一串跳转后面（Ctrl+K 打开就在眼前）
+  {
+    id: "quick-add", icon: "✍️", label: "记一条",
+    hint: "打开记一条的框，回车记下", run: () => setQuickAddOpen(true),
+  },
   // 专注暂时收起（core/features.ts），跳转项跟着不出现
   ...NAV.filter(([view]) => view !== "focus" || FOCUS_ENABLED).map(([view, icon, label, hint]): Command => ({
     id: `nav-${view}`, icon, label, hint, run: () => navigate(view),

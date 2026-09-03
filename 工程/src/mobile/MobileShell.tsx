@@ -22,9 +22,9 @@ import "../styles/mobile-shell.css";
 
 /** 底部那五格。**固定五项**——常驻位再多一个就谁都记不住了。
  *
- *  v1.11.1 起「随手记」退出常驻位（用户原话：「手机版随手记没必要，那个加号标签就能随手记了」）：
- *  记一条走右下角那颗 ＋，一个入口就够了；那些没归清单的事在「计划」里照常排着，
- *  「更多」里也留了一行「随手记 · N」直接进这一页，一条都没藏起来。
+ *  v1.11.1 起那个「随手」记东西的常驻位撤了（用户原话：「手机版没必要，那个加号标签就能记」）：
+ *  记一条走右下角那颗 ＋，一个入口就够了。v1.11.2 把这条走完——手机上那个词一处都不留了，
+ *  没归清单的事在「计划」「今天」「日历」里照常排着，一条都没少。
  *  空出来的那格给「习惯」——它是每天都要点开打卡的，收在「更多」里等于逼人每天多点两下。 */
 const TABS = [
   { id: "today", label: "今天", Icon: IcoToday },
@@ -34,10 +34,12 @@ const TABS = [
 ] as const;
 
 /** 这几页上不出现「记一条」：它们要么是回头看的（已完成 / 统计 / 回收站 / 日历），
- *  要么根本不是记事的地方（设置 / 更多），要么自己已经有一个更合适的入口
- *  （习惯页顶上那张卡里的「加上」——从那儿加出来的才是习惯，从 ＋ 加出来的是任务）。
- *  摆一颗按了没意义、或者按了给错东西的按钮，比不摆更糟 */
-const NO_FAB: ViewId[] = ["habits", "done", "calendar", "settings", "stats", "trash"];
+ *  要么根本不是记事的地方（设置 / 更多）。摆一颗按了没意义的按钮，比不摆更糟。
+ *
+ *  v1.11.2 把「习惯」从这张表里拿掉了：用户看到那一页没有 ＋，第一反应是
+ *  「那个加号被遮住了是什么问题」——一颗每页都在的按钮突然缺席，读起来是坏了，不是没有。
+ *  现在习惯页也有 ＋，只是它加出来的是**一个习惯**（拉 HabitSheet），不是一条任务 */
+const NO_FAB: ViewId[] = ["done", "calendar", "settings", "stats", "trash"];
 
 export default function MobileShell({ children }: { children: ReactNode }) {
   const view = useApp((s) => s.ui.view);
@@ -62,9 +64,14 @@ export default function MobileShell({ children }: { children: ReactNode }) {
       {showFab && (
         <button
           className="mfab"
-          aria-label="记一条"
-          // 从清单页点 ＋ 记的这一条默认就归这张清单——人在哪儿记，就记在哪儿
-          onClick={() => openSheet({ kind: "quickAdd", listId: view === "list" ? listId : null })}
+          aria-label={view === "habits" ? "加一个习惯" : "记一条"}
+          // 习惯页那颗 ＋ 加的是**习惯**：这一页里一件事都不该以任务的身份冒出来。
+          // 别处从清单页点 ＋ 记的这一条默认就归这张清单——人在哪儿记，就记在哪儿
+          onClick={() =>
+            view === "habits"
+              ? openSheet({ kind: "habit" })
+              : openSheet({ kind: "quickAdd", listId: view === "list" ? listId : null })
+          }
         >
           <IcoPlus />
         </button>

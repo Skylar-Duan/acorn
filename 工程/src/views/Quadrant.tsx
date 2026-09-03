@@ -1,15 +1,23 @@
 // 四象限：重要 × 紧急，一眼分清轻重缓急。拖动换格 = 改任务属性。
-// 2026-08-28 起它不再是一个独立视图，而是「计划」里的一种看法（见 views/Plan.tsx），
-// 所以这里只画格子本身，标题栏归 Plan 管。
+//
+// 两端两种身份：
+//   · 桌面：2026-08-28 起它是「计划」里的一种看法（见 views/Plan.tsx），标题栏归 Plan 管，
+//     这个文件只画格子本身。
+//   · 手机（2026-09-03）：它自己就是一页，从「更多」里那一格进。手机顶栏放不下
+//     「列表 / 四象限」两个 tab——那两个 tab 挤在标题下面，既难点、也看不出是两种东西。
+//     独立成页之后它得自己带 MobileHead：顶部安全区只在那儿留了一份，漏了就顶到状态栏底下。
 import { useMemo, useState } from "react";
 import type { Task } from "../core/model";
 import { addDays, cmpYMD, formatShort, todayYMD } from "../core/dates";
 import {
-  aliveTasks, byPriorityThenOrder, completeTask, expandTask,
+  aliveTasks, byPriorityThenOrder, completeTask, expandTask, navigate,
   setTasksDue, updateTask, useApp,
 } from "../core/store";
+import { isMobile } from "../core/platform";
+import MobileHead from "../mobile/MobileHead";
 import TaskCard from "../components/TaskCard";
 import "../styles/quadrant.css";
+import "../styles/mobile-pages.css";
 
 type QuadKey = "iu" | "in" | "nu" | "nn";
 
@@ -79,7 +87,7 @@ export default function QuadrantBoard() {
     }
   }
 
-  return (
+  const board = (
     <div className="view-body quad-body">
       <div className="quad-grid" onDragEnd={() => setDropKey(null)}>
       {QUADRANTS.map((q) => {
@@ -121,6 +129,23 @@ export default function QuadrantBoard() {
       </div>
     </div>
   );
+
+  // 手机：自己一页，自己带顶栏。「返回」回今天——手机上没有「上一页」这回事（跟清单页同一条）
+  if (isMobile) {
+    return (
+      <section className="main">
+        <MobileHead
+          title="四象限"
+          sub="按重要和紧急分四格"
+          onBack={() => navigate("today")}
+          search={false}
+        />
+        {board}
+      </section>
+    );
+  }
+  // 桌面：仍然是「计划」里的一个 tab，外面那层 section 和标题栏归 Plan 管
+  return board;
 }
 
 /** 格内简化行：旗标 + 勾选 + 标题 + 日期短格式。点击展开卡片，可拖走。 */

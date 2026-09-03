@@ -29,16 +29,6 @@ export interface IconProps {
   size?: number;
 }
 
-/** 随手记：一支笔 */
-export function IcoInbox({ size }: IconProps) {
-  return (
-    <Ico size={size}>
-      <path d="M4 20l4-1 10-10-3-3L5 16z" />
-      <path d="M13 7l3 3" />
-    </Ico>
-  );
-}
-
 /** 今天：一轮日头 */
 export function IcoToday({ size }: IconProps) {
   return (
@@ -192,6 +182,21 @@ export function IcoHabits({ size = 24 }: IconProps) {
       <path d="M3.5 4v4.5H8" />
       <path d="M3.5 12a8.5 8.5 0 0014.5 6l2.5-2.5" />
       <path d="M20.5 20v-4.5H16" />
+    </Ico>
+  );
+}
+
+/** 四象限：2×2 四块圆角小方块，**左上角那块是实心的**。
+ *  空心四格跟「更多」那颗长得一模一样——而这两颗恰好会同框（四象限那格就摆在「更多」页里，
+ *  底下导航第五格又是「更多」）。填掉左上那块既是区分，也正好是这一页的意思：
+ *  重要且紧急的那一格先做。 */
+export function IcoQuad({ size = 24 }: IconProps) {
+  return (
+    <Ico size={size}>
+      <rect x="4" y="4" width="7" height="7" rx="1.6" fill="currentColor" />
+      <rect x="13" y="4" width="7" height="7" rx="1.6" />
+      <rect x="4" y="13" width="7" height="7" rx="1.6" />
+      <rect x="13" y="13" width="7" height="7" rx="1.6" />
     </Ico>
   );
 }

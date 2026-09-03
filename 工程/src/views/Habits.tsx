@@ -20,11 +20,15 @@ import {
 import { CommitMark, useCommitFlash, useTypingFlash } from "../components/commitFlash";
 import { isMobile } from "../core/platform";
 import MobileHead from "../mobile/MobileHead";
+import { openSheet } from "../mobile/sheetStore";
 import "../styles/habits.css";
+import "../styles/mobile-pages.css";
 
 const WEEK_LABEL = ["一", "二", "三", "四", "五", "六", "日"];
 
-const RULE_CHOICES: { label: string; rule: RepeatRule }[] = [
+/** 周期候选。**这一份是全仓唯一一份**：桌面那张新建卡的下拉、习惯详情里的下拉、
+ *  手机那张「加一个习惯」的纸全读它，分成两处写早晚有一边少一个选项 */
+export const RULE_CHOICES: { label: string; rule: RepeatRule }[] = [
   { label: "每天", rule: { kind: "daily", every: 1 } },
   { label: "每个工作日", rule: { kind: "workday" } },
   { label: "每周一三五", rule: { kind: "weekly", days: [1, 3, 5] } },
@@ -99,6 +103,58 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
         <WeekStrip habit={habit} today={today} />
       </div>
       {expanded && <HabitDetail habit={habit} today={today} />}
+    </div>
+  );
+}
+
+/** 最近 7 天（含今天），从早到晚。手机那一行右边的七个小点用它。
+ *  跟桌面那条「本周七格」不是一回事：本周七格周一在左，月初打开只剩一两天可看；
+ *  「最近 7 天」不管今天周几，右起第一个永远是今天 */
+function recentMarks(habit: Task, today: string): { ymd: string; done: boolean }[] {
+  const out: { ymd: string; done: boolean }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const ymd = addDays(today, -i);
+    out.push({ ymd, done: doneOn(habit, ymd) });
+  }
+  return out;
+}
+
+/** 手机上的一行习惯（v1.11.2）：打卡圈 · 名字 + 一行小字 · 最近七天。
+ *
+ *  桌面那套（标题 / 周期 / 连续 / 本周七格全挤在一行，点开还长出月历和一堆输入框）
+ *  在 390px 上会被 habits.css 的窄屏规则折成两行半——用户说的「比例不对」就是这个。
+ *  这里**绝不折行**：中间那块 flex:1 + min-width:0，长名字自己收成省略号，
+ *  左右两头都是定死的宽度，360px 上也是一行。
+ *  改名字、改周期、删除全在「点一行拉出来的那张纸」里（mobile/HabitSheet），页面上不摆控件 */
+function MobileHabitRow({ habit, today }: { habit: Task; today: string }) {
+  const due = isDueOn(habit, today);
+  const done = doneOn(habit, today);
+  const n = streak(habit, today);
+
+  return (
+    <div className={`mhb-row${done ? " done" : ""}${due ? "" : " off"}`}>
+      <button
+        className={`mhb-cb${done ? " on" : ""}`}
+        // 今天不用做的圈灰着、按不动：按下去会打出一次「计划外」的卡，
+        // 而这一页正在说的是「今天该做哪几个」
+        disabled={!due}
+        title={done ? "撤销今天的打卡" : due ? "打卡" : "今天不用做"}
+        aria-label={done ? `撤销「${habit.title}」今天的打卡` : `给「${habit.title}」打卡`}
+        onClick={() => toggleHabitCheck(habit.id, today)}
+      />
+      <button className="mhb-main" onClick={() => openSheet({ kind: "habit", id: habit.id })}>
+        <span className="mhb-title">{habit.title || "（未命名）"}</span>
+        <span className="mhb-meta">
+          {describeHabitRule(habit)}
+          {/* 连续 0 次不摆那颗火：它是给「已经连着做了一阵」的人看的，从 0 开始数只是噪音 */}
+          {n > 0 && <span className="mhb-streak"> · 🔥 {n}</span>}
+        </span>
+      </button>
+      <span className="mhb-dots" aria-hidden>
+        {recentMarks(habit, today).map((m) => (
+          <span key={m.ymd} className={`mhb-dot${m.done ? " on" : ""}${m.ymd === today ? " now" : ""}`} />
+        ))}
+      </span>
     </div>
   );
 }
@@ -252,7 +308,9 @@ export default function Habits() {
       {isMobile ? (
         <MobileHead
           title="习惯"
-          sub={sub}
+          // 一个习惯都没有时这一行不写：底下那张空态卡说的就是这句话，
+          // 同一句话在一屏里出现两遍，看着像是页面坏了
+          sub={habits.length === 0 ? "" : sub}
           // 打卡进度也用同一个环：跟「今天」一个形制，扫一眼就知道今天还欠几个
           ring={{ done: doneCount, total: dueToday.length }}
         />
@@ -263,6 +321,40 @@ export default function Habits() {
         </div>
       )}
 
+      {/* 手机上是另一副身板：没有那张「输入框 + 周期下拉 + 加上」的横条（390px 排不下，
+          v1.11.1 真机上它被折成两行半），一件事一行、绝不折行，加习惯走右下角那颗 ＋。
+          桌面那一整块一个字没动 */}
+      {isMobile ? (
+        <div className="view-body mhb-body">
+          {dueToday.length > 0 && (
+            <>
+              <div className="group-head">今天要做的 {doneCount}/{dueToday.length}</div>
+              <div className="mcard mhb-card">
+                {dueToday.map((h) => (
+                  <MobileHabitRow key={h.id} habit={h} today={today} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {restToday.length > 0 && (
+            <>
+              <div className="group-head">今天不用做</div>
+              <div className="mcard mhb-card">
+                {restToday.map((h) => (
+                  <MobileHabitRow key={h.id} habit={h} today={today} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {habits.length === 0 && (
+            <div className="mcard mhb-blank">
+              需要反复做的事放在这里，每天打卡。点右下角的 ＋ 加一个。
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="view-body hb-body">
         <div className="hb-add">
           <span className="plus">＋</span>
@@ -339,6 +431,7 @@ export default function Habits() {
           <div className="empty">还没有习惯，在上面加一个。</div>
         )}
       </div>
+      )}
     </section>
   );
 }

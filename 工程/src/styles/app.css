@@ -90,6 +90,32 @@
   -webkit-app-region: no-drag;
 }
 .side .brand .gear:hover { color: var(--accent); background: var(--card); }
+/* 「＋ 记一条」（v1.11.2）：侧栏里唯一一颗实心按钮，替掉了原来那个「随手记」导航项。
+   不是导航项就不给选中态——它是个动作，按完人还在原来那一页 */
+.side-quickadd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 36px;
+  flex: none;
+  margin: 0 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: default;
+  transition: background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.side-quickadd:hover {
+  background: color-mix(in srgb, #fff 14%, var(--accent));
+  box-shadow: var(--shadow-sm);
+}
+.side-quickadd-plus { font-size: 15px; font-weight: 400; line-height: 1; }
 .side nav ul { list-style: none; }
 /* 新建清单那个框占满整条，「✓」只能往框里挪，挂外面会被侧栏裁掉 */
 .side nav li .commit-ok { left: auto; right: 8px; }

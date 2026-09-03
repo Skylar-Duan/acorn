@@ -18,7 +18,7 @@ function showsToday(t: Task, today: string): boolean {
   return dues.some((d) => !!d && cmpYMD(d, today) <= 0);
 }
 
-/** 跳到任务平时住的视图：做完的回「已完成」，逾期/今天回「今天」，再按清单/计划/随手记归位 */
+/** 跳到任务平时住的视图：做完的回「已完成」，逾期/今天回「今天」，再按清单/计划归位 */
 function goHome(t: Task) {
   if (t.done) {
     navigate("done");
@@ -26,11 +26,10 @@ function goHome(t: Task) {
     navigate("today");
   } else if (t.listId) {
     navigate("list", { listId: t.listId });
-  } else if (t.due) {
-    // 未来日期且无清单：家在「计划」——送去随手记会落进空视图
-    navigate("plan");
   } else {
-    navigate("inbox");
+    // 没日期也没清单的那些事，v1.11.2 起家就在「计划」——桌面上「随手记」这个视图
+    // 已经撤了（记录那半边成了「＋ 记一条」弹窗），送过去只会落进一片空白
+    navigate("plan");
   }
   expandTask(t.id);
   setSearchOpen(false);

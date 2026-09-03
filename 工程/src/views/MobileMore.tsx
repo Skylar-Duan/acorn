@@ -1,8 +1,11 @@
 // 「更多」（画板 ⑥，v1.11.0）——手机端把桌面侧栏下半截搬到这一页。
 //
 // 桌面侧栏是常驻的，十几项摊开也无所谓；手机上底部只放得下五格，所以除了
-// 随手记 / 今天 / 计划 / 已完成，别的入口全在这儿：账号、日历、习惯、统计、回收站，
+// 今天 / 习惯 / 计划 / 已完成，别的入口全在这儿：账号、日历、四象限、统计、回收站，
 // 加上清单 / 需求方 / 标签三张表，右上角一颗齿轮进设置。
+//
+// 「习惯」2026-09-03 从这四宫格里撤了——它已经钉在底部导航上，同一个入口摆两遍
+// 只会让人怀疑这两处是不是不一样的东西。空出来的那格给「四象限」（手机上它独立成页了）。
 //
 // 这一页**不是一个 ViewId**：它没有自己的数据、不需要被记住、桌面上也不存在。
 // 开关就在 MobileShell 的一个本地 state 里，点走任何一项它自己就收了（onNavigate）。
@@ -10,15 +13,16 @@
 import { useState } from "react";
 import { LIST_COLORS } from "../core/model";
 import {
-  addList, aliveHabits, aliveTasks, allTags, allWho, navigate, useApp,
+  addList, aliveTasks, allTags, allWho, navigate, useApp,
 } from "../core/store";
 import { syncFootState, useSync } from "../core/syncCtl";
 import MobileHead from "../mobile/MobileHead";
 import { openLogin } from "../mobile/sheetStore";
 import {
-  IcoCalendar, IcoGear, IcoHabits, IcoInbox, IcoNext, IcoPlus, IcoStats, IcoTrash,
+  IcoCalendar, IcoGear, IcoNext, IcoPlus, IcoQuad, IcoStats, IcoTrash,
 } from "../mobile/icons";
 import "../styles/mobile-shell.css";
+import "../styles/mobile-pages.css";
 
 export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) {
   const tasks = useApp((s) => s.data.tasks);
@@ -36,12 +40,6 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
   const whoList = allWho({ tasks, settings });
   const tagList = allTags({ tasks });
   const trashCount = tasks.filter((t) => t.deletedAt).length;
-  // 「随手记」v1.11.1 起不在底部常驻位了，这一行就是它的入口。
-  // 口径必须跟 ListView 的 inbox 分支一字不差（没归清单、也没定日子的），
-  // 否则这儿写着 3 件、点进去只有 2 件
-  const inboxCount = open.filter((t) => !t.listId && !t.due).length;
-  // 习惯不在 aliveTasks 里（那儿把 kind==="habit" 排除了），得单独数
-  const habitCount = aliveHabits({ tasks }).length;
 
   const go = (fn: () => void) => () => {
     fn();
@@ -52,7 +50,7 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
     <section className="main">
       <MobileHead
         title="更多"
-        sub="日历、习惯、清单，和你的账号"
+        sub="日历、四象限、清单，和你的账号"
         search={false}
         right={
           <button className="mhead-btn" aria-label="设置" onClick={go(() => navigate("settings"))}>
@@ -94,12 +92,12 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
             <b>日历</b>
             <span>按月、按周看安排</span>
           </button>
-          <button className="mmore-tile" onClick={go(() => navigate("habits"))}>
+          <button className="mmore-tile" onClick={go(() => navigate("quadrant"))}>
             <span className="ico">
-              <IcoHabits />
+              <IcoQuad />
             </span>
-            <b>习惯</b>
-            <span>{habitCount > 0 ? `${habitCount} 个在打卡` : "还没有在打卡的习惯"}</span>
+            <b>四象限</b>
+            <span>按重要和紧急分四格</span>
           </button>
           <button className="mmore-tile" onClick={go(() => navigate("stats"))}>
             <span className="ico">
@@ -114,18 +112,6 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
             </span>
             <b>回收站</b>
             <span>{trashCount > 0 ? `${trashCount} 件，删掉的留 30 天` : "删掉的留 30 天"}</span>
-          </button>
-        </div>
-
-        {/* 随手记：底部导航腾位置给「习惯」之后，这一行是它在手机上的门。
-            摆在清单那一段的上面而不是里面——它不是一张清单，是「还没归清单的那些」 */}
-        <div className="mcard mcard-solo">
-          <button className="mli" onClick={go(() => navigate("inbox"))}>
-            <span className="mli-ico">
-              <IcoInbox size={20} />
-            </span>
-            随手记
-            <span className="n">{inboxCount || ""}</span>
           </button>
         </div>
 

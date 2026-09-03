@@ -5,6 +5,7 @@ import Today from "./views/Today";
 import ListView from "./views/ListView";
 import Habits from "./views/Habits";
 import Plan from "./views/Plan";
+import Quadrant from "./views/Quadrant";
 import Done from "./views/Done";
 import Calendar from "./views/Calendar";
 import FocusView from "./views/FocusView";
@@ -18,11 +19,12 @@ import DataRescue from "./components/DataRescue";
 import UpdateDialog from "./components/UpdateDialog";
 import NewerDataDialog from "./components/NewerDataDialog";
 import ChangelogDialog from "./components/ChangelogDialog";
+import QuickAddDialog from "./components/QuickAddDialog";
 import { useLeaving } from "./components/motion";
 import {
   appStore, clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
-  hasChain, navigate, postponeTasks, setChainFolded, setChangelogOpen, setPaletteOpen, setSearchOpen,
-  setSelection, setTasksList, undo, useApp,
+  hasChain, navigate, postponeTasks, setChainFolded, setChangelogOpen, setPaletteOpen,
+  setQuickAddOpen, setSearchOpen, setSelection, setTasksList, undo, useApp,
 } from "./core/store";
 import { useUpdate } from "./core/updateCtl";
 import { isMobile } from "./core/platform";
@@ -34,6 +36,7 @@ import { TaskSheetHost } from "./mobile/TaskSheet";
 import { QuickAddSheetHost } from "./mobile/QuickAddSheet";
 import { ActionSheetHost } from "./mobile/ActionSheet";
 import { ListSettingsSheetHost } from "./mobile/ListSettingsSheet";
+import { HabitSheetHost } from "./mobile/HabitSheet";
 import { openLogin } from "./mobile/sheetStore";
 // 登录页两端都用：手机上是整页，桌面上是居中弹窗（组件自己分叉）
 import { LoginPageHost } from "./components/LoginPage";
@@ -73,6 +76,8 @@ export default function App() {
   const paletteOpen = useApp((s) => s.ui.paletteOpen);
   const searchOpen = useApp((s) => s.ui.searchOpen);
   const changelogOpen = useApp((s) => s.ui.changelogOpen);
+  /** 桌面的「记一条」弹窗（v1.11.2）。手机上不挂：那儿右下角那颗 ＋ 抽的是自己的纸 */
+  const quickAddOpen = useApp((s) => s.ui.quickAddOpen);
   /** 这次启动是「装了新版第一次开」还是「第一次装橡果」还是「同一版又开一次」 */
   const firstRun = useUpdate((s) => s.firstRun);
   const lists = useApp((s) => s.data.lists);
@@ -136,9 +141,16 @@ export default function App() {
         undo();
         return;
       }
-      if (mod && /^[1-5]$/.test(e.key)) {
+      // Ctrl+1 不再是切视图而是「记一条」（v1.11.2 随手记退场）：它原来就排在第一位，
+      // 手指记得的还是那一下，换成弹窗对用户是同一个动作、少走一趟
+      if (mod && e.key === "1") {
         e.preventDefault();
-        navigate((["inbox", "today", "habits", "plan", "done"] as const)[Number(e.key) - 1]);
+        setQuickAddOpen(true);
+        return;
+      }
+      if (mod && /^[2-5]$/.test(e.key)) {
+        e.preventDefault();
+        navigate((["today", "habits", "plan", "done"] as const)[Number(e.key) - 2]);
         return;
       }
       if (inEditable()) return;
@@ -227,9 +239,10 @@ export default function App() {
       });
   }, [loaded, loadError]);
 
-  // key 是给 B3 用的：随手记/清单/需求方/标签共用 ListView 这一个组件，
+  // key 是给 B3 用的：清单/需求方/标签共用 ListView 这一个组件，
   // 不给 key 的话它们之间来回切属于「同一个组件换了个 prop」，.view-body 不重挂，淡入就不播。
   // 光用 view 还不够：清单 A → 清单 B 的 view 一直是 "list"，需求方和标签同理，
+  // （随手记原来也在这一串里，桌面上 v1.11.2 撤了）
   // 结果侧栏上半截切过去有淡入、条目最多的下半截一律没有——一半有一半没有比全都没有更像坏了。
   // 所以 key 带上具体目标。这会连带把该视图内部的 state 与滚动位置一起重置，
   // 切清单时这正是想要的；ListView 自己没有跨清单要保留的 state（清单名那个框已自带 key={list.id}）
@@ -237,8 +250,13 @@ export default function App() {
   const body = useMemo(() => {
     switch (view) {
       case "today": return <Today key={bodyKey} />;
-      case "inbox": return <ListView key={bodyKey} kind="inbox" />;
+      // 桌面上「随手记」这个视图 v1.11.2 撤了（记录那半边成了「＋ 记一条」弹窗），
+      // 但 ViewId 一个字没删：老设置里存着 "inbox" 的照样得开得起来，落到「计划」上。
+      // 手机那边这一页还在（「更多」里进得去），跟四象限同一个写法各走各的
+      case "inbox": return isMobile ? <ListView key={bodyKey} kind="inbox" /> : <Plan key={bodyKey} />;
       case "plan": return <Plan key={bodyKey} />;
+      // 四象限只在手机上是一页；桌面上它是「计划」里的一个 tab，路由到这儿就等于计划
+      case "quadrant": return isMobile ? <Quadrant key={bodyKey} /> : <Plan key={bodyKey} />;
       case "done": return <Done key={bodyKey} />;
       case "list": return <ListView key={bodyKey} kind="list" />;
       case "who": return <ListView key={bodyKey} kind="who" />;
@@ -277,7 +295,12 @@ export default function App() {
 
   return (
     <div className={`shell${drawer ? " drawer-open" : ""}${isMobile ? " mobile" : ""}`}>
-      <ThemeScene theme={theme} />
+      {/* 主题风景水印只在桌面贴主区底部。手机上这一幅要撤掉：
+          它 fixed 在屏幕底部、高 137px，而底部导航只有 60px——画里那颗太阳正好从
+          导航条上沿露出小半个淡圆来（实测 390×844：风景 708→844，导航 784→844，
+          露在外面 76px）。PM 第一眼就看见了那个「幽灵圆」。
+          手机上这片风景改挂在顶栏后面（mobile/MobileHead 的 .mhead-scene），那才是它该在的地方 */}
+      {!isMobile && <ThemeScene theme={theme} />}
       {/* 手机上侧栏整套不上树：那儿走底部五格导航（MobileShell）。
           **抽屉那一套一个字没删**——桌面把窗口拖窄仍然是桌面，它还得靠 ☰ 拉开侧栏 */}
       {!isMobile && (
@@ -298,6 +321,7 @@ export default function App() {
           <QuickAddSheetHost />
           <ActionSheetHost />
           <ListSettingsSheetHost />
+          <HabitSheetHost />
         </>
       )}
       {/* 登录页两端都挂：手机上盖满一整页，桌面上是居中弹窗 */}
@@ -310,6 +334,8 @@ export default function App() {
         <NewerDataDialog schema={schemaNotice} onClose={() => setNoticeClosed(schemaNotice)} />
       )}
       {changelogOpen && <ChangelogDialog />}
+      {/* 「记一条」弹窗只在桌面：手机上那个动作是右下角的 ＋（QuickAddSheet） */}
+      {!isMobile && quickAddOpen && <QuickAddDialog />}
       {paletteOpen && <CommandPalette />}
       {searchOpen && <SearchOverlay />}
       <ContextMenu />
@@ -330,7 +356,7 @@ export default function App() {
             <button className="btn ghost" onClick={() => setBulkListMenu(!bulkListMenu)}>移到清单</button>
             {bulkListMenu && (
               <div className="popmenu" style={{ bottom: "130%", left: 0 }}>
-                <button className="item" onClick={() => { setTasksList(selectedIds, null); setBulkListMenu(false); }}>随手记</button>
+                <button className="item" onClick={() => { setTasksList(selectedIds, null); setBulkListMenu(false); }}>移出清单</button>
                 {lists.map((l) => (
                   <button key={l.id} className="item" onClick={() => { setTasksList(selectedIds, l.id); setBulkListMenu(false); }}>
                     <span style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${l.color})`, display: "inline-block" }} />

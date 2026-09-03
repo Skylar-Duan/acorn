@@ -111,7 +111,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
       // 不发明第三种行为：同一个概念在三处给三个值，用户对不上的时候只能当哪个是坏的
       case "inbox":
         return {
-          title: "随手记", sub: "没有日期、也没有归入清单的任务",
+          title: "还没有清单的事", sub: "没有日期、也没有归入清单的任务",
           tasks: sortTasks(alive.filter((t) => !t.done && !t.droppedAt && !t.listId && !t.due), sortMode),
           showAdd: true, defaults: {}, fade: true,
         };
@@ -176,12 +176,14 @@ export default function ListView({ kind }: { kind: ListKind }) {
         // 原来摊在这一行上的六颗颜色点和红色的「删除清单」全收进「···」那张纸里
         // （mobile/ListSettingsSheet）——390px 宽排不下，而删除也不该跟标题挤在一起等着被误碰
         <MobileHead
-          title={kind === "list" && list ? list.name : title}
-          sub={kind === "list" ? "" : sub}
+          // 手机上没有「随手记」这个词了（2026-09-03）：那些事在 今天 / 计划 / 日历 里照常排着，
+          // 只是不再单开一个叫「随手记」的地方。搜索结果仍可能落到这一页，所以它得有个说人话的名字
+          title={kind === "inbox" ? "还没有清单的事" : kind === "list" && list ? list.name : title}
+          sub={kind === "list" ? "" : kind === "inbox" ? "没有日期、也没有归入清单的" : sub}
           small={kind === "list"}
           dot={kind === "list" && list ? `var(--list-${list.color})` : null}
-          // 随手记是底部常驻的一格，用不着返回；别的都是从「更多」点进来的，得有路回去
-          onBack={kind === "inbox" ? undefined : () => navigate("today")}
+          // 每一页都得有路回去：这几页手机上都不是常驻位，进来了就要走得掉
+          onBack={() => navigate("today")}
           search={kind !== "list"}
           right={
             kind === "list" && list ? (
@@ -256,7 +258,10 @@ export default function ListView({ kind }: { kind: ListKind }) {
             {/* 空组照旧不画（连组标题一起）。判的是**钉过之后**这一组还剩什么：
                 钉在这儿的那一件已经不属于这一组了，照原分组判会出现「标题底下空一片」 */}
             {g.rows.length > 0 && g.label && (
-              <div className={`group-head${g.warn ? " warn" : ""}`}>{g.label}</div>
+              // split + .group-label：手机上标题收成一颗胶囊贴左（画板 A）。桌面上这两个类名没有样式
+              <div className={`group-head split${g.warn ? " warn" : ""}`}>
+                <span className="group-label">{g.label}</span>
+              </div>
             )}
             {/* 手机端：一组一张圆角卡，行换成 MobileRow。回收站不走这条——那儿的行不是任务行，
                 是「还剩 N 天 + 恢复 + 彻底删除」，滑动和详情都用不上 */}
@@ -315,7 +320,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           <div className="empty">
             {/* 「在上面记一条」说的是那条输入栏。手机上没有它，得指向右下角那颗 ＋ */}
             {kind === "trash" ? "回收站是空的。"
-              : kind === "inbox" ? (isMobile ? "还没有记录，点右下角的 ＋ 记一条。" : "还没有记录，在上面记一条。")
+              : kind === "inbox" ? (isMobile ? "没有还缺清单的事，点右下角的 ＋ 记一条。" : "还没有记录，在上面记一条。")
               : "这里没有任务。"}
           </div>
         )}

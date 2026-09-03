@@ -5,8 +5,8 @@
 // 不该跟标题挤在一起随时等着被误碰。所以手机上顶栏只剩「返回 · 色点 + 名字 · N 件 · ···」，
 // 剩下的全收进这里。
 //
-// 删除清单说清后果，而且**说的是它真做的那件事**：现有的 store.deleteList 把这张清单里的事
-// 移回随手记，不是丢进回收站——设计稿上那句「会一起进回收站」跟代码对不上，
+// 删除清单说清后果，而且**说的是它真做的那件事**：现有的 store.deleteList 只是把这张清单里的事
+// 变成「没有清单」，一件都不丢、也不丢进回收站——设计稿上那句「会一起进回收站」跟代码对不上，
 // 照着写就是骗人。宁可跟设计稿差一句话，也不能让用户按着一句假话去点删除。
 
 import { useState } from "react";
@@ -109,7 +109,7 @@ function Body({ listId }: { listId: string }) {
           >
             <IcoTrash size={20} />
             真的删除「{list.name}」
-            <span className="why">{n > 0 ? `${n} 件事移回随手记` : "这张清单是空的"}</span>
+            <span className="why">{n > 0 ? `${n} 件事会变成没有清单` : "这张清单是空的"}</span>
           </button>
           <button className="mls-opt" onClick={() => setConfirming(false)}>
             取消
@@ -120,7 +120,7 @@ function Body({ listId }: { listId: string }) {
           <IcoTrash size={20} />
           删除清单
           <span className="why">
-            {n > 0 ? `里面的 ${n} 件事会移回随手记` : "这张清单是空的"}
+            {n > 0 ? `里面的 ${n} 件事会变成没有清单` : "这张清单是空的"}
           </span>
         </button>
       )}

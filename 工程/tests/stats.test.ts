@@ -127,9 +127,9 @@ describe("byList", () => {
     task({ title: "inbox2（已删）", listId: null, done: false, deletedAt: isoLocal(2026, 8, 12) }),
   ];
 
-  it("随手记第一行 id=null，清单按 order 升序，全零清单也出现", () => {
+  it("未分清单第一行 id=null，清单按 order 升序，全零清单也出现", () => {
     const r = byList(tasks, LISTS, WS, WE);
-    expect(r.map((x) => x.name)).toEqual(["随手记", "工作", "生活"]);
+    expect(r.map((x) => x.name)).toEqual(["未分清单", "工作", "生活"]);
     expect(r[0].id).toBeNull();
     expect(r[2]).toEqual({ id: "L2", name: "生活", done: 0, open: 0 });
   });
@@ -140,10 +140,10 @@ describe("byList", () => {
     expect(work.done).toBe(1); // w2 区间外不算
     expect(work.open).toBe(1);
     const inbox = r.find((x) => x.id === null)!;
-    expect(inbox).toEqual({ id: null, name: "随手记", done: 0, open: 1 });
+    expect(inbox).toEqual({ id: null, name: "未分清单", done: 0, open: 1 });
   });
 
-  it("空任务时每个清单加随手记都在且全零", () => {
+  it("空任务时每个清单加未分清单都在且全零", () => {
     const r = byList([], LISTS, WS, WE);
     expect(r).toHaveLength(3);
     expect(r.every((x) => x.done === 0 && x.open === 0)).toBe(true);
@@ -248,11 +248,11 @@ describe("weeklyReview", () => {
   });
 
   it("perList 只统计本周完成、全零不出现、done 降序；perWho 同理", () => {
-    // 同为 1 条时按名字排：生活 < 随手记
+    // 同为 1 条时按名字排（localeCompare）：未分清单 < 生活
     expect(r.perList).toEqual([
       { name: "工作", done: 2 },
+      { name: "未分清单", done: 1 },
       { name: "生活", done: 1 },
-      { name: "随手记", done: 1 },
     ]);
     expect(r.perWho).toEqual([{ who: "李哥", done: 1 }]);
   });
@@ -260,7 +260,7 @@ describe("weeklyReview", () => {
   it("completed 排列与 perList 分组顺序一致（供导出切片还原）", () => {
     let i = 0;
     const nameOf = (id: string | null) =>
-      id === null ? "随手记" : (LISTS.find((l) => l.id === id)?.name ?? "随手记");
+      id === null ? "未分清单" : (LISTS.find((l) => l.id === id)?.name ?? "未分清单");
     for (const g of r.perList) {
       for (const t of r.completed.slice(i, i + g.done)) {
         expect(nameOf(t.listId)).toBe(g.name);

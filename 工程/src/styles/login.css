@@ -1,27 +1,52 @@
-/* 登录页（v1.11.0）——画板 ⑦ 手机整页 / ⑦b 桌面居中弹窗。
+/* 登录弹窗（v1.11.2）——两端都是「浮在应用上的一张卡」，不再有整页的那一版。
    颜色一律用 themes.css 的 token（六主题 × 深浅自动成立），
    时长只认 base.css 的 --dur-1 / --dur-2（tests/motion.test.ts 不许写字面时长）。
-   组件在 components/LoginPage.tsx。 */
+   组件在 components/LoginPage.tsx。
 
-/* ---------- 手机：盖住整个应用的一整页 ----------
-   自己的纸底：跟 body 同一个做法（噪点 + 右上/左下两团极淡的主题色光晕），
-   所以它看着像「另一张纸」，不像浮在应用上的一块板。
-   z-index 排在抽屉（120）之上、toast（200）之下：登录页盖住抽屉是对的，
-   但登录成功那句回执得能盖在它上面 */
-.login-page {
+   手机为什么从「一整页」改回弹窗（用户 2026-09-03）：
+   「不要一整页的登录，只要中间正常放下我删剪之后的这些内容宽度的悬浮弹窗就好」。
+   整页是一道门，弹窗才是顺手做一件事——尤其登录本来就是可选的。 */
+
+/* ---------- 手机：遮罩 + 居中悬浮卡 ----------
+   z-index 排在抽屉（120）之上、toast（200）之下：登录盖住抽屉是对的，
+   但登录成功那句回执得能盖在它上面。
+   安全区留在遮罩上（刘海、手势条），卡自己再靠 margin 留 24px 上下余量 */
+.login-scrim {
   position: fixed; inset: 0; z-index: 140;
-  display: flex; flex-direction: column;
-  overflow-y: auto;
-  background-color: var(--bg);
-  background-image:
-    var(--paper),
-    radial-gradient(120% 70% at 80% -10%, var(--accent-soft), transparent 60%),
-    radial-gradient(90% 60% at -10% 110%, var(--accent-soft), transparent 64%);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(46, 49, 41, .28);
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  overflow: hidden;
+  animation: login-scrim-in var(--dur-2) var(--ease);
 }
+@keyframes login-scrim-in { from { opacity: 0; } }
 
-.login-topbar { display: flex; justify-content: flex-end; padding: 14px 12px 0; flex: none; }
+/* 宽度按内容（画板上删剪完就这么宽），高度按内容长多少算多少，长过一屏就卡内自己滚。
+   用 dvh 而不是 vh：键盘顶上来时可视高度会缩，dvh 跟着缩、卡跟着变矮并重新居中，
+   输入框才不会被键盘盖住（vh 是那个**不跟着缩**的，写 vh 就等于把卡留在键盘底下）。
+   上面那条 vh 是给不认识 dvh 的老 WebView 的兜底，两条都留着 */
+.login-sheet {
+  width: min(92vw, 380px); margin: 24px 0;
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 48px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 48px);
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  background: var(--card); background-image: var(--paper);
+  /* 跟手机端别的抽屉一个语言：22 的圆角 + 柔和的双层投影。
+     再加一条发丝边：深色主题里那层投影几乎看不见，卡边会糊进底色，
+     靠这条线把卡的边界交代清楚（桌面那张 .login-modal 也是这么做的） */
+  border-radius: 22px; border: 1px solid var(--hair);
+  box-shadow: 0 2px 6px rgba(62, 74, 52, .06), 0 12px 28px rgba(62, 74, 52, .10);
+  padding: 12px 20px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+  animation: login-sheet-in var(--dur-2) var(--ease);
+}
+@keyframes login-sheet-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+
+/* × 那一行。负的下边距把它贴回标题上方，不白占一整行 */
+.login-topbar { display: flex; justify-content: flex-end; flex: none; margin-bottom: -10px; }
 
 .login-x {
   width: 40px; height: 40px; border-radius: 50%; flex: none;
@@ -31,37 +56,37 @@
 .login-x:hover { background: var(--accent-soft); color: var(--ink-2); }
 
 /* ---------- 品牌一角：像打开一本新本子的扉页 ---------- */
-.login-brand { padding: 18px 28px 0; display: flex; flex-direction: column; gap: 14px; flex: none; }
+.login-brand { display: flex; flex-direction: column; gap: 10px; flex: none; }
 
 /* 左上角那只橡果就是桌面上的应用图标本身（图标自带底板，所以这个框不再画卡片底和描边） */
 .login-mark {
-  width: 64px; height: 64px; border-radius: 20px; flex: none;
+  width: 52px; height: 52px; border-radius: 16px; flex: none;
   box-shadow: var(--shadow-sm); overflow: hidden;
   display: grid; place-items: center;
 }
 .login-mark > img { width: 100%; height: 100%; display: block; }
 
-.login-title { font-size: 30px; line-height: 38px; color: var(--ink); }
-.login-sub { font-size: var(--fs-lg); line-height: 1.75; color: var(--ink-2); }
+.login-title { font-size: 22px; line-height: 30px; color: var(--ink); }
+.login-sub { font-size: var(--fs-md); line-height: 1.7; color: var(--ink-2); }
 
 /* ---------- 表单 ---------- */
-.login-form { padding: 26px 22px 0; display: flex; flex-direction: column; gap: 12px; flex: none; }
+.login-form { display: flex; flex-direction: column; gap: 12px; flex: none; }
 
 .login-tabs { display: flex; padding: 4px; border-radius: 999px; background: var(--bg-side); }
 .login-tab {
-  flex: 1; height: 40px; border-radius: 999px; font-size: var(--fs-md); color: var(--ink-2);
+  flex: 1; height: 38px; border-radius: 999px; font-size: var(--fs-md); color: var(--ink-2);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .login-tab.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-sm); }
 
 /* 注册那两屏没有 tab，用同样高度的一行标题占住位置，切过去时上下不跳 */
 .login-step {
-  height: 48px; display: flex; align-items: center; padding-left: 6px;
+  height: 46px; display: flex; align-items: center; padding-left: 6px;
   font-size: var(--fs-lg); font-weight: 600; color: var(--ink);
 }
 
 .lfield {
-  display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px;
+  display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 14px;
   border-radius: 14px; border: 1px solid var(--hair); background: var(--card);
   transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
@@ -76,7 +101,7 @@
 .lfield-act:disabled { color: var(--ink-3); cursor: default; }
 
 .login-go {
-  height: 52px; margin-top: 4px; border-radius: 14px; flex: none;
+  height: 48px; margin-top: 2px; border-radius: 14px; flex: none;
   background: var(--accent); color: var(--on-accent);
   font-size: 16px; font-weight: 600; box-shadow: var(--shadow-sm);
   transition: filter var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease);
@@ -84,11 +109,11 @@
 .login-go:hover { filter: brightness(1.06); }
 .login-go:disabled { opacity: .5; cursor: default; filter: none; }
 
-/* 「合并还是覆盖」里那颗第二选择：同样大小，但不抢主按钮的分量 */
+/* 「留一份还是合并」里那颗第二选择：同样大小，但不抢主按钮的分量 */
 .login-second {
-  height: 52px; border-radius: 14px; flex: none;
+  height: 48px; border-radius: 14px; flex: none;
   border: 1px solid var(--hair); background: transparent; color: var(--ink-2);
-  font-size: var(--fs-lg);
+  font-size: var(--fs-md);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .login-second:hover { background: var(--accent-soft); color: var(--ink); }
@@ -104,31 +129,35 @@
 .login-tip { font-size: var(--fs-sm); color: var(--ink-3); line-height: 1.6; }
 
 /* ---------- 「两份档案，留一份或者合并」 ----------
-   两张卡并排摆，同一个写法的三个数（几件事 / 几个清单 / 最近什么时候动过），
+   两张卡并排摆，同一个写法的三个数（几件事 / 几个清单 / 什么时候更新的），
    用户扫一眼就能比出哪份新、哪份大——这正是他要拍的板 */
 .login-ask { display: flex; flex-direction: column; gap: 12px; }
-.login-ask-title { font-size: var(--fs-lg); font-weight: 600; color: var(--ink); line-height: 1.6; }
-.login-ask-line { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+.login-ask-title { font-size: 22px; line-height: 30px; color: var(--ink); }
+.login-ask-line { font-size: var(--fs-md); color: var(--ink-2); line-height: 1.7; }
 
 .login-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .login-pick {
-  display: flex; flex-direction: column; gap: 6px; align-items: flex-start; text-align: left;
-  padding: 12px 14px; border-radius: 14px; min-width: 0;
+  display: flex; flex-direction: column; gap: 5px; align-items: flex-start; text-align: left;
+  /* 左右 11 不是 13：360 宽的手机上，「更新于 9月3日 08:40」正好卡在两边各差一格，
+     多让出这 4px 就能一行放下（实测 360×740 从两行变一行）。
+     日期特别长的月份（12月30日）在 360 上仍会折成两行，两张卡一起折，看着是齐的 */
+  padding: 12px 11px; border-radius: 14px; min-width: 0;
   border: 1px solid var(--hair); background: var(--card);
   transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
 .login-pick:hover { border-color: var(--accent); }
 /* 选中那张：主题色描边 + 一层极淡的主题色底，不靠对勾，整张卡就是选择本身 */
 .login-pick.on { border-color: var(--accent); background: var(--accent-soft); }
-.login-pick-name { font-size: var(--fs-md); font-weight: 600; color: var(--ink); }
-.login-pick-meta { font-size: var(--fs-sm); color: var(--ink-3); line-height: 1.65; }
+.login-pick-name { font-size: var(--fs-lg); font-weight: 600; color: var(--ink); }
+.login-pick-meta { font-size: var(--fs-sm); color: var(--ink-3); line-height: 1.6; }
 
-/* ---------- 手机底部 ---------- */
-.login-spacer { flex: 1; min-height: 16px; }
-.login-foot { padding: 0 28px 34px; display: flex; flex-direction: column; gap: 10px; align-items: center; flex: none; }
-.login-foot .login-tip { text-align: center; }
+/* ---------- 手机卡底部 ----------
+   「不登录的话事情只存在这台手机上」那一句去掉了（用户 2026-09-03：「底部文字去掉」）：
+   一张登录卡不该在最后再吓一句，况且不登录本来就是正常用法 */
+.login-spacer { flex: 1; min-height: 4px; }
+.login-foot { display: flex; justify-content: center; flex: none; }
 .login-later {
-  height: 44px; padding: 0 22px; border-radius: 999px; flex: none;
+  height: 42px; padding: 0 22px; border-radius: 999px; flex: none;
   border: 1px solid var(--hair); background: transparent; color: var(--ink-2); font-size: var(--fs-md);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
@@ -144,6 +173,13 @@
   border: 1px solid var(--hair); border-radius: 20px; box-shadow: var(--shadow);
   display: grid; grid-template-columns: 300px 1fr; overflow: hidden;
 }
+
+/* 选档案那一步：单栏窄卡，高度按内容。摊成双栏只会让扉页那半边干站着 */
+.login-modal.solo {
+  width: min(440px, calc(100vw - 32px)); height: auto;
+  grid-template-columns: 1fr;
+}
+.login-modal.solo .login-main { padding: 26px 28px 24px; gap: 14px; }
 
 .login-aside {
   padding: 30px 28px; display: flex; flex-direction: column; gap: 16px; align-items: flex-start;
@@ -169,11 +205,14 @@
 .login-main .login-go,
 .login-main .login-second { height: 44px; margin-top: 2px; border-radius: 11px; font-size: 14.5px; }
 .login-main .login-pick { padding: 10px 12px; border-radius: 11px; gap: 4px; }
+.login-main .login-pick-name { font-size: var(--fs-md); }
 .login-main .login-links { padding: 0 4px; font-size: 12.5px; }
 .login-main .login-spacer { min-height: 4px; }
+.login-main .login-ask-title { font-size: 21px; line-height: 29px; }
+.login-main .login-ask-line { font-size: var(--fs-sm); }
 
 /* 桌面窗口拖得很窄时（Tauri 允许缩到 600 以下）：扉页那一栏收掉，只留表单。
-   这条按**窗口宽度**分，跟「手机整页 vs 桌面弹窗」那条按 isMobile 分的判据是两件事 */
+   这条按**窗口宽度**分，跟「手机弹窗 vs 桌面弹窗」那条按 isMobile 分的判据是两件事 */
 @media (max-width: 620px) {
   .login-modal { grid-template-columns: 1fr; height: auto; max-height: calc(100vh - 24px); }
   .login-aside { display: none; }

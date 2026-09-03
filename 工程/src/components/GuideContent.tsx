@@ -176,7 +176,7 @@ export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: G
       <div className="gd-section">
         <h2>不写语法也能记</h2>
         <p className="gd-lead">
-          「随手记」输入框下面有一排按钮：日期、清单、需求方、重要性、循环，点选即可。
+          「记一条」输入框下面有一排按钮：日期、清单、需求方、重要性、循环，点选即可。
           选中的会保持生效，方便连着记好几条。两种方式可以混用。
         </p>
       </div>

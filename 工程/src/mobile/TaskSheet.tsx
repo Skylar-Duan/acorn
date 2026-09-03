@@ -381,7 +381,7 @@ function TaskSheetBody({ task }: { task: Task }) {
           <button className={`msh-prop${seg === "list" ? " open" : ""}`} onClick={() => toggleSeg("list")}>
             <span className="msh-dot" style={{ background: list ? `var(--list-${list.color})` : "var(--ink-3)" }} />
             <span className="msh-prop-k">清单</span>
-            <span className={`msh-prop-v${list ? "" : " off"}`}>{list ? list.name : "随手记"}</span>
+            <span className={`msh-prop-v${list ? "" : " off"}`}>{list ? list.name : "没有清单"}</span>
             <span className="msh-caret"><ChevronRight /></span>
           </button>
           {seg === "list" && (
@@ -391,7 +391,7 @@ function TaskSheetBody({ task }: { task: Task }) {
                   className={`msh-opt${task.listId ? "" : " on"}`}
                   onClick={() => updateTask(task.id, { listId: null })}
                 >
-                  随手记
+                  不放进清单
                 </button>
                 {lists.map((l) => (
                   <button

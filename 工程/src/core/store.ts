@@ -12,9 +12,12 @@ import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
 // 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
-// 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换
+// 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换。
+// 2026-09-03：手机上四象限重新独立成一页（"quadrant"）——手机屏上「列表 / 四象限」
+// 两个 tab 挤在顶栏里既难点又看不出是两种东西。桌面不变：那儿 "quadrant" 就等于 "plan"，
+// 四象限仍是计划里的一个 tab
 export type ViewId =
-  | "inbox" | "today" | "plan" | "done" | "habits"
+  | "inbox" | "today" | "plan" | "quadrant" | "done" | "habits"
   | "calendar" | "focus" | "stats" | "settings"
   | "list" | "who" | "tag" | "trash";
 
@@ -32,6 +35,9 @@ export interface UIState {
   paletteOpen: boolean;
   /** 侧栏版本号点开的那份更新日志 */
   changelogOpen: boolean;
+  /** 居中的「记一条」弹窗（v1.11.2 起替掉了侧栏那个「随手记」视图）。
+   *  侧栏那颗「＋ 记一条」、Ctrl+1、命令面板都开的是它 */
+  quickAddOpen: boolean;
   toast: { msg: string; undoable: boolean; key: number } | null;
   /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义 */
   ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null } | null;
@@ -115,7 +121,8 @@ export const appStore = createStore<AppState>(() => ({
   wiped: false,
   ui: {
     view: "today", listId: null, who: null, tag: null, ...loadFold(),
-    expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, changelogOpen: false, toast: null,
+    expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, changelogOpen: false,
+    quickAddOpen: false, toast: null,
     ctxMenu: null,
   },
   focus: { taskId: null, running: false, endsAt: null, totalMinutes: 0 },
@@ -1054,9 +1061,12 @@ export function setListColor(id: string, color: string) {
   mutate((d) => ({ ...d, lists: d.lists.map((l) => (l.id === id ? { ...l, color } : l)) }));
 }
 
-/** 删除清单：其下任务回随手记；正看着这张清单时把视图也带走，防止悬空 */
+/** 删除清单：里面的事变成「没有清单」（一件都不删）；正看着这张清单时把视图也带走，防止悬空 */
 export function deleteList(id: string) {
   const at = new Date().toISOString();
+  // 数一下要交代给用户的那个数——**在改之前数**，改完 listId 就都是 null 了。
+  // 回收站里那些不算：用户看不见它们，报进去这个数就对不上了
+  const n = appStore.getState().data.tasks.filter((t) => t.listId === id && !t.deletedAt).length;
   mutate(
     (d) => ({
       ...d,
@@ -1064,10 +1074,13 @@ export function deleteList(id: string) {
       tasks: d.tasks.map((t) => (t.listId === id ? { ...t, listId: null } : t)),
       graveyard: bury(d.graveyard, [id], at),
     }),
-    { toast: "清单已删除，任务已移回随手记" },
+    // 说它**真做**的那件事：事一件没删，只是不归这张清单了（跟手机上删清单那张纸同一套说法）
+    { toast: n ? `清单已删除，${n} 件事变成没有清单` : "清单已删除" },
   );
   const ui = appStore.getState().ui;
-  if (ui.view === "list" && ui.listId === id) navigate("inbox");
+  // 桌面上「随手记」这个视图 v1.11.2 起没了（换成「＋ 记一条」弹窗），删完清单没地方可去，
+  // 就送去「计划」——那儿装的是所有没做完的事，刚从清单里放出来的这几件也在里面
+  if (ui.view === "list" && ui.listId === id) navigate("plan");
 }
 
 // ---------- 专注 ----------
@@ -1175,6 +1188,13 @@ export function setPaletteOpen(open: boolean) {
 export function setChangelogOpen(open: boolean) {
   const ui = appStore.getState().ui;
   appStore.setState({ ui: { ...ui, changelogOpen: open } });
+}
+
+/** 居中的「记一条」弹窗开/关。侧栏那颗按钮、Ctrl+1、命令面板都走这一个口 */
+export function setQuickAddOpen(open: boolean) {
+  const ui = appStore.getState().ui;
+  if (ui.quickAddOpen === open) return;
+  appStore.setState({ ui: { ...ui, quickAddOpen: open } });
 }
 
 export function setFocusState(patch: Partial<FocusState>) {

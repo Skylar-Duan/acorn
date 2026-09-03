@@ -1,0 +1,73 @@
+/* 「记一条」弹窗（v1.11.2）：侧栏那颗「＋ 记一条」点开的居中卡片。
+   遮罩和卡片外壳复用 base.css 的 .overlay / .modal（跟更新日志、命令面板同一套），
+   这里只补卡片内部；侧栏那颗按钮本身在 app.css 里（.side-quickadd）。 */
+
+/* min-width 归零：base.css 的 .modal 带 480px，窄窗口下会把卡片顶出屏幕。
+   overflow 必须放开：那排「点着选」的小菜单是从按钮底下垂下来的，
+   卡片一裁就只剩半个日期菜单（.modal 默认 overflow: hidden） */
+.modal.qad-modal {
+  width: min(92vw, 640px);
+  min-width: 0;
+  max-width: 640px;
+  border-radius: 16px;
+  padding: 0;
+  overflow: visible;
+  margin-top: 15vh;
+  animation: card-in var(--dur-2) var(--ease);
+}
+
+.qad-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 16px 0 20px;
+}
+.qad-head h2 { font-family: var(--serif); font-size: var(--fs-h2); }
+/* 「怎么写一句话」：跟输入框行尾那颗是同一个东西，挪到标题这一行来了
+   （框里那颗在下面被藏掉，同一个动作不摆两个入口） */
+.qad-help {
+  margin-left: auto;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.qad-help:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.qad-x {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 22px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.qad-x:hover { background: var(--bg); color: var(--ink); }
+
+.qad-body { padding: 0 20px; }
+/* 框底色用 --bg：卡片本身已经是 --card，同色套同色会看不出哪儿能打字 */
+.qad-body .quick-add { margin-top: 12px; background: var(--bg); }
+/* 输入框行尾那颗「?」在这儿藏起来——它已经搬到标题行了 */
+.qad-body .qa-help { display: none; }
+/* 记下一条的回执：框边亮一下（commit-edge 在 base.css，全应用共用这一份） */
+.qad-body.lit .quick-add { animation: commit-edge var(--dur-2) var(--ease); }
+
+.qad-foot {
+  padding: 9px 20px 15px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.6;
+}

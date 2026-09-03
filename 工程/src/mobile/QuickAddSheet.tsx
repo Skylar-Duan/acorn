@@ -209,7 +209,7 @@ function QuickAddBody({ listId }: { listId: string | null }) {
               className={`msh-opt${pick.listId ? "" : " on"}`}
               onClick={() => setPick((p) => ({ ...p, listId: null }))}
             >
-              随手记
+              先不分清单
             </button>
             {lists.map((l) => (
               <button

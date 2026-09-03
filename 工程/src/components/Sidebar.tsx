@@ -1,5 +1,9 @@
-// 侧栏：常驻五项（随手记/今天/习惯/计划/已完成）+ 可展开的「更多」+ 清单/需求方/标签。
-// 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、「随手记」清日期、清单/需求方即归属。
+// 侧栏：一颗「＋ 记一条」+ 常驻四项（今天/习惯/计划/已完成）+ 可展开的「更多」+ 清单/需求方/标签。
+// 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、清单/需求方即归属。
+//
+// v1.11.2：「随手记」这一项撤了。它原来一半是记录入口、一半是「没日期也没归清单那堆事」
+// 的列表，两件事挤在一个导航项里；现在记录那半边变成顶上那颗按钮（点开是居中的
+// QuickAddDialog），列表那半边并回「计划」。按钮不是导航项，所以它没有选中态。
 //
 // 为什么要折叠：加了习惯之后侧栏太长了。偶尔才看的视图收进「更多」，
 // 清单/需求方/标签各只列 3 个，剩下的点一下才出来。展开状态记在本机 localStorage——
@@ -14,7 +18,7 @@ import { duePresets, todayYMD, cmpYMD } from "../core/dates";
 import {
   addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
   moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
-  setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
+  setQuickAddOpen, setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
 } from "../core/store";
 import { APP_VERSION, LIST_COLORS } from "../core/model";
 import { forceFoldOpen, useFold } from "../core/useFold";
@@ -63,7 +67,6 @@ function Ico({ d }: { d: string }) {
 }
 
 const ICONS = {
-  inbox: "M3 21l3.6-.7L20 6.9a2.12 2.12 0 0 0-3-3L3.7 17.4 3 21z M14.4 6.5l3.1 3.1",
   today: "M12 8a4 4 0 100 8 4 4 0 000-8z M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1",
   plan: "M4 6h16 M4 12h16 M4 18h10",
   done: "M20 6L9 17l-5-5",
@@ -96,7 +99,7 @@ function draggedSub(e: React.DragEvent): { taskId: string; subId: string } | nul
 }
 
 /** 拖拽落点统一改期：子任务行只动自己，母任务行（可能多选）整组走。
- *  子任务被拖回「随手记」= 放弃自己的日期，重新跟着母任务走 */
+ *  due 传 null = 连时间一起清掉（子任务清掉自己的日期就重新跟着母任务走） */
 function dropDue(e: React.DragEvent, ids: string[], due: string | null) {
   const s = draggedSub(e);
   if (s) updateSubtask(s.taskId, s.subId, due ? { due } : { due: null, dueTime: null });
@@ -362,14 +365,13 @@ export default function Sidebar(
 
   const today = todayYMD();
   // 「还欠着的」= 没做完**也没放弃**。放弃跟完成同一个口径（v1.9.0 收口）：
-  // 它们都是了结了的事，两种都不进这个数，也都不出现在随手记/清单/需求方/标签里。
-  // 这里改了口径，counts.inbox 和清单角标跟着一起改，跟 counts.plan（走 openRows）对齐
+  // 它们都是了结了的事，两种都不进这个数，也都不出现在清单/需求方/标签里。
+  // 这里改了口径，清单角标跟着一起改，跟 counts.plan（走 openRows）对齐
   const open = useMemo(() => aliveTasks({ tasks }).filter((t) => !t.done && !t.droppedAt), [tasks]);
   const rows = useMemo(() => openRows({ tasks }), [tasks]);
   // 计数按「行」算，跟点进去实际看到的条数对得上（有子任务的事已经拆成一行一个子任务）
   const counts = useMemo(
     () => ({
-      inbox: open.filter((t) => !t.listId && !t.due).length,
       today: rows.filter((r) => {
         const due = rowDue(r);
         return due && cmpYMD(due, today) <= 0;
@@ -496,9 +498,15 @@ export default function Sidebar(
             .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
         <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
       </div>
+      {/* 记一条：整条侧栏最该一眼看见的那件事，所以是唯一一颗实心按钮。
+          它**不是导航项**——记完还留在原来那一页，所以没有选中态，也不调 onNavigate
+          （手机上侧栏根本不渲染，抽屉那套跟它无关） */}
+      <button className="side-quickadd" title="记一条（Ctrl+1）" onClick={() => setQuickAddOpen(true)}>
+        <span className="side-quickadd-plus">＋</span>
+        记一条
+      </button>
       <nav>
         <ul>
-          {item("inbox", "随手记", "inbox", counts.inbox, false, (ids, e) => dropDue(e, ids, null))}
           {item("today", "今天", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
           {item("habits", "习惯", "habits", counts.habits, true)}
           {/* 计划 = 所有没做完的事（原来的「全部」）。拖任务过来仍然是弹日期选择 */}
@@ -534,7 +542,7 @@ export default function Sidebar(
                 // 焦点还落在这个弹层里（比如点了一下日期框、又改主意去按上面的「本周五」）
                 // 就别收弹层：mousedown 把焦点挪走 → 这儿一收 → 弹层当场进退场态
                 // （.leaving 是 pointer-events:none）→ 后面那下 mouseup 落不到按钮上、
-                // click 根本不触发，整个拖拽动作静默作废。跟「随手记」那排点选同一道闸
+                // click 根本不触发，整个拖拽动作静默作废。跟「记一条」那排点选同一道闸
                 const next = e.relatedTarget as HTMLElement | null;
                 if (next && next.closest(".side-plan-pop")) return;
                 setPendingPlan(null);

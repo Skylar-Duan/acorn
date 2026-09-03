@@ -101,7 +101,7 @@ function csvCell(v: string): string {
 
 function buildCsv(d: AppData): string {
   const listName = (id: string | null) =>
-    id ? d.lists.find((l) => l.id === id)?.name ?? "" : "随手记";
+    id ? d.lists.find((l) => l.id === id)?.name ?? "" : "未分清单";
   const head = "标题,清单,需求方,标签,优先级,日期,时间,状态,完成时刻";
   const rows = aliveTasks(d).map((t) =>
     [
@@ -127,7 +127,7 @@ function buildMarkdown(d: AppData): string {
   const alive = aliveTasks(d);
   const groups: { name: string; items: Task[] }[] = [];
   const inbox = alive.filter((t) => !t.listId);
-  if (inbox.length) groups.push({ name: "随手记", items: inbox });
+  if (inbox.length) groups.push({ name: "未分清单", items: inbox });
   for (const l of [...d.lists].sort((a, b) => a.order - b.order)) {
     const items = alive.filter((t) => t.listId === l.id);
     if (items.length) groups.push({ name: l.name, items });
@@ -479,7 +479,7 @@ export default function Settings() {
           <div className="set-row">
             <div className="set-row-label">
               全局快捷键
-              <span className="set-hint">唤起「随手记一条」小窗 · 如 Alt+Space、Ctrl+Shift+A</span>
+              <span className="set-hint">唤起「记一条」小窗 · 如 Alt+Space、Ctrl+Shift+A</span>
             </div>
             <div className="set-ctl">
               <input
@@ -543,8 +543,12 @@ export default function Settings() {
 
         {/* ---------- 一句话记事 ---------- */}
         <SetSection id="syntax" title="一句话记事" summary="日期、清单、需求方写在同一句里 · 打开用法说明">
+          {/* 两端说的是同一件事，但入口不一样：桌面是侧栏那颗「＋ 记一条」，
+              手机是右下角那个 ＋。别在手机上指一个不存在的侧栏 */}
           <div className="set-desc">
-            日期、清单、需求方、重要性、循环，可以写在同一句里；也可以用随手记下面那排按钮点选。
+            日期、清单、需求方、重要性、循环，可以写在同一句里；
+            {hasDesktopFeatures ? "也可以点侧栏的「＋ 记一条」，" : "也可以在记一条那个框里，"}
+            用输入框下面那排按钮点选。
           </div>
           <div className="set-row">
             <div className="set-row-label">

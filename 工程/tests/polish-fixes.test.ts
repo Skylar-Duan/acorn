@@ -119,8 +119,17 @@ describe("B3：切清单 / 切需求方 / 切标签也要重播正文淡入", ()
     expect(appSource).not.toContain("key={view}");
   });
 
-  it("十三个视图全都挂上了这个 key，一个不落", () => {
-    expect(appSource.split("key={bodyKey}").length - 1).toBe(13);
+  it("视图路由里每一条都挂上了这个 key，一个不落", () => {
+    // 原来钉的是「一共 13 个」。视图会增减（v1.11.2 随手记在桌面上退场、
+    // 四象限在手机上独立成一页），一个死数字每次都得来改，改的人还未必知道为什么。
+    // 现在钉的是**结构**：路由那段 switch 里出现几个 JSX 元素，就得有几个 key
+    const routes = appSource.slice(
+      appSource.indexOf("const body = useMemo(() => {"),
+      appSource.indexOf("}, [view, bodyKey]);"),
+    );
+    const elements = routes.match(/<[A-Z]\w*/g) ?? [];
+    expect(elements.length).toBeGreaterThanOrEqual(13);
+    expect(routes.split("key={bodyKey}").length - 1).toBe(elements.length);
   });
 
   it("useMemo 的依赖跟着走，否则算出来的还是上一份 element", () => {

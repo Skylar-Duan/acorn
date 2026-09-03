@@ -13,6 +13,17 @@
 /* 手机上不渲染侧栏了，那条 232px 的栏位得收掉，否则正文会挤在左边那一格里 */
 .shell.mobile { grid-template-columns: 1fr; }
 
+/* 页底那抹柔光（画板 PolishA 那句 background-image）：右上角一团 --accent-soft 化开。
+   整页最上面那一块因此是暖的、有颜色的，而不是一张白纸——A 的「软」有一半来自这里。
+
+   **必须挂在 .shell.mobile 上，不能挂在 .mshell 上**：.shell 是 isolation: isolate
+   造出来的层叠上下文，顶栏后面那片风景是 z-index:-1 的，它只沉得到「造上下文那个元素的
+   背景之上」。挂到 .mshell（定位元素、z-index:auto，画在第 8 层）上的话，
+   这团光会盖在风景前面，风景就白垫了 */
+.shell.mobile {
+  background-image: radial-gradient(120% 70% at 85% -8%, var(--accent-soft), transparent 58%);
+}
+
 .mshell {
   position: relative;
   display: flex;
@@ -46,6 +57,10 @@
    再加 6px 才不至于让标题贴着状态栏下沿（画板 Main.dc.html 那份是 48 + 6 = 54） */
 .mshell .mhead {
   flex: none;
+  /* 顶栏后面那片主题风景的定位锚（.mhead-scene 是 absolute）。
+     只加 position，不加 z-index：一加 z-index 这儿就成了层叠上下文，
+     风景的 z-index:-1 只沉得到顶栏自己底下，正文的卡片反而会被它压住 */
+  position: relative;
   /* display 必须掰成 block（v1.11.1）。.mhead 同时挂着 .view-head，而那个类是
      `display: flex`——于是里面的 .mhead-top 只有内容那么宽（实测 390 的屏上只占 277），
      进度环和搜索钮就吊在标题右边、离屏幕右缘还差 95px，看着像没对齐；
@@ -54,12 +69,59 @@
   display: block;
   padding: calc(max(var(--m-safe-top), 12px) + 6px) 18px 0;
 }
+/* 顶栏后面那片主题风景（画板 PolishC 点名要的那一片，PM 也点了名）。
+   画不重画：桌面早就有 6 主题 × 深浅的 <ThemeScene>，颜色全走主题 token，
+   手机上只是把同一幅画挪到标题后面、压扁、化开。
+   ① z-index: -1 —— 沉到内容之下、.shell 底纸之上（跟桌面那幅一个层次）；
+   ② 高度写死 --m-scene-h，不跟 aspect-ratio 走：顶栏后面这一片是「一角」，不是整幅画；
+   ③ pointer-events: none —— 它只是背景，不许吃掉任何一次点击。 */
+.mshell .mhead-scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--m-scene-h);
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* 桌面那份 .theme-scene 是 fixed 贴在主区底部的，这儿要整条改写：
+   撑满这只 230px 的盒子、不要 aspect-ratio、不要它自带的上缘蒙版（渐隐改由下面那层做） */
+.mshell .mhead-scene .theme-scene {
+  position: absolute;
+  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  z-index: 0;
+  opacity: var(--m-scene-a);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+/* 往下渐隐进页底：不化开的话，盒子下沿会有一道横切线，像贴了张图上去。
+   终点必须正好落在盒子底边（100%），因为画的最下面是一整条实心的山脊剪影 */
+.mshell .mhead-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 22%, var(--bg) 100%);
+}
+
 .mhead-top { display: flex; align-items: center; gap: 10px; }
 .mhead-txt { flex: 1; min-width: 0; }
+/* 标题和那颗小橡果排一行。橡果只在「今天」露一次脸（MobileHead 的 mascot prop） */
+.mhead-titleline { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mhead-acorn { flex: none; display: block; }
 .mhead-title {
   font-family: var(--serif);
-  font-size: 30px;
-  line-height: 34px;
+  /* A 把标题放大到 34：整页第一眼落在「今天」两个字上，剩下的才是清单 */
+  font-size: 34px;
+  line-height: 38px;
+  flex: 0 1 auto;
   /* 常规字重，照画板（Main.dc.html 那个 .serif 标题没写 font-weight）。
      600 会取到文楷的 Medium 那一档——30px 的中文一上 Medium 就发闷，
      用户说的「比例怪怪的」有一半是这个。字号不动，只把这一档卸掉 */
@@ -69,7 +131,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mhead-title.small { font-size: 26px; line-height: 32px; }
+.mhead-title.small { font-size: 28px; line-height: 34px; }
 .mhead-sub {
   font-size: 13px;
   color: var(--ink-2);
@@ -142,36 +204,101 @@
 .mhead-extra > * { flex: none; white-space: nowrap; }
 .mshell .all-sort button { padding-top: 8px; padding-bottom: 8px; }
 
-/* ---------- 列表：一组一张卡（画板 ①） ---------- */
+/* ---------- 段标题：一颗小胶囊（画板 A） ---------- */
+/* 「逾期 2」不再是一行拉宽的灰色小字，而是贴着左边的一颗胶囊——
+   A 的「可爱」有一半来自「所有零碎信息都被收进圆角里」。
+   两条路并存，因为各视图里标题文字的写法不一样：
+     · 今天 / 计划 / 已完成 / 清单页 —— 标题包成了 <span class="group-label">、
+       容器挂 .split：容器是满宽的一行，胶囊在左、「全部推到明天 →」贴右缘（画板 A 就是这样）；
+     · 习惯 / 更多 —— 标题是裸文本（那两页的 TSX 不归这一轮动），CSS 选不中，
+       于是让**容器自己**缩成文字那么宽当胶囊用。那两页没有右侧链接，缩起来不丢东西。
+   两条路出来的长相一样：一颗 26 高的胶囊，左缘都在 18px。 */
 .mshell .group-head {
-  font-size: 12.5px;
-  letter-spacing: .08em;
-  color: var(--ink-3);
-  font-weight: 600;
-  margin: 0;
-  padding: 22px 18px 8px;
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 36px);
+  height: 26px;
+  margin: 22px 0 8px 18px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--m-pill-bg);
+  color: var(--m-pill-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  /* 胶囊里不拉字距：.08em 是给通栏小标题用的，收进 26px 的胶囊里就散了 */
+  letter-spacing: 0;
+  white-space: nowrap;
 }
-.mshell .group-head.warn { color: var(--warn); }
-.mshell .group-head .act { margin-left: auto; font-size: 12.5px; letter-spacing: 0; color: var(--accent); }
+/* 「逾期」走 warn 那一档：底和字都换成暖褐，一眼跟别的组分得开 */
+.mshell .group-head.warn { background: var(--m-pill-warn-bg); color: var(--m-pill-warn-ink); }
 
+/* 标题被包起来的那一路：容器退回成满宽的一行，胶囊挪到 .group-label 上 */
+.mshell .group-head.split {
+  width: auto;
+  max-width: none;
+  margin: 22px 18px 8px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+.mshell .group-label {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--m-pill-bg);
+  color: var(--m-pill-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mshell .group-head.warn .group-label { background: var(--m-pill-warn-bg); color: var(--m-pill-warn-ink); }
+
+/* 右边那句链接。裸文本那一路（习惯 / 更多）胶囊就是容器本身，链接只能挂到容器外面去；
+   .split 那一路容器已经是满宽的一行，直接 margin-left: auto 顶到右缘。
+   前一种写法下 overflow 不许设成 hidden，否则连链接一起裁掉 */
+.mshell .group-head .act {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 12px;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.mshell .group-head.split .act {
+  position: static;
+  transform: none;
+  margin-left: auto;
+  flex: none;
+}
+
+/* ---------- 列表：一组一张卡（画板 ①，A 版） ---------- */
 .mcard {
   margin: 0 12px;
-  border-radius: var(--m-radius);
+  border-radius: var(--m-card-radius);
   overflow: hidden;
   background: var(--card);
-  /* 跟桌面的卡片、弹窗、输入条同一层纸的颗粒（base.css 那条 `.modal, .task-card…`）。
-     手机上整页最大的一块面就是这张卡，少了这层颗粒，近看就是一块塑料 */
-  background-image: var(--paper);
-  border: 1px solid var(--hair);
-  box-shadow: var(--shadow-sm);
+  /* A 是干净的：**不铺纸纹、不描边**，只靠两层投影把纸托起来。
+     22px 的圆角配上一层颗粒，近看是「磨砂塑料」；边框则会在深色底上留一道发白的沿 */
+  box-shadow: var(--m-card-shadow);
 }
 .mcard + .mcard { margin-top: 8px; }
 /* 「更多」里那张单独一行的卡（随手记）：前面是四宫格，得自己隔开一段 */
 .mcard-solo { margin-top: 14px; }
-/* 行与行之间一根发丝线，**从圆圈之后起**（14 左内距 + 3 色条 + 12 + 24 圆圈 + 12 = 65px）。
+/* 行与行之间一根发丝线，**从打卡圈之后起**（16 左内距 + 26 圆圈 + 14 = 56px，画板 A 那个数）。
    通栏那种一刀切下来的线把一张卡切成好几片；缩进之后一列圆圈是连着的，整张卡才是一张纸。
    画在 .swipe-wrap 上而不是行本体上：行本体会跟着手指左右跑，分隔线得钉在原地。
    用伪元素而不是 border-top：border 没法只画一截。z-index 是必需的——
@@ -179,59 +306,80 @@
 .mcard > .swipe-wrap + .swipe-wrap::before {
   content: "";
   position: absolute;
-  left: 65px;
+  left: 56px;
   right: 0;
   top: 0;
   height: 1px;
-  background: var(--hair);
+  background: var(--m-sep);
   z-index: 2;
   pointer-events: none;
 }
 
-/* 「已完成 · N  展开」：今天页把做完的那一组默认收成一行 */
+/* 「已完成 · N  展开」：今天页把做完的那一组默认收成一行。
+   跟 .group-head.split 一个间架：满宽一行、胶囊在左、「展开」贴右缘，只是胶囊淡一档
+   （画板 A 里它就是灰的那颗）。上下各 9px 内边距把 26 的胶囊垫成 44 的命中区 */
 .mfoldrow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  box-sizing: border-box;
   width: calc(100% - 36px);
-  margin: 0 18px;
-  padding: 12px 0;
+  margin: 12px 18px;
+  padding: 9px 0;
   font-size: 12.5px;
-  letter-spacing: .08em;
+  letter-spacing: 0;
   font-weight: 600;
-  color: var(--ink-3);
+  color: var(--m-pill-dim-ink);
   background: none;
   border: 0;
   text-align: left;
 }
-.mfoldrow .more { margin-left: auto; letter-spacing: 0; font-weight: 400; }
+.mshell .mfoldrow .group-label { background: var(--m-pill-dim-bg); color: var(--m-pill-dim-ink); }
+.mfoldrow .more {
+  margin-left: auto;
+  flex: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
 
 .mshell .empty { padding: 48px 18px; }
 
-/* ---------- 一行事（画板 ①②） ---------- */
+/* ---------- 一行事（画板 ①②，A 版） ---------- */
 .mrow {
   display: flex;
   align-items: center;
   gap: 12px;
   height: var(--m-row-h);
-  padding: 0 16px 0 14px;
+  padding: 0 16px;
   /* 上下留给列表滚动，左右归 useSwipeRow */
   touch-action: pan-y;
 }
-/* 行首那条重要性色条。没设重要性的也画一条极淡的，一列才不参差 */
-.mrow-bar { width: 3px; height: 22px; border-radius: 2px; flex: none; background: var(--hair); }
+/* 画板 A 把一行的顺序换了：**先打卡圈**，再那颗表示重要性的小圆点，然后才是标题。
+   圈站在最左边、一列连成一条，是这一版「点得准、看得顺」的骨架。
+   DOM 里色条排在圈前面（MobileRow 这一版不归我动），所以用 flex 的 order 把视觉顺序摆对。
+   四件都得写 order：不写的默认是 0，会整个跑到 order:1 前面去 */
+.mrow-cb { order: 1; }
+.mrow-bar { order: 2; }
+.mrow-title { order: 3; }
+.mrow-when { order: 4; }
+/* 重要性从「一根 3px 的竖条」改成 A 那颗 8px 的小圆点（画板里的 .dot）。
+   没设重要性的也画一颗极淡的，一列才不参差 */
+.mrow-bar { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--hair); }
 .mrow-bar.p3 { background: #C0564A; }
 .mrow-bar.p2 { background: var(--warn); }
 .mrow-bar.p1 { background: var(--ink-3); }
 
 .mrow-cb {
-  width: 24px;
-  height: 24px;
+  width: var(--m-cb);
+  height: var(--m-cb);
   flex: none;
-  /* 1.5 而不是 1.6：一列圆圈是这一屏出现次数最多的东西，描边细一点整页就轻一点 */
-  border: 1.5px solid var(--ink-3);
+  /* A 把圈放大到 26、描边加到 2px，颜色从中性灰换成主题色兑出来的柔和同色系
+     （--m-cb-border，见 mobile.css）：一列圈自己就成了这一页的装饰 */
+  border: var(--m-cb-bw) solid var(--m-cb-border);
   border-radius: 50%;
-  background: transparent;
+  background: var(--card);
   padding: 0;
   position: relative;
   transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
@@ -253,7 +401,7 @@
   content: "";
   position: absolute;
   left: 8px;
-  top: 4px;
+  top: 5px;
   width: 5px;
   height: 10px;
   border: solid var(--card);
@@ -265,18 +413,25 @@
 .mrow-title {
   flex: 1;
   min-width: 0;
-  font-size: 16px;
+  /* 15.5 而不是 16：标题小了半档，母任务那颗胶囊和右边的日期才挤得下（画板 A） */
+  font-size: 15.5px;
   line-height: 22px;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 子任务行前面那句「母任务名 ›」：小一号的灰字，最多六个字 */
+/* 子任务行前面那句「母任务名 ›」：A 把它从一句灰字换成一颗小胶囊，
+   「这是别人家的一步」这件事被圈起来说，而不是靠颜色淡下去暗示 */
 .mrow-parent {
-  color: var(--ink-3);
-  font-size: 13px;
-  margin-right: 4px;
+  display: inline-block;
+  font-size: 11.5px;
+  color: var(--m-chip-ink);
+  background: var(--m-chip-bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-right: 6px;
+  vertical-align: 2px;
 }
 .mrow-when {
   flex: none;
@@ -284,7 +439,7 @@
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
-.mrow-when.warn { color: var(--warn); font-weight: 500; }
+.mrow-when.warn { color: var(--warn); font-weight: 600; }
 .mrow.settled .mrow-title { color: var(--ink-3); text-decoration: line-through; }
 /* 按下去要有回应：轻点那一下底色微微变深，长按的头半秒也是同一个色
    （不同的话，同一根手指按在同一行上会看到两种反应）。
@@ -343,8 +498,9 @@
 /* 当前那一格的小胶囊：光靠变色说「我在这儿」太轻，一颗底垫把它坐实。
    垫的是图标那一格而不是整颗按钮——文字也垫上的话，五格就成了五颗药丸挤在一条上 */
 .mnav-ico {
-  width: 46px;
-  height: 26px;
+  /* 44×30（画板 A 的 .tab .ic）：比之前那颗 46×26 更接近正圆角矩形，也刚好是一个命中区的宽 */
+  width: 44px;
+  height: 30px;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -356,7 +512,11 @@
 .mnav-tab.on .mnav-ico { background: var(--accent-soft); }
 
 /* 悬浮的「记一条」，蹲在导航右上方。
-   54px 而不是 56：跟 46px 的胶囊、44px 的命中区站在一条尺度线上，56 在 390 宽的屏上略显笨。
+   54px 而不是 56：跟 44px 的胶囊、44px 的命中区站在一条尺度线上，56 在 390 宽的屏上略显笨。
+   圆角 18 而不是整圆：A 那颗 ＋ 是个圆角方块，跟 22px 的卡片、999 的胶囊凑成同一副圆角语言。
+   **bottom 不照抄画板的 100px**：画板 A 那张预览里 ＋ 的下半截正好被那条 88px 的导航压住了
+   （PM 第一眼就问「那个加号被遮住了是什么问题」）。这儿按导航的真高度往上让 16px，
+   再加上下面那条「风景不许压到导航上来」，这一角才是干净的。
    投影用 accent 兑出来的那一档（画板那份写死的值正好是森林主题 accent 的 28%）——
    黑色投影压在纸底上是脏的，同色系的才像这颗按钮自己的影子。
    前一条是给不认 color-mix 的老 WebView 的退路 */
@@ -367,7 +527,7 @@
   z-index: 71;
   width: 54px;
   height: 54px;
-  border-radius: 50%;
+  border-radius: 18px;
   border: 0;
   background: var(--accent);
   color: var(--on-accent);
@@ -415,7 +575,8 @@
   gap: 6px;
   padding: 12px 0;
   border: 0;
-  border-radius: 12px;
+  /* 14 而不是 12：纸上所有的小方块跟着卡片一起圆一档（A 的圆角语言） */
+  border-radius: 14px;
   background: var(--bg);
   color: var(--ink);
   font-size: 12px;
@@ -466,7 +627,7 @@
 .msheet-act {
   flex: 1 1 30%;
   min-height: var(--m-touch);
-  border-radius: 10px;
+  border-radius: 14px;
   border: 0;
   background: var(--bg);
   color: var(--ink-2);
@@ -490,7 +651,7 @@
   height: 52px;
   margin: 0 16px 14px;
   padding: 0 14px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--bg);
 }
 .mls-name > span { font-size: 12.5px; color: var(--ink-3); flex: none; }
@@ -598,8 +759,9 @@
 .mmore-tile .ico { color: var(--accent); }
 .mmore-tile b { font-size: 15px; font-weight: 600; }
 .mmore-tile span { font-size: 12px; color: var(--ink-3); }
-/* 纸片也带一层颗粒，跟 .mcard 一套 */
-.mmore-acct, .mmore-tile { background-image: var(--paper); }
+/* 这两张纸片跟 .mcard 一套：不带颗粒、不描边、两层投影。
+   border 直接归零而不是把颜色调成透明——留着那 1px 会让内容比 .mcard 里的内容缩进 1px */
+.mmore-acct, .mmore-tile { background-image: none; border: 0; box-shadow: var(--m-card-shadow); }
 
 /* 清单 / 需求方 / 标签那三张表 */
 .mli {
@@ -607,7 +769,8 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 54px;
+  /* 跟别处的行同高（--m-row-h）：清单 / 需求方 / 标签这三张表也是「一件一行」 */
+  min-height: var(--m-row-h);
   padding: 0 16px;
   border: 0;
   background: none;
@@ -659,18 +822,29 @@
 .mshell .view-body.quad-body {
   padding-bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 28px);
 }
-/* 正文已经有 12px 内边距了，组标题不能再叠一层 18px——那样标题会比卡片还往里缩 */
-.mshell .view-body.hb-body .group-head { padding-left: 6px; padding-right: 6px; }
+/* 正文已经有 12px 内边距了，组标题那颗胶囊不能再往里让 18px——那样它会比卡片还缩进去。
+   收的是外边距，不是内边距：内边距是胶囊自己的形状，动了它就不圆了 */
+.mshell .view-body.hb-body .group-head { margin-left: 6px; }
 
-/* 这几块也都是「纸」，一屏里只该有一种纸：圆角跟 .mcard 一样是 16，都带同一层颗粒。
-   桌面上它们各有各的圆角（--r-md 10 / --r-lg 14），那边一个字没动 */
+/* 这几块也都是「纸」，一屏里只该有一种纸：圆角跟 .mcard 一样。
+   桌面上它们各有各的圆角（--r-md 10 / --r-lg 14），那边一个字没动。
+   纸纹整个手机端都撤了（A 是干净的），这儿也不再叠 var(--paper) */
 .mshell .quad-cell,
 .mshell .stats-card,
 .mshell .stats-week,
 .mshell .set-section,
 .mshell .cal-daylist {
   border-radius: var(--m-radius);
-  background-image: var(--paper);
+  background-image: none;
+}
+/* 统计 / 设置 / 日历这几张纸也换成 A 那两层投影，跟列表卡片浮在同一个高度上。
+   边框收掉：22px 的圆角加一圈发丝线，在深色底上会露出一道发白的沿 */
+.mshell .stats-card,
+.mshell .stats-week,
+.mshell .set-section,
+.mshell .cal-daylist {
+  border-color: transparent;
+  box-shadow: var(--m-card-shadow);
 }
 
 /* 习惯：新建那张卡和每一行习惯，跟别处的卡片同一副长相（圆角 / 纸纹 / 小投影 / 12px 外边距）。
@@ -678,8 +852,9 @@
 .mshell .hb-add,
 .mshell .hb-row {
   border-radius: var(--m-radius);
-  background-image: var(--paper);
-  box-shadow: var(--shadow-sm);
+  background-image: none;
+  border-color: transparent;
+  box-shadow: var(--m-card-shadow);
 }
 .mshell .hb-add { padding: 12px 14px; margin-bottom: 12px; }
 /* 输入框在窄屏下自己独占一行（habits.css 的 700px 那一段），剩这颗「＋」孤零零挂在第二行，
@@ -694,9 +869,9 @@
   padding: 12px 14px;
   border-radius: var(--m-radius);
   background: var(--card);
-  background-image: var(--paper);
-  border: 1px solid var(--hair);
-  box-shadow: var(--shadow-sm);
+  background-image: none;
+  border-color: transparent;
+  box-shadow: var(--m-card-shadow);
 }
 
 /* 计划页那条搜索框：narrow 那一版给的是 14px，手机上跟卡片对齐到 12px */

@@ -233,8 +233,9 @@ export default function Done() {
         {pinned.map((g) => (
           <Fragment key={g.key}>
             {g.items.length > 0 && (
-              <div className="group-head">
-                {g.label} {g.items.length}
+              /* split + .group-label：手机上标题收成一颗胶囊贴左（画板 A）。桌面上这两个类名没有样式 */
+              <div className="group-head split">
+                <span className="group-label">{g.label} {g.items.length}</span>
               </div>
             )}
             {/* 手机端：一组一张圆角卡，行换成 MobileRow（右滑 = 标记未完成，左滑只剩删除）。

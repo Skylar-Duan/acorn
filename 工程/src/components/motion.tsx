@@ -72,7 +72,7 @@ export function CardSlot({ shut, children }: { shut: boolean; children: ReactNod
 /** 一行 ↔ 一张卡的位置。行和卡**同时挂在树上**，靠高度互相让位，
  *  所以收起来跟展开一样有动画。
  *
- *  只给「一件事就占一行」的视图用（清单/随手记这类）。今天/计划那边一件事会拆成好几行、
+ *  只给「一件事就占一行」的视图用（清单/需求方/标签这类）。今天/计划那边一件事会拆成好几行、
  *  卡片得按任务 id 认 key，走 RowList 自己那一套，不能用这个。 */
 export function RowCard({
   open,

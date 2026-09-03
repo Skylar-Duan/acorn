@@ -16,8 +16,10 @@
 
 /* 展开的一段选项：日期 / 清单 / 需求方 / 重要性 / 标签 / 循环 全用这一套，
    不再一处一个样子（用户点开哪一行，下面长出来的东西都长一个模样） */
+/* 圆角这一栏跟着「方向 A」整体圆了一档：纸顶 26（--m-sheet-radius）、
+   纸里的段 16、段里的每一颗 14。三档从外到里递减，一张纸上只有一种圆 */
 .msh-seg {
-  background: var(--bg); border-radius: 14px; padding: 10px;
+  background: var(--bg); border-radius: 16px; padding: 10px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .msh-seg-t { font-size: var(--fs-xs); letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
@@ -27,7 +29,7 @@
 /* 一颗可点的选项。等分排一行时是 flex:1，挤在 .msh-chips 里时按内容宽 */
 .msh-opt {
   flex: 1; min-width: 0; min-height: 44px; padding: 0 12px;
-  border-radius: 12px; border: 1px solid var(--hair); background: var(--card);
+  border-radius: 14px; border: 1px solid var(--hair); background: var(--card);
   color: var(--ink); font-size: var(--fs-md); font-family: inherit;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -41,7 +43,7 @@
    左右只留 8px：原生的时间 / 日期控件自带一颗小图标，padding 给多了「2026/09/02」会被切掉半截 */
 .msh-field {
   flex: 1; min-width: 0; min-height: 44px; padding: 0 8px;
-  border-radius: 12px; border: 1px solid var(--hair); background: var(--card);
+  border-radius: 14px; border: 1px solid var(--hair); background: var(--card);
   color: var(--ink); font-size: var(--fs-md); font-family: inherit;
   text-align: center; outline: none;
 }
@@ -55,8 +57,9 @@
 .msh-head { flex: none; display: flex; align-items: flex-start; gap: 14px; padding: 4px 20px 0; }
 
 /* 任务是**圆圈**，子任务是圆角方框——一眼分得出这一行是「一件事」还是「一件事里的一步」 */
+/* 圈的描边跟列表里那一列圈同一个色（--m-cb-border）：同一件事在列表里和在纸上得长一样 */
 .msh-cb {
-  width: 28px; height: 28px; border-radius: 50%; border: 1.8px solid var(--ink-3);
+  width: 28px; height: 28px; border-radius: 50%; border: var(--m-cb-bw) solid var(--m-cb-border);
   background: transparent; flex: none; margin-top: 3px; padding: 0; position: relative;
   transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
 }
@@ -103,11 +106,11 @@ textarea.msh-title, textarea.msh-notes {
 .msh-sec-hint { font-size: var(--fs-xs); color: var(--ink-3); flex: none; }
 
 /* 行本体必须是**不透明**的：左滑露出来的动作条就躺在它底下，透一点点就会一直隐隐透出红色。
-   连纸的噪点一起带上，不然这一段会变成一条比周围白的横带（.swipe-body 只给了纯色 --card） */
+   （以前这儿要单独补一层纸纹才不至于比周围白；v1.11.2 起整个手机端都不铺纸纹了，
+   纸和行都是纯 --card，这条补丁就不需要了） */
 .msh-sub {
   display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 20px;
 }
-.swipe-body.msh-sub { background-image: var(--paper); }
 .msh-subwrap + .msh-subwrap .msh-sub { border-top: 1px solid var(--hair); }
 /* 做完的那几条淡下去——**淡的是里面的字，不是整行**：整行调 opacity 会把底下的动作条透出来 */
 .msh-subwrap.done .msh-sb,
@@ -153,7 +156,7 @@ textarea.msh-title, textarea.msh-notes {
 .msh-props { padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 8px; }
 .msh-prop {
   width: 100%; display: flex; align-items: center; gap: 10px; min-height: 48px;
-  padding: 0 14px; border-radius: 12px; border: 0; background: var(--bg);
+  padding: 0 14px; border-radius: 14px; border: 0; background: var(--bg);
   color: var(--ink); font-size: var(--fs-md); font-family: inherit; text-align: left;
 }
 .msh-prop-k { flex: none; width: 44px; color: var(--ink-3); font-size: var(--fs-sm); }
@@ -167,12 +170,12 @@ textarea.msh-title, textarea.msh-notes {
 /* ---- 底下那条：两件「让它离开这张清单」的事 ---- */
 .msh-foot { flex: none; display: flex; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--hair); }
 .msh-drop {
-  flex: 1; min-height: 46px; border-radius: 12px; border: 1px solid var(--hair);
+  flex: 1; min-height: 46px; border-radius: 14px; border: 1px solid var(--hair);
   background: var(--card); color: var(--ink-2); font-size: var(--fs-md); font-family: inherit;
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .msh-del {
-  width: 46px; min-height: 46px; border-radius: 12px; border: 1px solid var(--hair);
+  width: 46px; min-height: 46px; border-radius: 14px; border: 1px solid var(--hair);
   background: var(--card); color: #C0564A; display: grid; place-items: center; flex: none; padding: 0;
   font-size: var(--fs-md); font-family: inherit;
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
@@ -185,7 +188,7 @@ textarea.msh-title, textarea.msh-notes {
 
 .msh-qa { padding: 2px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
 .msh-qa-line { display: flex; align-items: center; gap: 12px; }
-.msh-qa-cb { width: 26px; height: 26px; border-radius: 50%; border: 1.6px solid var(--ink-3); flex: none; }
+.msh-qa-cb { width: var(--m-cb); height: var(--m-cb); border-radius: 50%; border: var(--m-cb-bw) solid var(--m-cb-border); flex: none; }
 .msh-qa-input {
   flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
   font-size: 18px; line-height: 26px; color: var(--ink); font-family: inherit;

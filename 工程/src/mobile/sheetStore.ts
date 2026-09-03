@@ -18,7 +18,10 @@ export type SheetKind =
   /** 长按一行弹的动作单（画板 ②）。subId 有值 = 长按的是某条子任务行 */
   | { kind: "actions"; taskId: string; subId?: string }
   /** 清单页「···」点开的清单设置（画板 ⑤） */
-  | { kind: "listSettings"; listId: string };
+  | { kind: "listSettings"; listId: string }
+  /** 加一个习惯 / 改一个习惯（v1.11.2）。没有 id 是新建，有 id 是编辑那一个。
+   *  习惯页的 ＋ 开的是这张纸：从 ＋ 加出来的是任务，从习惯页加出来的得是习惯 */
+  | { kind: "habit"; id?: string };
 
 interface SheetState {
   stack: SheetKind[];

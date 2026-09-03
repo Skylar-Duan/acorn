@@ -129,14 +129,17 @@ describe("② RowList：手机上走 MobileRow，不画内嵌展开卡", () => {
     expect(listViewSource).toContain("card={() => <TaskCard task={t} />}");
   });
 
-  it("卡片带纸纹、小投影，跟桌面那几张纸一套（v1.11.1）", () => {
+  // v1.11.2「方向 A」：纸纹整个手机端都撤了（A 是干净的），投影换成两层的 --m-card-shadow。
+  // 桌面那几张纸（base.css 的 .modal / .task-card / .set-section / .quick-add）一个字没动
+  it("卡片不带纸纹、两层投影、不描边（方向 A）", () => {
     const card = shellCss.slice(shellCss.indexOf("\n.mcard {"), shellCss.indexOf(".mcard + .mcard"));
-    // base.css 里 `.modal, .task-card, .set-section, .quick-add` 就是这一层颗粒
-    expect(card).toContain("background-image: var(--paper);");
-    expect(card).toContain("box-shadow: var(--shadow-sm);");
+    expect(card).not.toContain("var(--paper)");
+    expect(card).toContain("box-shadow: var(--m-card-shadow);");
+    expect(card).not.toContain("border:");
+    // 桌面那层颗粒原样还在
     expect(read("src/styles/base.css")).toContain("background-image: var(--paper); }");
-    // 「更多」那两块纸片也跟上
-    expect(shellCss).toContain(".mmore-acct, .mmore-tile { background-image: var(--paper); }");
+    // 「更多」那两块纸片跟着一起脱了纸纹
+    expect(shellCss).toContain(".mmore-acct, .mmore-tile { background-image: none;");
   });
 
   it("行与行的分隔线从圆圈之后起（inset），不是通栏一刀切", () => {
@@ -144,9 +147,9 @@ describe("② RowList：手机上走 MobileRow，不画内嵌展开卡", () => {
       shellCss.indexOf(".mcard > .swipe-wrap + .swipe-wrap::before {"),
       shellCss.indexOf("/* 「已完成 · N  展开」"),
     );
-    // 14 左内距 + 3 色条 + 12 + 24 圆圈 + 12 = 65
-    expect(sep).toContain("left: 65px;");
-    expect(sep).toContain("background: var(--hair);");
+    // 16 左内距 + 26 圆圈 + 14 = 56（画板 PolishA 那个数）
+    expect(sep).toContain("left: 56px;");
+    expect(sep).toContain("background: var(--m-sep);");
     // 行本体是定位元素且底色不透明，不抬上来这根线会被它盖掉
     expect(sep).toContain("z-index: 2;");
     expect(shellCss).not.toContain(".mcard > .swipe-wrap + .swipe-wrap { border-top:");
@@ -225,7 +228,7 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
     const title = shellCss.slice(shellCss.indexOf(".mrow-title {"), shellCss.indexOf(".mrow-parent {"));
     expect(title).toContain("white-space: nowrap;");
     expect(title).toContain("text-overflow: ellipsis;");
-    expect(mobileCss).toContain("--m-row-h: 58px;");
+    expect(mobileCss).toContain("--m-row-h: 60px;");
   });
 
   it("子任务行前面那句「母任务名 ›」限 6 个字，不然整行被它吃掉", () => {
@@ -264,10 +267,29 @@ describe("④ 底部导航：固定五项、固定不动", () => {
     expect(habit).not.toContain('<circle cx="12" cy="12" r="8" />');
   });
 
-  it("随手记没被藏起来：「更多」里留了一行进 inbox，计数口径跟 ListView 一字不差", () => {
-    expect(moreSource).toContain('navigate("inbox")');
-    expect(moreSource).toContain("const inboxCount = open.filter((t) => !t.listId && !t.due).length;");
-    // ListView 的 inbox 分支就是这个条件（open 已经把 done / dropped 滤掉了）
+  it("🔴 手机端一个「随手记」都不许剩（v1.11.2 用户裁定：这个词在手机上没有意义）", () => {
+    // 数据语义原样留着（listId === null 的事照常在 计划 / 今天 / 日历 里排），
+    // 只是界面上不再有这个入口、也不再有这个词
+    for (const [name, src] of [
+      ["更多", moreSource],
+      ["壳子", shellSource],
+      ["动作单", actionSheetSource],
+      ["清单设置", listSettingsSource],
+      ["记一条", read("src/mobile/QuickAddSheet.tsx")],
+      ["任务详情", read("src/mobile/TaskSheet.tsx")],
+      ["加一个习惯", read("src/mobile/HabitSheet.tsx")],
+    ] as const) {
+      expect(src, name).not.toContain("随手记");
+    }
+    // 清单页 / 回收站那个共用组件：手机分支里也不许有
+    const mhead = listViewSource.slice(
+      listViewSource.indexOf("{isMobile ? ("),
+      listViewSource.indexOf('<div className="view-head">'),
+    );
+    expect(stripComments(mhead)).not.toContain("随手记");
+    // 「更多」里那一行也撤了，它已经没有入口
+    expect(moreSource).not.toContain('navigate("inbox")');
+    // ListView 的 inbox 分支照旧算它那份数据，一条都没丢
     expect(nl(listViewSource)).toContain("!t.done && !t.droppedAt && !t.listId && !t.due");
   });
 
@@ -330,13 +352,27 @@ describe("⑤ 悬浮「记一条」：只在记得下东西的页面出现", () 
     expect(shellSource).toContain('openSheet({ kind: "quickAdd", listId: view === "list" ? listId : null })');
   });
 
-  it("习惯 / 已完成 / 日历 / 更多 / 设置 / 统计 / 回收站 上不画它", () => {
+  it("已完成 / 日历 / 更多 / 设置 / 统计 / 回收站 上不画它（都是回头看的地方）", () => {
     const noFab = shellSource.slice(shellSource.indexOf("const NO_FAB"), shellSource.indexOf("export default function MobileShell"));
-    // 习惯页有自己的「加上」（从那儿加出来的才是习惯），日历是回头看的，两处都不该再摆一颗 ＋
-    for (const v of ["habits", "done", "calendar", "settings", "stats", "trash"]) expect(noFab).toContain(`"${v}"`);
+    for (const v of ["done", "calendar", "settings", "stats", "trash"]) expect(noFab).toContain(`"${v}"`);
     expect(shellSource).toContain("const showFab = !moreOpen && !NO_FAB.includes(view);");
     // 「更多」不是 ViewId，靠 moreOpen 那一半挡住
     expect(shellSource).toContain("const showFab = !moreOpen");
+  });
+
+  it("🔴 习惯页也有 ＋，只是它加出来的是习惯（用户：「那个加号被遮住了是什么问题」）", () => {
+    const noFab = shellSource.slice(shellSource.indexOf("const NO_FAB"), shellSource.indexOf("export default function MobileShell"));
+    // v1.11.1 这一页在 NO_FAB 里，用户看到那颗按钮缺席，读起来是「坏了」不是「没有」
+    expect(noFab).not.toContain('"habits"');
+    expect(shellSource).toContain('view === "habits"');
+    expect(shellSource).toContain('openSheet({ kind: "habit" })');
+    // 按钮的名字也得跟着换：习惯页上它不是「记一条」
+    expect(shellSource).toContain('aria-label={view === "habits" ? "加一个习惯" : "记一条"}');
+  });
+
+  it("四象限页也有 ＋（那儿是安排事情的地方，记一条落得下）", () => {
+    const noFab = shellSource.slice(shellSource.indexOf("const NO_FAB"), shellSource.indexOf("export default function MobileShell"));
+    expect(noFab).not.toContain('"quadrant"');
   });
 
   it("54px 的圆、accent 色、同色系投影，蹲在导航右上方", () => {
@@ -389,13 +425,14 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
   });
 
   it("搜索钮走现成的全局搜索浮层，不另做一个", () => {
-    expect(headSource).toContain('import { setSearchOpen } from "../core/store";');
+    // useApp 是 v1.11.2 加的：顶栏后面那片风景要知道当前是哪款主题
+    expect(headSource).toContain('import { setSearchOpen, useApp } from "../core/store";');
     expect(headSource).toContain("onClick={() => setSearchOpen(true)}");
   });
 
-  it("大标题用文楷 30px；顶上留安全区，不画假状态栏", () => {
+  it("大标题用文楷 34px（方向 A 放大了一档）；顶上留安全区，不画假状态栏", () => {
     expect(headSource).toContain('className={`serif mhead-title');
-    expect(shellCss).toContain("font-size: 30px;");
+    expect(shellCss).toContain("font-size: 34px;");
     // 这条必须带 .mshell：上面那条 `.mshell .view-head { padding-left: 0 }` 是两个类，
     // 光写 `.mhead` 会被它把左边的 18px 抹掉，标题贴边被切掉半个字（实测过）
     expect(shellCss).toContain(".mshell .mhead {");
@@ -431,11 +468,26 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     }
   });
 
-  it("四象限是「计划」里的一个 tab，沿用计划的顶栏；它只管自己别贴边", () => {
+  it("四象限手机上自己一页、自己带顶栏；桌面上仍是「计划」里的一个 tab", () => {
     const quad = read("src/views/Quadrant.tsx");
-    expect(quad).not.toContain("MobileHead");
+    // v1.11.2：手机上它独立成页（ViewId "quadrant"），顶部安全区只在 MobileHead 里留了一份
+    expect(quad).toContain('import MobileHead from "../mobile/MobileHead";');
+    expect(nl(stripComments(quad))).toMatch(/if \(isMobile\) \{\s*return \(\s*<section className="main">\s*<MobileHead/);
+    expect(quad).toContain('title="四象限"');
+    expect(quad).toContain('sub="按重要和紧急分四格"');
+    // 桌面那条路原样：只返回格子本身，外面那层 section 和标题栏归 Plan 管
     expect(quad).toContain('<div className="view-body quad-body">');
+    expect(quad).toContain("return board;");
     expect(shellCss).toContain(".mshell .view-body.quad-body,");
+  });
+
+  it("手机的「计划」不再摆「列表 / 四象限」那对 tab；桌面那对一个字没动", () => {
+    const plan = read("src/views/Plan.tsx");
+    expect(plan).toContain("const tab = isMobile ? \"list\" : tabPick;");
+    expect(plan).toContain("{!isMobile && (");
+    // 桌面那两颗按钮还在
+    expect(plan).toContain("onClick={() => pickTab(\"quad\")}>四象限</button>");
+    expect(plan).toContain("<QuadrantBoard />");
   });
 
   it("不是「一组一张卡」的那几页，正文自己补 12px（.view-body 的左右内边距是 0）", () => {
@@ -509,11 +561,11 @@ describe("⑦ 清单页：顶栏收干净，颜色和删除进「···」那张
     expect(listSettingsSource).toContain("onBlur={() => { if (document.hasFocus()) commitName(); }}");
   });
 
-  it("删除要按两下，而且说的是它**真做**的那件事（移回随手记，不是进回收站）", () => {
+  it("删除要按两下，而且说的是它**真做**的那件事（里面的事变成没有清单，不是进回收站）", () => {
     expect(listSettingsSource).toContain("const [confirming, setConfirming] = useState(false);");
-    expect(listSettingsSource).toContain("会移回随手记");
+    expect(listSettingsSource).toContain("会变成没有清单");
     // store.deleteList 干的就是这件事，别照着设计稿写「进回收站」
-    expect(read("src/core/store.ts")).toContain('toast: "清单已删除，任务已移回随手记"');
+    expect(read("src/core/store.ts")).toContain("件事变成没有清单");
     // 文件头那段注释里出现「进回收站」是在解释「为什么不照设计稿写」，不算数
     expect(stripComments(listSettingsSource)).not.toContain("进回收站");
   });
@@ -576,9 +628,12 @@ describe("⑨ 更多：账号 + 四张格子 + 三张表", () => {
   });
 
   it("四张格子和三张表都走同一个 navigate，跟侧栏一个口径", () => {
-    for (const v of ["calendar", "habits", "stats", "trash"]) {
+    // v1.11.2：「习惯」已经钉在底部导航上，同一个入口不摆两遍——这一格换成「四象限」
+    for (const v of ["calendar", "quadrant", "stats", "trash"]) {
       expect(moreSource, v).toContain(`navigate("${v}")`);
     }
+    expect(moreSource).not.toContain('navigate("habits")');
+    expect(moreSource).toContain("日历、四象限、清单，和你的账号");
     expect(moreSource).toContain('navigate("list", { listId: l.id })');
     expect(moreSource).toContain('navigate("who", { who })');
     expect(moreSource).toContain('navigate("tag", { tag })');

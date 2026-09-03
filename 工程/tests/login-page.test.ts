@@ -39,8 +39,6 @@ describe("文案：用户定过的那几句，一个字都不许改", () => {
   const LINES = [
     "你好，这里是橡果。",
     "电脑上记的，手机上接着做。登录一次，两边就是同一本。",
-    "不登录的话，事情只存在这台手机上。",
-    "不登录的话，事情只存在这台电脑上。",
     "还没有账号？注册",
     "忘记密码",
     "先看看，不登录",
@@ -52,12 +50,11 @@ describe("文案：用户定过的那几句，一个字都不许改", () => {
     });
   }
 
-  it("手机说「这台手机」、电脑说「这台电脑」，两句各挂各的外壳", () => {
-    const phone = loginPageSource.indexOf("不登录的话，事情只存在这台手机上。");
-    const pc = loginPageSource.indexOf("不登录的话，事情只存在这台电脑上。");
-    // 手机那句在整页那一段里（isMobile 分支在前），电脑那句在弹窗那一段
-    expect(loginPageSource.indexOf("className=\"login-page\"")).toBeLessThan(phone);
-    expect(loginPageSource.indexOf("className=\"login-modal\"")).toBeLessThan(pc);
+  it("底部那句「不登录的话，事情只存在这台…上」两端两态都去掉了", () => {
+    // 用户 2026-09-03：「底部文字去掉」。一张登录卡不该在最后再吓一句——
+    // 不登录本来就是这个应用的正常用法，不是需要被提醒的例外
+    expect(loginPageSource).not.toContain("不登录的话");
+    expect(loginPageSource).not.toContain("只存在这台");
   });
 
   it("注册那句说的是现在真能做到的事：设一个密码，忘了用验证码重设", () => {
@@ -67,27 +64,39 @@ describe("文案：用户定过的那几句，一个字都不许改", () => {
   });
 
   it("「两份档案」是这一页自己画的一段，不再是系统确认框", () => {
-    // 2026-09-03 用户定的口径：通用现代 App 的「云端档案 / 本地档案」，
-    // 各写自己的最新更新日期，选一份点确定，或者合并。「合起来」那种自造词不许再出现
-    expect(loginPageSource).toContain("云端和这台设备上各有一份。");
-    expect(loginPageSource).toContain("云端的那份");
-    expect(loginPageSource).toContain("这台设备上的那份");
+    // 2026-09-03 用户逐句点过的那一版：标题一句问候，下面一句说清出了什么事，
+    // 两张卡就叫「云端 / 本设备」（不用「那份」这种绕口的指代），
+    // 第二颗按钮说清合并是怎么合的。「合起来」那种自造词不许再出现
+    expect(loginPageSource).toContain("欢迎回到橡果~");
+    expect(loginPageSource).toContain("目前检测到您的本地档案和云端不一致：");
+    expect(loginPageSource).toContain('"云端" : "本设备"');
     expect(loginPageSource).toContain("用这份");
-    expect(loginPageSource).toContain("合并两份（重复的只留一份）");
+    expect(loginPageSource).toContain("差异化合并（保留不同之处）");
     expect(loginPageSource).not.toContain("合起来");
+    // 上一版那几句绕口的指代不许再回来
+    expect(loginPageSource).not.toContain("云端和这台设备上各有一份。");
+    expect(loginPageSource).not.toContain("云端的那份");
+    expect(loginPageSource).not.toContain("这台设备上的那份");
     // 系统确认框那两条路一条都不许留在这一页里
     expect(loginPageSource).not.toContain("window.confirm");
     expect(loginPageSource).not.toContain("plugin-dialog");
   });
 
-  it("两张档案卡各写「几件事 · 几个清单」和「最近更新什么时候」，同一个写法才好比", () => {
-    // 存的是 UTC，显示的是**本机时刻**——用户对得上的只有自己的钟
-    const at = new Date(2026, 8, 2, 14, 30).toISOString();
-    expect(profileLines({ tasks: 12, lists: 3, updatedAt: at }))
-      .toEqual(["12 件事 · 3 个清单", "最近更新 9月2日 14:30"]);
+  it("标题那句走衬线体，跟应用里别的标题一个调子", () => {
+    expect(loginPageSource).toContain('className="login-ask-title serif"');
   });
 
-  it("那份还什么都没有时不写时刻（写「最近更新 —」比不写更让人犯嘀咕）", () => {
+  it("两张档案卡各写「几件事 · 几个清单」和「更新于什么时候」，同一个写法才好比", () => {
+    // 存的是 UTC，显示的是**本机时刻**——用户对得上的只有自己的钟。
+    // 用户 2026-09-03：「不要最近两个字」
+    const at = new Date(2026, 8, 2, 14, 30).toISOString();
+    expect(profileLines({ tasks: 12, lists: 3, updatedAt: at }))
+      .toEqual(["12 件事 · 3 个清单", "更新于 9月2日 14:30"]);
+    // 拼这一行的地方只有一处，钉住它（注释里写着为什么不写「最近」，别一起被匹配上）
+    expect(loginPageSource).toContain("lines.push(`更新于 ${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`);");
+  });
+
+  it("那份还什么都没有时不写时刻（写「更新于 —」比不写更让人犯嘀咕）", () => {
     expect(profileLines({ tasks: 0, lists: 0, updatedAt: null })).toEqual(["0 件事 · 0 个清单"]);
   });
 
@@ -255,13 +264,33 @@ describe("设置页「云账号」未登录时只剩一个入口", () => {
   });
 });
 
-describe("手机整页 / 桌面弹窗按 isMobile 分，不按窗口宽度", () => {
+describe("两端都是悬浮弹窗，外壳按 isMobile 分，不按窗口宽度", () => {
   it("分叉读的是 platform.isMobile", () => {
     expect(loginPageSource).toContain('import { isMobile } from "../core/platform";');
     expect(loginPageSource).toContain("if (isMobile) {");
-    // 桌面把窗口拖窄仍然是桌面，不该突然变成一整页
+    // 桌面把窗口拖窄仍然是桌面，不该突然换一套外壳
     expect(loginPageSource).not.toContain("innerWidth");
     expect(loginPageSource).not.toContain("matchMedia");
+  });
+
+  it("手机是遮罩 + 居中悬浮卡，不再是盖住整个应用的一整页", () => {
+    // 用户 2026-09-03：「不要一整页的登录，只要中间正常放下…的悬浮弹窗就好」
+    expect(loginPageSource).toContain('className="login-scrim"');
+    expect(loginPageSource).toContain('className="login-sheet"');
+    expect(loginPageSource).not.toContain('className="login-page"');
+    expect(loginCss).not.toContain(".login-page");
+  });
+
+  it("手机的登录表单态和选档案态是同一张悬浮卡（不是两套外壳）", () => {
+    const sheet = loginPageSource.slice(loginPageSource.indexOf('className="login-sheet"'));
+    const askAt = sheet.indexOf("askPane");
+    const formAt = sheet.indexOf('className="login-form"');
+    expect(askAt).toBeGreaterThan(0);
+    expect(formAt).toBeGreaterThan(askAt); // 同一张卡里的三目：asking ? askPane : 表单
+  });
+
+  it("点遮罩就关掉——两端同一句写法", () => {
+    expect((loginPageSource.match(/if \(e\.target === e\.currentTarget\) leave\(\);/g) ?? []).length).toBe(2);
   });
 
   it("两端都挂 portal 到 body（手机壳子里的 transform 会把 fixed 关进盒子）", () => {
@@ -284,18 +313,40 @@ describe("样式：颜色只用 token，时长只用 --dur-*", () => {
     }
   });
 
-  it("整页盖在抽屉之上、toast 之下", () => {
+  it("弹窗盖在抽屉之上、toast 之下", () => {
     expect(loginCss).toContain("z-index: 140;");
   });
 
-  it("顶上留出状态栏、底下留出手势条", () => {
+  it("顶上留出状态栏、底下留出手势条（安全区留在遮罩上）", () => {
     expect(loginCss).toContain("padding-top: env(safe-area-inset-top, 0px);");
     expect(loginCss).toContain("padding-bottom: env(safe-area-inset-bottom, 0px);");
   });
 
-  it("桌面那张卡是 680 宽、左 300 扉页右表单", () => {
+  it("手机那张卡：宽 min(92vw, 380px)，高按内容，长过一屏卡内自己滚", () => {
+    expect(loginCss).toContain("width: min(92vw, 380px);");
+    expect(loginCss).toContain("overflow-y: auto; overscroll-behavior: contain;");
+  });
+
+  it("卡高用 dvh 不用 vh——键盘顶上来时可视高度会缩，vh 不缩就把输入框留在键盘底下了", () => {
+    expect(loginCss).toMatch(/max-height: calc\(100dvh - env\(safe-area-inset-top/);
+    // 认不认识 dvh 的老 WebView 都得有个高度，所以 vh 那条兜底也留着
+    expect(loginCss).toMatch(/max-height: calc\(100vh - env\(safe-area-inset-top/);
+  });
+
+  it("手机卡跟别的抽屉一个语言：22 圆角、按钮 14 圆角、柔和双层投影", () => {
+    expect(loginCss).toContain("border-radius: 22px;");
+    expect(loginCss).toContain("box-shadow: 0 2px 6px rgba(62, 74, 52, .06), 0 12px 28px rgba(62, 74, 52, .10);");
+    expect(loginCss).toContain("border-radius: 14px;");
+  });
+
+  it("桌面登录表单那张卡还是 680 宽、左 300 扉页右表单", () => {
     expect(loginCss).toContain("width: min(680px, calc(100vw - 32px));");
     expect(loginCss).toContain("grid-template-columns: 300px 1fr;");
+  });
+
+  it("桌面选档案那一步收成单栏 440 窄卡（摊成双栏左半边就干站着）", () => {
+    expect(loginCss).toContain("width: min(440px, calc(100vw - 32px));");
+    expect(loginPageSource).toContain('className="login-modal solo"');
   });
 });
 

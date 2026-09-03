@@ -1,9 +1,13 @@
-// 登录页（v1.11.0，画板 ⑦ 手机整页 / ⑦b 桌面居中弹窗）。
+// 登录弹窗（v1.11.2）。
 //
 // 两端同一套文案、同一套入口，只有外壳不同：
-//   · 手机（platform.isMobile）：盖住整个应用的一整页，自己的纸底，右上角 ×，底下「先看看，不登录」
-//   · 电脑：遮罩 + 居中卡片，左边扉页右边表单
-//   分叉按 isMobile 而不是窗口宽度——桌面把窗口拖窄了仍然是桌面，不该突然变成一整页。
+//   · 手机（platform.isMobile）：遮罩 + 居中的悬浮卡（min(92vw, 380px)），右上角 ×
+//   · 电脑：遮罩 + 居中卡片，登录表单是左扉页右表单的双栏，选档案那一步收成单栏窄卡
+//   分叉按 isMobile 而不是窗口宽度——桌面把窗口拖窄了仍然是桌面，不该突然换一套外壳。
+//
+// 手机为什么不再是「盖住整个应用的一整页」（用户 2026-09-03）：
+//   「不要一整页的登录，只要中间正常放下我删剪之后的这些内容宽度的悬浮弹窗就好」。
+//   一整页把登录做成了一道门；弹窗才是「顺手做一件事，做完接着用」。
 //
 // 三条得守住的：
 // ① 请求全部走 core/useAuthFlow（它再走 core/cloud），这里一行网络代码都没有；
@@ -61,11 +65,13 @@ const lockIcon = (
   </svg>
 );
 
-/** 档案卡上那两行：「12 件事 · 3 个清单」/「最近更新 9月2日 14:30」。
+/** 档案卡上那两行：「12 件事 · 3 个清单」/「更新于 9月2日 14:30」。
  *  两张卡同一个写法，用户才好一眼比出哪份新、哪份大。
  *
- *  为什么拆成两行而不是一整句：卡片只有半屏宽，一整句会在「最」和「近」中间断开，
+ *  为什么拆成两行而不是一整句：卡片只有半张卡宽，一整句会断在半路，
  *  行尾还挂着一个孤零零的间隔点。
+ *  写「更新于」不写「最近更新」（用户 2026-09-03：「不要最近两个字」）——
+ *  卡上写的是那一份自己的时刻，不是「最近一次」的排名，多两个字反而绕。
  *  时刻一律带月日、按本机时区：两份档案本来就是拿来比先后的，只写钟点比不出来 */
 export function profileLines(p: ProfileSummary): string[] {
   const lines = [`${p.tasks} 件事 · ${p.lists} 个清单`];
@@ -73,7 +79,7 @@ export function profileLines(p: ProfileSummary): string[] {
   if (d && !Number.isNaN(d.getTime())) {
     const hh = String(d.getHours()).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
-    lines.push(`最近更新 ${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`);
+    lines.push(`更新于 ${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`);
   }
   return lines;
 }
@@ -261,9 +267,14 @@ function LoginPage() {
     <div className="login-tip">注册时会设一个密码，之后用密码登录；忘了就用邮箱收一个验证码，重设一个新的。</div>
   );
 
+  /** 「两份档案，留一份还是合并」那一步。手机和电脑同一段，两边一个字都一样。
+   *  文案是用户 2026-09-03 一句一句点过的：标题「欢迎回到橡果~」、那一句
+   *  「目前检测到您的本地档案和云端不一致：」、两张卡就叫「云端 / 本设备」，
+   *  第二颗按钮说清合并是怎么合的——「差异化合并（保留不同之处）」 */
   const askPane = ask && (
     <div className="login-ask">
-      <div className="login-ask-title">云端和这台设备上各有一份。</div>
+      <div className="login-ask-title serif">欢迎回到橡果~</div>
+      <p className="login-ask-line">目前检测到您的本地档案和云端不一致：</p>
       <div className="login-picks">
         {(["cloud", "local"] as const).map((side) => (
           <button
@@ -272,7 +283,7 @@ function LoginPage() {
             aria-pressed={pick === side}
             onClick={() => setPick(side)}
           >
-            <span className="login-pick-name">{side === "cloud" ? "云端的那份" : "这台设备上的那份"}</span>
+            <span className="login-pick-name">{side === "cloud" ? "云端" : "本设备"}</span>
             {profileLines(side === "cloud" ? ask.info.cloud : ask.info.local).map((line) => (
               <span key={line} className="login-pick-meta">{line}</span>
             ))}
@@ -280,7 +291,7 @@ function LoginPage() {
         ))}
       </div>
       <button className="login-go" onClick={() => ask.decide(pick)}>用这份</button>
-      <button className="login-second" onClick={() => ask.decide("merge")}>合并两份（重复的只留一份）</button>
+      <button className="login-second" onClick={() => ask.decide("merge")}>差异化合并（保留不同之处）</button>
     </div>
   );
 
@@ -290,28 +301,31 @@ function LoginPage() {
     </button>
   );
 
+  const label = asking ? "选一份档案" : "登录橡果";
+
   if (isMobile) {
+    // 遮罩 + 居中悬浮卡。点遮罩关掉；正等着「合并还是覆盖」时 leave() 本来就不放行，
+    // 所以那一步点遮罩、按 Esc 都关不掉——必须先做完那个选择
     return createPortal(
-      <div className="login-page" role="dialog" aria-modal="true" aria-label="登录橡果">
-        {/* 正等着「合并还是覆盖」时把这两个出口收起来：leave() 那会儿本来就不放行，
-            留着一颗按不动的按钮比没有更糟 */}
-        <div className="login-topbar">{!asking && closeX}</div>
-        <div className="login-brand">{brand}</div>
-        <div className="login-form">
+      <div className="login-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) leave(); }}>
+        <div className="login-sheet" role="dialog" aria-modal="true" aria-label={label}>
+          {/* 正等着「合并还是覆盖」时把出口收起来：留着一颗按不动的按钮比没有更糟 */}
+          <div className="login-topbar">{!asking && closeX}</div>
           {asking ? (
             askPane
           ) : (
             <>
-              {head}
-              {rest}
-              {!onEntry && registerTip}
+              <div className="login-brand">{brand}</div>
+              <div className="login-form">
+                {head}
+                {rest}
+                {!onEntry && registerTip}
+              </div>
+              <div className="login-foot">
+                <button className="login-later" onClick={leave}>先看看，不登录</button>
+              </div>
             </>
           )}
-        </div>
-        <div className="login-spacer" />
-        <div className="login-foot">
-          {!asking && <button className="login-later" onClick={leave}>先看看，不登录</button>}
-          <span className="login-tip">不登录的话，事情只存在这台手机上。</span>
         </div>
       </div>,
       document.body,
@@ -320,24 +334,30 @@ function LoginPage() {
 
   return createPortal(
     <div className="overlay login-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) leave(); }}>
-      <div className="login-modal" role="dialog" aria-modal="true" aria-label="登录橡果">
-        <div className="login-aside">
-          {brand}
-          <div className="login-spacer" />
-          {/* 正等着「合并还是覆盖」时收起两个出口：那会儿 leave() 本来就不放行 */}
-          {!asking && <button className="login-later" onClick={leave}>先看看，不登录</button>}
-          <span className="login-tip">不登录的话，事情只存在这台电脑上。</span>
+      {asking ? (
+        // 选档案这一步收成单栏窄卡：要看的就是标题、那一句、两张卡、两颗按钮，
+        // 摊成双栏只会让左半边空着（用户 2026-09-03：「正常放下这些内容宽度」）
+        <div className="login-modal solo" role="dialog" aria-modal="true" aria-label={label}>
+          <div className="login-main">{askPane}</div>
         </div>
-        <div className="login-main">
-          <div className="login-head">
-            {asking ? <span /> : head}
-            {!asking && closeX}
+      ) : (
+        <div className="login-modal" role="dialog" aria-modal="true" aria-label={label}>
+          <div className="login-aside">
+            {brand}
+            <div className="login-spacer" />
+            <button className="login-later" onClick={leave}>先看看，不登录</button>
           </div>
-          {asking ? askPane : rest}
-          <div className="login-spacer" />
-          {!asking && registerTip}
+          <div className="login-main">
+            <div className="login-head">
+              {head}
+              {closeX}
+            </div>
+            {rest}
+            <div className="login-spacer" />
+            {registerTip}
+          </div>
         </div>
-      </div>
+      )}
     </div>,
     document.body,
   );

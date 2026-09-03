@@ -368,7 +368,7 @@ function Menu({ x, y, ids: rawIds, leaving }: { x: number; y: number; ids: strin
           <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
             <button className="ctx-item" onClick={() => run(() => setTasksList(ids, null))}>
               <span className="ctx-dot" style={{ background: "var(--ink-3)" }} />
-              随手记
+              移出清单
             </button>
             {lists.map((l) => (
               <button key={l.id} className="ctx-item" onClick={() => run(() => setTasksList(ids, l.id))}>

@@ -31,15 +31,19 @@ export default function Plan() {
   const expandedId = useApp((s) => s.ui.expandedId);
   const sortMode = data.settings.sortMode;
   const today = todayYMD();
-  const [tab, setTab] = useState<"list" | "quad">(() => {
+  const [tabPick, setTabPick] = useState<"list" | "quad">(() => {
     try {
       return localStorage.getItem(TAB_KEY) === "quad" ? "quad" : "list";
     } catch {
       return "list";
     }
   });
+  // 手机上「计划」永远是列表：四象限 2026-09-03 起在手机上是自己的一页（ViewId "quadrant"，
+  // 从「更多」那一格进）。顶栏里再摆一对 tab，既占掉标题下面那一行，也看不出这是两种东西。
+  // 桌面一个字没变，那儿仍然是同一页里的两种看法
+  const tab = isMobile ? "list" : tabPick;
   const pickTab = (t: "list" | "quad") => {
-    setTab(t);
+    setTabPick(t);
     try {
       localStorage.setItem(TAB_KEY, t);
     } catch {
@@ -98,10 +102,13 @@ export default function Plan() {
   // **同一份 JSX 喂给两边**：分成两份写，早晚有一边少一个按钮
   const controls = (
     <>
-      <div className="all-sort">
-        <button className={tab === "list" ? "on" : undefined} onClick={() => pickTab("list")}>列表</button>
-        <button className={tab === "quad" ? "on" : undefined} onClick={() => pickTab("quad")}>四象限</button>
-      </div>
+      {/* 「列表 / 四象限」只在桌面出现，手机上四象限是自己的一页 */}
+      {!isMobile && (
+        <div className="all-sort">
+          <button className={tab === "list" ? "on" : undefined} onClick={() => pickTab("list")}>列表</button>
+          <button className={tab === "quad" ? "on" : undefined} onClick={() => pickTab("quad")}>四象限</button>
+        </div>
+      )}
       {tab === "list" && (
         <>
           <div className="all-sort">
@@ -198,9 +205,12 @@ export default function Plan() {
             return (
               <Fragment key={g.key}>
                 {rows.length > 0 && (
-                  <div className={g.warn ? "group-head warn" : "group-head"}>
-                    {g.label}
-                    {g.warn ? ` ${g.rows.length}` : ""}
+                  // split + .group-label：手机上标题收成一颗胶囊贴左（画板 A）。桌面上这两个类名没有样式
+                  <div className={g.warn ? "group-head split warn" : "group-head split"}>
+                    <span className="group-label">
+                      {g.label}
+                      {g.warn ? ` ${g.rows.length}` : ""}
+                    </span>
                   </div>
                 )}
                 <RowList rows={g.rows} fold={fold} anchor={anchor} orderedIds={orderedIds} />

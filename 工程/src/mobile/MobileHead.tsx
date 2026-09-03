@@ -11,7 +11,8 @@
 // 两边互引会绕成环。抽出来之后谁都只依赖它，不依赖对方。
 
 import type { ReactNode } from "react";
-import { setSearchOpen } from "../core/store";
+import { setSearchOpen, useApp } from "../core/store";
+import ThemeScene from "../components/ThemeScene";
 import { IcoBack, IcoSearch } from "./icons";
 import "../styles/mobile-shell.css";
 
@@ -33,6 +34,32 @@ export interface MobileHeadProps {
   right?: ReactNode;
   /** 另起一行的筛选控件（计划的「列表 / 四象限」、已完成的三选一） */
   extra?: ReactNode;
+  /** 标题右边那颗有表情的小橡果。**只有「今天」传 true**——见下面 AcornMascot 的注脚 */
+  mascot?: boolean;
+}
+
+/**
+ * 一颗有表情的小橡果（画板 PolishA 里那 30×30 的 SVG，路径原样抄过来）。
+ *
+ * 它是「方向 A」唯一的拟人笔触，也是用户说的「可爱」落到实处的那一下。
+ * **只在「今天」的标题右边露一次脸**：每一页都摆一颗，第二次见就不可爱了，是噪音。
+ *
+ * 颜色写死不是漏了 token：橡果在哪个主题里都是这颗橡果（跟 logo 同理），
+ * 六款主题换的是纸和墨，不换这颗果子的皮。
+ */
+function AcornMascot() {
+  return (
+    <svg className="mhead-acorn" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+      <path d="M8 12c0-4.5 3-8 7-8s7 3.5 7 8H8z" fill="#8F6B3E" />
+      <rect x="6" y="11" width="18" height="3.4" rx="1.7" fill="#A67D4A" />
+      <path d="M8.5 14.4c0 6.5 3 9.6 6.5 12 3.5-2.4 6.5-5.5 6.5-12z" fill="#D6B47E" />
+      <circle cx="12.4" cy="18.6" r="1.1" fill="#4A3A23" />
+      <circle cx="17.6" cy="18.6" r="1.1" fill="#4A3A23" />
+      <path d="M13.2 21.3c1 .9 2.6.9 3.6 0" stroke="#4A3A23" strokeWidth="1" strokeLinecap="round" fill="none" />
+      <circle cx="10.6" cy="20.4" r="1.1" fill="#F0A9A0" opacity=".8" />
+      <circle cx="19.4" cy="20.4" r="1.1" fill="#F0A9A0" opacity=".8" />
+    </svg>
+  );
 }
 
 /** 环的半径与描边照设计稿：44×44 的方盒里 r=18、4px 描边 */
@@ -67,10 +94,20 @@ export function ProgressRing({ done, total }: { done: number; total: number }) {
 }
 
 export default function MobileHead({
-  title, sub, ring, search = true, onBack, dot, small, right, extra,
+  title, sub, ring, search = true, onBack, dot, small, right, extra, mascot,
 }: MobileHeadProps) {
+  // 顶栏后面那片风景用的就是桌面那六幅（ThemeScene，颜色全走主题 token）。
+  // 挂在这儿而不是壳子里：每个视图的第一块都是 .mhead，挂在它身上就等于每页都有，
+  // 而且它跟着标题一起钉在顶上——列表滚起来时风景不动，像窗外的景
+  const theme = useApp((s) => s.data.settings.theme);
   return (
     <div className="view-head mhead">
+      {/* z-index:-1 沉在内容之下（样式见 mobile-shell.css 的 .mhead-scene）。
+          桌面那幅贴在主区**底部**的水印在手机上已经撤了（App.tsx 只在 !isMobile 时挂），
+          否则它会从底部导航条底下露出小半个太阳来——PM 一眼就看见的那个「幽灵圆」 */}
+      <div className="mhead-scene" aria-hidden="true">
+        <ThemeScene theme={theme} />
+      </div>
       <div className="mhead-top">
         {onBack && (
           <button className="mhead-plain" aria-label="返回" onClick={onBack}>
@@ -79,7 +116,10 @@ export default function MobileHead({
         )}
         {dot && <span className="mhead-dot" style={{ background: dot }} />}
         <div className="mhead-txt">
-          <div className={`serif mhead-title${small ? " small" : ""}`}>{title}</div>
+          <div className="mhead-titleline">
+            <div className={`serif mhead-title${small ? " small" : ""}`}>{title}</div>
+            {mascot && <AcornMascot />}
+          </div>
           {sub != null && sub !== "" && <div className="mhead-sub">{sub}</div>}
         </div>
         {right}
