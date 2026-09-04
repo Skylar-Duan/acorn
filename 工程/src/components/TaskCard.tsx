@@ -277,6 +277,8 @@ export default function TaskCard({ task }: { task: Task }) {
       due: r.due,
       dueTime: r.dueTime,
       priority: r.priority || null,
+      // 子任务自己的循环（v8）：「每周末 大扫除」记成一条每周重复的子任务，不是一次性的周末
+      repeat: r.repeat,
     });
     setNewSub("");
     return true;
@@ -451,6 +453,13 @@ export default function TaskCard({ task }: { task: Task }) {
         <CommitMark on={subFlash === s.id} />
         {/* 放弃了的那一步：圈圈不动，只在旁边挂个灰标签 */}
         {s.droppedAt && <span className="drop-tag">已放弃</span>}
+        {/* 这一步会重复（v8）。跟「已放弃」同一副长相（.drop-tag 那套圆角小签），
+            一眼看得出勾掉它不是了结、是推到下一次 */}
+        {s.repeat && (
+          <span className="sub-rep" title={`这一步会重复：${describeRepeat(s.repeat)}`}>
+            ↻ {describeRepeat(s.repeat)}
+          </span>
+        )}
         {/* 子任务自己的日期/优先级：默认继承母任务，点小签单独设 */}
         <button
           className="pill"

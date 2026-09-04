@@ -375,7 +375,10 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
             {subDone}/{counted.length}
           </span>
         )}
+        {/* 循环标记：整件事看它自己的，拆出来的子任务行看**这一步自己的**（v8 起子任务也能带循环，
+            见 store.advanceSub）。子任务行不显示母任务的循环——那条规则不归它管 */}
         {!dateOnlyTail && !sub && task.repeat && <span title={describeRepeat(task.repeat)}>↻</span>}
+        {!dateOnlyTail && sub?.repeat && <span title={describeRepeat(sub.repeat)}>↻</span>}
         {/* 判据是「还没了结」不是「还没做完」：放弃掉的那件事 done 一直是 false，
             按老写法「顺延×4」会跟着它一起出现在「已完成」视图里 */}
         {!dateOnlyTail && !sub && task.postponeCount >= 2 && !settled && (

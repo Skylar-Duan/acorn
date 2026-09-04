@@ -870,10 +870,15 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   };
 }
 
-/** 子任务能带的只有日期 / 时间 / 重要性——清单、标签、需求方、循环都归母任务管,
- *  所以那几类在子任务行里不认,原文照留在标题里(打 #紧要 就真的叫「#紧要」)。
- *  「每周一」这类循环词不认之后会剩个光杆「每」/「每月」,识别出日期时顺手扫掉。 */
-export const SUBTASK_SKIP: ParseChip["kind"][] = ["tag", "list", "who", "repeat"];
+/** 子任务能带日期 / 时间 / 重要性 / **循环**——清单、标签、需求方仍归母任务管,
+ *  那三类在子任务行里不认,原文照留在标题里(打 #紧要 就真的叫「#紧要」)。
+ *
+ *  **循环 v8 起认了**(PM 原话:「每周末」在子任务里认循环)。以前它也在这张表里,
+ *  于是「每周末 大扫除」既没循环、「每」还被下面那句清理正则吃掉,只剩一个一次性的周末。
+ *  现在所有循环词在子任务里一视同仁:每天 / 每周一三五 / 每周末 / 每月5号 / 每个工作日 / 每2天。
+ *  没写日期时 due 落在哪跟整件事同一条路——parseQuickAdd 里那句 firstOccurrence(rule, today),
+ *  两边共用,不在这儿另算一遍;不然一条有循环、没日期的子任务永远不会推进。 */
+export const SUBTASK_SKIP: ParseChip["kind"][] = ["tag", "list", "who"];
 
 export function parseSubtaskInput(
   input: string,
@@ -883,6 +888,9 @@ export function parseSubtaskInput(
 ): ParseResult {
   const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP, weekendDay });
   if (r.due === null && r.dueTime === null) return r;
+  // 光杆「每」/「每月」的清理**留着**。循环认了之后它只剩一种触发场景:用户打了个孤零零的「每」、
+  // 日期另写在别处(「每 交周报 明天」)——那个「每」是半句没说完的话,不是标题的一部分。
+  // 仍然只在识别出日期/时间时才扫,所以「每日一记」「每人一份」这类正文一个字都不动
   const title = r.title.replace(/(?:^|\s)每月?(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
   return { ...r, title };
 }

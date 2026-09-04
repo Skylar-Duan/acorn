@@ -5,7 +5,8 @@
 // 那份文档里「测试清单」那一栏指的就是这里。
 //
 // 骨架分六块：
-//   1. v1~v6 每条升级路径各一条（v6 → v7 那组：子任务的 deletedAt 缺失就缺失，什么都不补）
+//   1. v1~v7 每条升级路径各一条（v6 → v7：子任务的 deletedAt；v7 → v8：子任务的 repeat。
+//      这两组都是「缺失就缺失，什么都不补」）
 //   2. migrate 幂等（migrate(migrate(x)) 深等于 migrate(x)）
 //   3. 未知字段一个不丢：任务 / 子任务 / 设置 / **墓碑** / **顶层未知集合** / version 取 max
 //      （墓碑那条 2026-09-01 从「锁现状：会丢」反转成「不许丢」）
@@ -180,9 +181,9 @@ describe("升级路径：v6 → v7（子任务的 deletedAt：什么都不补、
     }
   });
 
-  it("version 取 max：v6 升到 7，自称第 8 版的不许降回 7", () => {
-    expect(migrate(v6()).version).toBe(7);
-    expect(migrate({ ...v6(), version: 8 }).version).toBe(8);
+  it("version 取 max：v6 升到当前版，自称更新版本的不许降回来", () => {
+    expect(migrate(v6()).version).toBe(DATA_VERSION);
+    expect(migrate({ ...v6(), version: DATA_VERSION + 1 }).version).toBe(DATA_VERSION + 1);
   });
 
   it("v7 的数据被 v6 的客户端读进来：deletedAt 原样活下来（那边子任务那句是 spread，不重建）", () => {
@@ -193,10 +194,10 @@ describe("升级路径：v6 → v7（子任务的 deletedAt：什么都不补、
       doneAt: null, droppedAt: null, deletedAt: "2026-09-01T00:00:00.000Z",
     };
     expect(v6Client(gone)).toEqual(gone);
-    // 本机（v7）读同一份也不丢，version 仍是 7；已删的那条没被当成活的改写
+    // 本机读同一份也不丢；已删的那条没被当成活的改写
     const d = migrate({ ...v6(), version: 7, tasks: [{ ...v6().tasks[0], subtasks: [gone] }] });
     expect(d.tasks[0].subtasks[0]).toEqual(gone);
-    expect(d.version).toBe(7);
+    expect(d.version).toBe(DATA_VERSION);
   });
 
   it("migrate 不刷新 updatedAt——带着 deletedAt 的子任务也不例外", () => {
@@ -217,6 +218,89 @@ describe("升级路径：v6 → v7（子任务的 deletedAt：什么都不补、
     };
     const once = migrate(raw);
     expect(migrate(once)).toEqual(once);
+  });
+});
+
+describe("升级路径：v7 → v8（子任务的 repeat：什么都不补、什么都不改）", () => {
+  // 一份 v1.13.0 写出来的真数据的样子：子任务带着 v7 那套键，没有 repeat
+  const v7 = () => ({
+    version: 7, lists: LISTS, sessions: [], settings: {}, graveyard: [],
+    tasks: [{
+      id: "t1", title: "装修", kind: "task", checkIns: [], notes: "", listId: null, tags: [], who: [],
+      priority: 0, due: null, dueTime: null, reminder: null, repeat: null, done: false, doneAt: null,
+      droppedAt: null, createdAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-02-02T00:00:00.000Z",
+      order: 0, postponeCount: 0, focusMinutes: 0, deletedAt: null,
+      subtasks: [
+        { id: "s1", title: "量尺寸", done: true, due: null, dueTime: null, priority: null, doneAt: "2026-08-20T02:00:00.000Z", droppedAt: null },
+        { id: "s2", title: "选瓷砖", done: false, due: "2026-09-10", dueTime: null, priority: 2, doneAt: null, droppedAt: null, deletedAt: null },
+      ],
+    }],
+  });
+
+  it("老数据原样：子任务一条不少、每个字段原值，version 升到当前版", () => {
+    const d = migrate(v7());
+    expect(d.version).toBe(DATA_VERSION);
+    expect(d.tasks[0].subtasks).toEqual(v7().tasks[0].subtasks);
+    expect(d.tasks[0].updatedAt).toBe("2026-02-02T00:00:00.000Z");
+  });
+
+  it("缺 repeat 的子任务**不补**：不补 null、不补空规则，连这个键都不出现", () => {
+    const d = migrate(v7());
+    for (const s of d.tasks[0].subtasks) {
+      expect("repeat" in s).toBe(false);
+    }
+    expect(Object.keys(JSON.parse(JSON.stringify(d.tasks[0].subtasks[0]))).sort()).toEqual(
+      ["done", "doneAt", "droppedAt", "due", "dueTime", "id", "priority", "title"],
+    );
+  });
+
+  it("version 取 max：v7 升到 8，自称第 9 版的不许降回 8", () => {
+    expect(migrate(v7()).version).toBe(8);
+    expect(migrate({ ...v7(), version: 9 }).version).toBe(9);
+  });
+
+  it("v8 的数据被 v7 的客户端读进来：repeat 原样活下来（那边子任务那句是 spread，不重建）", () => {
+    // v1.13.0（schema 7）migrate 里子任务那句字面量，逐字照抄——它就是老客户端处理子任务的全部逻辑
+    const v7Client = (s: Record<string, unknown>) => ({ due: null, dueTime: null, priority: null, doneAt: null, droppedAt: null, ...s });
+    const repeating = {
+      id: "s9", title: "大扫除", done: false, due: "2026-09-06", dueTime: null, priority: null,
+      doneAt: null, droppedAt: null, repeat: { kind: "weekly", days: [0] },
+    };
+    expect(v7Client(repeating)).toEqual(repeating);
+    // 本机（v8）读同一份也不丢，version 取 max
+    const d = migrate({ ...v7(), version: 8, tasks: [{ ...v7().tasks[0], subtasks: [repeating] }] });
+    expect(d.tasks[0].subtasks[0]).toEqual(repeating);
+    expect(d.version).toBe(8);
+  });
+
+  it("migrate 不刷新 updatedAt——带着 repeat 的子任务也不例外", () => {
+    const d = migrate({
+      ...v7(),
+      tasks: [{
+        ...v7().tasks[0],
+        subtasks: [{ ...v7().tasks[0].subtasks[1], repeat: { kind: "daily", every: 2 } }],
+      }],
+    });
+    expect(d.tasks[0].updatedAt).toBe("2026-02-02T00:00:00.000Z");
+  });
+
+  it("带着循环子任务的 v8 数据 migrate 两遍等于一遍", () => {
+    const raw = {
+      ...v7(), version: 8,
+      tasks: [{ ...v7().tasks[0], subtasks: [{ ...v7().tasks[0].subtasks[0], repeat: { kind: "workday" } }] }],
+    };
+    const once = migrate(raw);
+    expect(migrate(once)).toEqual(once);
+  });
+
+  it("repeat 和 deletedAt 互不打扰：两个键都在的那条一个字不改", () => {
+    const both = {
+      id: "s7", title: "两个键都有", done: false, due: "2026-09-06", dueTime: null, priority: null,
+      doneAt: null, droppedAt: null, deletedAt: "2026-09-01T00:00:00.000Z",
+      repeat: { kind: "monthly", day: 5 },
+    };
+    const d = migrate({ ...v7(), tasks: [{ ...v7().tasks[0], subtasks: [both] }] });
+    expect(d.tasks[0].subtasks[0]).toEqual(both);
   });
 });
 

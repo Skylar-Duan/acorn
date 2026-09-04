@@ -474,6 +474,19 @@
   content: ""; position: absolute; left: 3px; top: 0.5px; width: 3.5px; height: 7px;
   border: solid var(--card); border-width: 0 1.5px 1.5px 0; transform: rotate(40deg);
 }
+/* 「这一步会重复」小签（v8）。跟同一行里的 .drop-tag 长得一样（圆角 999、11px、发丝边框），
+   只是把字改成 ↻ 加规则本身。跟 .pill 一样 flex: none，行里的日期/重要性按钮不会被它挤走 */
+.task-card .subs .sub-rep {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
 .task-card .subs .rm { color: var(--ink-3); font-size: 13px; opacity: 0; }
 /* 「放弃这一步」。跟删除同一档待遇：平时藏着，鼠标扫过才露面。
    **已经放弃的那条常驻显示**——不然想反悔的人得先猜出来这儿有个按钮 */

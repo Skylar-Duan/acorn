@@ -22,6 +22,16 @@ export interface Subtask {
    *  **老数据缺这个键就让它缺着**，migrate 不补 null——补了等于把每一条子任务都改写一遍。
    *  凡是「活着的子任务」语义的地方一律走 store.aliveSubtasks，不许各处手写 filter */
   deletedAt?: string | null;
+  /** 子任务自己的循环规则；null/**缺失** = 不循环（v8）。跟日期/重要性不同，它**不继承母任务**：
+   *  母任务的 repeat 管的是整件事下一轮什么时候来，一条子任务写「每周末」说的是它自己每周来一次。
+   *  存在这里而不是另开一张表：子任务本来就是任务的一个字段，循环规则跟 Task.repeat 同一个类型，
+   *  两套语义共用一个引擎（core/recur）——独立一套只会让解析、推进、同步各写两遍。
+   *  **老数据缺这个键就让它缺着**，migrate 不补 null——理由跟 deletedAt 那条一模一样：
+   *  补了等于把每一条子任务都改写一遍，导出文件里每条平白多一个键。
+   *  勾完成 / 放弃一条带循环且有 due 的子任务时**不标完成，只把 due 推到下一个落点**
+   *  （见 store.advanceSub）；**故意不留已完成副本**——那份历史会堆在母任务卡片里，
+   *  一条每周重复的子任务一年 52 行，卡片就没法看了。这一处跟整件事的行为不一致，是有意的 */
+  repeat?: RepeatRule | null;
 }
 
 export type RepeatRule =
@@ -129,7 +139,7 @@ export const APP_VERSION: string =
   typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 /** 当前数据模型版本。导入导出、服务器同步都以它为准（见 transfer.ts / cloud.ts） */
-export const DATA_VERSION = 7;
+export const DATA_VERSION = 8;
 
 export interface AppData {
   /** 这份数据本来是第几版。**不是字面量 6**：更新版本的橡果写的数据被老客户端读进来时，
@@ -174,7 +184,7 @@ export function defaultSettings(): Settings {
 export function defaultData(): AppData {
   const at = new Date().toISOString();
   return {
-    version: 7,
+    version: 8,
     lists: [
       { id: newId(), name: "工作", color: "clay", order: 0, updatedAt: at },
       { id: newId(), name: "生活", color: "moss", order: 1, updatedAt: at },
@@ -245,6 +255,10 @@ export function normalizeWho(v: unknown): string[] {
  *  v6 → v7：子任务加 deletedAt（删掉的子任务进回收站，不再当场消失）。**不改任何值**：
  *           老数据缺这个键就让它缺着（缺失 = 活着），不补 null 也不补时间。升版本是因为
  *           老客户端会把已删的子任务当活的显示、还可能勾完它（判据第二问为「会」）
+ *  v7 → v8：子任务加 repeat（子任务能带自己的循环，「每周末 大扫除」记在子任务里也认）。
+ *           **不改任何值**：老数据缺这个键就让它缺着（缺失 = 不循环），不补 null。
+ *           升版本是因为老客户端（v1.13.0）压根不认这个字段：勾掉一条带循环的子任务时
+ *           它只会标成完成、不会推到下一次，用户看到的是「循环失效了」（判据第二问为「会」）
  *
  *  **比本机新的数据一律照常读进来，一个字段都不许丢**（v1.9.1 的产品原则）：
  *  · 顶层先铺开原始对象再覆盖已知键 —— 新版本才有的顶层集合（projects/notebooks…）不被吞掉
@@ -278,7 +292,9 @@ export function migrate(raw: unknown): AppData {
       // doneAt 只补 null：已经勾掉的老子任务不知道是哪天勾的，拿「现在」补等于集体撒谎。
       // droppedAt 同理，老数据里根本没有「放弃」这回事，一律补 null。
       // deletedAt（v7）**故意不在这个字面量里**：它的口径是「缺失 = 活着」，老数据一个键都不补，
-      // 读进来什么样存回去还是什么样；带着这个键的新数据靠下面的 ...s 原样带走
+      // 读进来什么样存回去还是什么样；带着这个键的新数据靠下面的 ...s 原样带走。
+      // repeat（v8）同理**故意不补**：口径是「缺失 = 不循环」，补 null 一样没有信息量，
+      // 却会把每一条老子任务都改写一遍
       subtasks: (rest.subtasks ?? []).map((s) => ({
         due: null,
         dueTime: null,

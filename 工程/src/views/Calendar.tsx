@@ -26,7 +26,8 @@ const MAX_SHOWN_WEEK = 10;
 /** 手机格子里最多几颗点（v1.12.1）。月视图一格 56px 高，三颗就是极限；周视图一格是一整行，给多些 */
 const MAX_DOTS_MONTH = 3;
 const MAX_DOTS_WEEK = 6;
-/** 点的三种颜色：逾期 warn / 计划 accent / 已完成 ok（样式见 calendar.css 的 .cal-dot） */
+/** 点的三种颜色：逾期 warn / 计划 accent / 已完成 ok（样式见 calendar.css 的 .cal-dot）。
+ *  已完成那颗是**同色系但压淡**的——森林主题里 ok 和 accent 是同一个色号，不压就分不出来 */
 export type DotKind = "late" | "plan" | "ok";
 const DOT_ORDER: DotKind[] = ["late", "plan", "ok"];
 

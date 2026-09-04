@@ -247,7 +247,13 @@
 .mshell .cal-dot { width: 6px; height: 6px; border-radius: 50%; }
 .mshell .cal-dot.plan { background: var(--accent); }
 .mshell .cal-dot.late { background: var(--warn); }
-.mshell .cal-dot.ok { background: var(--ok); }
+/* 已完成那颗**必须跟计划那颗看得出区别**：森林主题里 --ok 和 --accent 是同一个色号
+   （浅色都是 #66875A、深色都是 #92B283），一格里两颗点并排时用户根本分不出哪天是待办、
+   哪天是做完的（PM v1.13.0 真机点名）。他的要求是「可以同色系但不能完全同色」，
+   所以这儿不换色相、只压亮度：同一支绿，做完的那颗淡下去，读起来正好是「这件已经过去了」。
+   用 opacity 而不是 color-mix：老 WebView 也认，不需要留退路；
+   邻月那格的 .cal-dots 自己还有一层 .45，两层相乘更淡，正是想要的。 */
+.mshell .cal-dot.ok { background: var(--ok); opacity: .45; }
 
 /* 周视图：七列拍成七行的写法留着（上面窄屏块里），这儿只把行排整齐：
    日期圆 · 周几 · 那几颗点，横着一行，行与行之间一根发丝线 */

@@ -7,7 +7,7 @@ import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task, Task
 import { defaultData, newId, newTask, normalizeWho } from "./model";
 import { bury } from "./merge";
 import { doneOn, isDueOn, sortHabitsForDay, toggleCheck, DEFAULT_HABIT_REPEAT } from "./habits";
-import { addDays, cmpYMD, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
+import { addDays, cmpYMD, formatShort, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 
@@ -500,6 +500,25 @@ export function updateTask(id: string, patch: Partial<Task>, opts: UpdateTaskOpt
   }), { coalesceKey: opts.coalesceKey ?? typingKey(`task:${id}`, patch) });
 }
 
+/** 母任务转下一轮时，一条子任务该变成什么样。三处循环推进（completeTask / completeTasks /
+ *  dropTasks）共用这一份，改口径只改这儿。
+ *
+ *  普通的那几步：这一轮的收场戳（done / doneAt / droppedAt）和专属日期一起清掉，重新继承母任务。
+ *  回收站里的那几步原样不动——它们不属于哪一轮，只等着被恢复或到期。
+ *
+ *  **带自己循环的那一步（v8）例外**：它的节奏是它自己的。母任务转轮时把它的 due 清成 null，
+ *  等于留下一条「repeat 还在、锚点没了」的死规则——advanceSub 要有 due 才推得动，从此再也推不动。
+ *  所以保住它的 due；已经过期的顺手推到今天或今天之后的第一个落点（firstOccurrence 含今天，
+ *  跟「新记一条循环」那条路同口径）。 */
+function resetSubForRound(s: Subtask): Subtask {
+  if (s.deletedAt) return s;
+  const cleared = { ...s, done: false, doneAt: null, droppedAt: null };
+  if (!s.repeat) return { ...cleared, due: null, dueTime: null };
+  const today = todayYMD();
+  if (s.due && cmpYMD(s.due, today) >= 0) return cleared;
+  return { ...cleared, due: firstOccurrence(s.repeat, today) };
+}
+
 /** 完成任务。循环任务：留下一条已完成副本，本体推进到下一个落点 */
 export function completeTask(id: string) {
   const nowIso = new Date().toISOString();
@@ -531,8 +550,10 @@ export function completeTask(id: string) {
         // 子任务的专属日期、完成时刻、放弃时刻都属于上一轮，随循环推进一并清掉（重新继承母任务）。
         // doneAt / droppedAt 跟 done 同口径：新一轮还没做，就不能挂着上一轮的那个时刻。
         // 留在已完成副本（上面那条 doneCopy）里的那份原样保留，那才是历史。
-        // 回收站里的那几步原样不动：它们不属于哪一轮，只等着被恢复或到期
-        subtasks: t.subtasks.map((s) => (s.deletedAt ? s : { ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+        // 回收站里的那几步原样不动：它们不属于哪一轮，只等着被恢复或到期。
+        // **子任务自己的 repeat（v8）不在这张清掉表里**，靠 `...s` 原样带走——母任务转下一轮
+        // 不该把「这一步每周来一次」这条规则抹掉。清掉的只有它这一轮的 due，新一轮重新继承母任务
+        subtasks: t.subtasks.map(resetSubForRound),
         postponeCount: 0,
         droppedAt: null,
       };
@@ -573,7 +594,7 @@ export function completeTasks(ids: string[]) {
           ...t, due: nd, reminder: regenReminder(t, nd),
           // 跟 completeTask 单条那处逐字同口径：done/doneAt/droppedAt/日期一起清，回收站里的那步不动
           //（两处是双胞胎，改一处必改另一处）
-          subtasks: t.subtasks.map((s) => (s.deletedAt ? s : { ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+          subtasks: t.subtasks.map(resetSubForRound),
           postponeCount: 0,
           droppedAt: null,
         };
@@ -641,7 +662,7 @@ export function dropTasks(ids: string[], dropped = true) {
           // done/doneAt 显式清掉：见函数头那段口径说明。靠 `...t` 继承就是把上一轮的
           // 完成状态带进新一轮，那样「放弃一件已完成的循环任务」等于没放弃
           ...t, due: nd, done: false, doneAt: null, reminder: regenReminder(t, nd),
-          subtasks: t.subtasks.map((s) => (s.deletedAt ? s : { ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+          subtasks: t.subtasks.map(resetSubForRound),
           postponeCount: 0,
           droppedAt: null,
         };
@@ -661,9 +682,11 @@ export function dropTasks(ids: string[], dropped = true) {
   clearSelection();
 }
 
-/** 放弃 / 取消放弃一条子任务。跟母任务一样进撤销栈、一样给可撤销的提示 */
+/** 放弃 / 取消放弃一条子任务。跟母任务一样进撤销栈、一样给可撤销的提示。
+ *  带循环的那条（v8）放弃 = 这一轮不做了、下一轮照来，跟整件事的语义一致：只推进、不留档 */
 export function dropSubtask(taskId: string, subId: string, dropped = true) {
   const at = dropped ? new Date().toISOString() : null;
+  const advanced = subAdvanceFor(peekSub(taskId, subId), { droppedAt: at });
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) =>
@@ -671,7 +694,7 @@ export function dropSubtask(taskId: string, subId: string, dropped = true) {
         ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, { droppedAt: at }) : s)) }
         : t,
     ),
-  }), { toast: dropped ? "已放弃这一步" : "已取消放弃" });
+  }), { toast: advanced ? advanceToast(advanced) : dropped ? "已放弃这一步" : "已取消放弃" });
 }
 
 export function deleteTasks(ids: string[]) {
@@ -951,7 +974,12 @@ export function setTaskKind(id: string, kind: TaskKind) {
 export function addSubtask(
   taskId: string,
   title: string,
-  extra?: { due?: string | null; dueTime?: string | null; priority?: Priority | null },
+  extra?: {
+    due?: string | null;
+    dueTime?: string | null;
+    priority?: Priority | null;
+    repeat?: RepeatRule | null;
+  },
 ) {
   const sub: Subtask = {
     id: newId(),
@@ -964,6 +992,9 @@ export function addSubtask(
     doneAt: null,
     droppedAt: null,
   };
+  // 循环（v8）**只在真有的时候才写这个键**：跟 deletedAt 一个口径，缺失 = 不循环。
+  // 不写进上面那个字面量，是为了让「没循环的子任务」在导出文件里一个多余的键都不多
+  if (extra?.repeat) sub.repeat = extra.repeat;
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, sub] } : t)),
@@ -976,7 +1007,48 @@ export function addSubtask(
  *  漏了就出「在卡上勾有完成日、在行上勾没有」的分裂数据。
  *  显式带了 doneAt 的（导入回填之类）以调用方给的为准。
  *  「放弃」跟「完成」的互斥也落在这一层，理由同上——三条路都得守同一条规矩。 */
+/** 一条子任务这次「了结」（勾完成 / 放弃）该不该变成**推进**，能推就返回推完的那一条，
+ *  推不动返回 null。带循环 **且有自己的 due** 才推得动：没 due 的子任务跟着母任务走，
+ *  没有自己的锚点可推，那就照常勾完成（不抛错、不静默吞掉这一下）。
+ *
+ *  锚点口径跟整件事那条路**一模一样**（completeTask 里那段）：`max(旧 due, 今天)`。
+ *  严重逾期的循环子任务要补追赶——不这么算，完成一次只前进一步，还会落在过去。
+ *
+ *  ⚠️ **跟整件事有一处故意不一样：子任务不留已完成副本。**
+ *  整件事完成时会克隆一条 `repeat: null` 的已完成副本当历史（completeTask / completeTasks /
+ *  dropTasks 三胞胎），子任务这边**只推进、不留档**：子任务的历史堆在母任务卡片里，
+ *  一条每周重复的子任务一年能堆出 52 行，卡片当场就没法看了。
+ *  这是取舍不是遗漏，下一个人问起来看这一段。
+ *
+ *  「放弃」走同一条路，语义跟整件事一致：这次不做了，下次还来。 */
+export function advanceSub(s: Subtask): Subtask | null {
+  if (!s.repeat || !s.due) return null;
+  const today = todayYMD();
+  const anchor = cmpYMD(s.due, today) > 0 ? s.due : today;
+  // done / doneAt / droppedAt 显式清干净：新一轮还没做，不能挂着上一轮的任何一个收场戳
+  return { ...s, due: nextOccurrence(s.repeat, anchor), done: false, doneAt: null, droppedAt: null };
+}
+
+/** 这一下会不会变成推进（给调用点决定提示语用）。判据跟 applySubPatch 里那段逐字同口径 */
+function subAdvanceFor(s: Subtask | undefined, patch: Partial<Subtask>): Subtask | null {
+  if (!s) return null;
+  if (patch.done === true && patch.doneAt === undefined && !s.done) return advanceSub(s);
+  if (patch.droppedAt != null && patch.done === undefined && !s.droppedAt) return advanceSub(s);
+  return null;
+}
+
+/** 推进之后那句提示。讲人话，只说下一次是哪天 */
+function advanceToast(next: Subtask): string {
+  return `这一步下一次是 ${formatShort(next.due as string)}`;
+}
+
 export function applySubPatch(s: Subtask, patch: Partial<Subtask>): Subtask {
+  // 带循环的子任务（v8）：勾完成 / 放弃都不是「了结」，是**推进到下一次**。
+  // 判据放在这一层而不是各调用点，理由跟下面 doneAt 那段一样——勾一条子任务有五条路
+  //（任务卡 toggleSubtask、列表行 / 右键菜单 / 手机行 / 手机动作表直调 updateSubtask({done})），
+  // 在调用点各写一遍迟早漏一处。显式带了 doneAt 的（导入回填之类）不算用户在勾，不推进
+  const advanced = subAdvanceFor(s, patch);
+  if (advanced) return advanced;
   const next = { ...s, ...patch };
   if (patch.done !== undefined && patch.doneAt === undefined) {
     next.doneAt = patch.done ? new Date().toISOString() : null;
@@ -990,7 +1062,15 @@ export function applySubPatch(s: Subtask, patch: Partial<Subtask>): Subtask {
   return next;
 }
 
+/** 现在这条子任务长什么样（只读，给「这一下会不会推进」和提示语用） */
+function peekSub(taskId: string, subId: string): Subtask | undefined {
+  return appStore.getState().data.tasks.find((t) => t.id === taskId)?.subtasks.find((s) => s.id === subId);
+}
+
 export function toggleSubtask(taskId: string, subId: string) {
+  const cur = peekSub(taskId, subId);
+  // 带循环那条勾下去不是「完成」是「推进」，得说一句下一次是哪天——否则用户只看到它没被划掉
+  const advanced = cur ? subAdvanceFor(cur, { done: !cur.done }) : null;
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) =>
@@ -998,11 +1078,13 @@ export function toggleSubtask(taskId: string, subId: string) {
         ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, { done: !s.done }) : s)) }
         : t,
     ),
-  }));
+  }), advanced ? { toast: advanceToast(advanced) } : undefined);
 }
 
-/** 子任务字段更新（自己的日期/优先级/标题；带 done 时连完成时刻一起管，见 applySubPatch） */
+/** 子任务字段更新（自己的日期/优先级/标题；带 done 时连完成时刻一起管，见 applySubPatch）。
+ *  勾的是一条带循环的（v8）就变成推进，提示语跟 toggleSubtask 同一句 */
 export function updateSubtask(taskId: string, subId: string, patch: Partial<Subtask>) {
+  const advanced = subAdvanceFor(peekSub(taskId, subId), patch);
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) =>
@@ -1010,7 +1092,9 @@ export function updateSubtask(taskId: string, subId: string, patch: Partial<Subt
         ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? applySubPatch(s, patch) : s)) }
         : t,
     ),
-  }), { coalesceKey: typingKey(`sub:${taskId}:${subId}`, patch) });
+  }), advanced
+    ? { toast: advanceToast(advanced) }
+    : { coalesceKey: typingKey(`sub:${taskId}:${subId}`, patch) });
 }
 
 /** 删一条子任务 = 送进回收站（v7）。跟整件事一样只盖 deletedAt，30 天内在回收站里能恢复；

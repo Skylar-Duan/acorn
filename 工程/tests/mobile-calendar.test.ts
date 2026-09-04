@@ -134,7 +134,7 @@ describe("③ 手机日历的样式：定高格子、纸、点的颜色全是 to
   it("三种点：计划 accent / 逾期 warn / 已完成 ok；今天那格实心圆，点开的那格 accent-soft 圆", () => {
     expect(mshellPart).toContain(".mshell .cal-dot.plan { background: var(--accent); }");
     expect(mshellPart).toContain(".mshell .cal-dot.late { background: var(--warn); }");
-    expect(mshellPart).toContain(".mshell .cal-dot.ok { background: var(--ok); }");
+    expect(mshellPart).toContain(".mshell .cal-dot.ok { background: var(--ok); opacity: .45; }");
     expect(mshellPart).toContain(".mshell .cal-cell .cal-num.today { background: var(--accent); color: var(--on-accent); }");
     expect(mshellPart).toContain(".mshell .cal-cell.cal-picked .cal-num { background: var(--accent-soft); color: var(--accent); font-weight: 600; }");
     // 今天那条得写在 picked 之后：同一格既是今天又是点开的那格时它得赢
@@ -190,6 +190,24 @@ describe("⑤ 顶部留白：标题上沿离状态栏底约 34px", () => {
   it("安全区地板 12px 之上再让 22px（原来 6px）", () => {
     expect(shellCss).toContain("padding: calc(max(var(--m-safe-top), 12px) + 22px) 18px 0;");
     expect(shellCss).not.toContain("12px) + 6px)");
+  });
+});
+
+describe("⑦ 一格里那几颗点：做完的和待办的不能长一样", () => {
+  it("🔴 已完成那颗压淡了——森林主题里 --ok 与 --accent 是同一个色号，不压就分不出哪天做完了", () => {
+    const css = calendarCss.slice(calendarCss.indexOf(".mshell .cal-dot.plan"));
+    const ok = css.slice(css.indexOf(".mshell .cal-dot.ok"));
+    const body = ok.slice(0, ok.indexOf("}"));
+    expect(body).toContain("var(--ok)");
+    // 同色系（还是 --ok）但不是同一颗：靠 opacity 压亮度，老 WebView 也认，不需要 color-mix 退路
+    expect(body).toMatch(/opacity:\s*\.?4/);
+    expect(calendarCss).toContain(".mshell .cal-dot.plan { background: var(--accent); }");
+  });
+
+  it("三颗点各自的色相没被改动：计划 accent、逾期 warn、已完成 ok", () => {
+    expect(calendarCss).toContain(".mshell .cal-dot.late { background: var(--warn); }");
+    // 不许有人图省事把 ok 改成别的 token（那就不是「同色系」了）
+    expect(calendarCss).not.toContain(".cal-dot.ok { background: var(--accent)");
   });
 });
 

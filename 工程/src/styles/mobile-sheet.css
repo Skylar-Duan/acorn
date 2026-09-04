@@ -134,6 +134,12 @@ textarea.msh-title, textarea.msh-notes {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: transparent; border: 0; padding: 0; font-family: inherit; outline: none;
 }
+/* 「这一步会重复」小签（v8）。跟同一行的 .msh-droptag 逐字同款（圆角 999、--fs-xs、发丝边框），
+   两个标签并排时看起来就是一套东西 */
+.msh-subrep {
+  flex: none; font-size: var(--fs-xs); color: var(--ink-3);
+  border: 1px solid var(--hair); border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
 .msh-subdate { flex: none; font-size: var(--fs-sm); color: var(--ink-3); }
 .msh-subdate.own { color: var(--ink-2); }
 .msh-subdate.over { color: var(--warn); }

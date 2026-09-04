@@ -529,9 +529,11 @@ describe("复核修正 2：每周末 = 按周末日循环，不再被「周末�
     expect(r.chips).toEqual([{ kind: "repeat", text: "每周六" }]);
   });
 
-  it("子任务不认循环：「每周末」退化成一次性的周末，「每」不留在标题里", () => {
+  // v8 起子任务也认循环（PM：「每周末」在子任务里认循环）。以前这里断言的是「退化成一次性的周末」，
+  // 那正是要修的毛病：既没循环，「每」还被清理正则吃掉
+  it("子任务同样认循环：「每周末」= 每周日重复，首个落点本周日", () => {
     const r = parseSubtaskInput("每周末 大扫除", FRI);
-    expect(r.repeat).toBeNull();
+    expect(r.repeat).toEqual({ kind: "weekly", days: [0] });
     expect(r.due).toBe("2026-08-23");
     expect(r.title).toBe("大扫除");
   });

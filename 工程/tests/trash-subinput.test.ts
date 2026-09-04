@@ -122,27 +122,30 @@ describe("子任务便捷输入", () => {
     expect(r.title).toBe("发给 @李哥 的 #材料 /工作");
   });
 
-  it("不认循环：「每天」这类原样留着，不会变成循环也不会剩半个字", () => {
+  // v8 起循环也认了（详见 tests/subtask-repeat.test.ts）。这三条原来断言的是「不认」
+  it("认循环：「每天」= 每天重复，due 落在第一个落点（今天）", () => {
     const r = p("每天 记录体重");
-    expect(r.repeat).toBeNull();
-    expect(r.title).toBe("每天 记录体重");
+    expect(r.repeat).toEqual({ kind: "daily", every: 1 });
+    expect(r.due).toBe(today);
+    expect(r.title).toBe("记录体重");
   });
 
-  it("「每周一」这种：认成下周一那天，标题里不留光杆「每」", () => {
+  it("「每周一」这种：认成每周一重复，首个落点是今天（8-17 本身就是周一）", () => {
     const r = p("每周一 交周报");
-    expect(r.repeat).toBeNull();
-    expect(r.due).toBe(today); // 「周一」按全应用既有口径含今天，8-17 本身就是周一
+    expect(r.repeat).toEqual({ kind: "weekly", days: [1] });
+    expect(r.due).toBe(today); // 「周一」按全应用既有口径含今天
     expect(r.title).toBe("交周报");
   });
 
   it("「每月28号」同理，不留光杆「每月」", () => {
     const r = p("每月28号 交房租");
+    expect(r.repeat).toEqual({ kind: "monthly", day: 28 });
     expect(r.due).toBe("2026-08-28");
     expect(r.title).toBe("交房租");
   });
 
-  it("SUBTASK_SKIP 就是这四类，改了这里等于改口径", () => {
-    expect(SUBTASK_SKIP).toEqual(["tag", "list", "who", "repeat"]);
+  it("SUBTASK_SKIP 就是这三类，改了这里等于改口径", () => {
+    expect(SUBTASK_SKIP).toEqual(["tag", "list", "who"]);
   });
 });
 

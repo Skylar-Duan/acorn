@@ -188,7 +188,10 @@ function TaskSheetBody({ task }: { task: Task }) {
     const r = parseSubtaskInput(newSub, new Date(), [], settings.weekendDay);
     const title = r.title.trim();
     if (!title) return false;
-    addSubtask(task.id, title, { due: r.due, dueTime: r.dueTime, priority: r.priority || null });
+    // repeat 跟桌面那条路一样存下来（v8）：「每周末 大扫除」是每周重复的一步，不是一次性的周末
+    addSubtask(task.id, title, {
+      due: r.due, dueTime: r.dueTime, priority: r.priority || null, repeat: r.repeat,
+    });
     setNewSub("");
     return true;
   }
@@ -628,6 +631,8 @@ function SubRow({ task, sub, today }: { task: Task; sub: Subtask; today: string 
           />
         )}
         {sub.droppedAt && <span className="msh-droptag">已放弃</span>}
+        {/* 这一步会重复（v8）：跟「已放弃」同一副长相的小签，勾掉它是推到下一次不是了结 */}
+        {sub.repeat && <span className="msh-subrep">↻ {describeRepeat(sub.repeat)}</span>}
         {shownDue && (
           <span className={`msh-subdate${own ? " own" : ""}${overdue ? " over" : ""}`}>{formatShort(shownDue)}</span>
         )}
