@@ -23,6 +23,7 @@ userdata/
 TODO.md
 CLAUDE.md
 _work/
+.claude/
 
 # 等用户拍板的方案文件（字体方案等），跟 交付验收/ 一样是给用户的外层件，不入库
 方案/
