@@ -200,6 +200,7 @@ export default function QuickAddBar({
           lists={lists.map((l) => l.name)}
           tags={tagNames}
           whos={whoNames}
+          weekendDay={settings.weekendDay}
           showChips
         />
         <button className="qa-help" title="怎么写一句话" onClick={guide.open}>?</button>

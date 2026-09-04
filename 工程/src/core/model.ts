@@ -17,6 +17,11 @@ export interface Subtask {
   /** ISO 放弃时刻；null/缺失 = 没放弃。「不做了」跟「做完了」是两回事，各占一个字段：
    *  圈圈只管完成，放弃是标题旁边那个灰标签。两者互斥，见 store.applySubPatch */
   droppedAt?: string | null;
+  /** ISO 删除时刻；null/**缺失** = 活着（v7）。子任务删掉不再是当场消失，而是跟整件事一样
+   *  进回收站待 30 天（回收站页单列「母 › 子」一行，可恢复 / 彻底删除）。
+   *  **老数据缺这个键就让它缺着**，migrate 不补 null——补了等于把每一条子任务都改写一遍。
+   *  凡是「活着的子任务」语义的地方一律走 store.aliveSubtasks，不许各处手写 filter */
+  deletedAt?: string | null;
 }
 
 export type RepeatRule =
@@ -111,6 +116,8 @@ export interface Settings {
   reminderDefaultTime: string; // '09:00'
   /** 列表排序：时间优先（同时间按重要性）或重要性优先 */
   sortMode: "time" | "priority";
+  /** 记事时写「周末」「下周末」指的是周六还是周日。默认周日；老数据缺这个字段时 migrate 补成周日 */
+  weekendDay: "sat" | "sun";
   /** 需求方在侧栏的手排顺序（人名，按显示先后）。没排过的人接在后面。
    *  放在设置里 = 每台设备各排各的：需求方不是一条真实记录，只是任务上的一个名字，
    *  给它建一张会同步的表不值当 */
@@ -122,7 +129,7 @@ export const APP_VERSION: string =
   typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 /** 当前数据模型版本。导入导出、服务器同步都以它为准（见 transfer.ts / cloud.ts） */
-export const DATA_VERSION = 6;
+export const DATA_VERSION = 7;
 
 export interface AppData {
   /** 这份数据本来是第几版。**不是字面量 6**：更新版本的橡果写的数据被老客户端读进来时，
@@ -159,6 +166,7 @@ export function defaultSettings(): Settings {
     focusMinutesDefault: 25,
     reminderDefaultTime: "09:00",
     sortMode: "time",
+    weekendDay: "sun",
     whoOrder: [],
   };
 }
@@ -166,7 +174,7 @@ export function defaultSettings(): Settings {
 export function defaultData(): AppData {
   const at = new Date().toISOString();
   return {
-    version: 6,
+    version: 7,
     lists: [
       { id: newId(), name: "工作", color: "clay", order: 0, updatedAt: at },
       { id: newId(), name: "生活", color: "moss", order: 1, updatedAt: at },
@@ -234,6 +242,9 @@ export function normalizeWho(v: unknown): string[] {
  *           勾掉却没有 doneAt 的已完成子任务，新客户端拿到只能猜日子；「放弃」它更是整个不认，
  *           在它那边一件已放弃的事会照旧躺在待办里。升版本是为了让新客户端知道该防着谁，
  *           **不是为了把老客户端挡在门外**（v1.9.1 起：比本机新的数据照读，见下）
+ *  v6 → v7：子任务加 deletedAt（删掉的子任务进回收站，不再当场消失）。**不改任何值**：
+ *           老数据缺这个键就让它缺着（缺失 = 活着），不补 null 也不补时间。升版本是因为
+ *           老客户端会把已删的子任务当活的显示、还可能勾完它（判据第二问为「会」）
  *
  *  **比本机新的数据一律照常读进来，一个字段都不许丢**（v1.9.1 的产品原则）：
  *  · 顶层先铺开原始对象再覆盖已知键 —— 新版本才有的顶层集合（projects/notebooks…）不被吞掉
@@ -265,7 +276,9 @@ export function migrate(raw: unknown): AppData {
       // 给 Subtask 加字段必须同时改这两处。漏了这处，老数据里那个键是 undefined，
       // JSON.stringify 会把它整个吞掉，「导出→导入→再导出逐字节一致」当场就不成立了。
       // doneAt 只补 null：已经勾掉的老子任务不知道是哪天勾的，拿「现在」补等于集体撒谎。
-      // droppedAt 同理，老数据里根本没有「放弃」这回事，一律补 null
+      // droppedAt 同理，老数据里根本没有「放弃」这回事，一律补 null。
+      // deletedAt（v7）**故意不在这个字面量里**：它的口径是「缺失 = 活着」，老数据一个键都不补，
+      // 读进来什么样存回去还是什么样；带着这个键的新数据靠下面的 ...s 原样带走
       subtasks: (rest.subtasks ?? []).map((s) => ({
         due: null,
         dueTime: null,

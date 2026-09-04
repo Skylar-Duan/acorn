@@ -260,7 +260,11 @@ export async function downloadPackage(
 /**
  * 交接结果。
  *
- * - `"failed"`：安装界面压根没拉起来，得走备用（浏览器下载页）。
+ * - `"failed"`：安装界面压根没拉起来，得走备用（浏览器下载页）。系统报的原话在 lastInstallError 里。
+ * - `"needs-permission"`：（安卓）系统还没允许橡果安装应用。人已经被送到那个开关那儿了，
+ *   这次什么都没装，回来得再点一次。不是错误。
+ * - `"missing"`：（安卓）递过去的那个包已经不在缓存里了（系统清过缓存）。只在复用上一次
+ *   下好的包时会遇到，调用方当场重新下一遍，不算失败。
  * - `"handed-off"`：安装器已经起来了，**但橡果还在跑**。
  * - `"cancelled"`：用户在交接之前点了「稍后再说」，什么都没发生。
  *
@@ -270,7 +274,33 @@ export async function downloadPackage(
  * 桌面上 exit_app 也可能没生效。以前这里返回 true 就让界面停在「安装中」，
  * 用户回到橡果看到的是一个一个按钮都没有的全屏遮罩，只能强杀进程。
  */
-export type InstallOutcome = "failed" | "handed-off" | "cancelled";
+export type InstallOutcome = "failed" | "needs-permission" | "missing" | "handed-off" | "cancelled";
+
+/**
+ * 最近一次交接失败时系统报的原话（Rust 或安卓插件抛上来的那一句）；null = 上一次没失败。
+ * 界面把它用小字接在红字后面。光一句「这台手机无法直接启动安装界面」谁都查不下去——
+ * v1.11 手机上装不上，就是因为只看得到这句、真实原因（opener 递的是裸路径）全靠猜。
+ * 每次交接开头清零，不把上一次的原因挂到这一次头上。
+ */
+export let lastInstallError: string | null = null;
+
+/** 安卓插件 install 命令的回话（见 InstallPlugin.kt） */
+interface InstallReply {
+  launched: boolean;
+  /** launched=false 时为什么："permission" = 先去开「允许安装未知应用」；"missing" = 递去的包已经不在了 */
+  reason?: string;
+}
+
+/** 把抛上来的东西变成一句能念的话。Rust 的 Err(String) 到这儿是裸字符串，不是 Error */
+function describeError(e: unknown): string {
+  if (e instanceof Error) return e.message || e.name;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
 
 /** 桌面上等自己退出的宽限期。到点还活着，就说明 exit_app 没退成，得把界面还给用户 */
 export const EXIT_GRACE_MS = 4000;
@@ -278,8 +308,14 @@ export const EXIT_GRACE_MS = 4000;
 /**
  * 把包交给系统安装器。
  *
- * 安卓走官方 opener 插件：它会走 FileProvider 出 content:// URI，
- * 这是 API 24 起唯一能把文件递给别的应用的方式（Tauri 生成的安卓工程里已经声明好 provider）。
+ * 安卓走 App 自己的安卓插件（gen/android/.../com/cdpandas/acorn/InstallPlugin.kt，命令 install_apk）：
+ * 它用 FileProvider 把缓存目录里的文件变成 content:// URI、带上 APK 的 mime 再拉起系统安装界面。
+ * **不能走官方 opener 插件的 openPath**：它的安卓实现只有一个 `open(url)`，拿到裸文件路径就直接
+ * ACTION_VIEW，既没有 content:// 也没有 mime，系统找不到能开它的 Activity——v1.12.0 之前手机上
+ * 「这台手机无法直接启动安装界面」每一台都会出，就是这个原因。
+ * 系统还没允许橡果装应用时，插件先把用户送到那个开关，这里返回 "needs-permission"。
+ * 递过去的包已经不在缓存里（调用方复用了上一次下好的包、系统趁这会儿清了缓存）返回 "missing"，
+ * 调用方当场重新下一遍——不是失败，别给红字。
  *
  * **桌面走 Rust 的 run_installer，不用 openPath**：安装器必须带上 `/UPDATE` 才行。
  * openPath 只是让系统「打开」这个文件，递不进命令行参数，于是新安装器 $UpdateMode = 0、
@@ -304,14 +340,26 @@ export async function installPackage(
   onLaunched?: () => void,
 ): Promise<InstallOutcome> {
   if (!stillOn()) return "cancelled"; // 还没动手，说停就停
+  lastInstallError = null;
   try {
     if (isAndroid) {
-      const { openPath } = await import("@tauri-apps/plugin-opener");
-      await openPath(path);
+      const reply = await inv<InstallReply>("install_apk", { path });
+      if (!reply?.launched) {
+        // 系统那个「允许安装未知应用」还没开：插件已经把人送到开关那儿了，这儿什么都没装
+        if (reply?.reason === "permission") return "needs-permission";
+        // 复用的那个包被系统清掉了：调用方会当场重新下，这儿只把话留好
+        if (reply?.reason === "missing") {
+          lastInstallError = "上次下好的安装包不见了（系统清过缓存），需要重新下载";
+          return "missing";
+        }
+        lastInstallError = `安装界面没有拉起来（${reply?.reason ?? "原因不明"}）`;
+        return "failed";
+      }
     } else {
       await inv("run_installer", { path });
     }
-  } catch {
+  } catch (e) {
+    lastInstallError = describeError(e);
     return "failed";
   }
   onLaunched?.();

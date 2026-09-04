@@ -42,8 +42,9 @@ function wordScore(task: Task, listName: string | null, word: string, exact: boo
     task.tags.some((t) => t.toLowerCase().includes(word)) ||
     (listName !== null && listName.toLowerCase().includes(word)) ||
     // 子任务标题也算：计划视图是把子任务拆成独立行的，那一行明明在屏幕上、
-    // 搜它的名字却一无所获，用户会当成坏了（2026-09-01 补）
-    task.subtasks.some((s) => s.title.toLowerCase().includes(word));
+    // 搜它的名字却一无所获，用户会当成坏了（2026-09-01 补）。
+    // 回收站里的那几步不算（v7）：跟整件事进了回收站就搜不到是同一个口径
+    task.subtasks.some((s) => !s.deletedAt && s.title.toLowerCase().includes(word));
   if (metaHit) return W_META_SUB;
   if (task.notes.toLowerCase().includes(word)) return W_NOTES_SUB;
   return 0;

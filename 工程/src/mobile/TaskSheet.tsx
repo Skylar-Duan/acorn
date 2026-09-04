@@ -18,7 +18,7 @@ import { cmpYMD, dayOfWeek, duePresets, formatShort, isPlausibleYMD, todayYMD } 
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { parseSubtaskInput } from "../core/parse";
 import {
-  addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
+  addSubtask, addTasksWho, aliveSubtasks, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
   dropTasks, foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks, SUB_DONE_PEEK,
   toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
@@ -185,7 +185,7 @@ function TaskSheetBody({ task }: { task: Task }) {
    *  子任务这一处**保留**快捷语法（手机上不用背语法说的是「记一条」那张纸）。
    *  加完清空、不失焦，接着敲下一条 */
   function addSubFromInput(): boolean {
-    const r = parseSubtaskInput(newSub, new Date());
+    const r = parseSubtaskInput(newSub, new Date(), [], settings.weekendDay);
     const title = r.title.trim();
     if (!title) return false;
     addSubtask(task.id, title, { due: r.due, dueTime: r.dueTime, priority: r.priority || null });
@@ -279,7 +279,8 @@ function TaskSheetBody({ task }: { task: Task }) {
         <div className="msh-subs">
           <div className="msh-sec">
             <span className="msh-sec-t">
-              子任务 · {doneSubs.length}/{task.subtasks.length}
+              {/* 分母只数还在的：删进回收站的那几步（v7）不该占着「N/M」 */}
+              子任务 · {doneSubs.length}/{aliveSubtasks(task).length}
             </span>
             <span className="msh-sec-hint">左滑可放弃 / 删除</span>
           </div>

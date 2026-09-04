@@ -33,10 +33,14 @@ const SECTIONS: Section[] = [
     cards: [
       { text: "明天 交周报", note: "今天 / 明天 / 后天 / 大后天" },
       { text: "周五 和李哥对一版", note: "「周五」指本周五；本周五已过则算下周五" },
-      { text: "下周三 体检", note: "上周 / 本周 / 下周 + 周几" },
-      { text: "8月31日 交学费", note: "也可以写 8/31、8-31、31号" },
-      { text: "十月底之前 交材料", note: "月底 / 月初 / 月中 / 年底。「之前」不影响日期" },
-      { text: "3天后 复查", note: "N天后 / N周后" },
+      { text: "下周三 体检", note: "上周 / 本周 / 下周 + 周几；「下周前」= 本周日" },
+      { text: "下下周三 复查", note: "再下一周的周三" },
+      { text: "周末 陪爸妈吃饭", note: "周末指周六还是周日，在设置里选；也可以写「下周末」" },
+      { text: "8月31日 交学费", note: "也可以写 8/31、8-31、31号、下个月5号" },
+      { text: "十月底之前 交材料", note: "月底 / 月初 / 月中 / 下月底 / 年底。「之前」不影响日期" },
+      { text: "3天后 复查", note: "N天后 / N周后 / N个月后" },
+      { text: "三天内 回复邮件", note: "「N天内」和「N天后」是一个意思" },
+      { text: "春节前 买好车票", note: "元旦 / 春节 / 清明 / 五一 / 端午 / 中秋 / 国庆 / 圣诞，过了就算明年的" },
     ],
   },
   {
@@ -46,7 +50,7 @@ const SECTIONS: Section[] = [
       { text: "明天下午3点 面谈", note: "下午 / 晚上 换算成 24 小时制" },
       { text: "15:30 拿快递", note: "只写钟点算今天；今天这个点已过则算明天" },
       { text: "周一早上9点半 例会", note: "支持「半」和「N分」" },
-      { text: "今晚 收拾行李", note: "今晚 = 当天 20:00" },
+      { text: "今晚 收拾行李", note: "今晚 / 明早 / 明晚 / 明天下午 这类说法给一个默认钟点：早上 9 点、中午 12 点、下午 3 点、晚上 8 点" },
     ],
   },
   {
@@ -71,7 +75,7 @@ const SECTIONS: Section[] = [
     title: "每隔多久做一次",
     lead: "重复的事写一次。完成一条后，下一次自动排上。",
     cards: [
-      { text: "每周一 交周报", note: "「每周一三五」这样连写也识别" },
+      { text: "每周一 交周报", note: "「每周一三五」这样连写也识别；「每周末」按设置里的周末日算" },
       { text: "每个工作日 看盘", note: "周一至周五" },
       { text: "每月15号 还款", note: "当月没有这一天时落在月末" },
       { text: "每3天 浇花", note: "每天 / 每N天" },
@@ -86,12 +90,14 @@ const SECTIONS: Section[] = [
   },
 ];
 
-function ExampleCard({ card, listNames, nowMs }: { card: Card; listNames: string[]; nowMs: number }) {
+function ExampleCard({
+  card, listNames, nowMs, weekendDay,
+}: { card: Card; listNames: string[]; nowMs: number; weekendDay?: "sat" | "sun" }) {
   // nowMs 必须进依赖：这份内容会挂在一个常驻不销毁的窗口里，跨天之后
   // 「明天」不重算就会停在窗口第一次打开那天
   const parsed = useMemo(
-    () => parseQuickAdd(card.text, { now: new Date(nowMs), listNames }),
-    [card.text, listNames, nowMs],
+    () => parseQuickAdd(card.text, { now: new Date(nowMs), listNames, weekendDay }),
+    [card.text, listNames, nowMs, weekendDay],
   );
   return (
     <div className="gd-card">
@@ -115,9 +121,11 @@ export interface GuideContentProps {
   whoNames: string[];
   /** 卡片按这个时刻解析。窗口常驻时由外面在每次显示/聚焦时刷新 */
   nowMs: number;
+  /** 「周末」指周六还是周日（设置里那一项）。不给就当周日 */
+  weekendDay?: "sat" | "sun";
 }
 
-export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: GuideContentProps) {
+export default function GuideContent({ listNames, tagNames, whoNames, nowMs, weekendDay }: GuideContentProps) {
   const [tryIt, setTryIt] = useState("");
 
   return (
@@ -137,6 +145,7 @@ export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: G
             lists={listNames}
             tags={tagNames}
             whos={whoNames}
+            weekendDay={weekendDay}
           />
         </div>
       </div>
@@ -147,7 +156,7 @@ export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: G
           <p className="gd-lead">{s.lead}</p>
           <div className="gd-grid">
             {s.cards.map((c) => (
-              <ExampleCard key={c.text} card={c} listNames={listNames} nowMs={nowMs} />
+              <ExampleCard key={c.text} card={c} listNames={listNames} nowMs={nowMs} weekendDay={weekendDay} />
             ))}
           </div>
         </div>
@@ -169,6 +178,7 @@ export default function GuideContent({ listNames, tagNames, whoNames, nowMs }: G
             card={{ text: "2026-08-31 !高 /工作 @李哥 写周报", note: "打开任务时它就是这个样子，直接改" }}
             listNames={listNames}
             nowMs={nowMs}
+            weekendDay={weekendDay}
           />
         </div>
       </div>

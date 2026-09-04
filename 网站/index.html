@@ -38,7 +38,7 @@
         不想记这套写法，输入框下面就是一排按钮，点着选一样。</p>
       </div>
 
-      <p class="meta">当前版本 <span data-release="version">v1.12.0</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
+      <p class="meta">当前版本 <span data-release="version">v1.13.0</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
       <div class="cta-row">
         <a class="btn" href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe">↓ 下载 Windows 版</a>
         <a class="btn btn-ghost" href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">查看源码</a>
@@ -240,10 +240,25 @@
          用接口里的更新说明在最上面补一条。逻辑在 /utilities/_shared/tool-release.js。 -->
     <div class="releases"
          data-release-api="https://acorn.cdpandas.com/api/desktop/latest"
-         data-release-static="1.12.0">
+         data-release-static="1.13.0">
 
       <div class="rel">
-        <div class="meta"><div class="ver">v1.12.0</div><div class="date" data-release="date">2026-09-03</div></div>
+        <div class="meta"><div class="ver">v1.13.0</div><div class="date" data-release="date">2026-09-03</div></div>
+        <div>
+          <p><b>打一句话就认得的词更多了，回收站也收子任务。</b></p>
+          <ul>
+            <li>周末 / 下周末 / 下下周三 / 三天内 / 两个月后 / 下月初 / 明晚 / 周五前 / 春节 / 国庆……打在一句话里都能认出来；「周末」指周六还是周日，设置里可以选</li>
+            <li>手机上记一条也边打边认日期、清单、需求方，认出来的变成小标签；右上角「?」是举例卡片</li>
+            <li>删掉的子任务进回收站，能恢复、能彻底删，30 天后自动清</li>
+            <li>手机版更新能直接装了：下载完弹出系统安装界面，第一次先允许橡果安装应用；装不上会写明原因</li>
+            <li>手机日历重排：格子只画日期和小圆点，网格下面常驻当天的事；各页标题离顶部更远；桌面图标比例修正</li>
+            <li>登录时云端和本设备是同一份就不再问；另有一些细节调整</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.12.0</div><div class="date">2026-09-03</div></div>
         <div>
           <p><b>手机版换了新样子，「随手记」改叫「记一条」。</b></p>
           <ul>
@@ -270,6 +285,10 @@
         </div>
       </div>
 
+      <!-- 默认只展开最近三版（Skylar 2026-09-02 定），更早的收进这里；样式 .rel-more 在共用 tool-page.css -->
+      <details class="rel-more">
+      <summary>更早的版本（12）</summary>
+
       <div class="rel">
         <div class="meta"><div class="ver">v1.10.1</div><div class="date">2026-09-02</div></div>
         <div>
@@ -283,9 +302,6 @@
         </div>
       </div>
 
-      <!-- 默认只展开最近三版（Skylar 2026-09-02 定），更早的收进这里；样式 .rel-more 在共用 tool-page.css -->
-      <details class="rel-more">
-      <summary>更早的版本（11）</summary>
 
       <div class="rel">
         <div class="meta"><div class="ver">v1.9.1</div><div class="date">2026-09-01</div></div>

@@ -48,6 +48,8 @@ export interface SentenceCtx {
   /** 现有清单名（校验时用来还原 listName 的匹配口径） */
   listNames: string[];
   now?: Date;
+  /** 「周末」指周几，跟设置走。句子里日期一律写成 2026-08-31，这里只是让读回来那一遍口径一致 */
+  weekendDay?: "sat" | "sun";
 }
 
 /** 一件事 → 一句便捷语。
@@ -86,7 +88,11 @@ export function taskToSentence(task: Task, ctx: SentenceCtx): TaskSentence {
 
   // 读回来对一遍。对不上就是不 safe——宁可退回原来的「打一段改一处」，
   // 也不能让一句读错的话当底稿
-  const back = parseQuickAdd(text, { now: ctx.now ?? new Date(), listNames: ctx.listNames });
+  const back = parseQuickAdd(text, {
+    now: ctx.now ?? new Date(),
+    listNames: ctx.listNames,
+    weekendDay: ctx.weekendDay,
+  });
   const same =
     back.title === task.title.trim() &&
     back.due === (task.due ?? null) &&

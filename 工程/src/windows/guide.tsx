@@ -21,6 +21,7 @@ interface Ctx {
   whoNames: string[];
   theme: string;
   mode: string;
+  weekendDay?: "sat" | "sun";
 }
 
 function GuideApp() {
@@ -83,6 +84,7 @@ function GuideApp() {
           tagNames={ctx.tagNames}
           whoNames={ctx.whoNames}
           nowMs={nowMs}
+          weekendDay={ctx.weekendDay}
         />
       </div>
     </div>

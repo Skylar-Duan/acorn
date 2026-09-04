@@ -16,6 +16,7 @@ import {
   todayYMD,
   weekStart,
 } from "./dates";
+import { HOLIDAY_WORDS, holidayDate } from "./holidays";
 
 export interface ParseChip {
   kind: "date" | "time" | "repeat" | "list" | "tag" | "who" | "priority";
@@ -118,29 +119,82 @@ const RE = {
   prioBang: /[!！]+/g,
   repWorkday: /每个?工作日/g,
   repWeekly: /每周([一二三四五六日天]+)/g,
+  // 每周末:按设置里的周末日循环(循环先于日期扫,所以不会被「周末」截成「每」+「周末」)
+  repWeekend: /每周末/g,
   repMonthly: new RegExp(`每月(${NUM})[号日]`, "g"),
   repEveryN: new RegExp(`每(${NUM})天`, "g"),
   repDaily: /每天/g,
   ymd: /(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])/g,
+  // 节日:要成词——前面得是句首、空白或要素符号(「集中秋招」「全国庆祝」「周五一起」里的都不算);
+  // 可带「今年/明年」前缀。长词在前(「五一劳动节」不能被拆成「五一」+「劳动节」两截);
+  // 「五一」「六一」后面不许贴着数字和量词——「五一号」「六一班」「十六一天」都不是节日
+  holiday: new RegExp(
+    `(?<![^\\s#@/!！])(今年|明年)?(${HOLIDAY_WORDS.filter((w) => w !== "五一" && w !== "六一").join("|")}|(?:五一|六一)(?![\\d一二两三四五六七八九十号日月点起天周年个次份班届楼期]))`,
+    "g",
+  ),
+  // 今年年底 / 今年底 / 明年年底 / 明年底(须在裸「年底」之前,否则「今年」两个字会漏在标题里)
+  yearEnd: /(今年|明年)年?底/g,
+  // 明年3月 = 明年 3 月 1 号;明年3月5日 / 明年3月底 也一并认(须在「N月N日」「N月底」之前)
+  nextYearMonth: new RegExp(`明年(${NUM})月(?:(${NUM})[日号]|(底)|份)?`, "g"),
   monthDay: new RegExp(`(?<!\\d)(${NUM})月(${NUM})[日号]`, "g"),
+  // 下个月5号 / 这个月5号 / 本月5号(须在裸「5号」之前)
+  monthPrefixDay: new RegExp(`(下个?|这个?|本)月(${NUM})[日号]`, "g"),
   monthEndN: new RegExp(`(?<!\\d)(${NUM})月底`, "g"),
-  monthPart: /月底|月初|月中|年底/g,
+  // 三个月后 / 3月后:往后数 N 个月
+  monthsAfter: new RegExp(`(?<!\\d)(${NUM})个?月后`, "g"),
+  // 月底/月末/月初/月中,可带「下(个)/这(个)/本」前缀;年底
+  monthPart: /(下个?|这个?|本)?月(底|末|初|中)|年底/g,
   // 与 RE.list 同款左边界:必须在行首或空白后,防止「比分3-2」「得了3/4」这类正文被吞成日期
   mmDd: /(?<!\S)(\d{1,2})-(\d{1,2})(?![\d-])/g,
   mmSlashDd: /(?<!\S)(\d{1,2})\/(\d{1,2})(?![\d/])/g,
-  relWord: /大后天|后天|明天|今晚|今天/g,
-  otherWeek: /([上下本])(?:周|星期)([一二三四五六日天])/g,
+  relWord: /大后天|后天|明天|明早|明晚|今早|今晚|今天/g,
+  // 周末 / 本周末 / 这周末 / 下周末 / 下下周末(「上周末」为容错,产出过去日期)
+  weekend: /(下下|下|上|本|这)?周末/g,
+  // 下周前 / 本周前 / 这周前 = 本周日。「前」要成词尾,否则「下周前端联调」的「前」会被吞
+  weekDeadline: /[下本这]周(?:之前|以前|前(?![^\s#@/!！]))/g,
+  // 下下周三(须在「下周三」之前,否则会被截成「下」+「下周三」)
+  nextNextWeek: /下下(?:周|星期)([一二三四五六日天])/g,
+  otherWeek: /([上下本这])(?:周|星期)([一二三四五六日天])/g,
   weekday: /(?:周|星期)([一二三四五六日天])/g,
   daysAfter: new RegExp(`(?<!\\d)(${NUM})天后`, "g"),
+  // N天内 = N天后
+  daysWithin: new RegExp(`(?<!\\d)(${NUM})天内`, "g"),
   weeksAfter: new RegExp(`(?<!\\d)(${NUM})周后`, "g"),
   bareDay: new RegExp(`(?<!\\d)(${NUM})号`, "g"),
-  hhmm: /(?<!\d)(\d{1,2}):(\d{2})(?!\d)/g,
-  clock: new RegExp(`(上午|早上|中午|下午|晚上)?(?<!\\d)(${NUM})点(半|(${NUM})分)?`, "g"),
-  noon: /中午/g,
+  // 钟点前面的时段词可以隔个空格:「下午 3点」「下午 3:30」都是 15 点。
+  // 空格只许夹在时段词和数字之间——没有时段词时 token 必须从数字起,否则「票 20点提醒我」
+  // 会把那个空格一起吃掉,「提醒我」就粘到标题上删不掉了
+  hhmm: /(?:(上午|早上|早晨|中午|下午|晚上)\s*)?(?<!\d)(\d{1,2}):(\d{2})(?!\d)/g,
+  clock: new RegExp(`(?:(上午|早上|早晨|中午|下午|晚上)\\s*)?(?<!\\d)(${NUM})点(半|(${NUM})分)?`, "g"),
+  // 光秃秃的时段词(带钟点的已被上两条吃掉),给个默认钟点
+  period: /早上|早晨|上午|中午|下午|晚上/g,
 };
 
 // 长词在前:「之前」自身含「前」
 const DEADLINE = ["之前", "以前", "前"];
+
+/** 时段词的默认钟点:早/上午 9 点、中午 12 点、下午 3 点、晚上 8 点。句子里另有明确钟点时以钟点为准 */
+const PERIOD_TIME: Record<string, string> = {
+  早上: "09:00",
+  早晨: "09:00",
+  上午: "09:00",
+  中午: "12:00",
+  下午: "15:00",
+  晚上: "20:00",
+};
+
+/** 今天/明天/后天/大后天,以及自带时段的 今早/今晚/明早/明晚。
+ *  时段词既给默认钟点(PERIOD_TIME),也决定句子里裸钟点落在上半天还是下半天(「明晚8点」= 20 点) */
+const REL_WORD: Record<string, { off: number; mer: string | null }> = {
+  今天: { off: 0, mer: null },
+  今早: { off: 0, mer: "早上" },
+  今晚: { off: 0, mer: "晚上" },
+  明天: { off: 1, mer: null },
+  明早: { off: 1, mer: "早上" },
+  明晚: { off: 1, mer: "晚上" },
+  后天: { off: 2, mer: null },
+  大后天: { off: 3, mer: null },
+};
 
 // ---------- 主入口 ----------
 
@@ -150,6 +204,8 @@ export interface ParseOpts {
   /** 不认这几类要素（认不了的地方用，比如子任务没有清单/标签/需求方）。
    *  被关掉的那类原文照留在标题里，不会被悄悄吃掉 */
   skip?: ParseChip["kind"][];
+  /** 「周末」指周六还是周日,跟设置里那一项走;不给就当周日 */
+  weekendDay?: "sat" | "sun";
 }
 
 export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
@@ -160,8 +216,15 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   const st = {
     due: null as string | null,
     dateSet: false,
-    tonight: false,
     dueTime: null as string | null,
+    /** 「今晚」「明早」「下午」这类时段词给的默认钟点;句子里另有明确钟点(dueTime)时以钟点为准 */
+    periodTime: null as string | null,
+    /** 那个时段词本身(早上/中午/下午/晚上):「明晚8点」的裸「8点」要靠它换到 20 点 */
+    periodMer: null as string | null,
+    /** 明确钟点自己没带时段词(「8点」而不是「晚上8点」),才轮得到 periodMer 来换算 */
+    timeBare: false,
+    /** 明确钟点那枚芯片——换算之后芯片文字要跟着改,不然「明晚」旁边挂着「08:00」自相矛盾 */
+    timeChip: null as ParseChip | null,
     repeat: null as RepeatRule | null,
     priority: 0 as Priority,
     who: [] as string[],
@@ -281,6 +344,40 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     return cand;
   };
 
+  /** 今天往后 n 个月的同一天;那个月没有这一天(1月31日 往后一个月)就取该月最后一天 */
+  const addMonths = (n: number): string => {
+    const m0 = Number(today.slice(5, 7)) - 1 + n; // 0 起算的月序号,可能超过 11
+    const y = Number(today.slice(0, 4)) + Math.floor(m0 / 12);
+    const mo = (m0 % 12) + 1;
+    const d = Math.min(Number(today.slice(8, 10)), daysInMonth(y, mo));
+    return `${y}-${pad2(mo)}-${pad2(d)}`;
+  };
+
+  /** 下月初 / 下月中 / 下月底:下个月的 1 / 15 / 最后一天 */
+  const resolveNextMonthPoint = (day: number | "end"): string => {
+    const ym = addMonths(1).slice(0, 7);
+    const d = day === "end" ? daysInMonth(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))) : day;
+    return `${ym}-${pad2(d)}`;
+  };
+
+  /** 下个月N号 / 这个月N号 / 本月N号。那个月没有 N 号(1 月里说「下个月30号」)就落在月末——
+   *  跟「每月N号」一个口径;不认的话裸「30号」会把它抢走,「下个月」三个字漏在标题里 */
+  const resolveMonthPrefixDay = (prefix: string, d: number): string | null => {
+    if (d < 1 || d > 31) return null;
+    const ym = (prefix.startsWith("下") ? addMonths(1) : today).slice(0, 7);
+    const last = daysInMonth(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)));
+    return `${ym}-${pad2(Math.min(d, last))}`;
+  };
+
+  /** 周末日:周六还是周日跟设置走,默认周日 */
+  const weekendDow = opts.weekendDay === "sat" ? 6 : 0;
+  /** 周末 / 下周末 / 下下周末:本周(shift=0)或往后第 shift 周的周末日。
+   *  今天已经是周日而周末日设成周六 → 本周的周六已经过了,「周末」就算今天(不往下周跳) */
+  const resolveWeekend = (shift: number): string => {
+    const d = addDays(weekStart(today), shift * 7 + (weekendDow === 0 ? 6 : 5));
+    return shift === 0 && cmpYMD(d, today) < 0 ? today : d;
+  };
+
   // ---- 1. #标签(只管标签,取到空白或下一个 #@! 为止) ----
   // 这三类(标签/清单/需求方)在扫描回调里就写了 st,所以要在外层拦,不能只靠 scan 里的 skip
   if (!skip.has("tag"))
@@ -338,6 +435,14 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     };
   });
 
+  // 每周末:按设置里的周末日循环(默认周日);芯片直接写换算出来的那一天,用户一眼能看出设置生效了
+  scan(RE.repWeekend, () => ({
+    chip: { kind: "repeat", text: `每周${DAY_NAME[weekendDow]}` },
+    apply: (s) => {
+      s.repeat = { kind: "weekly", days: [weekendDow] };
+    },
+  }));
+
   scan(RE.repMonthly, (m) => {
     const d = num(m[1]);
     if (d === null || d < 1 || d > 31) return null;
@@ -381,6 +486,45 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     true,
   );
 
+  // 节日:公历的按月日,春节/清明/端午/中秋查表(core/holidays.ts);表外年份不认,原文留在标题里。
+  // 「明年春节」取明年那次(明年不在表里就整个不认),「今年春节」照字面取今年那次
+  scan(
+    RE.holiday,
+    (m) => {
+      const ymd = holidayDate(m[2], today, m[1] as "今年" | "明年" | undefined);
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 今年年底 / 明年年底
+  scan(
+    RE.yearEnd,
+    (m) => {
+      const y = Number(today.slice(0, 4)) + (m[1] === "明年" ? 1 : 0);
+      const ymd = `${y}-12-31`;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 明年3月 = 明年 3 月 1 号;明年3月5日 / 明年3月底 照字面
+  scan(
+    RE.nextYearMonth,
+    (m) => {
+      const mo = num(m[1]);
+      if (mo === null || mo < 1 || mo > 12) return null;
+      const y = Number(today.slice(0, 4)) + 1;
+      const last = daysInMonth(y, mo);
+      const d = m[3] !== undefined ? last : m[2] !== undefined ? num(m[2]) : 1;
+      if (d === null || d < 1 || d > last) return null;
+      const ymd = `${y}-${pad2(mo)}-${pad2(d)}`;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
   scan(
     RE.monthDay,
     (m) => {
@@ -388,6 +532,19 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
       const d = num(m[2]);
       if (mo === null || d === null) return null;
       const ymd = resolveMonthDay(mo, d);
+      if (ymd === null) return null;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 下个月5号 / 这个月5号 / 本月5号(须在裸「5号」之前)
+  scan(
+    RE.monthPrefixDay,
+    (m) => {
+      const d = num(m[2]);
+      if (d === null) return null;
+      const ymd = resolveMonthPrefixDay(m[1], d);
       if (ymd === null) return null;
       return { chip: dateChip(ymd), apply: setDate(ymd) };
     },
@@ -407,7 +564,19 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     true,
   );
 
-  // 月底/月初/月中/年底
+  // 三个月后 / 3月后:往后数 N 个月的同一天(月末溢出取那个月最后一天)
+  scan(
+    RE.monthsAfter,
+    (m) => {
+      const n = num(m[1]);
+      if (n === null || n < 1) return null;
+      const ymd = addMonths(n);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 月底/月末/月初/月中/年底;带「下(个)」前缀就是下个月的那一天,「这(个)/本」跟不带前缀一样
   scan(
     RE.monthPart,
     (m) => {
@@ -417,7 +586,8 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
         const y = Number(today.slice(0, 4));
         ymd = cmpYMD(`${y}-12-31`, today) >= 0 ? `${y}-12-31` : `${y + 1}-12-31`;
       } else {
-        ymd = resolveMonthPoint(w === "月底" ? "end" : w === "月初" ? 1 : 15);
+        const day = m[2] === "底" || m[2] === "末" ? "end" : m[2] === "初" ? 1 : 15;
+        ymd = m[1]?.startsWith("下") ? resolveNextMonthPoint(day) : resolveMonthPoint(day);
       }
       return { chip: dateChip(ymd), apply: setDate(ymd) };
     },
@@ -448,24 +618,55 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     RE.relWord,
     (m) => {
       const w = m[0];
-      if (w === "今晚") {
+      const { off, mer } = REL_WORD[w];
+      const ymd = addDays(today, off);
+      // 今晚/明早这类自带时段:芯片照原词写,钟点走 periodTime(另有明确钟点时让位;
+      // 但「明晚8点」的裸 8 点要跟着「晚」换到 20 点——见汇总那一段)
+      if (mer !== null) {
         return {
-          chip: { kind: "date", text: "今晚" },
+          chip: { kind: "date", text: w },
           apply: (s) => {
-            s.due = today;
+            s.due = ymd;
             s.dateSet = true;
-            s.tonight = true;
+            s.periodTime = PERIOD_TIME[mer];
+            s.periodMer = mer;
           },
         };
       }
-      const off = w === "今天" ? 0 : w === "明天" ? 1 : w === "后天" ? 2 : 3;
-      const ymd = addDays(today, off);
       return { chip: dateChip(ymd), apply: setDate(ymd) };
     },
     true,
   );
 
-  // 上/下/本 + 周X:以周一为一周开始的自然周定位(「上周X」为容错,产出过去日期)
+  // 周末 / 本周末 / 这周末 → 本周的周末日;下周末 → 下周;下下周末 → 再下一周。周末日看设置(默认周日)
+  scan(
+    RE.weekend,
+    (m) => {
+      const shift = m[1] === "下下" ? 2 : m[1] === "下" ? 1 : m[1] === "上" ? -1 : 0;
+      const ymd = resolveWeekend(shift);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 下周前 / 本周前 / 这周前 = 本周日:这一周的最后一天,「前」只是措辞,跟周末日设置无关
+  scan(RE.weekDeadline, () => {
+    const ymd = addDays(weekStart(today), 6);
+    return { chip: dateChip(ymd), apply: setDate(ymd) };
+  });
+
+  // 下下周X:再下一周(须在「下周X」之前)
+  scan(
+    RE.nextNextWeek,
+    (m) => {
+      const target = DAY_CH[m[1]];
+      const ymd = addDays(weekStart(today), 14 + (target === 0 ? 6 : target - 1));
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 上/下/本/这 + 周X:以周一为一周开始的自然周定位(「上周X」为容错,产出过去日期)
   scan(
     RE.otherWeek,
     (m) => {
@@ -500,6 +701,18 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     true,
   );
 
+  // N天内 = N天后(同义)
+  scan(
+    RE.daysWithin,
+    (m) => {
+      const n = num(m[1]);
+      if (n === null) return null;
+      const ymd = addDays(today, n);
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
   scan(
     RE.weeksAfter,
     (m) => {
@@ -525,14 +738,19 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
 
   // ---- 7. 时间 ----
   scan(RE.hhmm, (m) => {
-    const h = Number(m[1]);
-    const mi = Number(m[2]);
-    if (h > 23 || mi > 59) return null;
+    const raw = Number(m[2]);
+    const mi = Number(m[3]);
+    if (raw > 23 || mi > 59) return null;
+    const h = adjustHour(m[1] as string | undefined, raw);
+    if (h > 23) return null;
     const hm = `${pad2(h)}:${pad2(mi)}`;
+    const chip: ParseChip = { kind: "time", text: hm };
     return {
-      chip: { kind: "time", text: hm },
+      chip,
       apply: (s) => {
         s.dueTime = hm;
+        s.timeBare = m[1] === undefined;
+        s.timeChip = chip;
       },
     };
   });
@@ -552,21 +770,41 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
       mi = v;
     }
     const hm = `${pad2(h)}:${pad2(mi)}`;
+    const chip: ParseChip = { kind: "time", text: hm };
     return {
-      chip: { kind: "time", text: hm },
+      chip,
       apply: (s) => {
         s.dueTime = hm;
+        s.timeBare = mer === undefined;
+        s.timeChip = chip;
       },
     };
   });
 
-  // 独立的「中午」= 12:00(带钟点的「中午N点」已被上一条吃掉)
-  scan(RE.noon, () => ({
-    chip: { kind: "time", text: "12:00" },
-    apply: (s) => {
-      s.dueTime = "12:00";
-    },
-  }));
+  // 光秃秃的时段词(「明天下午」「今天晚上」「中午」),给个默认钟点;带钟点的「下午3点」已被上一条吃掉。
+  // 只认成词的:紧贴在刚认出的日期后面(「明天下午开会」),或者前后都是句首/空白/句尾/要素符号(「下午 开会」)。
+  // 夹在正文里的「喝下午茶」「上午班」不吞;句首直接连着正文的「下午茶 约小王」「晚上好 问候」也不吞
+  // 时段词自己那枚「默认钟点」芯片:句子里另有明确钟点时就不出了,免得「12:00」「13:00」并排打架
+  const periodChips = new Set<ParseChip>();
+  scan(RE.period, (m) => {
+    const a = m.index;
+    const b = a + m[0].length;
+    const glued = a > 0 && consumed[a - 1];
+    const leftOk = a === 0 || glued || /\s/.test(input[a - 1]);
+    const rightOk = b === input.length || consumed[b] || /[\s#@/!！]/.test(input[b]);
+    if (!leftOk || (!rightOk && !glued)) return null;
+    const w = m[0];
+    const hm = PERIOD_TIME[w];
+    const chip: ParseChip = { kind: "time", text: hm };
+    periodChips.add(chip);
+    return {
+      chip,
+      apply: (s) => {
+        s.periodTime = hm;
+        s.periodMer = w;
+      },
+    };
+  });
 
   // ---- 8. 裸感叹号串(放最后:此时紧随的 token 已被占用,可视作边界) ----
   // 全角/半角混合按总长度计级;紧跟普通正文(「!棒」)时按标点处理,不吞。
@@ -587,23 +825,31 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   tokens.sort((x, y) => x.start - y.start);
   for (const t of tokens) t.apply(st);
 
+  // 明确钟点优先,没有才用时段词的默认钟点(今晚 20:00、明天下午 15:00)。
+  // 钟点自己没带时段词、句子里却有「今晚/明晚/晚上/中午」这类词时,按那个时段换算:
+  // 「明晚8点」是 20 点不是早上 8 点;「明早8点」「明晚 21:30」不受影响。芯片文字跟着改
+  let dueTime = st.dueTime;
+  if (dueTime !== null && st.timeBare && st.periodMer !== null) {
+    dueTime = `${pad2(adjustHour(st.periodMer, Number(dueTime.slice(0, 2))))}${dueTime.slice(2)}`;
+    if (st.timeChip !== null) st.timeChip.text = dueTime;
+  }
+  if (dueTime === null) dueTime = st.periodTime;
+
   let due: string | null = null;
   if (st.dateSet) due = st.due;
   else if (st.repeat !== null) due = firstOccurrence(st.repeat, today);
-  else if (st.dueTime !== null) {
+  else if (dueTime !== null) {
     // 只给时间没给日期:默认今天,该时刻已过(含恰好等于现在)则明天
     const nowHM = nowLocalDT(opts.now).slice(11);
-    due = st.dueTime <= nowHM ? addDays(today, 1) : today;
+    due = dueTime <= nowHM ? addDays(today, 1) : today;
   }
-
-  const dueTime = st.dueTime !== null ? st.dueTime : st.tonight ? "20:00" : null;
 
   let title = "";
   for (let i = 0; i < input.length; i++) if (!consumed[i]) title += input[i];
   title = title.replace(/\s+/g, " ").trim();
   // 识别出时间/日期后，「20点提醒我」这类说法残留的"提醒(我)"是指令词不是内容，去掉。
   // 只删两种安全形态：独立成词的"提醒/提醒我"、句首的"提醒我"——"写提醒事项"这类内容词不动
-  if (st.dueTime !== null || st.dateSet) {
+  if (dueTime !== null || st.dateSet) {
     title = title
       .replace(/(?:^|\s)提醒我?(?=\s|$)/g, " ")
       .replace(/^提醒我/, "")
@@ -620,7 +866,7 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     tags: st.tags,
     who: st.who,
     priority: st.priority,
-    chips: tokens.map((t) => t.chip),
+    chips: tokens.map((t) => t.chip).filter((c) => st.dueTime === null || !periodChips.has(c)),
   };
 }
 
@@ -629,8 +875,13 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
  *  「每周一」这类循环词不认之后会剩个光杆「每」/「每月」,识别出日期时顺手扫掉。 */
 export const SUBTASK_SKIP: ParseChip["kind"][] = ["tag", "list", "who", "repeat"];
 
-export function parseSubtaskInput(input: string, now: Date, listNames: string[] = []): ParseResult {
-  const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP });
+export function parseSubtaskInput(
+  input: string,
+  now: Date,
+  listNames: string[] = [],
+  weekendDay?: ParseOpts["weekendDay"],
+): ParseResult {
+  const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP, weekendDay });
   if (r.due === null && r.dueTime === null) return r;
   const title = r.title.replace(/(?:^|\s)每月?(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
   return { ...r, title };

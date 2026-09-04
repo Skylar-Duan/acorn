@@ -215,3 +215,66 @@ textarea.msh-title, textarea.msh-notes {
 }
 .msh-pick.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 500; }
 .msh-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+/* ---- 便捷输入（用户 2026-09-03 加回来）：「?」、认出来的胶囊、补全候选 ---- */
+
+/* 输入框右边那颗「?」：跟桌面 QuickAddBar 那颗同一个位置语义；30 的圆手指按得准 */
+.msh-qa-help {
+  flex: none; width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--hair); background: var(--card); color: var(--ink-3);
+  font-size: var(--fs-sm); font-weight: 600; font-family: inherit; line-height: 1;
+  display: grid; place-items: center;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.msh-qa-help:active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* 认出来的东西：一颗颗小胶囊，跟桌面输入框里的 chips 同一种底色（--accent-soft 上 --accent）。
+   每颗右边带一个 ×（24 的点击区），胶囊本身 28 高——比点选那排矮一档，
+   一眼分得出「这是读出来的」还是「这是能点的」 */
+.msh-qa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.msh-qa-chip {
+  display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 2px 0 10px;
+  border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-size: var(--fs-sm); white-space: nowrap;
+  animation: msh-chip-in var(--dur-1) var(--ease);
+}
+@keyframes msh-chip-in { from { opacity: 0; transform: scale(.85); } }
+.msh-qa-x {
+  width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent;
+  color: var(--accent); font-size: 17px; line-height: 1; font-family: inherit;
+  display: grid; place-items: center;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.msh-qa-x:active { background: var(--accent); color: var(--on-accent); }
+
+/* 补全候选：打到 @ / / / # 之后横排一行，跟点选那排同一种横滚（负 margin + 同宽 padding，滚到头贴纸边）。
+   虚线边 + --bg 底：跟点选那排的实线胶囊分开——这一排是「候选」不是「已选」；圆角 14 跟段里的选项一致 */
+.msh-qa-cands {
+  display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;
+  margin: 0 -16px; padding: 0 16px 2px; scrollbar-width: none; touch-action: pan-x;
+}
+.msh-qa-cands::-webkit-scrollbar { display: none; }
+.msh-qa-cand {
+  flex: none; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+  border-radius: 14px; border: 1px dashed var(--hair); background: var(--bg);
+  color: var(--ink); font-size: var(--fs-md); font-family: inherit; white-space: nowrap;
+  transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.msh-qa-cand:active { border-color: var(--accent); color: var(--accent); }
+.msh-qa-mark { color: var(--ink-3); font-size: var(--fs-sm); }
+
+/* ═══════════ 举例卡片：怎么记一句话 ═══════════ */
+/* 跟电脑那页同一份 GuideContent（.gd-*，样式在 guide.css），手机上抽成一张全高的纸。
+   guide.css 760 以下的媒体查询已经把网格收成一列，这儿只管三件事：
+   纸里的头、能滚的正文（滚动权照旧从 .msheet-body 收进 .msh-scroll）、圆角收成 14 跟纸里别的件一致 */
+.msh-guide { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.msh-guide-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px 8px; }
+.msh-guide-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.msh-guide-t .msheet-label { padding: 0; }
+.msh-guide-sub { font-size: var(--fs-xs); color: var(--ink-3); }
+.msh-guide-body { padding: 4px 16px 24px; }
+.msh-guide .gd-body { max-width: none; }
+.msh-guide .gd-grid { grid-template-columns: 1fr; gap: 10px; }
+.msh-guide .gd-try, .msh-guide .gd-card { border-radius: 14px; box-shadow: none; }
+.msh-guide .gd-card:active { transform: none; }
+.msh-guide .gd-say { border-radius: 10px; }

@@ -5,7 +5,7 @@
 // 那份文档里「测试清单」那一栏指的就是这里。
 //
 // 骨架分六块：
-//   1. v1~v5 每条升级路径各一条
+//   1. v1~v6 每条升级路径各一条（v6 → v7 那组：子任务的 deletedAt 缺失就缺失，什么都不补）
 //   2. migrate 幂等（migrate(migrate(x)) 深等于 migrate(x)）
 //   3. 未知字段一个不丢：任务 / 子任务 / 设置 / **墓碑** / **顶层未知集合** / version 取 max
 //      （墓碑那条 2026-09-01 从「锁现状：会丢」反转成「不许丢」）
@@ -144,6 +144,79 @@ describe("升级路径：v5 → v6（只补子任务的 doneAt，别的什么都
       }],
     });
     expect(d.tasks[0].subtasks[0].doneAt).toBe("2026-08-20T02:00:00.000Z");
+  });
+});
+
+describe("升级路径：v6 → v7（子任务的 deletedAt：什么都不补、什么都不改）", () => {
+  // 一份 v1.12.0 写出来的真数据的样子：子任务五个可选字段都带着 null，没有 deletedAt
+  const v6 = () => ({
+    version: 6, lists: LISTS, sessions: [], settings: {}, graveyard: [],
+    tasks: [{
+      id: "t1", title: "装修", kind: "task", checkIns: [], notes: "", listId: null, tags: [], who: [],
+      priority: 0, due: null, dueTime: null, reminder: null, repeat: null, done: false, doneAt: null,
+      droppedAt: null, createdAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-02-02T00:00:00.000Z",
+      order: 0, postponeCount: 0, focusMinutes: 0, deletedAt: null,
+      subtasks: [
+        { id: "s1", title: "量尺寸", done: true, due: null, dueTime: null, priority: null, doneAt: "2026-08-20T02:00:00.000Z", droppedAt: null },
+        { id: "s2", title: "选瓷砖", done: false, due: "2026-09-10", dueTime: null, priority: 2, doneAt: null, droppedAt: null },
+      ],
+    }],
+  });
+
+  it("老数据原样：子任务一条不少、每个字段原值，version 升到 7", () => {
+    const d = migrate(v6());
+    expect(d.version).toBe(DATA_VERSION);
+    expect(d.tasks[0].subtasks).toEqual(v6().tasks[0].subtasks);
+    expect(d.tasks[0].updatedAt).toBe("2026-02-02T00:00:00.000Z");
+  });
+
+  it("缺 deletedAt 的子任务**不补**：不补 null、不补时间，连这个键都不出现", () => {
+    const d = migrate(v6());
+    for (const s of d.tasks[0].subtasks) {
+      expect("deletedAt" in s).toBe(false);
+      expect(Object.keys(JSON.parse(JSON.stringify(s))).sort()).toEqual(
+        ["done", "doneAt", "droppedAt", "due", "dueTime", "id", "priority", "title"],
+      );
+    }
+  });
+
+  it("version 取 max：v6 升到 7，自称第 8 版的不许降回 7", () => {
+    expect(migrate(v6()).version).toBe(7);
+    expect(migrate({ ...v6(), version: 8 }).version).toBe(8);
+  });
+
+  it("v7 的数据被 v6 的客户端读进来：deletedAt 原样活下来（那边子任务那句是 spread，不重建）", () => {
+    // v1.12.0（schema 6）migrate 里子任务那句字面量，逐字照抄——它就是老客户端处理子任务的全部逻辑
+    const v6Client = (s: Record<string, unknown>) => ({ due: null, dueTime: null, priority: null, doneAt: null, droppedAt: null, ...s });
+    const gone = {
+      id: "s9", title: "删掉的那步", done: false, due: null, dueTime: null, priority: null,
+      doneAt: null, droppedAt: null, deletedAt: "2026-09-01T00:00:00.000Z",
+    };
+    expect(v6Client(gone)).toEqual(gone);
+    // 本机（v7）读同一份也不丢，version 仍是 7；已删的那条没被当成活的改写
+    const d = migrate({ ...v6(), version: 7, tasks: [{ ...v6().tasks[0], subtasks: [gone] }] });
+    expect(d.tasks[0].subtasks[0]).toEqual(gone);
+    expect(d.version).toBe(7);
+  });
+
+  it("migrate 不刷新 updatedAt——带着 deletedAt 的子任务也不例外", () => {
+    const d = migrate({
+      ...v6(),
+      tasks: [{
+        ...v6().tasks[0],
+        subtasks: [{ ...v6().tasks[0].subtasks[1], deletedAt: "2026-09-01T00:00:00.000Z" }],
+      }],
+    });
+    expect(d.tasks[0].updatedAt).toBe("2026-02-02T00:00:00.000Z");
+  });
+
+  it("带着已删子任务的 v7 数据 migrate 两遍等于一遍", () => {
+    const raw = {
+      ...v6(), version: 7,
+      tasks: [{ ...v6().tasks[0], subtasks: [{ ...v6().tasks[0].subtasks[0], deletedAt: "2026-09-01T00:00:00.000Z" }] }],
+    };
+    const once = migrate(raw);
+    expect(migrate(once)).toEqual(once);
   });
 });
 

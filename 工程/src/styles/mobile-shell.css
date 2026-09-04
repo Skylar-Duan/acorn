@@ -54,7 +54,9 @@
    v1.11.0 漏的就是习惯页：它当时还挂着桌面那个 .view-head，而手机上 .main 的内边距是 0，
    标题直接钻到系统状态栏底下。现在的规矩是：手机上每个视图的第一块都必须是 .mhead。
    env() 在没有刘海/状态栏的环境返回 0，所以给一个 12px 的地板；真机上状态栏多高就让多少，
-   再加 6px 才不至于让标题贴着状态栏下沿（画板 Main.dc.html 那份是 48 + 6 = 54） */
+   再加 22px（v1.12.1 起，原来是 6px）：标题上沿离状态栏底约 34px——主流 App 大标题
+   就站在这个位置。PM 在 v1.12.0 真机上的原话：「顶部留白还是太少了，不符合现代 APP 审美，
+   应该离手机下滑的那个顶栏再远一点」。带返回键的页面走的也是这一条 */
 .mshell .mhead {
   flex: none;
   /* 顶栏后面那片主题风景的定位锚（.mhead-scene 是 absolute）。
@@ -67,7 +69,7 @@
      .mhead-extra 也会被塞到同一行的剩余空隙里（回收站那颗「清空回收站」就挤在搜索钮旁边）。
      掰成 block 之后：第一行满宽（环和搜索贴右），第二行的筛选控件老老实实排在下面 */
   display: block;
-  padding: calc(max(var(--m-safe-top), 12px) + 6px) 18px 0;
+  padding: calc(max(var(--m-safe-top), 12px) + 22px) 18px 0;
 }
 /* 顶栏后面那片主题风景（画板 PolishC 点名要的那一片，PM 也点了名）。
    画不重画：桌面早就有 6 主题 × 深浅的 <ThemeScene>，颜色全走主题 token，
@@ -109,6 +111,16 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(to bottom, transparent 22%, var(--bg) 100%);
+}
+/* 顶栏底下还挂着两排控件的页面（日历：月/周、‹ 今天 ›、全部/计划/已完成）——
+   190px 那个固定高在这儿会越过顶栏、切进星期行和第一行日期的中间，渐隐的那道边正好
+   卡在数字上（PM v1.12.0 真机：「那个背景还卡在日期中间」）。
+   MobileHead 的 sceneFit 给 .mhead 挂上 .mhead-fit：风景的高度跟顶栏整块走（顶栏是
+   position: relative，100% 就是它自己含内边距的全高），下缘永远落在顶栏底，一个字都不切；
+   渐隐从 35% 起——盒子矮了，起点再往下挪些才够画完那段过渡。别的页一个字不受影响 */
+.mshell .mhead.mhead-fit .mhead-scene { height: 100%; }
+.mshell .mhead.mhead-fit .mhead-scene::after {
+  background: linear-gradient(to bottom, transparent 35%, var(--bg) 100%);
 }
 
 .mhead-top { display: flex; align-items: center; gap: 10px; }
@@ -544,6 +556,24 @@
 .shell.mobile .bulk-bar {
   bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 18px);
 }
+/* toast 在手机上得**整条改写**（v1.12.1）。base.css 那份靠 left: 50% + translateX(-50%) 居中，
+   app.css 的窄屏块只把 left / right 改成了 10px，transform 没清——于是整条被往左推了半个身位，
+   字全跑到屏幕外面，用户看见的就是「左下角冒出一条没字的深色横条」（PM v1.12.0 真机；
+   Playwright 在 390 宽上量到整条 left = -175、right = 195，文字落在 -157 ~ -19）。
+   这儿 left / right 贴边、transform 归零；
+   进出场那两段动画也得换成不带 -50% 的：base.css 的 toast-in / toast-out 关键帧里
+   写的是 translate(-50%, 8px)，沿用的话进场那一拍又会先往左跳半个身位 */
+.shell.mobile .toast {
+  left: 12px;
+  /* 右边给 ＋ 让位：toast 停留那几秒里 ＋ 还得点得到 */
+  right: 84px;
+  max-width: none;
+  transform: none;
+  animation: mtoast-in var(--dur-2) var(--ease);
+}
+.shell.mobile .toast.leaving { animation: mtoast-out var(--dur-1) var(--ease) forwards; }
+@keyframes mtoast-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes mtoast-out { to { opacity: 0; transform: translateY(8px); } }
 
 /* ---------- 抽屉里的通用件（动作单 / 清单设置共用） ---------- */
 .msheet-title {
@@ -818,8 +848,11 @@
 .mshell .view-body.stats-body,
 .mshell .view-body.quad-body,
 .mshell .view-body.cal-body { padding-top: 14px; }
-/* 四象限那份 padding-bottom 是给桌面写的 16px，手机上会被底部导航压掉最后一格 */
-.mshell .view-body.quad-body {
+/* 四象限那份 padding-bottom 是给桌面写的 16px，手机上会被底部导航压掉最后一格。
+   日历同病（calendar.css 给的是 18px）：v1.12.1 起网格底下常驻「这一天」的列表，
+   最后一行事不能被导航压住 */
+.mshell .view-body.quad-body,
+.mshell .view-body.cal-body {
   padding-bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 28px);
 }
 /* 正文已经有 12px 内边距了，组标题那颗胶囊不能再往里让 18px——那样它会比卡片还缩进去。
@@ -832,17 +865,17 @@
 .mshell .quad-cell,
 .mshell .stats-card,
 .mshell .stats-week,
-.mshell .set-section,
-.mshell .cal-daylist {
+.mshell .set-section {
   border-radius: var(--m-radius);
   background-image: none;
 }
-/* 统计 / 设置 / 日历这几张纸也换成 A 那两层投影，跟列表卡片浮在同一个高度上。
-   边框收掉：22px 的圆角加一圈发丝线，在深色底上会露出一道发白的沿 */
+/* 统计 / 设置这几张纸也换成 A 那两层投影，跟列表卡片浮在同一个高度上。
+   边框收掉：22px 的圆角加一圈发丝线，在深色底上会露出一道发白的沿。
+   日历那块（.cal-daylist）v1.12.1 起不再是一张纸，而是「胶囊标题 + 一张 .mcard」——
+   它的手机样式整个搬到了 calendar.css 末尾的 .mshell 那一节 */
 .mshell .stats-card,
 .mshell .stats-week,
-.mshell .set-section,
-.mshell .cal-daylist {
+.mshell .set-section {
   border-color: transparent;
   box-shadow: var(--m-card-shadow);
 }

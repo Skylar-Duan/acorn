@@ -61,6 +61,10 @@ export function signInToast(out: SignInOutcome): string {
   const tail =
     (out.folded > 0 ? `；顺手把 ${out.folded} 条重名的清单并成了一条` : "") +
     (out.foldedTasks > 0 ? `；${out.foldedTasks} 件两边都有的事只留了一份` : "");
+  // 两边本来就是同一份（v1.12.1）：没问、也没真合出什么，就别说「正在合并」——那是假话
+  if (out.same) {
+    return `登录成功，云端和这台设备上的是同一份，直接用了${tail}`;
+  }
   if (out.action === "cloud" && out.restored) {
     return (
       `已把云端第 ${out.restored.rev} 版取回这台设备（${out.restored.tasks} 条事）` +
@@ -176,7 +180,9 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
    *  其余照常合并。判据全在 core/fresh.ts */
   async function settleSignIn(s: cloud.Session, fallbackMsg: string): Promise<void> {
     const out = await signInWithLocalData(s, cb.current.ask);
-    const plain = out.action === "merge" && out.folded === 0 && out.foldedTasks === 0;
+    // 两边一模一样那条（out.same）不走 fallbackMsg：那几句都是「正在合并 / 正在传上去」，
+    // 而这会儿什么都没合——回执由 signInToast 说实话
+    const plain = !out.same && out.action === "merge" && out.folded === 0 && out.foldedTasks === 0;
     showToast(plain ? fallbackMsg : signInToast(out), false);
     // 用云端那份覆盖过就得刷一遍界面：ui 里记着的当前清单可能已经被云端那份换掉，
     // 留在原地会是一屏空白。刷之前先把攒着的写完、推完，否则刚清好的那份云端还不知道。

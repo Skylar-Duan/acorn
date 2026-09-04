@@ -32,7 +32,7 @@ import type { AppData } from "./model";
 import { adoptSession, syncNow, syncStore } from "./syncCtl";
 import { restoreFromCloud } from "./wipe";
 import type { CloudRestore } from "./wipe";
-import { dedupeListsByName, dedupeSameTasks, keepLocalOverCloud, mergeData } from "./merge";
+import { dedupeListsByName, dedupeSameTasks, keepLocalOverCloud, mergeData, sameContent } from "./merge";
 import { isPristineLocal, planLoginData } from "./fresh";
 import type { LoginDataAction } from "./fresh";
 
@@ -103,6 +103,9 @@ export interface SignInOutcome {
   foldedTasks: number;
   /** 本来打算走哪条（ask 表示问过用户）。排查用，界面不必管 */
   plan: LoginDataAction;
+  /** 两边内容一模一样，所以没问、也没真合出什么（v1.12.1）。只有本来要问的那条路上才会为 true；
+   *  回执得据此换一句话——「正在合并两端数据」在这儿是假话，什么都没合 */
+  same?: boolean;
 }
 
 /**
@@ -135,6 +138,7 @@ export async function signInWithLocalData(
   const plan = planLoginData({ pristine, cloudHasData });
   let action: LoginChoice = plan === "replace" ? "cloud" : "merge";
   let asked = false;
+  let same = false;
   /** 要摆给用户看的那份云端档案。**只拉不落**：这会儿一个字都还没写进本机 */
   let remote: AppData | null = null;
 
@@ -149,7 +153,14 @@ export async function signInWithLocalData(
       pulled = null;
     }
     remote = pulled?.data ?? null;
-    if (remote && pulled) {
+    if (remote && pulled && sameContent(before.data, remote)) {
+      // 两边内容一模一样（多半是同一个账号在这台设备上退出过又登回来）：摆两张一模一样的卡
+      // 让人挑是折腾人（用户 2026-09-03：「如果云端和本地没有差异就不用差异化合并或者选用什么档」）。
+      // 不问，走合并——把一份跟自己一样的东西合进来等于什么都没发生，而且照样只落一次
+      // state、推一轮，这台设备的版本号也就跟云端接上了。判据见 merge.sameContent
+      same = true;
+      action = "merge";
+    } else if (remote && pulled) {
       asked = true;
       const cloudSum = summarizeProfile(remote);
       action = ask
@@ -219,7 +230,7 @@ export async function signInWithLocalData(
     folded = await tidyDuplicateLists();
   }
 
-  return { action, asked, restored, folded, foldedTasks, plan };
+  return { action, asked, restored, folded, foldedTasks, plan, same };
 }
 
 /** 把内存里这份的同名清单并一并，动过就装回 store 并立刻推一轮。返回折掉的条数。

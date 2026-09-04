@@ -140,6 +140,9 @@ export default function UpdatePanel() {
       )}
 
       {run.err && <p className="acct-err">{run.err}</p>}
+      {/* 系统报的原话，小字：拿着这一行就能查，不用再猜是哪台手机的问题 */}
+      {run.why && <p className="hint" style={{ overflowWrap: "anywhere" }}>（原因：{run.why}）</p>}
+      {run.note && <p className="hint">{run.note}</p>}
     </div>
   );
 }

@@ -30,6 +30,8 @@ export interface SyntaxInputProps {
   showChips?: boolean;
   /** 不认这几类要素（子任务行用：没有清单/标签/需求方/循环）。被关掉的类别也不弹补全 */
   skip?: ParseChip["kind"][];
+  /** 「周末」指周六还是周日（设置里那一项）。这个框不碰 store，得由调用方喂进来；不给就当周日 */
+  weekendDay?: "sat" | "sun";
   inputStyle?: CSSProperties;
   /** 失焦时怎么办（A1「点走 = 提交」）。**这里不写死任何一种语义**：
    *  这个框被 4 处复用（记一条 / 整句改 / 加子任务 / 浮窗），
@@ -94,7 +96,7 @@ interface DropMatch {
 
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
-  placeholder, autoFocus, showChips = true, skip, inputStyle,
+  placeholder, autoFocus, showChips = true, skip, weekendDay, inputStyle,
   onBlurCommit, onEscape, onShiftEnter, multiline = false,
 }: SyntaxInputProps) {
   const inputRef = useRef<SyntaxInputEl | null>(null);
@@ -109,9 +111,9 @@ export default function SyntaxInput({
   // props 传数组每次渲染都是新引用，序列化成串当依赖，免得每次打字都重算
   const skipKey = (skip ?? []).join(",");
   const parsed = useMemo(
-    () => parseQuickAdd(value, { now: new Date(), listNames: lists, skip }),
+    () => parseQuickAdd(value, { now: new Date(), listNames: lists, skip, weekendDay }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [value, lists, skipKey],
+    [value, lists, skipKey, weekendDay],
   );
 
   const drop = useMemo<DropMatch | null>(() => {

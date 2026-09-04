@@ -5,6 +5,19 @@
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
 
+## v1.13.0 · 2026-09-03
+
+> 用户真机试 v1.12.0 后的第三轮（Workflow 五路并行 + 逐路挑刺复核 + 手机便捷输入一路）。
+
+- **安卓 App 内安装从来没成功过**：`tauri-plugin-opener` 安卓端 `open()` 只做 `Intent(ACTION_VIEW, url.toUri())`，递裸文件路径无 scheme 无 mime → reject。改为 App 自己的 `InstallPlugin.kt`（FileProvider `${applicationId}.fileprovider` + APK mime + GRANT_READ；`canRequestPackageInstalls()` 为 false 先跳 `ACTION_MANAGE_UNKNOWN_APP_SOURCES`，回 needs-permission），lib.rs `register_android_plugin` + 主 App 命令 `install_apk`（注册失败不再让 App 崩，`include_bytes!` 编译期拦 .kt 缺失）；红字带系统原话；开完权限回来复用已下好的包（`acorn-update-ready`）。
+- 🔴 **复核揪出：从 v1.11.1 起打的安卓包缺 `app.tauri.opener.OpenerPlugin` 类，装上即崩**——`gen/android` 的 `tauri.settings.gradle` / `app/tauri.build.gradle.kts` 是 8-24 生成的（只含 dialog/notification），robocopy 镜像回旧文件让 build.rs 不重生成。已补上 opener 两行；`build-android.sh` 每次镜像后删掉这两份让 build.rs 重生成，打完用 `scripts/android-dexcheck.py` 断言两个类都在。v1.12.0 的安卓包**不能装**，v1.13.0 起才对。
+- 安卓图标拆 adaptive 两层（`icons/icon-manifest.json`：`android-fg.png` 无底板橡果占 40% 高 + `android-bg.png` 纯色；`android_fg_scale` 只影响安卓 7 的旧图标）。Windows 图标逐字节不变。
+- **回收站收子任务**：`Subtask.deletedAt`，DATA_VERSION 6→7（台账 v6→v7 六栏）；`removeSubtask` 软删、`restoreSubtask` / `purgeSubtask`、30 天清理、`aliveSubtasks` 全仓统一口径（TaskRow 分母、SearchOverlay、搜索、日历、统计、导出）；回收站页列「母任务 › 子任务 · 还剩 N 天」；侧栏/更多的回收站角标数进子任务行。
+- **便捷语**（用户批准并改三处）：周末/本周末/下周末（`Settings.weekendDay` 默认 sun，设置「行为」可选）、下下周X、N天内=N天后、N个月后、下月初/中/底/月末、下个月X号、明早/明晚/后天晚上（时段默认时刻，裸钟点跟时段走）、X前、今年年底/明年X月、每周末循环、节日（公历表 + 农历 2025–2030 查表 `core/holidays.ts`，今年/明年前缀）。`tests/parse-phrases.test.ts` 83 条。
+- **手机**：顶栏 padding-top +22（标题离状态栏 34）；日历页月格 56 + 三颗点 + 网格下常驻当天列表、风景高度=顶栏高度；toast 在手机上半截在屏外（桌面 translateX(-50%) 没清）→ 改写并给 ＋ 让位；周↔月切换不再跳到上个月；记一条抽屉加回边打边认（chips 可 ×，打字优先，`mobile/quickAddMerge.ts`）+ 「?」举例卡片页（`GuideSheetHost`）。
+- 登录：云端与本机内容一样（`merge.sameContent`）就不问、不说合并。
+- 版本 1.13.0（1.12.0 的安卓包有崩溃隐患，直接换号）。
+
 ## v1.12.0 · 2026-09-03
 
 > 版本号从 1.11.1 换成 1.12.0：1.11.1 当天出过两次包（第二次是同号重发），用户机器上已装第一次那份，客户端按版本号比对 → 不提示更新（1.10.0 那次同样的坑，第二次踩）。**包一旦推过更新服务器，任何再发都必须换号。**档位按用户定的规则算：这一轮不是微调（随手记两端退场、四象限独立成页、手机整套换样子），走中等档 1.12.0。

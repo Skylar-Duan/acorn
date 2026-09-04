@@ -6,9 +6,9 @@
 //
 //   ① 安排日期的候选日只有一套（core/dates.duePresets）。在这儿另写一份「本周五」，
 //      周六点开时桌面写「下周五」、手机还写「本周五」，同一件事两个日子。
-//   ② 「记一条」在手机上**不解析语法**（用户 2026-09-02 定）：打进去什么就是什么。
-//      漏进一个 parseQuickAdd，用户打的「跟老板确认 /3 的方案」就会被吃掉一截标题、
-//      还凭空建出一张叫「3」的清单。
+//   ② 「记一条」在手机上**也解析**（用户 2026-09-03 改口：「便捷输入还是加回去」；v1.11.0 那版
+//      是纯点选）。解析器只有全仓那一个；打字和点选谁说了算见 tests/mobile-quickadd-syntax.test.ts，
+//      这儿只钉落库那条路跟桌面同源。
 //   ③ 改属性走的 store 函数必须跟桌面那张卡（TaskCard）是同一批——它们自带撤销栈和落盘，
 //      在这儿图省事直写 state 就是「手机上改的东西撤不回、也可能不落盘」。
 //   ④ 子任务行的「放弃 / 删除」靠左滑（手指没有 hover），走共用的 useSwipeRow。
@@ -75,21 +75,26 @@ describe("① 安排日期的候选日：两张纸都走 core/dates.duePresets�
   });
 });
 
-describe("② 记一条：手机上一个字都不解析，打的就是标题", () => {
-  it("整个文件里没有解析器、也没有快捷语法输入框", () => {
-    for (const forbidden of ["parseQuickAdd", "parseSubtaskInput", "SyntaxInput", "core/parse", "core/syntax", "taskToSentence"]) {
-      expect(quickAddSheetSource, `记一条不许碰 ${forbidden}`).not.toContain(forbidden);
+describe("② 记一条：手机上也解析（用户 2026-09-03 改口），落库那条路跟桌面同源", () => {
+  it("解析走全仓那一个解析器；胶囊 / 候选 / 「?」的细节在 mobile-quickadd-syntax.test.ts", () => {
+    expect(quickAddSheetSource).toContain('import { parseQuickAdd } from "../core/parse";');
+    // 画的是 visibleChips 过滤后的那几颗（改过点选的那一类不画）
+    expect(quickAddSheetSource).toContain("visibleChips(parsed, eff)");
+    // 子任务那套（parseSubtaskInput）和整句改（taskToSentence）跟这张纸没关系，不许混进来
+    for (const forbidden of ["parseSubtaskInput", "core/syntax", "taskToSentence"]) {
+      expect(quickAddSheetSource, `记一条不该碰 ${forbidden}`).not.toContain(forbidden);
     }
   });
 
-  it("标题原样进 addTask，属性全部来自点选", () => {
+  it("标题是解析后的那句，属性是打字 × 点选合并出来的（merge）；/清单 不存在自动新建", () => {
     const record = slice(quickAddSheetSource, "function record()", "function toggleSeg");
-    expect(record).toContain("const t = title.trim();");
-    expect(record).toContain("title: t, // 原样：手机上这行字**不过解析**");
-    // 五样属性都从 pick 来
-    for (const field of ["listId: listOk,", "who: pick.who,", "priority: pick.priority,", "repeat: pick.repeat,"]) {
+    expect(record).toContain("const t = parsed.title.trim();");
+    expect(record).toContain("merge(parsed,");
+    expect(record).toContain("title: t,");
+    for (const field of ["tags: m.tags,", "who: m.who,", "priority: m.priority,", "repeat: m.repeat,"]) {
       expect(record).toContain(field);
     }
+    expect(record).toContain("addList(m.listName, LIST_COLORS[lists.length % LIST_COLORS.length])");
   });
 
   it("落库这条路跟桌面「随手记」一字不差：先把 📅 里欠着的那天接过来再 addTask", () => {
@@ -102,9 +107,9 @@ describe("② 记一条：手机上一个字都不解析，打的就是标题", 
     expect(quickAddBarSource).toContain("const pendingDue = dueFieldRef.current?.pending() ?? null;");
   });
 
-  it("记完只清标题、**不清点选**（跟桌面「选中的会保持生效」同一个口径）", () => {
+  it("记完只清那句话、**不清点选**（跟桌面「选中的会保持生效」同一个口径）", () => {
     const record = slice(quickAddSheetSource, "function record()", "function toggleSeg");
-    expect(record).toContain('setTitle("");');
+    expect(record).toContain('setText("");');
     expect(record, "记完不许把点选一起清掉：连记三条不该重选清单").not.toContain("setPick(");
     // 焦点也留着，接着记下一条
     expect(record).toContain("inputRef.current?.focus();");
@@ -275,12 +280,17 @@ describe("④ 子任务行左滑：走共用的 useSwipeRow，露出「放弃 / 
 });
 
 describe("⑤ 两个 Host 只认 sheetStore 的栈顶", () => {
-  it("都从 topSheet(s.stack) 读，关掉都调 closeSheet", () => {
+  it("都只读 sheetStore 的栈，关掉都调 closeSheet", () => {
+    // 任务详情只认栈顶；记一条看「栈里有没有」——举例卡片那张纸（guide）可以叠在它上面，
+    // 栈顶换成 guide 时它不能收，收了里面打了一半的那句话就没了
+    expect(taskSheetSource).toContain('import { closeSheet, topSheet, useSheet } from "./sheetStore";');
+    expect(taskSheetSource).toContain("const top = useSheet((s) => topSheet(s.stack));");
+    expect(quickAddSheetSource).toContain('import { closeSheet, useSheet } from "./sheetStore";');
+    expect(quickAddSheetSource).toContain('const entry = useSheet((s) => s.stack.find((x) => x.kind === "quickAdd") ?? null);');
     for (const [name, src] of [["任务详情", taskSheetSource], ["记一条", quickAddSheetSource]] as const) {
-      expect(src, name).toContain('import { closeSheet, topSheet, useSheet } from "./sheetStore";');
-      expect(src, name).toContain("const top = useSheet((s) => topSheet(s.stack));");
       expect(src, name).toContain("onClose={closeSheet}");
-      // 开不开只由栈说了算：两张纸都只读栈顶 + 收自己，一次都不往栈上推
+      // 开不开只由栈说了算：两张纸都只读栈 + 收自己，一次都不往栈上推
+      // （记一条那颗「?」开举例卡片走的是 useGuideEntry，不在这个文件里推栈）
       expect(src, name).not.toContain("openSheet");
       expect(src, name).not.toContain("closeAllSheets");
     }
@@ -289,9 +299,8 @@ describe("⑤ 两个 Host 只认 sheetStore 的栈顶", () => {
   it("各认各的那一种；记一条还接住从清单页点 ＋ 带进来的清单", () => {
     expect(taskSheetSource).toContain('top?.kind === "task"');
     expect(taskSheetSource).toContain("expandable"); // 任务详情能往上拉成全屏
-    expect(quickAddSheetSource).toContain('top?.kind === "quickAdd"');
-    expect(quickAddSheetSource).toContain("top.listId ?? null");
-    expect(quickAddSheetSource).toContain("listId, who: [], priority: 0, repeat: null,");
+    expect(quickAddSheetSource).toContain('entry?.kind === "quickAdd" ? entry.listId ?? null : null');
+    expect(quickAddSheetSource).toContain("useState<Picks>({ ...EMPTY_PICKS, listId })");
   });
 
   it("任务详情：这件事没了（删掉 / 撤销 / 同步拉走）就自己收掉", () => {

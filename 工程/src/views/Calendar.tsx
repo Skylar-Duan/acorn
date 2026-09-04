@@ -4,7 +4,7 @@
 // 得落在真正做完那天）。头上三选一：全部 / 计划 / 已完成。
 import { useMemo, useState } from "react";
 import type { Task } from "../core/model";
-import { addDays, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
+import { addDays, cmpYMD, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
 import type { DateRow } from "../core/store";
 import {
   addTask, aliveTasks, byPriorityThenOrder, doneRows, expandTask, navigate, rowDoneDay,
@@ -15,12 +15,45 @@ import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import TaskCard from "../components/TaskCard";
 import { isMobile } from "../core/platform";
 import MobileHead from "../mobile/MobileHead";
+import MobileRow from "../mobile/MobileRow";
 import "../styles/calendar.css";
 
 const WEEK_HEAD = ["一", "二", "三", "四", "五", "六", "日"];
 /** 一格最多列几条。周视图一行七格、格子高约六倍，给多得多——否则一格空着一大片却挂着「+N」 */
 const MAX_SHOWN_MONTH = 3;
 const MAX_SHOWN_WEEK = 10;
+
+/** 手机格子里最多几颗点（v1.12.1）。月视图一格 56px 高，三颗就是极限；周视图一格是一整行，给多些 */
+const MAX_DOTS_MONTH = 3;
+const MAX_DOTS_WEEK = 6;
+/** 点的三种颜色：逾期 warn / 计划 accent / 已完成 ok（样式见 calendar.css 的 .cal-dot） */
+export type DotKind = "late" | "plan" | "ok";
+const DOT_ORDER: DotKind[] = ["late", "plan", "ok"];
+
+/**
+ * 手机格子里画哪几颗点。格子里不写字（PM：「别塞文字」），一眼要看出两件事：
+ * 这天有**哪几类**事、忙不忙。所以：在场的每一类先各占一颗，剩下的位子按
+ * 逾期 → 计划 → 已完成 的顺序拿各类多出来的填，最多 max 颗；同色归拢在一起
+ * （「两颗绿一颗黄」比「绿黄绿」好认）。纯函数，tests/mobile-calendar.test.ts 钉着
+ */
+export function dayDots(counts: Record<DotKind, number>, max: number): DotKind[] {
+  const left = { ...counts };
+  const out: DotKind[] = [];
+  for (const k of DOT_ORDER) {
+    if (left[k] > 0) {
+      out.push(k);
+      left[k]--;
+    }
+  }
+  for (const k of DOT_ORDER) {
+    while (out.length < max && left[k] > 0) {
+      out.push(k);
+      left[k]--;
+    }
+  }
+  out.sort((a, b) => DOT_ORDER.indexOf(a) - DOT_ORDER.indexOf(b));
+  return out.slice(0, max);
+}
 
 /** 月 / 周（v1.9.1）。周视图只是「7 格横排、格子更高」，不带时间轴 */
 type CalMode = "month" | "week";
@@ -70,7 +103,19 @@ export default function Calendar() {
   const [anchor, setAnchor] = useState(() => normalizeAnchor(today, loadMode()));
   const pickMode = (m: CalMode) => {
     setMode(m);
-    setAnchor((a) => normalizeAnchor(a, m));
+    // 切模式时 anchor 不能机械地「周一 → 月首」：8/31–9/6 这一周切回月视图会落到 8 月，
+    // 而人明明在看 9 月（PM 9/3 真机就撞上了）。规则：今天在这一段里就跟今天走；
+    // 不在就按 ISO 的习惯取这周的周四所在月 / 这个月里第一个整周
+    setAnchor((a) => {
+      if (m === "month") {
+        const inWeek = weekStart(today) === weekStart(a);
+        return monthStart(inWeek ? today : addDays(weekStart(a), 3));
+      }
+      const inMonth = today.slice(0, 7) === a.slice(0, 7);
+      return weekStart(inMonth ? today : a);
+    });
+    // 手机：切了月/周，底下那块常驻列表回到今天——不然它可能停在一个新视图里根本看不见的日子上
+    if (isMobile) setPicked(null);
     try {
       localStorage.setItem(MODE_KEY, m);
     } catch {
@@ -78,6 +123,7 @@ export default function Calendar() {
     }
   };
   const maxShown = mode === "week" ? MAX_SHOWN_WEEK : MAX_SHOWN_MONTH;
+  const maxDots = mode === "week" ? MAX_DOTS_WEEK : MAX_DOTS_MONTH;
   const [dropYmd, setDropYmd] = useState<string | null>(null);
   const [quickYmd, setQuickYmd] = useState<string | null>(null);
   const [quickText, setQuickText] = useState("");
@@ -204,7 +250,15 @@ export default function Calendar() {
         <button className={mode === "week" ? "on" : undefined} onClick={() => pickMode("week")}>周</button>
       </div>
       <button className="arr" onClick={goPrev} title={mode === "week" ? "上一周" : "上个月"}>‹</button>
-      <button onClick={() => setAnchor(normalizeAnchor(todayYMD(), mode))}>今天</button>
+      <button
+        onClick={() => {
+          setAnchor(normalizeAnchor(todayYMD(), mode));
+          // 手机：底下那块常驻列表也一起回到今天（picked 为空就是今天，见下面 .cal-daylist）
+          if (isMobile) setPicked(null);
+        }}
+      >
+        今天
+      </button>
       <button className="arr" onClick={goNext} title={mode === "week" ? "下一周" : "下个月"}>›</button>
     </div>
   );
@@ -219,6 +273,8 @@ export default function Calendar() {
           sub={ymLabel}
           search={false}
           onBack={() => navigate("today")}
+          // 风景跟顶栏等高：这一页顶栏底下还挂着两排控件，190px 的固定高会切进第一行日期（v1.12.1）
+          sceneFit
           extra={
             <>
               {nav}
@@ -260,6 +316,33 @@ export default function Calendar() {
             const hidden = open.length - shownOpen.length + (done.length - shownDone.length);
             // 周视图里七天全是「这一周的」，不发灰；月视图才把补齐用的邻月日子压暗
             const inMonth = mode === "week" || ymd.slice(0, 7) === anchor.slice(0, 7);
+            // 手机（v1.12.1）：一格只画「日期 + 最多几颗点」，不塞文字、不画补记框、不拖放——
+            // 事情叫什么名字全由网格底下常驻的那块列表交代。点一格就是切到这一天。
+            // 逾期 = 这天已经过去了还没做完：过去的日子里所有还开着的事都是逾期的
+            if (isMobile) {
+              const late = cmpYMD(ymd, today) < 0;
+              const dots = dayDots(
+                { late: late ? open.length : 0, plan: late ? 0 : open.length, ok: done.length },
+                maxDots,
+              );
+              const shownDay = picked ?? today;
+              return (
+                <div
+                  key={ymd}
+                  className={`cal-cell${inMonth ? "" : " dim"}${shownDay === ymd ? " cal-picked" : ""}`}
+                  onClick={() => setPicked(ymd)}
+                >
+                  <span className={`cal-num${ymd === today ? " today" : ""}`}>{Number(ymd.slice(8, 10))}</span>
+                  {/* 周几只在周视图露面（七列拍成七行、列头关了），月视图由 CSS 藏起来 */}
+                  <span className="cal-wd">周{WEEK_HEAD[(dayOfWeek(ymd) + 6) % 7]}</span>
+                  <span className="cal-dots" aria-hidden="true">
+                    {dots.map((k, i) => (
+                      <i key={i} className={`cal-dot ${k}`} />
+                    ))}
+                  </span>
+                </div>
+              );
+            }
             return (
               <div
                 key={ymd}
@@ -374,10 +457,47 @@ export default function Calendar() {
           })}
         </div>
 
-        {/* 点开那天的清单（窄屏专用，桌面由 calendar.css 关掉）。
+        {/* 手机（v1.12.1）：网格底下**常驻**「这一天」的列表。默认今天，点别的格子切过去，
+            永远有东西可看——下半屏是内容不是空白（PM：「下面的留白不符合审美」）。
+            行走 MobileRow：点一行拉出任务详情那张纸，左右滑、长按都跟今天页一样 */}
+        {isMobile &&
+          (() => {
+            const day = picked ?? today;
+            const slot = byDay.get(day);
+            const open = filter === "done" ? [] : slot?.open ?? [];
+            const done = filter === "plan" ? [] : slot?.done ?? [];
+            // 「N 件」按件数不按行数：一件事的几条子任务同一天勾完算 1 件（跟格子上那颗绿点一个口径）
+            const count = rowTaskIds([...open.map((t) => ({ task: t, sub: null })), ...done]).length;
+            return (
+              <div className="cal-daylist">
+                <div className="group-head split">
+                  <span className="group-label">
+                    {day === today ? "今天" : mdLabel(day, day.slice(0, 4) !== today.slice(0, 4))}
+                    {" · 周"}
+                    {WEEK_HEAD[(dayOfWeek(day) + 6) % 7]}
+                  </span>
+                  {count > 0 && <span className="cal-daylist-n">{count} 件</span>}
+                </div>
+                {open.length === 0 && done.length === 0 ? (
+                  <div className="cal-daylist-empty">这天没有安排</div>
+                ) : (
+                  <div className="mcard">
+                    {open.map((t) => (
+                      <MobileRow key={t.id} task={t} />
+                    ))}
+                    {done.map((r) => (
+                      <MobileRow key={rowKey(r)} task={r.task} sub={r.sub} doneDate={rowDoneDay(r)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+        {/* 点开那天的清单（窄屏专用，桌面由 calendar.css 关掉；手机走上面那块常驻的）。
             窄屏格子里只剩「日期 + 圆点 + 计数」，事情叫什么名字全靠这一块交代；
             点其中一条照旧展开下面那张任务卡 */}
-        {picked && (
+        {!isMobile && picked && (
           <div className="cal-daylist">
             <div className="cal-daylist-head">
               <b>{mdLabel(picked, picked.slice(0, 4) !== today.slice(0, 4))}</b>

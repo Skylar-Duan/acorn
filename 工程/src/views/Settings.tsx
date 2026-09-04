@@ -471,10 +471,17 @@ export default function Settings() {
         </SetSection>
 
         {/* ---------- 行为 ---------- */}
-        {/* 整节一起判空：手机上前两行本来就被 hasDesktopFeatures 挡掉，
-            专注那行再收起来（core/features.ts）就只剩一个空壳卡片 */}
-        {(hasDesktopFeatures || FOCUS_ENABLED) && (
-        <SetSection id="behavior" title="行为" summary={hasDesktopFeatures ? `全局快捷键 ${settings.quickAddShortcut}` : undefined}>
+        {/* 这一节两端都有：「周末指的是」手机电脑一样要选，所以不再整节判空
+            （以前手机上前两行被 hasDesktopFeatures 挡掉、专注那行再收起来就只剩空壳） */}
+        <SetSection
+          id="behavior"
+          title="行为"
+          summary={
+            hasDesktopFeatures
+              ? `全局快捷键 ${settings.quickAddShortcut} · 周末指${settings.weekendDay === "sat" ? "周六" : "周日"}`
+              : `周末指${settings.weekendDay === "sat" ? "周六" : "周日"}`
+          }
+        >
           {hasDesktopFeatures && (
           <div className="set-row">
             <div className="set-row-label">
@@ -538,8 +545,27 @@ export default function Settings() {
             </div>
           </div>
           )}
+          {/* 记事时「周末」「下周末」落在周六还是周日。默认周日；解析器（core/parse.ts）按它算 */}
+          <div className="set-row">
+            <div className="set-row-label">
+              周末指的是
+              <span className="set-hint">记事时写「周末」「下周末」，按这一天算</span>
+            </div>
+            <div className="set-ctl">
+              <div className="set-seg">
+                {([["sat", "周六"], ["sun", "周日"]] as const).map(([id, name]) => (
+                  <button
+                    key={id}
+                    className={(settings.weekendDay ?? "sun") === id ? "on" : undefined}
+                    onClick={() => updateSettings({ weekendDay: id })}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </SetSection>
-        )}
 
         {/* ---------- 一句话记事 ---------- */}
         <SetSection id="syntax" title="一句话记事" summary="日期、清单、需求方写在同一句里 · 打开用法说明">

@@ -437,8 +437,10 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     // 光写 `.mhead` 会被它把左边的 18px 抹掉，标题贴边被切掉半个字（实测过）
     expect(shellCss).toContain(".mshell .mhead {");
     // v1.11.1：安全区**只在这一条里留一份**（每个视图各写各的，迟早漏掉一个——
-    // v1.11.0 漏的就是习惯页）。env() 在没状态栏的环境返回 0，所以有个 12px 的地板
-    expect(shellCss).toContain("padding: calc(max(var(--m-safe-top), 12px) + 6px) 18px 0;");
+    // v1.11.0 漏的就是习惯页）。env() 在没状态栏的环境返回 0，所以有个 12px 的地板。
+    // v1.12.1：地板之上再让 22px（原来 6px）——标题上沿离状态栏底约 34px，主流 App 大标题
+    // 站的位置；PM v1.12.0 真机原话「顶部留白还是太少了，不符合现代 APP 审美」
+    expect(shellCss).toContain("padding: calc(max(var(--m-safe-top), 12px) + 22px) 18px 0;");
     expect(mobileCss).toContain("--m-safe-top: env(safe-area-inset-top, 0px);");
     // 大标题是常规字重（画板那个 .serif 标题没写 font-weight）：600 会取到文楷 Medium，30px 的中文一上 Medium 就发闷
     const title = shellCss.slice(shellCss.indexOf(".mhead-title {"), shellCss.indexOf(".mhead-title.small"));

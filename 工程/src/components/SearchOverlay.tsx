@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Task } from "../core/model";
 import { cmpYMD, formatShort, todayYMD } from "../core/dates";
 import { searchTasks } from "../core/search";
-import { aliveTasks, expandTask, navigate, setSearchOpen, useApp } from "../core/store";
+import { aliveSubtasks, aliveTasks, expandTask, navigate, setSearchOpen, useApp } from "../core/store";
 import "../styles/overlays.css";
 
 const MAX_SHOWN = 20;
@@ -13,7 +13,7 @@ const MAX_SHOWN = 20;
  *  母任务写着「今天到期」也不会出现在今天页上。只看 t.due 就 navigate('today')，
  *  用户会跳到一个什么都没有的页面 */
 function showsToday(t: Task, today: string): boolean {
-  const open = t.subtasks.filter((s) => !s.done);
+  const open = aliveSubtasks(t).filter((s) => !s.done);
   const dues = open.length ? open.map((s) => s.due ?? t.due) : [t.due];
   return dues.some((d) => !!d && cmpYMD(d, today) <= 0);
 }

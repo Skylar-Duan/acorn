@@ -5,8 +5,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { List, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
 import {
-  aliveTasks, deleteList, navigate, purgeTask, purgeTrash, renameList,
-  restoreTask, setListColor, sortTasks, trashDaysLeft, useApp,
+  aliveTasks, deleteList, navigate, purgeSubtask, purgeTask, purgeTrash, renameList,
+  restoreSubtask, restoreTask, rowPriority, setListColor, sortTasks, trashDaysLeft, trashedSubtaskRows, useApp,
 } from "../core/store";
 import { isMobile } from "../core/platform";
 import type { ListGroup } from "../core/plan";
@@ -142,6 +142,11 @@ export default function ListView({ kind }: { kind: ListKind }) {
     }
   }, [data, kind, listId, who, tag, list, sortMode]);
 
+  // 回收站里单列的子任务（v7）：母任务还活着、只删了这一步的那些，画在整件事那列后面，
+  // 一行一条「母任务 › 子任务」。母任务整件事在回收站里时它的子任务不单列（跟着母任务走）
+  const subRows = useMemo(() => (kind === "trash" ? trashedSubtaskRows(data) : []), [data, kind]);
+  const trashHasStuff = tasks.length > 0 || subRows.length > 0;
+
   // 清单/需求方视图：按日期分组展示更有章法（分法在 core/plan.ts，纯函数、可单测）。
   // 回收站不分组：那儿按删除时间倒着排，再切成逾期/今天没有意义
   const laid: ListGroup[] = useMemo(
@@ -200,7 +205,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
             ) : undefined
           }
           extra={
-            kind === "trash" && tasks.length > 0 ? (
+            kind === "trash" && trashHasStuff ? (
               <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
             ) : undefined
           }
@@ -239,7 +244,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
             </button>
           </>
         )}
-        {kind === "trash" && tasks.length > 0 && (
+        {kind === "trash" && trashHasStuff && (
           <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
         )}
       </div>
@@ -313,10 +318,38 @@ export default function ListView({ kind }: { kind: ListKind }) {
             )}
           </Fragment>
         ))}
+        {/* 回收站里单列的子任务（v7）：一行一条「母任务 › 子任务 · 还剩 N 天」，恢复 / 彻底删除。
+            桌面和手机同一份标记——手机上这一页本来就用的是桌面那份 .task-row（套成卡的样子，
+            见 mobile-shell.css），照抄上面整件事那行就行 */}
+        {kind === "trash" &&
+          subRows.map((r) => (
+            <div key={`${r.task.id}/${r.sub!.id}`} className="task-row trash-sub">
+              <span className="chain-caret ghost" />
+              <span className={`flag p${rowPriority(r)}`} />
+              {/* 三段跟 TaskRow 的子任务行同一副标记（chain-parent / chain-sep / chain-self）：
+                  窄屏下 app.css 让母任务名和子任务名各自省略，「›」永远看得见 */}
+              <span className="title" style={{ color: "var(--ink-2)" }}>
+                <span className="chain-parent">{r.task.title || "（未命名）"}</span>
+                <span className="chain-sep"> › </span>
+                <span className="chain-self">{r.sub!.title || "（未命名）"}</span>
+              </span>
+              <span className="meta">
+                {r.sub!.deletedAt && (
+                  <span title={`删除于 ${r.sub!.deletedAt.slice(0, 10)}`}>
+                    还剩 {trashDaysLeft(r.sub!.deletedAt)} 天
+                  </span>
+                )}
+                <button className="btn ghost" onClick={() => restoreSubtask(r.task.id, r.sub!.id)}>恢复</button>
+                <button className="btn ghost" title="不等 30 天，立即彻底删除" onClick={() => purgeSubtask(r.task.id, r.sub!.id)}>
+                  彻底删除
+                </button>
+              </span>
+            </div>
+          ))}
         {/* 按**这一版真画出来的行**算，不按过滤出来的 tasks 算：展开期间钉在这儿的那一件
             已经不在 tasks 里了（比如在卡里改了归属），照 tasks 判会出现
             「卡片明明摆在页面上，底下写着这里没有任务」 */}
-        {shown.length === 0 && (
+        {shown.length === 0 && subRows.length === 0 && (
           <div className="empty">
             {/* 「在上面记一条」说的是那条输入栏。手机上没有它，得指向右下角那颗 ＋ */}
             {kind === "trash" ? "回收站是空的。"

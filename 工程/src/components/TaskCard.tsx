@@ -171,8 +171,13 @@ export default function TaskCard({ task }: { task: Task }) {
 
   // 这件事的「一整句话」。按当前状态现算，不存旧的输入——存了迟早跟字段对不上
   const sentence = useMemo(
-    () => taskToSentence(task, { listName: list?.name ?? null, listNames: lists.map((l) => l.name) }),
-    [task, list, lists],
+    () =>
+      taskToSentence(task, {
+        listName: list?.name ?? null,
+        listNames: lists.map((l) => l.name),
+        weekendDay: settings.weekendDay,
+      }),
+    [task, list, lists, settings.weekendDay],
   );
   const baseText = sentence.safe ? sentence.text : "";
   // 草稿的底稿跟现在这句对不上 = 期间任务被别处改过，草稿作废，重新以新句子为准
@@ -265,7 +270,7 @@ export default function TaskCard({ task }: { task: Task }) {
    *  **返回「到底加上没有」**：只打了日期没打标题时一条都没加，回执就不许闪——
    *  A2 那个 ✓ 的全部价值在于它不能说谎 */
   function addSubFromInput(): boolean {
-    const r = parseSubtaskInput(newSub, new Date());
+    const r = parseSubtaskInput(newSub, new Date(), [], settings.weekendDay);
     const title = r.title.trim();
     if (!title) return false;
     addSubtask(task.id, title, {
@@ -388,7 +393,14 @@ export default function TaskCard({ task }: { task: Task }) {
   function flushPending() {
     // ① 整句改的草稿。底稿对不上（期间任务被别处改过）的那份已经作废，不能拿它去写
     if (draft && draft.base === baseText && draft.text.trim() && draft.text !== baseText) {
-      commitSentence(parseQuickAdd(draft.text, { now: new Date(), listNames: lists.map((l) => l.name) }), draft.text);
+      commitSentence(
+        parseQuickAdd(draft.text, {
+          now: new Date(),
+          listNames: lists.map((l) => l.name),
+          weekendDay: settings.weekendDay,
+        }),
+        draft.text,
+      );
     }
     // ② 打了一半还没回车的新子任务
     if (newSub.trim()) addSubFromInput();
@@ -601,6 +613,7 @@ export default function TaskCard({ task }: { task: Task }) {
             tags={[]}
             whos={[]}
             skip={SUBTASK_SKIP}
+            weekendDay={settings.weekendDay}
             inputStyle={{ fontSize: 13 }}
           />
         </div>
@@ -868,6 +881,7 @@ export default function TaskCard({ task }: { task: Task }) {
           lists={lists.map((l) => l.name)}
           tags={tagNames}
           whos={whoNames}
+          weekendDay={settings.weekendDay}
           showChips
           // 长句子在这儿换行显示，不再被右边界切掉半截（v1.9.1）。
           // 只有这一处开：随手记那条是个一行高的横条、快捷记浮窗是固定大小的系统窗口，

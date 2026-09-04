@@ -12,6 +12,8 @@ export interface WindowContext {
   whoNames: string[];
   theme: string;
   mode: string;
+  /** 「周末」指周六还是周日：小窗里的解析也得跟主窗的设置一致 */
+  weekendDay: "sat" | "sun";
 }
 
 export function windowContext(): WindowContext {
@@ -22,5 +24,6 @@ export function windowContext(): WindowContext {
     whoNames: allWho(d).map((w) => w.who),
     theme: d.settings.theme,
     mode: d.settings.mode,
+    weekendDay: d.settings.weekendDay === "sat" ? "sat" : "sun",
   };
 }

@@ -88,6 +88,14 @@ export default function UpdateDialog() {
         )}
         {run.phase === "handed-off" && <p className="update-note">{HANDOFF_MSG}</p>}
         {run.err && <p className="update-err">{run.err}</p>}
+        {/* 系统报的原话，小字：在真机上看到这一行就能把原因原样念给我们，不用再猜是哪台手机的问题 */}
+        {run.why && (
+          <p className="update-note">
+            {/* 系统原话里常有一长串不带空格的地址（content://…），不许它把框撑破，任意处可折行 */}
+            <span className="update-hint" style={{ overflowWrap: "anywhere" }}>（原因：{run.why}）</span>
+          </p>
+        )}
+        {run.note && <p className="update-note">{run.note}</p>}
         {fb && <p className="update-note">{fallbackText(fb, info)}</p>}
 
         <div className="update-foot">

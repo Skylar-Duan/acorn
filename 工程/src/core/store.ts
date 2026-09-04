@@ -354,6 +354,15 @@ export async function initStore(): Promise<void> {
       data.tasks = data.tasks.filter((t) => !expired.includes(t));
       data.graveyard = bury(data.graveyard, expired.map((t) => t.id), new Date().toISOString());
     }
+    // 单列在回收站里的子任务（v7）到期也清。**母任务的 updatedAt 不动**：清理不是用户编辑，
+    // 盖了戳等于把「删掉一步」当成刚改过去盖别的设备。子任务不立墓碑——它跟着母任务整条走，
+    // 别的设备到了日子自己也会清
+    const subExpired = (s: Subtask) => !!s.deletedAt && new Date(s.deletedAt).getTime() <= cutoff;
+    if (data.tasks.some((t) => t.subtasks.some(subExpired))) {
+      data.tasks = data.tasks.map((t) =>
+        t.subtasks.some(subExpired) ? { ...t, subtasks: t.subtasks.filter((s) => !subExpired(s)) } : t,
+      );
+    }
     undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
     coalesce = null;
     appStore.setState({
@@ -506,7 +515,9 @@ export function completeTask(id: string) {
     if (t.repeat && t.due) {
       const doneCopy: Task = {
         ...t, id: newId(), repeat: null, done: true, doneAt: nowIso, droppedAt: null,
-        subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
+        // 回收站里的子任务（v7）不进副本：副本是这一轮的历史，删掉的那步留在本体上等着恢复，
+        // 复制过去只会让回收站里同一条出现两遍
+        subtasks: aliveSubtasks(t).map((s) => ({ ...s, id: newId() })),
       };
       // 严重逾期的循环任务补追赶：锚点取 max(旧 due, 今天)，新落点必在未来，
       // 否则完成一次只前进一步、且会立刻生成过去时刻的提醒再响一次
@@ -519,8 +530,9 @@ export function completeTask(id: string) {
         reminder: regenReminder(t, nd),
         // 子任务的专属日期、完成时刻、放弃时刻都属于上一轮，随循环推进一并清掉（重新继承母任务）。
         // doneAt / droppedAt 跟 done 同口径：新一轮还没做，就不能挂着上一轮的那个时刻。
-        // 留在已完成副本（上面那条 doneCopy）里的那份原样保留，那才是历史
-        subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+        // 留在已完成副本（上面那条 doneCopy）里的那份原样保留，那才是历史。
+        // 回收站里的那几步原样不动：它们不属于哪一轮，只等着被恢复或到期
+        subtasks: t.subtasks.map((s) => (s.deletedAt ? s : { ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
         postponeCount: 0,
         droppedAt: null,
       };
@@ -553,15 +565,15 @@ export function completeTasks(ids: string[]) {
       if (t.repeat && t.due) {
         extras.push({
           ...t, id: newId(), repeat: null, done: true, doneAt: nowIso, droppedAt: null,
-          subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
+          subtasks: aliveSubtasks(t).map((s) => ({ ...s, id: newId() })),
         });
         const anchor = cmpYMD(t.due, today) > 0 ? t.due : today;
         const nd = nextOccurrence(t.repeat, anchor);
         const advanced: Task = {
           ...t, due: nd, reminder: regenReminder(t, nd),
-          // 跟 completeTask 单条那处逐字同口径：done/doneAt/droppedAt/日期一起清
+          // 跟 completeTask 单条那处逐字同口径：done/doneAt/droppedAt/日期一起清，回收站里的那步不动
           //（两处是双胞胎，改一处必改另一处）
-          subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+          subtasks: t.subtasks.map((s) => (s.deletedAt ? s : { ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
           postponeCount: 0,
           droppedAt: null,
         };
@@ -621,7 +633,7 @@ export function dropTasks(ids: string[], dropped = true) {
       if (t.repeat && t.due) {
         extras.push({
           ...t, id: newId(), repeat: null, done: false, doneAt: null, droppedAt: nowIso,
-          subtasks: t.subtasks.map((s) => ({ ...s, id: newId() })),
+          subtasks: aliveSubtasks(t).map((s) => ({ ...s, id: newId() })),
         });
         const anchor = cmpYMD(t.due, today) > 0 ? t.due : today;
         const nd = nextOccurrence(t.repeat, anchor);
@@ -629,7 +641,7 @@ export function dropTasks(ids: string[], dropped = true) {
           // done/doneAt 显式清掉：见函数头那段口径说明。靠 `...t` 继承就是把上一轮的
           // 完成状态带进新一轮，那样「放弃一件已完成的循环任务」等于没放弃
           ...t, due: nd, done: false, doneAt: null, reminder: regenReminder(t, nd),
-          subtasks: t.subtasks.map((s) => ({ ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
+          subtasks: t.subtasks.map((s) => (s.deletedAt ? s : { ...s, done: false, doneAt: null, droppedAt: null, due: null, dueTime: null })),
           postponeCount: 0,
           droppedAt: null,
         };
@@ -686,7 +698,11 @@ export function purgeTrash() {
   mutate(
     (d) => ({
       ...d,
-      tasks: d.tasks.filter((t) => !t.deletedAt),
+      tasks: d.tasks
+        .filter((t) => !t.deletedAt)
+        // 单列在回收站里的子任务（母任务还活着的那些）一并清掉。没有的那件原对象照还，
+        // stamp 才认得出「这条没动过」
+        .map((t) => (t.subtasks.some((s) => s.deletedAt) ? { ...t, subtasks: aliveSubtasks(t) } : t)),
       graveyard: bury(d.graveyard, d.tasks.filter((t) => t.deletedAt).map((t) => t.id), at),
     }),
     { toast: "回收站已清空" },
@@ -997,13 +1013,59 @@ export function updateSubtask(taskId: string, subId: string, patch: Partial<Subt
   }), { coalesceKey: typingKey(`sub:${taskId}:${subId}`, patch) });
 }
 
+/** 删一条子任务 = 送进回收站（v7）。跟整件事一样只盖 deletedAt，30 天内在回收站里能恢复；
+ *  进撤销栈、可撤销的提示都跟 deleteTasks 同一套。母任务的 updatedAt 由 mutate 顺手盖上，
+ *  别的设备同步时整条跟着走。已经在回收站里的再删一次什么都不动（不压栈、不落盘） */
 export function removeSubtask(taskId: string, subId: string) {
-  mutate((d) => ({
-    ...d,
-    tasks: d.tasks.map((t) =>
-      t.id === taskId ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subId) } : t,
-    ),
-  }));
+  const nowIso = new Date().toISOString();
+  mutate((d) => {
+    const t = d.tasks.find((x) => x.id === taskId);
+    const s = t?.subtasks.find((x) => x.id === subId);
+    if (!t || !s || s.deletedAt) return d;
+    return {
+      ...d,
+      tasks: d.tasks.map((x) =>
+        x.id === taskId
+          ? { ...x, subtasks: x.subtasks.map((y) => (y.id === subId ? { ...y, deletedAt: nowIso } : y)) }
+          : x,
+      ),
+    };
+  }, { toast: "已删除" });
+}
+
+/** 从回收站里把一条子任务放回原处（清 deletedAt，别的字段一个不动） */
+export function restoreSubtask(taskId: string, subId: string) {
+  mutate((d) => {
+    const t = d.tasks.find((x) => x.id === taskId);
+    const s = t?.subtasks.find((x) => x.id === subId);
+    if (!t || !s || !s.deletedAt) return d;
+    return {
+      ...d,
+      tasks: d.tasks.map((x) =>
+        x.id === taskId
+          ? { ...x, subtasks: x.subtasks.map((y) => (y.id === subId ? { ...y, deletedAt: null } : y)) }
+          : x,
+      ),
+    };
+  });
+}
+
+/** 回收站里点「彻底删除」：真从母任务里抹掉这一条（仍进撤销栈，手滑了 Ctrl+Z 还能回来）。
+ *  只认已经在回收站里的，活着的那条 id 对上也不动——跟 purgeTask 同一条规矩。
+ *  不立墓碑：子任务跟着母任务整条同步，母任务盖了新戳，别的设备拿到的就是没有它的那份 */
+export function purgeSubtask(taskId: string, subId: string) {
+  mutate(
+    (d) => {
+      const t = d.tasks.find((x) => x.id === taskId);
+      const s = t?.subtasks.find((x) => x.id === subId);
+      if (!t || !s || !s.deletedAt) return d;
+      return {
+        ...d,
+        tasks: d.tasks.map((x) => (x.id === taskId ? { ...x, subtasks: x.subtasks.filter((y) => y.id !== subId) } : x)),
+      };
+    },
+    { toast: "已彻底删除" },
+  );
 }
 
 // ---------- 清单 ----------
@@ -1139,7 +1201,7 @@ export function setFoldAll(v: boolean) {
  *  折叠状态本身仍然按任务记、跟数据无关，所以这个判断只放在**入口**，不放进 setChainFolded */
 export function hasChain(taskId: string): boolean {
   const t = appStore.getState().data.tasks.find((x) => x.id === taskId);
-  return !!t && t.subtasks.filter((s) => !s.done && !s.droppedAt).length >= 2;
+  return !!t && aliveSubtasks(t).filter((s) => !s.done && !s.droppedAt).length >= 2;
 }
 
 /** 把这件事的链**摆到**指定状态（不是 toggle）。键盘 ←/→ 用：
@@ -1233,6 +1295,25 @@ export function aliveAll(d: Pick<AppData, "tasks">): Task[] {
   return d.tasks.filter((t) => !t.deletedAt);
 }
 
+/** 没删的子任务（v7 起子任务也进回收站，见 model.Subtask.deletedAt）。
+ *  凡是「这件事有哪几步」的语义——拆行、计数、折叠链、搜索、任务卡 / 详情页里那两堆、
+ *  循环推进时复制到副本里的——一律从这儿取，**别各处手写 `!s.deletedAt`**。
+ *  回收站页要的正相反，见 trashedSubtaskRows */
+export function aliveSubtasks(t: Pick<Task, "subtasks">): Subtask[] {
+  return t.subtasks.filter((s) => !s.deletedAt);
+}
+
+/** 回收站里单列的子任务行：母任务还活着、只有这一步被删掉的那些。
+ *  母任务整件事在回收站里时它的子任务**不单列**——跟着母任务走，恢复母任务就一起回来。
+ *  按删除时间倒着排，跟整件事那一列同口径（最近删的在上面） */
+export function trashedSubtaskRows(d: Pick<AppData, "tasks">): DateRow[] {
+  const rows: DateRow[] = [];
+  for (const t of aliveAll(d)) {
+    for (const s of t.subtasks) if (s.deletedAt) rows.push({ task: t, sub: s });
+  }
+  return rows.sort((a, b) => ((a.sub!.deletedAt ?? "") < (b.sub!.deletedAt ?? "") ? 1 : -1));
+}
+
 /** 今天要打的卡（按未打卡在前排好）。今天不用做的习惯也在里面，由界面自己分区 */
 export function habitsForToday(d: AppData, today = todayYMD()): Task[] {
   return sortHabitsForDay(aliveHabits(d), today);
@@ -1276,9 +1357,11 @@ export const SUB_DONE_PEEK = 3;
 export function splitSubtasks(subs: Subtask[]): { open: Subtask[]; done: Subtask[] } {
   // 没做完的按日期排（用户 2026-09-03：「子任务按照时间顺序自动排列」）：有日期的早的在前，
   // 没日期的沉到后面、彼此保持原来的先后（没填日期的继承母任务的日期，互相之间本来就分不出先后）。
-  // sort 是稳定的，同一天的也保持原序。做完的那堆不动：它们按「做完」的先后堆着更符合直觉
+  // sort 是稳定的，同一天的也保持原序。做完的那堆不动：它们按「做完」的先后堆着更符合直觉。
+  // 回收站里的（deletedAt 非空，v7）两堆都不进：调用方传的是整条 task.subtasks，
+  // 在这儿统一挡掉，任务卡和手机详情页就不用各自记得过一遍 aliveSubtasks
   const open = subs
-    .filter((s) => !s.done)
+    .filter((s) => !s.done && !s.deletedAt)
     .map((s, i) => ({ s, i }))
     .sort((a, b) => {
       const da = a.s.due ?? "";
@@ -1289,7 +1372,7 @@ export function splitSubtasks(subs: Subtask[]): { open: Subtask[]; done: Subtask
       return a.i - b.i;
     })
     .map((x) => x.s);
-  return { open, done: subs.filter((s) => s.done) };
+  return { open, done: subs.filter((s) => s.done && !s.deletedAt) };
 }
 
 /** 已完成那堆默不默认收起。
@@ -1311,7 +1394,7 @@ export function openRows(d: Pick<AppData, "tasks">): DateRow[] {
   const rows: DateRow[] = [];
   for (const t of aliveTasks(d)) {
     if (t.done || t.droppedAt) continue;
-    const openSubs = t.subtasks.filter((s) => !s.done && !s.droppedAt);
+    const openSubs = aliveSubtasks(t).filter((s) => !s.done && !s.droppedAt);
     if (openSubs.length === 0) {
       rows.push({ task: t, sub: null });
       continue;
@@ -1329,7 +1412,7 @@ export function openRows(d: Pick<AppData, "tasks">): DateRow[] {
 export function doneRows(d: AppData): DateRow[] {
   const rows: DateRow[] = [];
   for (const t of aliveTasks(d)) {
-    for (const s of t.subtasks) if (s.done) rows.push({ task: t, sub: s });
+    for (const s of aliveSubtasks(t)) if (s.done) rows.push({ task: t, sub: s });
     if (t.done) rows.push({ task: t, sub: null });
   }
   return rows;
@@ -1369,7 +1452,7 @@ export function droppedRows(d: AppData): DateRow[] {
     // `&& !done` 是道防线，不是业务规则：写入口那边两者互斥，但手改过的 JSON、
     // 别处导进来的数据可能两个标记都带着。真撞上就**认完成**——
     // 否则「已完成」切到「全部」时同一行会被画两次，React 的 key 当场撞车
-    for (const s of t.subtasks) if (s.droppedAt && !s.done) rows.push({ task: t, sub: s });
+    for (const s of aliveSubtasks(t)) if (s.droppedAt && !s.done) rows.push({ task: t, sub: s });
     if (t.droppedAt && !t.done) rows.push({ task: t, sub: null });
   }
   return rows;

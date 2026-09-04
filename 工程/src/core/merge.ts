@@ -335,3 +335,36 @@ export function keepLocalOverCloud(local: AppData, remote: AppData, at = new Dat
     graveyard: bury(local.graveyard ?? [], doomed, at),
   };
 }
+
+// ---------- 两份档案是不是同一份 ----------
+
+/**
+ * 云端那份和本机这份**内容上**是不是同一份（v1.12.1，只在登录那一刻用，见 loginCtl）。
+ *
+ * 为什么要有这件事：登录时两边都有内容本来要停下来问「留哪份还是合并」，可两边要是根本
+ * 没差别（多半是同一个账号在这台设备上退出过又登回来），问了等于让用户在两张一模一样的卡里
+ * 挑一张。用户 2026-09-03 原话：「如果云端和本地没有差异就不用差异化合并或者选用什么档」。
+ *
+ * 判据只看用户看得见的东西：
+ *   · 同一套活着的事——id 集合相同，而且每一条的 updatedAt 相等。updatedAt 是 mutate 每次
+ *     真改动都会重新盖的戳，戳一样就是内容一样，不必逐字段比；
+ *   · 同一套清单——id、名字、updatedAt 三样都相等；
+ *   · 回收站里的事、墓碑、专注记录、设置都**不参与**：回收站里的东西用户在界面上数不到，
+ *     墓碑只是同步用的账本，设置本来就不同步。
+ * 宁可判严：任何一处对不上就算「有差异」，退回去照常问——多问一次只是烦，少问一次可能丢东西。
+ */
+export function sameContent(a: AppData, b: AppData): boolean {
+  const alive = (d: AppData) => d.tasks.filter((t) => !t.deletedAt);
+  const ta = alive(a);
+  const tb = alive(b);
+  if (ta.length !== tb.length || a.lists.length !== b.lists.length) return false;
+  // 条数相等 + a 的每一条都在 b 里且戳一样 ⇒ 两个集合相同（id 在一份数据里是唯一的）
+  const stampB = new Map(tb.map((t) => [t.id, t.updatedAt]));
+  for (const t of ta) if (stampB.get(t.id) !== t.updatedAt) return false;
+  const listB = new Map(b.lists.map((l) => [l.id, l]));
+  for (const l of a.lists) {
+    const o = listB.get(l.id);
+    if (o === undefined || o.name !== l.name || o.updatedAt !== l.updatedAt) return false;
+  }
+  return true;
+}

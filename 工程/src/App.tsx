@@ -37,6 +37,7 @@ import { QuickAddSheetHost } from "./mobile/QuickAddSheet";
 import { ActionSheetHost } from "./mobile/ActionSheet";
 import { ListSettingsSheetHost } from "./mobile/ListSettingsSheet";
 import { HabitSheetHost } from "./mobile/HabitSheet";
+import { GuideSheetHost } from "./mobile/GuideSheetHost";
 import { openLogin } from "./mobile/sheetStore";
 // 登录页两端都用：手机上是整页，桌面上是居中弹窗（组件自己分叉）
 import { LoginPageHost } from "./components/LoginPage";
@@ -322,6 +323,7 @@ export default function App() {
           <ActionSheetHost />
           <ListSettingsSheetHost />
           <HabitSheetHost />
+          <GuideSheetHost />
         </>
       )}
       {/* 登录页两端都挂：手机上盖满一整页，桌面上是居中弹窗 */}

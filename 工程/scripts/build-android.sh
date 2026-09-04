@@ -73,11 +73,33 @@ print("  已补上 REQUEST_INSTALL_PACKAGES")
 PY
 fi
 
+# App 自己的安卓安装组件（v1.13.0）：真源在入库的 src-tauri/android/InstallPlugin.kt，
+# gen/ 是可再生的，所以每次都拷一份进去。lib.rs 用 include_bytes! 钉着 gen/ 里这份——
+# 没拷进去 Rust 就编不过，不会再出一个「装得上、点安装才发现少组件」的包。
+KT_SRC="$HERE/src-tauri/android/InstallPlugin.kt"
+KT_DST="$GEN_SRC/app/src/main/java/com/cdpandas/acorn/InstallPlugin.kt"
+if [ -f "$KT_SRC" ]; then
+  mkdir -p "$(dirname "$KT_DST")"
+  if ! cmp -s "$KT_SRC" "$KT_DST"; then
+    cp -f "$KT_SRC" "$KT_DST"
+    echo "=== 已把 InstallPlugin.kt 拷进 gen/android"
+  fi
+else
+  echo "找不到 $KT_SRC（安卓安装组件的真源），停"; exit 1
+fi
+
 # 安卓启动图标必须是橡果自己的：gen/android 里的 mipmap 是 `tauri android init` 时放的 Tauri 默认图标，
 # 用户 2026-09-02 在手机上一眼看到的就是那个黄蓝圈。每次打包前从桌面同一张源图重生成一遍（幂等，10 秒），
 # 顺手删掉它一起生成的 ios/ 与 icon.icns（Windows 项目用不上，别进仓库）。
+#
+# 2026-09-03 起走图标清单 icon-manifest.json，不再把整张 app-icon.png 当安卓前景：
+# 安卓是「前景 + 底色」两层，系统只露出前景中间 72/108 的安全区再套自己的圆角形状，
+# 整张带底板的图当前景就等于放大 1.5 倍再裁，橡果帽子顶到边（用户 v1.12.0 真机所见）。
+# 清单里 default 仍是 app-icon.png（Windows 那套图标逐字节不变），android_fg / android_bg 是
+# 专门为安卓拆出的两层（android-fg.png 橡果本体占画布约 40% 高、四周留白），
+# android_fg_scale 只影响旧机型（Android 7）用的 ic_launcher.png，安卓 8+ 的自适应图标不吃这个值。
 echo "=== 重生成图标（含安卓 mipmap）"
-(cd "$HERE" && npx tauri icon src-tauri/icons/app-icon.png >/dev/null 2>&1 && rm -rf src-tauri/icons/ios src-tauri/icons/icon.icns) || echo "  图标重生成失败（继续打包，但要检查安卓图标）"
+(cd "$HERE" && npx tauri icon src-tauri/icons/icon-manifest.json >/dev/null 2>&1 && rm -rf src-tauri/icons/ios src-tauri/icons/icon.icns) || echo "  图标重生成失败（继续打包，但要检查安卓图标）"
 
 echo "=== 镜像到 NTFS：$MIRROR"
 mkdir -p "$MIRROR"
@@ -92,6 +114,13 @@ robocopy "$HERE_WIN" "$MIRROR_WIN" //MIR //NFL //NDL //NJH //NJS //NP //MT:16 \
 rc=$?
 set -e
 [ "$rc" -lt 8 ] || { echo "robocopy 失败（$rc）"; exit 1; }
+
+# 🔴 v1.13.0 补的坑：gen/android/tauri.settings.gradle 与 app/tauri.build.gradle.kts 是 tauri-build 在
+# build.rs 里按「当前依赖了哪些带安卓端的插件」生成的，它只在自己重跑时重写。S: 上那两份是 8-24 的
+# （只含 dialog / notification），robocopy 每次把旧文件盖回镜像、mtime 比上次 build.rs 还老 → 不重跑 →
+# 后来加的 opener 插件永远编不进 APK，而 Rust 侧启动时又必定 register_android_plugin 它 → 装上即崩
+# （v1.11.1 / v1.12.0 的安卓包就是这样，幸好没装成）。所以每次镜像完先删掉这两份，让 build.rs 重生成。
+rm -f "$MIRROR/src-tauri/gen/android/tauri.settings.gradle" "$MIRROR/src-tauri/gen/android/app/tauri.build.gradle.kts"
 
 echo "=== 打包（$( [ ${#TARGET_ARGS[@]} -eq 0 ] && echo 四架构 || echo arm64 )${PROFILE_ARGS:+ · debug}）"
 cd "$MIRROR"
@@ -158,6 +187,8 @@ while IFS= read -r apk; do
     --key-pass pass:android --ks-key-alias androiddebugkey \
     --out "$(cygpath -w "$final")" "$(cygpath -w "$aligned")"
   rm -f "$aligned" "$aligned.idsig" "$final.idsig"
+  # 打完必须验：opener 的安卓类 + 橡果自己的 InstallPlugin 都得真在 dex 里（见上面那段坑）
+  python "$HERE/scripts/android-dexcheck.py" "$(cygpath -w "$final")" || { echo "🔴 APK 少了安卓插件类，这个包装上会崩，不收"; rm -f "$final"; exit 1; }
   echo "  $(basename "$final")  $(du -h "$final" | cut -f1)"
   found=1
 done < <(find "$MIRROR/src-tauri/gen/android/app/build/outputs/apk" -name "*.apk" 2>/dev/null)

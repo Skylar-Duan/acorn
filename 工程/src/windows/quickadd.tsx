@@ -22,6 +22,8 @@ interface Ctx {
   whoNames: string[];
   theme: string;
   mode: string;
+  /** 「周末」指周六还是周日，主窗随 context 一起下发；还没收到时当周日 */
+  weekendDay?: "sat" | "sun";
 }
 
 function QuickAddApp() {
@@ -97,6 +99,7 @@ function QuickAddApp() {
         lists={ctx.listNames}
         tags={ctx.tagNames}
         whos={ctx.whoNames}
+        weekendDay={ctx.weekendDay}
         showChips
         inputStyle={{ fontSize: 15, padding: "10px 14px" }}
       />

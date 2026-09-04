@@ -14,8 +14,8 @@ import { todayYMD } from "./dates";
 import { APP_VERSION } from "./model";
 import { isAndroid } from "./platform";
 import {
-  downloadPackage, fetchUpdate, installPackage, isCancelled, shouldOffer, updaterSupported,
-  type InstallOutcome, type UpdateInfo,
+  downloadPackage, fetchUpdate, installPackage, isCancelled, lastInstallError, shouldOffer,
+  updaterSupported, type InstallOutcome, type UpdateInfo,
 } from "./updater";
 
 /**
@@ -259,6 +259,53 @@ export async function checkUpdateNow(): Promise<ManualCheck> {
   return "found";
 }
 
+// ---------- 下好了、只差一步的那个包 ----------
+//
+// 安卓上第一次装要先去系统里开「允许安装未知应用」。开关页在另一个界面，人开完回来再点一次
+// 「下载并安装」——以前这一下会把 12MB 重新下一遍，等第二次进度条时人已经以为又出问题了。
+// 所以包下好之后要是只差系统这一步（needs-permission；安卓上交给安装器之后点了取消也算），
+// 把它的路径记下来，下一次同版本直接交给安装器。记在 localStorage 里：开关页开着的时候
+// 系统可能把橡果杀掉，回来是重新启动的，内存里的东西早没了。
+// 包被系统清掉了怎么办：安装器那边会回 "missing"，调用方当场重新下，不算失败（见 start）。
+
+const READY_KEY = "acorn-update-ready";
+
+/** 已经下好、只差系统那一步的包 */
+export interface ReadyPackage {
+  version: string;
+  path: string;
+}
+
+export function rememberReadyPackage(version: string, path: string): void {
+  const p: ReadyPackage = { version, path };
+  try {
+    localStorage.setItem(READY_KEY, JSON.stringify(p));
+  } catch {
+    /* 记不住只是下次多下一遍 */
+  }
+}
+
+export function forgetReadyPackage(): void {
+  try {
+    localStorage.removeItem(READY_KEY);
+  } catch {
+    /* 同上 */
+  }
+}
+
+/** 这个版本有没有下好的包在等着；有就给路径。换了版本的旧包不算——那是另一个安装包 */
+export function readyPackageFor(version: string): string | null {
+  try {
+    const raw = localStorage.getItem(READY_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<ReadyPackage>;
+    if (typeof p.path !== "string" || p.path === "" || p.version !== version) return null;
+    return p.path;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- 下载 + 安装的共用状态机 ----------
 
 /**
@@ -280,20 +327,38 @@ export const HANDOFF_MSG = isAndroid
   ? "安装包已交给系统安装器。装完系统会自己重开橡果；刚才要是点了取消（首次安装需要允许「安装未知来源应用」），可以再点一次「下载并安装」，或改用浏览器下载手动装。"
   : "安装程序已经启动，但橡果没能自己退出。请手动关掉橡果再继续安装——不退出的话新版本装不进来。";
 
+/** （安卓）系统还没允许橡果装应用时说的话。**不是红字**：什么都没坏，只是要先开一个开关 */
+export const NEEDS_PERMISSION_MSG =
+  "系统要先允许橡果安装应用。已经跳到那个开关，打开后回来再点一次「下载并安装」。";
+
 /** 交接之后界面该停在哪儿。抽成纯函数是为了测得到：这里每一个分支都对应
  *  「用户回到橡果时还点不点得动东西」，卡死过一次的就是这一段 */
 export interface RunRest {
   phase: RunPhase;
   manual: boolean;
   err: string | null;
+  /** 红字底下那行小字：系统报的原话（界面画成「（原因：…）」）。null = 没有可说的 */
+  why: string | null;
+  /** 一句说明，不是错误——比如「先去开那个开关」 */
+  note: string | null;
 }
 
-export function afterInstall(outcome: InstallOutcome): RunRest {
-  if (outcome === "failed") return { phase: "failed", manual: true, err: INSTALL_FALLBACK_MSG };
+/** `why` 默认取最近一次交接失败的原话（lastInstallError）；测试里可以直接递 */
+export function afterInstall(outcome: InstallOutcome, why: string | null = lastInstallError): RunRest {
+  // "missing" 正常到不了这儿（start 里复用的包不见了会当场重下）；万一刚下好的包转眼就没了，
+  // 按失败报、原因在 why 里
+  if (outcome === "failed" || outcome === "missing") {
+    return { phase: "failed", manual: true, err: INSTALL_FALLBACK_MSG, why, note: null };
+  }
+  // 系统还没允许橡果装应用：人已经被送到那个开关了，这儿什么都没坏，
+  // 安安静静回 idle 摆一句说明，等他开完回来再点一次
+  if (outcome === "needs-permission") {
+    return { phase: "idle", manual: false, err: null, why: null, note: NEEDS_PERMISSION_MSG };
+  }
   // 交接前叫停了：什么都没发生，安安静静回到原样，不留红字也不给备用方案
-  if (outcome === "cancelled") return { phase: "idle", manual: false, err: null };
+  if (outcome === "cancelled") return { phase: "idle", manual: false, err: null, why: null, note: null };
   // 装没装成只有用户知道，所以既不报错也不停在「安装中」：把出口全摆出来
-  return { phase: "handed-off", manual: true, err: null };
+  return { phase: "handed-off", manual: true, err: null, why: null, note: null };
 }
 
 export function useUpdateRun() {
@@ -301,6 +366,10 @@ export function useUpdateRun() {
   const [pct, setPct] = useState(0);
   const [got, setGot] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  /** 红字底下那行小字：系统报的原话。跟 err 分开存，界面才画得成小字 */
+  const [why, setWhy] = useState<string | null>(null);
+  /** 一句说明（不是错误）：「先去开那个开关」这种 */
+  const [note, setNote] = useState<string | null>(null);
   /** 备用方案（浏览器下载）该不该露出来 */
   const [manual, setManual] = useState(false);
   /** 正在飞的那次下载。「取消」按钮靠它把 fetch 断掉 */
@@ -318,6 +387,8 @@ export function useUpdateRun() {
     ctrlRef.current = null;
     setPhase("idle");
     setErr(null);
+    setWhy(null);
+    setNote(null);
     setManual(false);
     setPct(0);
     setGot(0);
@@ -328,33 +399,57 @@ export function useUpdateRun() {
     const mine = () => runIdRef.current === myRun;
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
-    setPhase("downloading");
+    // 上一次下好、只差系统那一步的包还在？在就不重下，直接交给安装器
+    const ready = readyPackageFor(info.version);
+    setPhase(ready ? "installing" : "downloading");
     setErr(null);
+    setWhy(null);
+    setNote(null);
     setManual(false);
     setPct(0);
     setGot(0);
-    try {
-      const path = await downloadPackage(info, ({ received, total }) => {
+    const fetchPackage = () =>
+      downloadPackage(info, ({ received, total }) => {
         if (!mine()) return;
         setGot(received);
         setPct(total > 0 ? Math.round((received / total) * 100) : 0);
       }, ctrl.signal);
+    // 安装器起来了，停不下来了：界面从这一刻起不再给「稍后再说」
+    const onLaunched = () => {
+      if (mine()) setPhase("launching");
+    };
+    try {
+      let path = ready ?? (await fetchPackage());
       if (!mine()) return; // 已经被取消（或被新的一轮顶掉）：包下好了也不装
       setPhase("installing");
       // 交接要走好几秒（拉起安装器 → 落盘 → 退掉自己），这几秒里「稍后再说」必须真的算数：
       // runId 那道闸门只让**返回之后**的 setPhase 失效，拦不住已经跑起来的 installPackage，
       // 所以把 mine 递进去，让它每一步之前自己再看一眼
+      let outcome = await installPackage(path, mine, onLaunched);
+      if (outcome === "missing" && ready !== null) {
+        // 上次留下的包被系统清掉了：这一次就老老实实重新下，别让人再点一遍
+        forgetReadyPackage();
+        if (!mine()) return;
+        setPhase("downloading");
+        path = await fetchPackage();
+        if (!mine()) return;
+        setPhase("installing");
+        outcome = await installPackage(path, mine, onLaunched);
+      }
       if (!mine()) return;
-      const rest = afterInstall(
-        await installPackage(path, mine, () => {
-          // 安装器起来了，停不下来了：界面从这一刻起不再给「稍后再说」
-          if (mine()) setPhase("launching");
-        }),
-      );
-      if (!mine()) return;
+      // 只差系统那一步的包留着，下次同版本不重下（安卓上交给安装器之后点了取消也算——
+      // HANDOFF_MSG 就是让人再点一次）；装上了 / 失败了 / 包不见了都清掉；叫停了不动
+      if (outcome === "needs-permission" || (isAndroid && outcome === "handed-off")) {
+        rememberReadyPackage(info.version, path);
+      } else if (outcome !== "cancelled") {
+        forgetReadyPackage();
+      }
+      const rest = afterInstall(outcome);
       setPhase(rest.phase);
       setManual(rest.manual);
       setErr(rest.err);
+      setWhy(rest.why);
+      setNote(rest.note);
     } catch (e) {
       if (!mine()) return; // 作废掉的那一轮，取消时状态已经复位过了
       if (isCancelled(e)) {
@@ -372,5 +467,5 @@ export function useUpdateRun() {
     }
   }, []);
 
-  return { phase, pct, got, err, manual, start, cancel };
+  return { phase, pct, got, err, why, note, manual, start, cancel };
 }

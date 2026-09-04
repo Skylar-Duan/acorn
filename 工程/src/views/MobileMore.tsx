@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { LIST_COLORS } from "../core/model";
 import {
-  addList, aliveTasks, allTags, allWho, navigate, useApp,
+  addList, aliveTasks, allTags, allWho, navigate, trashedSubtaskRows, useApp,
 } from "../core/store";
 import { syncFootState, useSync } from "../core/syncCtl";
 import MobileHead from "../mobile/MobileHead";
@@ -39,7 +39,8 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
   const lists = [...rawLists].sort((a, b) => a.order - b.order);
   const whoList = allWho({ tasks, settings });
   const tagList = allTags({ tasks });
-  const trashCount = tasks.filter((t) => t.deletedAt).length;
+  // 跟侧栏角标同口径：整件事 + 单独删掉的子任务（v1.13.0）
+  const trashCount = tasks.filter((t) => t.deletedAt).length + trashedSubtaskRows({ tasks }).length;
 
   const go = (fn: () => void) => () => {
     fn();

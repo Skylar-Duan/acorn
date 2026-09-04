@@ -187,3 +187,104 @@
   .cal-nav button { min-height: 34px; }
   .cal-nav .all-sort button { min-height: 30px; }
 }
+
+/* ---------- 手机端（.mshell，v1.12.1） ----------
+   上面那段窄屏媒体查询在手机上照样生效（390 < 760），这一节只盖它盖得不对的地方。
+   每一条都挂在 .mshell 下面：手机版 CSS 是组件按需引入的，打包后谁排前谁排后并不稳，
+   多一层类名靠优先级赢，不靠加载顺序（mobile-shell.css 文件头那两条纪律）。
+
+   PM v1.12.0 真机反馈（图4）：「留白太多，正好那个背景还卡在日期中间，这个拥挤度、
+   下面的留白不符合审美」。改法：
+   ① 月视图的格子定高 56px，不再撑满整屏；一格只画「日期 + 最多三颗点」，不塞文字；
+   ② 网格底下**常驻**「这一天」的列表（默认今天，点别的格子切过去），下半屏是内容不是空白；
+   ③ 顶栏后面那片风景改成跟顶栏等高（MobileHead 的 sceneFit，样式在 mobile-shell.css），
+      下缘落在顶栏底，不再切进星期行。 */
+
+/* 顶栏第二行：月/周 + ‹ 今天 › + 全部/计划/已完成 三组在 390 宽上排不成一行，
+   .mhead-extra 默认是横着滑的，「已完成」被切在屏幕外面（v1.12.0 截图就是这样）。
+   这儿让它折行：第一行「月/周」贴左、「‹ 今天 ›」贴右，第二行是筛选；
+   宽一点的屏（430）排得下就自然并成一行，不写死 */
+.mshell .mhead-fit .mhead-extra { flex-wrap: wrap; overflow: visible; }
+.mshell .mhead-fit .cal-nav { flex: 1 1 auto; }
+.mshell .mhead-fit .cal-nav .all-sort { margin-right: auto; }
+
+/* 星期行：一行灰色小字排在纸的上面当说明。左右内边距跟网格一致，七列才对得齐 */
+.mshell .cal-week { padding: 0 4px 8px; }
+
+/* 网格本身是一张纸：跟 .mcard 同一副长相（22px 圆角、两层投影、不描边）。
+   格子之间不再画发丝线——一格只有一个数字和几颗点，线是多余的 */
+.mshell .cal-grid {
+  gap: 0;
+  padding: 6px 4px 8px;
+  background: var(--card);
+  border: 0;
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-card-shadow);
+}
+/* 月视图：格子定高 56px（PM 定的 56–60 那一档）。一格是「数字在上、点在下」竖着排、居中；
+   数字底下那一排点永远占位（哪怕一颗都没有），一行里的数字才不会上下参差 */
+.mshell .cal-grid:not(.week) { grid-auto-rows: 56px; }
+.mshell .cal-grid:not(.week) .cal-cell {
+  flex-flow: column nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+}
+.mshell .cal-cell,
+.mshell .cal-cell.dim { background: transparent; }
+.mshell .cal-cell.dim .cal-num { color: var(--ink-3); }
+.mshell .cal-cell.dim .cal-dots { opacity: .45; }
+.mshell .cal-num { width: 28px; height: 28px; font-size: 14px; color: var(--ink); }
+/* 点开的那一格：数字底下垫一颗 accent-soft 的圆。整格涂色描边那套是桌面拖放用的，这儿卸掉 */
+.mshell .cal-cell.cal-picked { background: transparent; box-shadow: none; }
+.mshell .cal-cell.cal-picked .cal-num { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* 今天永远是实心圆，点没点开都一样。写在 picked 之后：同一格既是今天又是点开的那格时它得赢 */
+.mshell .cal-cell .cal-num.today { background: var(--accent); color: var(--on-accent); }
+
+/* 一格里那几颗点：计划 accent / 逾期 warn / 已完成 ok，最多三颗（哪几颗见 Calendar.tsx 的 dayDots） */
+.mshell .cal-dots { display: flex; align-items: center; gap: 3px; height: 6px; }
+.mshell .cal-dot { width: 6px; height: 6px; border-radius: 50%; }
+.mshell .cal-dot.plan { background: var(--accent); }
+.mshell .cal-dot.late { background: var(--warn); }
+.mshell .cal-dot.ok { background: var(--ok); }
+
+/* 周视图：七列拍成七行的写法留着（上面窄屏块里），这儿只把行排整齐：
+   日期圆 · 周几 · 那几颗点，横着一行，行与行之间一根发丝线 */
+.mshell .cal-grid.week { padding: 0 4px; }
+.mshell .cal-grid.week .cal-cell { flex-wrap: nowrap; gap: 10px; padding: 0 10px; min-height: 48px; }
+.mshell .cal-grid.week .cal-cell + .cal-cell { border-top: 1px solid var(--m-sep); }
+.mshell .cal-grid.week .cal-wd { flex: none; font-size: var(--fs-sm); color: var(--ink-2); }
+
+/* 网格底下「这一天」的列表：一颗胶囊标题（跟今天页的段标题同款）+ 一张 .mcard 里的行
+   （MobileRow：点一行拉出任务详情那张纸，左右滑跟别处一样）。
+   窄屏块里那套「自带边框的小卡」在这儿整个卸掉 */
+.mshell .cal-daylist {
+  margin-top: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* 正文已经有 12px 内边距：胶囊那 18px 外边距收成 6px（跟习惯页同一个数），卡片贴到 0 */
+.mshell .view-body.cal-body .group-head.split { margin: 18px 6px 8px; }
+.mshell .view-body.cal-body .mcard { margin-left: 0; margin-right: 0; }
+/* 胶囊右边那句「N 件」 */
+.mshell .cal-daylist-n {
+  margin-left: auto;
+  flex: none;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* 空的那天：一句话居中，摆在一张同样长相的纸上——下半屏才不至于又空回去 */
+.mshell .cal-daylist-empty {
+  padding: 26px 18px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  background: var(--card);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-card-shadow);
+}

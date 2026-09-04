@@ -27,6 +27,18 @@ const BACKUP_PREFIXES: [&str; 3] = ["data", "pre-restore", "pre-import"];
 
 struct DataDir(Mutex<PathBuf>);
 
+/// 安卓：App 自己那个 InstallPlugin.kt 的句柄，install_apk 命令靠它把 APK 交给系统安装器。
+/// Err(原话) = 启动时没注册上（类没编进这个包）。**存下来而不是抛掉**：注册失败要是在 Builder 里
+/// 一抛，整个 App 启动即崩、连界面都出不来；留着让 install_apk 把原因交给界面那行小字。
+#[cfg(target_os = "android")]
+struct InstallHandle<R: tauri::Runtime>(Result<tauri::plugin::PluginHandle<R>, String>);
+
+/// 编译期钉住：InstallPlugin.kt 必须在盘上。gen/android/ 是可再生目录（不入库），文件不在时
+/// 宁可这里编不过，也不能出一个「装得上、点安装才发现少组件」的包。
+/// （只读一下、不用它：匿名 const 不进二进制，只让 rustc 检查文件存在。）
+#[cfg(target_os = "android")]
+const _: &[u8] = include_bytes!("../gen/android/app/src/main/java/com/cdpandas/acorn/InstallPlugin.kt");
+
 // ---------- 配置（数据目录指针存在本机 AppData，数据本体在指针指向的地方） ----------
 
 /// 默认数据目录：本机应用数据区 `%APPDATA%\com.cdpandas.acorn\userdata`。
@@ -707,7 +719,7 @@ fn save_download_raw(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result
 /// 旧 uninstaller 压根不会启动，钩子一次都不执行。装完还登录着，同步照常。
 ///
 /// 不加 `#[cfg(desktop)]`：invoke_handler 那张表是两端共用的一张。手机上装 APK 走的是
-/// 系统安装器（opener 插件），这条命令在安卓上永远不会被调到。
+/// 下面的 install_apk（App 自己的安卓插件），这条命令在安卓上永远不会被调到。
 #[tauri::command]
 fn run_installer(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
@@ -719,6 +731,43 @@ fn run_installer(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("无法启动安装程序：{e}"))?;
     Ok(())
+}
+
+/// 安卓：把下好的 APK 交给系统安装器（App 自己的安卓插件 InstallPlugin.kt）。
+///
+/// 为什么不能用 opener 插件的 openPath：它的安卓实现只有一个 `open(url)`，拿到缓存目录里的
+/// 裸文件路径就直接 `Intent(ACTION_VIEW, path.toUri())`——既没有 content:// 也没有 mime，
+/// 系统找不到能开它的 Activity，每一台手机都失败（v1.12.0 之前 App 内安装从来没成功过，就是这个原因）。
+/// InstallPlugin 走 FileProvider 出 content:// URI、带上 APK 的 mime 再拉起安装界面；
+/// 系统还没允许橡果装应用时，先把用户送到那个开关，回 `{ "launched": false, "reason": "permission" }`。
+///
+/// 递过去的包不在缓存里了（复用上次下好的包、但系统清过缓存）回 `{ "launched": false, "reason": "missing" }`，
+/// 前端据此当场重新下载，不算失败。
+///
+/// 回话原样透给前端：`{ "launched": true }` 或上面那两个。插件里任何异常都以 Err(字符串) 回来，
+/// 启动时插件压根没注册上（类没编进包）也是 Err(字符串)、原话里带注册失败的原因——
+/// 前端把它画成小字，用户能把真实原因原样念给我们，不用再猜是哪台手机的问题。
+///
+/// 不加 `#[cfg(target_os = "android")]`：invoke_handler 那张表两端共用。桌面上前端不会调它，真调到只报错。
+/// 写成 async：run_mobile_plugin 要阻塞等安卓那边回话，别占着主线程。
+#[tauri::command]
+async fn install_apk(app: AppHandle, path: String) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        let h = app.state::<InstallHandle<tauri::Wry>>();
+        return match &h.0 {
+            Ok(plugin) => plugin
+                .run_mobile_plugin::<serde_json::Value>("install", serde_json::json!({ "path": path }))
+                .map_err(|e| e.to_string()),
+            // 启动时就没注册上：这个包里没带安装组件。说清楚让人改用浏览器下载，别让他在这儿猜
+            Err(why) => Err(format!("这个安装包里没带安卓的安装组件，装不了（{why}）")),
+        };
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, path);
+        Err("只有安卓才走这条".into())
+    }
 }
 
 // ---------- 冒烟自检 ----------
@@ -819,7 +868,8 @@ pub fn run() {
         .manage(DataDir(Mutex::new(read_configured_dir_early())))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
-        // 「用系统方式打开」。安卓上靠它把下好的 APK 交给系统安装器
+        // 「用系统方式打开」。现在只有「改用浏览器下载」在用它开链接；
+        // 安卓装 APK **不走它**（见 install_apk：它的安卓实现递不出 content:// URI）
         .plugin(tauri_plugin_opener::init());
 
     // 单实例 / 全局快捷键 / 开机自启：手机上没有这些概念，装了也起不来
@@ -833,6 +883,25 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ));
+
+    // 安卓：把 APK 交给系统安装器的那个 Kotlin 插件（gen/android/.../com/cdpandas/acorn/InstallPlugin.kt），
+    // 前端走 install_apk 命令。类是按「包名 + 类名」反射加载的，文件位置和类名一字都不能差。
+    //
+    // 注册失败**不许用 ? 抛**：Builder 里任何一个插件 setup 报错，整个 App 启动即崩、连界面都出不来
+    // （类没编进包时就是 ClassNotFoundException——gen/ 是可再生目录，.kt 没跟着回来就会这样）。
+    // 把原话存进句柄，让 install_apk 在人点「下载并安装」时把它交给界面那行小字。
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("acorn-install")
+            .setup(|app, api| {
+                let h = api
+                    .register_android_plugin("com.cdpandas.acorn", "InstallPlugin")
+                    .map_err(|e| e.to_string());
+                app.manage(InstallHandle(h));
+                Ok(())
+            })
+            .build(),
+    );
 
     builder
         .setup(|_app| {
@@ -912,6 +981,7 @@ pub fn run() {
             save_download,
             save_download_raw,
             run_installer,
+            install_apk,
             is_smoke,
             write_smoke_report,
             exit_app,

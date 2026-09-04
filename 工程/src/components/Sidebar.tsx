@@ -19,6 +19,7 @@ import {
   addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
   moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
   setQuickAddOpen, setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
+  trashedSubtaskRows,
 } from "../core/store";
 import { APP_VERSION, LIST_COLORS } from "../core/model";
 import { forceFoldOpen, useFold } from "../core/useFold";
@@ -379,7 +380,8 @@ export default function Sidebar(
       // 按「件」算，跟点进去标题上那个「N 件未完成」是同一个数。
       // 一件事拆成几行子任务时，侧栏显示 3 而视图标题显示 1 会让人以为哪儿漏了
       plan: rowTaskIds(rows).length,
-      trash: tasks.filter((t) => t.deletedAt).length,
+      // 回收站里一行一条：整件事 + 单独删掉的子任务（v1.13.0），角标跟页面里的行数对得上
+      trash: tasks.filter((t) => t.deletedAt).length + trashedSubtaskRows({ tasks }).length,
       habits: habitsOpenToday({ tasks }, today),
     }),
     [tasks, open, rows, today],

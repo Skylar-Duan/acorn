@@ -444,7 +444,8 @@ describe("视图接线", () => {
     expect(listViewSource).toContain("const shown = useMemo(() => groups.flatMap((g) => g.rows), [groups]);");
     expect(listViewSource).toContain("{g.rows.map((t) =>");
     expect(listViewSource).toContain("const orderedIds = useMemo(() => shown.map((t) => t.id), [shown]);");
-    expect(listViewSource).toContain("{shown.length === 0 && (");
+    // v7 起回收站页还单列已删的子任务（subRows），空态得把它们也算上——但判的仍是钉过的 shown
+    expect(listViewSource).toContain("{shown.length === 0 && subRows.length === 0 && (");
     // 空组照旧不画，但判的是钉过之后这一组还剩什么
     expect(listViewSource).toContain("{g.rows.length > 0 && g.label && (");
   });

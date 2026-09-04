@@ -11,7 +11,7 @@ import { describeRepeat } from "../core/recur";
 import { LONG_PRESS_MS, SLOP_PX } from "../core/touchSort";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
-  updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority, dropTasks, dropSubtask,
+  updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority, dropTasks, dropSubtask, aliveSubtasks,
 } from "../core/store";
 
 export function WhoBadge({ who }: { who: string }) {
@@ -96,7 +96,8 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   const isDropped = sub ? !!sub.droppedAt : !!task.droppedAt;
   const overdue = !isDone && !isDropped && !!due && cmpYMD(due, today) < 0;
   // 「N/total」是进度，放弃掉的那几步既不算做完也不该占分母——不然一件事永远差那么一两条
-  const counted = task.subtasks.filter((s) => !s.droppedAt);
+  // 进了回收站的那几步不进分母：卡里看不见的步，行尾也不该数（v1.13.0）
+  const counted = aliveSubtasks(task).filter((s) => !s.droppedAt);
   const subDone = counted.filter((s) => s.done).length;
   // 「了结」= 做完了 **或者** 不做了。顺延徽标原来的判据是 `!task.done`，
   // 而放弃的那件事 done 仍然是 false，于是「顺延×4」照样跟去「已完成」视图里站着——
@@ -370,7 +371,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           </span>
         )}
         {!dateOnlyTail && !sub && counted.length > 0 && (
-          <span title={counted.length === task.subtasks.length ? undefined : "放弃的那几步不算进这个进度"}>
+          <span title={counted.length === aliveSubtasks(task).length ? undefined : "放弃的那几步不算进这个进度"}>
             {subDone}/{counted.length}
           </span>
         )}

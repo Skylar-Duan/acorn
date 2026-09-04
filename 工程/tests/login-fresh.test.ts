@@ -21,8 +21,9 @@ import * as cloud from "../src/core/cloud";
 import * as persist from "../src/core/persist";
 import { signOut, syncStore } from "../src/core/syncCtl";
 import {
-  dedupeListsByName, dedupeSameTasks, keepLocalOverCloud, mergeData,
+  dedupeListsByName, dedupeSameTasks, keepLocalOverCloud, mergeData, sameContent,
 } from "../src/core/merge";
+import { signInToast } from "../src/core/useAuthFlow";
 import {
   DEFAULT_LIST_NAMES, LOGIN_LATER_KEY, isLoginLater, isPristineLocal, markLoginLater,
   planLoginData, shouldOfferLogin,
@@ -461,6 +462,71 @@ describe("A · 用这台设备上的那份（云端换成本机这份）", () =>
   });
 });
 
+// ------------------------------------------------------- A · 两边是不是同一份（v1.12.1）
+
+describe("A · 云端和本机是不是同一份（一样就不问）", () => {
+  const NEW = "2026-09-02T00:00:00.000Z";
+  /** 两边各自造一份内容相同的档案：对象不同、内容一样 */
+  function same(): AppData {
+    return {
+      ...brandNew(),
+      lists: [list("w", "工作", 0), list("h", "生活", 1)],
+      tasks: [task("t1", "交周报", "w", { due: "2026-09-10" }), task("t2", "买菜", "h")],
+    };
+  }
+
+  it("同一套事、同一套清单 → 同一份", () => {
+    expect(sameContent(same(), same())).toBe(true);
+  });
+
+  it("一条事的改动时刻不一样 → 有差异（戳一样才是内容一样）", () => {
+    const b = same();
+    b.tasks[0] = { ...b.tasks[0], updatedAt: NEW };
+    expect(sameContent(same(), b)).toBe(false);
+  });
+
+  it("一边多一条事 / 少一条事 → 有差异", () => {
+    const more = same();
+    more.tasks.push(task("t3", "多出来的", null));
+    expect(sameContent(same(), more)).toBe(false);
+    expect(sameContent(more, same())).toBe(false);
+  });
+
+  it("同一条事换了 id → 有差异（那是两条）", () => {
+    const b = same();
+    b.tasks[1] = { ...b.tasks[1], id: "t2-other" };
+    expect(sameContent(same(), b)).toBe(false);
+  });
+
+  it("清单改过名 / 多一条清单 → 有差异", () => {
+    const renamed = same();
+    renamed.lists[0] = { ...renamed.lists[0], name: "公司" };
+    expect(sameContent(same(), renamed)).toBe(false);
+    const extra = same();
+    extra.lists.push(list("r", "读书", 2));
+    expect(sameContent(same(), extra)).toBe(false);
+  });
+
+  it("回收站里的事、墓碑、专注记录、设置都不参与——用户在界面上数不到它们", () => {
+    const b = same();
+    b.tasks.push(task("gone", "删掉的", null, { deletedAt: OLD }));
+    b.graveyard = [{ id: "x", at: OLD }];
+    b.sessions = [{ taskId: null, date: "2026-09-01", minutes: 25, startedAt: OLD }];
+    b.settings = { ...b.settings, theme: "ocean" };
+    expect(sameContent(same(), b)).toBe(true);
+  });
+
+  it("一边的那条事进了回收站 → 有差异（活着的集合不一样了）", () => {
+    const b = same();
+    b.tasks[0] = { ...b.tasks[0], deletedAt: OLD };
+    expect(sameContent(same(), b)).toBe(false);
+  });
+
+  it("两边都是空的 → 同一份", () => {
+    expect(sameContent({ ...brandNew(), lists: [], tasks: [] }, { ...brandNew(), lists: [], tasks: [] })).toBe(true);
+  });
+});
+
 // ------------------------------------------------------- A · 登录那一刻的实际走向
 
 describe("A · 登录时怎么处置本机数据", () => {
@@ -543,6 +609,53 @@ describe("A · 登录时怎么处置本机数据", () => {
       return "merge";
     });
     expect(seenWhileAsking).toBe(mine);
+  });
+
+  // v1.12.1（用户 2026-09-03：「如果云端和本地没有差异就不用差异化合并或者选用什么档」）
+  it("两边一模一样 → 不问，直接用；回执也不说「正在合并」", async () => {
+    appStore.setState({ data: cloudData() }); // 内容跟云端那份一样，只是对象不同
+    const ask = vi.fn(async (_info: LoginAsk) => "cloud" as const);
+    const out = await signInWithLocalData({ ...SESSION }, ask);
+    expect(out.plan).toBe("ask"); // 本来是要问的那条路
+    expect(ask).not.toHaveBeenCalled();
+    expect(out.asked).toBe(false);
+    expect(out.same).toBe(true);
+    expect(out.action).toBe("merge"); // 合并一份跟自己一样的东西 = 什么都没发生
+    expect(pullOnly).toHaveBeenCalledTimes(1);
+    const d = appStore.getState().data;
+    expect(d.tasks.map((t) => t.title)).toEqual(["云端记的事"]);
+    expect(d.lists.map((l) => l.name)).toEqual(["工作"]);
+    // 登录态照常装上、照常推一轮，版本号才跟云端接得上
+    expect(syncStore.getState().session?.email).toBe("a@b.c");
+    expect(syncOnce).toHaveBeenCalledTimes(1);
+    // 回执说的是「同一份」，不是「正在合并两端数据」
+    const msg = signInToast(out);
+    expect(msg).toContain("同一份");
+    expect(msg).not.toContain("合并");
+    // useAuthFlow 那边不许再拿 fallbackMsg（那几句都是「正在合并 / 正在传上去」）盖掉它
+    expect(authFlowSource).toContain("!out.same");
+  });
+
+  it("只差一条事的改动时刻 → 照样问（戳不一样就是内容不一样）", async () => {
+    const mine = cloudData();
+    mine.tasks[0] = { ...mine.tasks[0], updatedAt: "2026-09-02T00:00:00.000Z" };
+    appStore.setState({ data: mine });
+    const ask = vi.fn(async (_info: LoginAsk) => "merge" as const);
+    const out = await signInWithLocalData({ ...SESSION }, ask);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(out.asked).toBe(true);
+    expect(out.same).toBeFalsy();
+  });
+
+  it("本机多一条事 → 照样问", async () => {
+    const mine = cloudData();
+    mine.tasks.push(task("t1", "本机多记的一条", null));
+    appStore.setState({ data: mine });
+    const ask = vi.fn(async (_info: LoginAsk) => "merge" as const);
+    const out = await signInWithLocalData({ ...SESSION }, ask);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(out.asked).toBe(true);
+    expect(out.same).toBeFalsy();
   });
 
   it("用户选了合并 → 两边的东西都在", async () => {

@@ -3,13 +3,13 @@
 // 2. 「查不到」跟「已是最新」混成一个 null——断网时界面会骗人说「已经是最新版了」
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  afterInstall, checkUpdateNow, dismissUpdate, INSTALL_FALLBACK_MSG, skippedVersion,
-  skipVersion, updateStore,
+  afterInstall, checkUpdateNow, dismissUpdate, INSTALL_FALLBACK_MSG, NEEDS_PERMISSION_MSG,
+  readyPackageFor, skippedVersion, skipVersion, updateStore,
 } from "../src/core/updateCtl";
 import {
   compareVersions, downloadPackage, DOWNLOAD_CANCELLED, DOWNLOAD_STALL_MS, EXIT_GRACE_MS,
-  fetchUpdate, installPackage, isCancelled, isNewer, isRequiredForSync, packageName,
-  parseManifest, shouldOffer, UPDATE_CHANNEL,
+  fetchUpdate, installPackage, isCancelled, isNewer, isRequiredForSync, lastInstallError,
+  packageName, parseManifest, shouldOffer, UPDATE_CHANNEL,
 } from "../src/core/updater";
 import { DATA_VERSION } from "../src/core/model";
 
@@ -20,10 +20,15 @@ vi.mock("../src/core/persist", async (importOriginal) => ({
   inTauri: true,
 }));
 
-// 落盘和拉起安装器都是 Rust 那边的事，这儿只要它们「成功了」
+/** 拉起安装器那一步要不要装作失败。Rust 的 Err(String) 到前端就是裸字符串，不是 Error */
+const ipc = vi.hoisted(() => ({ fail: null as string | null }));
+
+// 落盘和拉起安装器都是 Rust 那边的事，这儿默认只要它们「成功了」
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: async (cmd: string, _arg?: unknown, opts?: { headers?: Record<string, string> }) =>
-    (cmd === "save_download_raw" ? `saved:${opts?.headers?.["acorn-file-name"] ?? ""}` : null),
+  invoke: async (cmd: string, _arg?: unknown, opts?: { headers?: Record<string, string> }) => {
+    if (cmd === "run_installer" && ipc.fail) throw ipc.fail;
+    return cmd === "save_download_raw" ? `saved:${opts?.headers?.["acorn-file-name"] ?? ""}` : null;
+  },
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: async () => undefined,
@@ -346,14 +351,53 @@ describe("交接之后停在哪儿", () => {
     expect(rest.err).toBeNull(); // 装没装成只有用户知道，别先替他报个错
   });
 
-  it("安装界面压根没拉起来：报失败并亮出备用方案", () => {
-    expect(afterInstall("failed")).toEqual({
+  it("安装界面压根没拉起来：报失败并亮出备用方案，系统报的原话另起一行小字（why）", () => {
+    expect(afterInstall("failed", "无法启动安装程序：拒绝访问。 (os error 5)")).toEqual({
       phase: "failed", manual: true, err: INSTALL_FALLBACK_MSG,
+      why: "无法启动安装程序：拒绝访问。 (os error 5)", note: null,
     });
+    // 没有原因可说时也不能糊一个 undefined 上去
+    expect(afterInstall("failed", null).why).toBeNull();
+  });
+
+  it("拉起安装器失败：报 failed，系统报的原话留在 lastInstallError 里；下一次交接开头清零", async () => {
+    ipc.fail = "无法启动安装程序：拒绝访问。 (os error 5)";
+    try {
+      expect(await installPackage("C:/tmp/Acorn_1.9.1.exe")).toBe("failed");
+      expect(lastInstallError).toBe("无法启动安装程序：拒绝访问。 (os error 5)");
+      // afterInstall 不递第二个参数时就是从这儿取的
+      expect(afterInstall("failed").why).toBe("无法启动安装程序：拒绝访问。 (os error 5)");
+    } finally {
+      ipc.fail = null;
+    }
+    vi.useFakeTimers();
+    const done = installPackage("C:/tmp/Acorn_1.9.1.exe");
+    await vi.advanceTimersByTimeAsync(EXIT_GRACE_MS + 1000);
+    expect(await done).toBe("handed-off");
+    expect(lastInstallError).toBeNull();
   });
 
   it("交接之前点了「稍后再说」：什么都没发生，安安静静回 idle", () => {
-    expect(afterInstall("cancelled")).toEqual({ phase: "idle", manual: false, err: null });
+    expect(afterInstall("cancelled")).toEqual({
+      phase: "idle", manual: false, err: null, why: null, note: null,
+    });
+  });
+
+  it("（安卓）系统还没允许装应用：不是错误——回 idle 摆一句说明，等他开完开关回来再点", () => {
+    expect(afterInstall("needs-permission")).toEqual({
+      phase: "idle", manual: false, err: null, why: null, note: NEEDS_PERMISSION_MSG,
+    });
+  });
+
+  it("（安卓）复用的包不见了（missing）万一漏到界面上：按失败报，原因在 why 里", () => {
+    expect(afterInstall("missing", "上次下好的安装包不见了（系统清过缓存），需要重新下载")).toEqual({
+      phase: "failed", manual: true, err: INSTALL_FALLBACK_MSG,
+      why: "上次下好的安装包不见了（系统清过缓存），需要重新下载", note: null,
+    });
+  });
+
+  it("桌面从不复用下好的包：什么都没记过时 readyPackageFor 是 null", () => {
+    expect(readyPackageFor("1.9.1")).toBeNull();
   });
 });
 

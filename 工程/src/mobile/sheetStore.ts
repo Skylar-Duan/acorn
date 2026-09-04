@@ -19,6 +19,10 @@ export type SheetKind =
   | { kind: "actions"; taskId: string; subId?: string }
   /** 清单页「···」点开的清单设置（画板 ⑤） */
   | { kind: "listSettings"; listId: string }
+  /** 「怎么记一句话」的举例卡片（用户 2026-09-03 要的「便捷卡片」）：手机上没有第二个窗口，
+   *  跟电脑那页同一份 GuideContent 抽成一张全高的纸。可以叠在「记一条」上面：
+   *  从那张纸的「?」进来，看完收掉，底下打了一半的那句话还在 */
+  | { kind: "guide" }
   /** 加一个习惯 / 改一个习惯（v1.11.2）。没有 id 是新建，有 id 是编辑那一个。
    *  习惯页的 ＋ 开的是这张纸：从 ＋ 加出来的是任务，从习惯页加出来的得是习惯 */
   | { kind: "habit"; id?: string };

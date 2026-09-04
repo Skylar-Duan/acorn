@@ -36,6 +36,10 @@ export interface MobileHeadProps {
   extra?: ReactNode;
   /** 标题右边那颗有表情的小橡果。**只有「今天」传 true**——见下面 AcornMascot 的注脚 */
   mascot?: boolean;
+  /** 顶栏后面那片风景的高度跟顶栏整块走，而不是固定的 --m-scene-h（v1.12.1）。
+   *  给顶栏底下还挂着两排控件的页面用（日历）：固定高会越过顶栏切进第一行日期的中间。
+   *  样式见 mobile-shell.css 的 .mhead-fit */
+  sceneFit?: boolean;
 }
 
 /**
@@ -94,14 +98,14 @@ export function ProgressRing({ done, total }: { done: number; total: number }) {
 }
 
 export default function MobileHead({
-  title, sub, ring, search = true, onBack, dot, small, right, extra, mascot,
+  title, sub, ring, search = true, onBack, dot, small, right, extra, mascot, sceneFit,
 }: MobileHeadProps) {
   // 顶栏后面那片风景用的就是桌面那六幅（ThemeScene，颜色全走主题 token）。
   // 挂在这儿而不是壳子里：每个视图的第一块都是 .mhead，挂在它身上就等于每页都有，
   // 而且它跟着标题一起钉在顶上——列表滚起来时风景不动，像窗外的景
   const theme = useApp((s) => s.data.settings.theme);
   return (
-    <div className="view-head mhead">
+    <div className={`view-head mhead${sceneFit ? " mhead-fit" : ""}`}>
       {/* z-index:-1 沉在内容之下（样式见 mobile-shell.css 的 .mhead-scene）。
           桌面那幅贴在主区**底部**的水印在手机上已经撤了（App.tsx 只在 !isMobile 时挂），
           否则它会从底部导航条底下露出小半个太阳来——PM 一眼就看见的那个「幽灵圆」 */}

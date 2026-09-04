@@ -22,6 +22,7 @@ import {
   logFocus,
   undo,
   flushSave,
+  aliveSubtasks,
   aliveTasks,
   allWho,
   allTags,
@@ -400,15 +401,19 @@ describe("子任务", () => {
     expect(getTask(id).subtasks[0].doneAt).toBe("2026-08-20T02:00:00.000Z");
   });
 
-  it("removeSubtask 只删指定那条", () => {
+  // v7 起删 = 进回收站：那条还在数组里，只是带上了 deletedAt（细则见 tests/subtask-trash.test.ts）
+  it("removeSubtask 只删指定那条——删掉的进回收站，活着的那条一个字不动", () => {
     const id = addTask({ title: "大事" });
     addSubtask(id, "留");
     addSubtask(id, "删");
     const del = getTask(id).subtasks[1].id;
     removeSubtask(id, del);
     const subs = getTask(id).subtasks;
-    expect(subs).toHaveLength(1);
+    expect(subs).toHaveLength(2);
     expect(subs[0].title).toBe("留");
+    expect(subs[0].deletedAt ?? null).toBeNull();
+    expect(subs[1].deletedAt).toBeTruthy();
+    expect(aliveSubtasks(getTask(id)).map((s) => s.title)).toEqual(["留"]);
   });
 });
 
