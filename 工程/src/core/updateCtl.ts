@@ -14,7 +14,7 @@ import { todayYMD } from "./dates";
 import { APP_VERSION } from "./model";
 import { isAndroid } from "./platform";
 import {
-  downloadPackage, fetchUpdate, installFailureSay, installPackage, installStatusText, installWhy,
+  compareVersions, downloadPackage, fetchUpdate, installFailureSay, installPackage, installStatusText, installWhy,
   isCancelled, lastInstallVia, shouldOffer, updaterSupported, watchInstallResult,
   type InstallOutcome, type UpdateInfo,
 } from "./updater";
@@ -59,6 +59,11 @@ interface UpdateStore {
   found: UpdateInfo | null;
   /** 这次启动是这个版本第一次跑吗 */
   firstRun: FirstRun;
+  /** 这次启动之前，这台设备上装的是哪一版（没装过 / 读不到就是 null）。
+   *  跨版本升级时更新日志要靠它决定「哪几版是这次一起装上的」——
+   *  main.tsx 的 rememberLaunch() 一跑就会把 localStorage 里那个值改成当前版本，
+   *  所以只能在模块初始化这一刻读一次存下来 */
+  prevVersion: string | null;
 }
 
 const MEMO_KEY = "acorn-update-last-check";
@@ -117,7 +122,18 @@ export const updateStore = createStore<UpdateStore>(() => ({
   // 在模块初始化时**只读不写**就算出来：App 第一次渲染就要问它，
   // 等到启动流程跑到某一步再算，那一帧已经过去了
   firstRun: firstRunKind(readLastVersion(), APP_VERSION),
+  prevVersion: readLastVersion(),
 }));
+
+/** 更新日志里「这次一起装上的」是哪几版：比 prev 新的全算（不止最新那一条）。
+ *  用户 2026-09-09 提的：他电脑停在 v1.14.0，一次升到 v1.14.2，
+ *  而弹窗只讲最新那一版（讲的还是手机上的事），中间那版给他做的改动全被折叠起来了。
+ *  prev 为空（头一次装）或只有一条时，退回原来的样子：主卡一条、其余折叠。 */
+export function entriesSince<T extends { version: string }>(list: T[], prev: string | null): T[] {
+  if (!prev) return list.slice(0, 1);
+  const fresh = list.filter((e) => compareVersions(e.version, prev) > 0);
+  return fresh.length > 0 ? fresh : list.slice(0, 1);
+}
 
 /** 记下这次查成功的结果。开机那次和手动那次都走这里，两处口径一致 */
 export function rememberCheck(result: CheckMemo["result"], version: string, today: string = todayYMD()): void {

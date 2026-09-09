@@ -14,7 +14,9 @@ import { useEffect, useState } from "react";
 import { CHANGELOG, type ChangelogEntry } from "../core/changelog";
 import { APP_VERSION } from "../core/model";
 import { setChangelogOpen } from "../core/store";
-import { CHECK_FAILED_MSG, checkUpdateNow, checkedToday, useUpdate, type ManualCheck } from "../core/updateCtl";
+import {
+  CHECK_FAILED_MSG, checkUpdateNow, checkedToday, entriesSince, useUpdate, type ManualCheck,
+} from "../core/updateCtl";
 import { updaterSupported } from "../core/updater";
 
 function fmtDate(ymd: string): string {
@@ -157,7 +159,14 @@ export default function ChangelogDialog() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const [latest, ...older] = CHANGELOG;
+  /** 这次一起装上的是哪几版：跨版本升级时不止一条（用户 2026-09-09 提的——
+   *  他电脑停在 v1.14.0 一次升到 v1.14.2，弹窗却只讲最新那版、讲的还是手机上的事，
+   *  中间那版给他做的改动全折叠着看不见）。头一次装或没跨版本时，就是原来的「最新一条」 */
+  const prevVersion = useUpdate((st) => st.prevVersion);
+  const fresh = entriesSince(CHANGELOG, prevVersion);
+  const freshVers = new Set(fresh.map((e) => e.version));
+  const older = CHANGELOG.filter((e) => !freshVers.has(e.version));
+  const jumped = fresh.length > 1;
   /** 更早的版本一次只摊开一条：这里记的就是「现在摊开的是哪一版」，null = 全收着。
    *  故意不落 localStorage：这是个看完就关的弹窗，每次打开都从「全收着」开始，
    *  最新那版的主卡才是第一眼该看见的东西 */
@@ -182,7 +191,15 @@ export default function ChangelogDialog() {
           </button>
         </header>
         <div className="cl-body">
-          {latest && <Latest e={latest} />}
+          {/* 跨了好几版才更新的，先说一句这次一共带来了哪几版，免得他以为只改了最新那条 */}
+          {jumped && prevVersion && (
+            <p className="cl-jump">
+              你上次用的是 v{prevVersion}，这次一起装上了 {fresh.length} 版的改动：
+            </p>
+          )}
+          {fresh.map((e) => (
+            <Latest key={e.version} e={e} />
+          ))}
           {older.length > 0 && (
             <section className="cl-past">
               <h3>之前的版本</h3>

@@ -31,6 +31,18 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.14.3",
+    date: "2026-09-09",
+    headline: "隔了几版才更新，也不会漏看",
+    highlights: [
+      {
+        title: "一次补上好几版",
+        body: "隔了几版没更新时，装完打开会把这中间每一版做了什么都摊开讲，不再只讲最新那一条、把中间的折叠起来。",
+      },
+    ],
+    minor: "另有一些细节调整。",
+  },
+  {
     version: "1.14.2",
     date: "2026-09-09",
     headline: "手机上装新版，这次装得上了",

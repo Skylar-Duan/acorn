@@ -160,6 +160,9 @@
 .cl-body { overflow-y: auto; padding: 20px 24px 22px; display: flex; flex-direction: column; gap: 22px; }
 
 /* 主卡：最新一版 */
+/* 跨版本升级时顶上那句「这次一起装上了 N 版」。它是一句交代，不抢主卡的戏 */
+.cl-jump { margin: 0 0 10px; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+
 .cl-hero { padding: 22px 22px 18px; border-radius: 16px; background: color-mix(in srgb, var(--accent) 9%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--hair)); }
 .cl-hero-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .cl-hero-ver { font-family: var(--serif); font-size: 30px; font-weight: 700; letter-spacing: 0.01em; color: var(--ink); line-height: 1; }

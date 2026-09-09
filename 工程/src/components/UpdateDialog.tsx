@@ -68,6 +68,12 @@ export default function UpdateDialog() {
         )}
 
         {info.notes && <pre className="up-notes update-notes">{info.notes}</pre>}
+        {/* 这段说明只讲最新那一版（服务器清单里就这一份）。跨了好几版没更新的人看到的
+            可能全是别的平台的事，容易以为「跟我没关系」——所以补一句：中间那几版的改动
+            也一起装上，装完在更新日志里看得到（用户 2026-09-09 提的） */}
+        <p className="update-hint up-skipped">
+          装完打开，更新日志里会列出这次一起装上的所有版本——隔了几版没更新也不会漏看。
+        </p>
 
         {run.phase === "downloading" && (
           <div className="up-progress update-progress">
