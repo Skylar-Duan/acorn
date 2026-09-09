@@ -1,4 +1,5 @@
-// 「一句话记事」说明窗：独立小窗，从随手记的 ? 或设置里打开。
+// 「快捷用语指南」说明窗：独立小窗，从「记一条」的 ? 或设置 → 通用里打开。
+// v1.14.1 起跟设置里的叫法统一（原来这儿叫「一句话记事」，设置里叫另一个名字，同一件事两个名字）。
 // 不碰数据文件——清单/标签/需求方/主题全由主窗随 context 事件下发，这里只负责显示。
 import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -75,7 +76,7 @@ function GuideApp() {
   return (
     <div className="gd-win">
       <div className="gd-win-head">
-        <h1>一句话记事</h1>
+        <h1>快捷用语指南</h1>
         <span className="sub">日期、清单、需求方、重要性、循环，都能写在同一句里</span>
       </div>
       <div className="gd-win-body">

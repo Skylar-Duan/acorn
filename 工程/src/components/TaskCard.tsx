@@ -161,8 +161,13 @@ export default function TaskCard({ task }: { task: Task }) {
   const today = todayYMD();
 
   // 已经做完的子任务沉到最下面，多了还要收起来（只改显示顺序，存的那份数组原样不动）。
-  // 用户口径：「子任务已通过的排到最下面」——上面永远是还欠着的
-  const { open: openSubs, done: doneSubs } = useMemo(() => splitSubtasks(task.subtasks), [task.subtasks]);
+  // 用户口径：「子任务已通过的排到最下面」——上面永远是还欠着的。
+  // 母任务整件事一起传进去：没自己填日期的那几步排序时按母任务的日子算，跟屏幕上显示的一致，
+  // 所以母任务改了日期这一堆也要重排（依赖里带上 due / dueTime）
+  const { open: openSubs, done: doneSubs } = useMemo(
+    () => splitSubtasks(task.subtasks, task),
+    [task.subtasks, task.due, task.dueTime],
+  );
   const autoFold = foldDoneSubs(task.subtasks);
   // 够数才给折叠开关（只勾掉一两条时摊开就是了，不必多一行按钮）。
   // 不够数时强制摊开：否则「先折起来、再取消勾选几条」会把已完成子任务锁成看不见又开不出来

@@ -190,8 +190,8 @@ describe("行为：勾完成 = 推到下一次，不是标完成", () => {
     expect(appStore.getState().data.tasks).toHaveLength(before + 1); // 只有刚建的那件事
     expect(getTask(id).subtasks).toHaveLength(1);
     // 已完成那一堆里一条都不该有
-    expect(splitSubtasks(getTask(id).subtasks).done).toHaveLength(0);
-    expect(splitSubtasks(getTask(id).subtasks).open).toHaveLength(1);
+    expect(splitSubtasks(getTask(id).subtasks, getTask(id)).done).toHaveLength(0);
+    expect(splitSubtasks(getTask(id).subtasks, getTask(id)).open).toHaveLength(1);
   });
 
   it("逾期的补追赶：锚点取 max(旧 due, 今天)，新落点落在未来", () => {

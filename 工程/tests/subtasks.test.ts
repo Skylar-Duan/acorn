@@ -17,6 +17,10 @@ function sub(id: string, title: string, patch: Partial<Subtask> = {}): Subtask {
   return { id, title, done: false, due: null, dueTime: null, priority: null, doneAt: null, ...patch };
 }
 
+/** 这一批分堆用例里的母任务本身也没安排日期——分堆时子任务无从继承，
+ *  排序退化成「保持原序」，正好是这些用例想验的东西 */
+const NO_DUE = { due: null, dueTime: null };
+
 function dataOf(...tasks: ReturnType<typeof newTask>[]): AppData {
   return { ...defaultData(), tasks };
 }
@@ -248,13 +252,13 @@ describe("任务卡分堆：没做完的在上，做完的收在下面", () => {
   ];
 
   it("两堆内部都保持原数组顺序，谁也不会自己动", () => {
-    const { open, done } = splitSubtasks(subs);
+    const { open, done } = splitSubtasks(subs, NO_DUE);
     expect(open.map((s) => s.id)).toEqual(["s2", "s4"]);
     expect(done.map((s) => s.id)).toEqual(["s1", "s3"]);
   });
 
   it("两堆接起来 = 原来「做完的沉到最下面」那个稳定排序，一条不多一条不少", () => {
-    const { open, done } = splitSubtasks(subs);
+    const { open, done } = splitSubtasks(subs, NO_DUE);
     const idx = new Map(subs.map((s, i) => [s.id, i]));
     const old = [...subs].sort(
       (a, b) => Number(a.done) - Number(b.done) || idx.get(a.id)! - idx.get(b.id)!,
@@ -263,12 +267,12 @@ describe("任务卡分堆：没做完的在上，做完的收在下面", () => {
   });
 
   it("没有子任务时两堆都是空的", () => {
-    expect(splitSubtasks([])).toEqual({ open: [], done: [] });
+    expect(splitSubtasks([], NO_DUE)).toEqual({ open: [], done: [] });
   });
 
   it("原数组不被改动", () => {
     const input = [...subs];
-    splitSubtasks(input);
+    splitSubtasks(input, NO_DUE);
     expect(input.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
   });
 });

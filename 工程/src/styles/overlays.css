@@ -175,20 +175,33 @@
 .cl-minor { margin: 14px 0 0; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
 .cl-minor-tag { display: inline-block; margin-right: 8px; padding: 0 7px; border-radius: 999px; font-size: var(--fs-xs); color: var(--ink-3); border: 1px solid var(--hair); vertical-align: 1px; }
 
-/* 之前的版本：一行一版，点开才展开 */
+/* 之前的版本：一行一版，点开才展开。
+   v1.14.1 起是手风琴（同时只摊开一条），标记也从 <details>/<summary> 换成了按钮 + 折叠壳：
+   details 关上那一刻内容直接不渲染，没有中间态可插值，收起只能是硬切。
+   现在跟设置页那一节同一个收法——grid 0fr↔1fr 压高度，内容一直在树上 */
 .cl-past h3 { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--ink-3); margin: 0 0 8px 4px; }
 .cl-old { border: 1px solid var(--hair); border-radius: 12px; background: var(--card); }
 .cl-old + .cl-old { margin-top: 8px; }
-.cl-old summary { list-style: none; display: flex; align-items: baseline; gap: 12px; padding: 11px 14px; cursor: pointer; user-select: none; }
-.cl-old summary::-webkit-details-marker { display: none; }
-.cl-old summary:hover { background: color-mix(in srgb, var(--ink) 3%, var(--card)); border-radius: 12px; }
+.cl-old-btn { width: 100%; display: flex; align-items: baseline; gap: 12px; padding: 11px 14px; text-align: left; cursor: pointer; user-select: none; border-radius: 12px; }
+.cl-old-btn:hover { background: color-mix(in srgb, var(--ink) 3%, var(--card)); }
 .cl-old-ver { font-family: var(--serif); font-weight: 700; font-size: var(--fs-md); color: var(--ink); white-space: nowrap; }
 .cl-old-head { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-old-date { font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cl-old-caret { color: var(--ink-3); font-size: 12px; transition: transform var(--dur-1) var(--ease); }
-.cl-old[open] .cl-old-caret { transform: rotate(180deg); }
-.cl-old[open] summary { border-bottom: 1px solid var(--hair); border-radius: 12px 12px 0 0; }
-.cl-old[open] .cl-old-head { white-space: normal; }
+.cl-old.open .cl-old-caret { transform: rotate(180deg); }
+.cl-old.open .cl-old-btn { border-bottom: 1px solid var(--hair); border-radius: 12px 12px 0 0; }
+.cl-old.open .cl-old-head { white-space: normal; }
+/* 折叠壳：min-width 跟 min-height 成对，grid 子项默认收不到内容最小宽度以下
+   （同 settings.css 的 .set-fold；不写这两条，手机上这块会把弹窗撑出屏幕） */
+.cl-old-fold { display: grid; grid-template-rows: 1fr; overflow: hidden; transition: grid-template-rows var(--dur-2) var(--ease); }
+.cl-old-fold > .cl-old-fold-inner { min-height: 0; min-width: 0; }
+/* 收着的那条内容仍在树上，只是高度压成 0：不关掉命中与朗读的话，看不见的东西照样能被 Tab 摸到。
+   两条 transition 必须写在一起（它是简写，只留 visibility 会把上面那条过渡顶掉） */
+.cl-old-fold.shut {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease), visibility var(--dur-2) var(--ease);
+}
 .cl-old-list { list-style: none; margin: 0; padding: 10px 14px 4px; display: flex; flex-direction: column; gap: 8px; }
 .cl-old-list li { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.65; }
 .cl-old-list li b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 1px; }
@@ -202,7 +215,34 @@
     min-width: 0; width: calc(100vw - 24px); max-width: calc(100vw - 24px);
   }
   .nd-modal { min-width: 0; width: calc(100vw - 24px); }
-  .modal.cl-modal { width: calc(100vw - 16px); max-height: 88vh; margin-top: 5vh; }
+  /* 手机上这一版要读成「屏幕中间偏下的一张卡」，不是「几乎全屏的一张纸」。
+     原来是 width: 100vw−16px / max-height: 88vh / margin-top: 5vh——390×844 实测
+     顶到 42px（真机上就贴在状态栏底下了）、高 743px，占掉 88% 的屏。现在：
+       · 上端 = 状态栏（safe-area）+ 13dvh 的呼吸，先躲开刘海再留一段空
+       · 高度按内容走、封到 76dvh，并且减去上端那段和底部 76px，
+         保证底下给手势条（safe-area-inset-bottom）留得出余量；内容多了在 .cl-body 里滚
+       · 左右从 8px 改成 12px，跟命令面板 / 找回数据那几个窄屏浮层同一档
+       · 圆角借手机端卡片那一档（--m-card-radius，22px）：登录那张悬浮卡就是这个数，
+         桌面的 --r-lg（14px）压在这么大一张卡上会显得方。带保底值是因为 mobile.css
+         只被 src/mobile/* 引入——桌面把窗口拖窄到 760 以下时那个变量不存在，
+         不写保底整条 border-radius 会作废
+     两条 margin-top / max-height 各写两遍是**保底 + 升一档**：老 WebView 不认 dvh 时
+     整条声明作废、回落到前一条的 vh 版本，不会连 max-height 一起丢掉（同 mobile.css 那条铁律的思路）。
+     桌面那份（媒体查询外面那条 .modal.cl-modal）一个字都没动。 */
+  .modal.cl-modal {
+    width: calc(100vw - 24px);
+    border-radius: var(--m-card-radius, 18px);
+    margin-top: calc(var(--m-safe-top, env(safe-area-inset-top, 0px)) + 13vh);
+    margin-top: calc(var(--m-safe-top, env(safe-area-inset-top, 0px)) + 13dvh);
+    margin-bottom: calc(var(--m-safe-bottom, env(safe-area-inset-bottom, 0px)) + 16px);
+    max-height: 76vh;
+    max-height: min(
+      76dvh,
+      calc(100dvh - var(--m-safe-top, env(safe-area-inset-top, 0px))
+                  - var(--m-safe-bottom, env(safe-area-inset-bottom, 0px))
+                  - 13dvh - 76px)
+    );
+  }
   .cl-head { flex-wrap: wrap; padding: 14px 14px 12px 18px; }
   .cl-check { margin-left: 0; order: 3; width: 100%; }
   .cl-x { margin-left: auto; }
@@ -211,6 +251,8 @@
   .cl-hero-ver { font-size: 26px; }
   .cl-cards { grid-template-columns: 1fr; }
   .cl-cards > .cl-card:last-child:nth-child(odd) { grid-column: auto; }
-  .cl-old summary { padding: 10px 12px; flex-wrap: wrap; }
+  /* 那一行在窄屏上换行摆：版本号 + 日期一行，标题整句掉到第二行（省得挤成省略号）。
+     选择器跟着标记从 summary 换成 .cl-old-btn——留着 summary 就是一条永远不生效的死规则 */
+  .cl-old-btn { padding: 10px 12px; flex-wrap: wrap; }
   .cl-old-head { flex-basis: 100%; order: 3; white-space: normal; }
 }

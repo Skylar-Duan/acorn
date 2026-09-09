@@ -779,15 +779,12 @@ export function postponeRows(rows: DateRow[], days = 1) {
               const hit = subHits.find((r) => r.sub!.id === s.id);
               if (!hit) return s;
               // 继承母任务日期的子任务也推得动：把继承来的日期先落成自己的，再往后挪，
-              // 这样只有被推的那条子任务滑走，同一件事的其他子任务原地不动
-              const own = s.due != null;
-              const from = own ? s.due! : t.due;
+              // 这样只有被推的那条子任务滑走，同一件事的其他子任务原地不动。
+              // 「继承来的那天 / 那个钟点」是哪个数，走 subDue / subTime——跟屏幕上显示的、
+              // 跟任务卡里排序用的是同一份口径，这儿不再手抄一遍（2026-09-07）
+              const from = subDue(s, t);
               const base = from && cmpYMD(from, today) > 0 ? from : today;
-              return {
-                ...s,
-                due: addDays(base, days),
-                dueTime: own ? s.dueTime ?? null : s.dueTime ?? t.dueTime,
-              };
+              return { ...s, due: addDays(base, days), dueTime: subTime(s, t) };
             }),
           };
         }
@@ -1414,16 +1411,40 @@ export interface DateRow {
   sub: Subtask | null;
 }
 
-/** 行的有效日期。子任务没填日期 = 继承母任务的（用户口径：默认等于母任务截止日期） */
-export function rowDue(r: DateRow): string | null {
-  return r.sub ? r.sub.due ?? r.task.due : r.task.due;
+/** 母任务身上「日期这一摊」。收窄成结构类型而不是整个 Task：
+ *  任务卡、手机详情页手边就有 task，直接传进去即可；单测也不必为了排个序造一整件事 */
+export interface DueOwner {
+  due: string | null;
+  dueTime: string | null;
 }
 
-/** 行的有效时间。子任务自己排了别的日子就不再继承母任务的钟点——那个钟点是给母任务那天的 */
+/** 子任务的生效日期：自己填了用自己的，没填 = 继承母任务的（界面上显示的就是这个）。
+ *  **全仓只此一处**——rowDue 和任务卡里的排序都走它。这两处口径分过一次家，
+ *  结果就是「显示 9月11日、排序当没日期」，同一天的两条子任务被隔开（2026-09-07 用户报） */
+export function subDue(s: Subtask, parent: DueOwner): string | null {
+  return s.due ?? parent.due;
+}
+
+/** 子任务的生效时间。自己排了别的日子就不再继承母任务的钟点——那个钟点是给母任务那天的 */
+export function subTime(s: Subtask, parent: DueOwner): string | null {
+  if (s.due) return s.dueTime ?? null;
+  return s.dueTime ?? parent.dueTime;
+}
+
+/** 行的有效日期。子任务没填日期 = 继承母任务的（用户口径：默认等于母任务截止日期） */
+export function rowDue(r: DateRow): string | null {
+  return r.sub ? subDue(r.sub, r.task) : r.task.due;
+}
+
+/** 行的有效时间。口径见 subTime */
 export function rowTime(r: DateRow): string | null {
-  if (!r.sub) return r.task.dueTime;
-  if (r.sub.due) return r.sub.dueTime ?? null;
-  return r.sub.dueTime ?? r.task.dueTime;
+  return r.sub ? subTime(r.sub, r.task) : r.task.dueTime;
+}
+
+/** 排序键：日期拼上钟点。没日期的排最后，同一天里写了钟点的排在没钟点的前面。
+ *  日期视图（sortRows）和任务卡里的子任务共用这一个式子，两处的先后才对得上 */
+function dueSortKey(due: string | null, time: string | null): string {
+  return `${due ?? "9999-99-99"}T${time ?? "99:99"}`;
 }
 
 /** 行的有效重要性。子任务没填 = 继承母任务 */
@@ -1438,23 +1459,18 @@ export const SUB_DONE_PEEK = 3;
 /** 任务卡里把子任务分成「还欠着的」和「做完的」两堆。
  *  filter 保留原数组顺序，所以两堆接起来跟原先「做完的沉到最下面」的稳定排序逐条等价，
  *  改成折叠之后视觉上不会有「东西自己动了」。只管显示，存的那份数组一个字节都不动 */
-export function splitSubtasks(subs: Subtask[]): { open: Subtask[]; done: Subtask[] } {
-  // 没做完的按日期排（用户 2026-09-03：「子任务按照时间顺序自动排列」）：有日期的早的在前，
-  // 没日期的沉到后面、彼此保持原来的先后（没填日期的继承母任务的日期，互相之间本来就分不出先后）。
-  // sort 是稳定的，同一天的也保持原序。做完的那堆不动：它们按「做完」的先后堆着更符合直觉。
+export function splitSubtasks(subs: Subtask[], parent: DueOwner): { open: Subtask[]; done: Subtask[] } {
+  // 没做完的按**生效日期**排（用户 2026-09-03：「子任务按照时间顺序自动排列」）：
+  // 自己填了日期的用自己的，没填的用母任务的——跟这一条在屏幕上显示的日期是同一个数，
+  // 走 subDue 不许在这儿另写一套。母任务也没日期时它们一起沉到最后、彼此保持原来的先后。
+  // 同一天里写了钟点的在前（跟今天/计划页 sortRows 同一个 dueSortKey），其余保持原序。
+  // 做完的那堆不动：它们按「做完」的先后堆着更符合直觉。
   // 回收站里的（deletedAt 非空，v7）两堆都不进：调用方传的是整条 task.subtasks，
   // 在这儿统一挡掉，任务卡和手机详情页就不用各自记得过一遍 aliveSubtasks
   const open = subs
     .filter((s) => !s.done && !s.deletedAt)
-    .map((s, i) => ({ s, i }))
-    .sort((a, b) => {
-      const da = a.s.due ?? "";
-      const db = b.s.due ?? "";
-      if (da && db && da !== db) return da < db ? -1 : 1;
-      if (da && !db) return -1;
-      if (!da && db) return 1;
-      return a.i - b.i;
-    })
+    .map((s, i) => ({ s, i, k: dueSortKey(subDue(s, parent), subTime(s, parent)) }))
+    .sort((a, b) => (a.k === b.k ? a.i - b.i : a.k < b.k ? -1 : 1))
     .map((x) => x.s);
   return { open, done: subs.filter((s) => s.done && !s.deletedAt) };
 }
@@ -1463,8 +1479,12 @@ export function splitSubtasks(subs: Subtask[]): { open: Subtask[]; done: Subtask
  *  「还有没做完的」是必要前提：一件事整个做完之后（「已完成」视图里点开的卡片就是这样），
  *  再折叠的话卡片里一条子任务都看不见，只剩一行「显示已完成 N」 */
 export function foldDoneSubs(subs: Subtask[]): boolean {
-  const { open, done } = splitSubtasks(subs);
-  return done.length >= SUB_DONE_PEEK && open.length > 0;
+  // 这里只数个数，不关心谁排在谁前面，所以**不走 splitSubtasks**：
+  // 那个函数现在要知道母任务的日期才排得了序，为了数两个数硬造一个母任务反而更容易写错。
+  // 唯一要跟它对齐的是「回收站里的两堆都不算」——照旧
+  const alive = subs.filter((s) => !s.deletedAt);
+  const done = alive.filter((s) => s.done).length;
+  return done >= SUB_DONE_PEEK && alive.length - done > 0;
 }
 
 /** 未完成的事在日期/总览视图里怎么占行。
@@ -1573,7 +1593,7 @@ export function rowTaskIds(rows: DateRow[]): string[] {
 
 /** 排序：time = 时间优先（同时间按重要性）；priority = 重要性优先（同级按时间）。无日期的都排最后 */
 export function sortRows(rows: DateRow[], mode: "time" | "priority"): DateRow[] {
-  const key = (r: DateRow) => `${rowDue(r) ?? "9999-99-99"}T${rowTime(r) ?? "99:99"}`;
+  const key = (r: DateRow) => dueSortKey(rowDue(r), rowTime(r));
   // 同一件事的几个子任务行挤在一起时，按它们在任务里的先后排，不然顺序看运气
   const subIdx = (r: DateRow) => (r.sub ? r.task.subtasks.findIndex((s) => s.id === r.sub!.id) : -1);
   return [...rows].sort((a, b) => {

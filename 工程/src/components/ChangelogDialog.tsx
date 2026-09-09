@@ -7,6 +7,7 @@
 // 版式（v1.10.0 重做，用户 09-02 的话：「不要弄成这种文本框风格，尤其在一个版本更新内容比较多的情况下」）：
 //   · 最新一版是一块「主卡」：大号版本号 + 一句话 + 几张小卡（每张一个新能力）+ 一行「还有」
 //   · 之前的版本收成一行一版，点开才展开——用户只关心现在这版，旧的留着查而不是摊着看
+//     （v1.14.1 起是手风琴：同时只摊开一条，点开第二条时第一条自己收起，开合都带过渡）
 //   · 顶上一个「检查新版本」：今天查过且是最新就换成绿勾（用户点名），没查过给按钮
 
 import { useEffect, useState } from "react";
@@ -100,31 +101,50 @@ function Latest({ e }: { e: ChangelogEntry }) {
   );
 }
 
-function Older({ e }: { e: ChangelogEntry }) {
-  // 原生 details：不用管状态，键盘可达，收起时就是一行
+/** 更早那几版的开合规则：点已经摊开的那一条 = 收起来（一条都不摊），点别的 = 直接换过去。
+ *  单拎出来是为了能直接测——「一次只摊开一条」这件事就是这一行说了算 */
+export function nextOpenOlder(cur: string | null, version: string): string | null {
+  return cur === version ? null : version;
+}
+
+/**
+ * 更早的一版：收起时就是一行，点开才长出来。
+ *
+ * 原来是原生 `<details>`，v1.14.1 换成「按钮 + 一层只管高度的壳」，为两件事：
+ *   · **同时只摊开一条**（用户 09-05：「点开一个自动收缩另一个」）——开合由外面那个
+ *     openVer 说了算，details 的 open 是它自己说了算，管不住彼此；
+ *   · **收起要有过渡**——details 关上的那一刻内容直接不渲染，没有中间态可以插值。
+ * 收法跟设置页那一节一样：grid 0fr↔1fr 压高度，内容一直在树上，收着时连同 visibility
+ * 一起关掉（看不见的按钮不能还能被 Tab 摸到、被读屏念到）。
+ */
+function Older({ e, open, onToggle }: { e: ChangelogEntry; open: boolean; onToggle: () => void }) {
   return (
-    <details className="cl-old">
-      <summary>
+    <div className={`cl-old${open ? " open" : ""}`}>
+      <button type="button" className="cl-old-btn" aria-expanded={open} onClick={onToggle}>
         <span className="cl-old-ver">v{e.version}</span>
         <span className="cl-old-head">{e.headline}</span>
         <span className="cl-old-date">{fmtDate(e.date)}</span>
         <span className="cl-old-caret" aria-hidden>▾</span>
-      </summary>
-      <ul className="cl-old-list">
-        {e.highlights.map((h) => (
-          <li key={h.title}>
-            <b>{h.title}</b>
-            <span>{h.body}</span>
-          </li>
-        ))}
-      </ul>
-      {e.minor && (
-        <p className="cl-minor">
-          <span className="cl-minor-tag">还有</span>
-          {e.minor}
-        </p>
-      )}
-    </details>
+      </button>
+      <div className={`cl-old-fold${open ? "" : " shut"}`}>
+        <div className="cl-old-fold-inner">
+          <ul className="cl-old-list">
+            {e.highlights.map((h) => (
+              <li key={h.title}>
+                <b>{h.title}</b>
+                <span>{h.body}</span>
+              </li>
+            ))}
+          </ul>
+          {e.minor && (
+            <p className="cl-minor">
+              <span className="cl-minor-tag">还有</span>
+              {e.minor}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -138,6 +158,10 @@ export default function ChangelogDialog() {
   }, []);
 
   const [latest, ...older] = CHANGELOG;
+  /** 更早的版本一次只摊开一条：这里记的就是「现在摊开的是哪一版」，null = 全收着。
+   *  故意不落 localStorage：这是个看完就关的弹窗，每次打开都从「全收着」开始，
+   *  最新那版的主卡才是第一眼该看见的东西 */
+  const [openVer, setOpenVer] = useState<string | null>(null);
 
   return (
     <div
@@ -163,7 +187,12 @@ export default function ChangelogDialog() {
             <section className="cl-past">
               <h3>之前的版本</h3>
               {older.map((e) => (
-                <Older key={e.version} e={e} />
+                <Older
+                  key={e.version}
+                  e={e}
+                  open={openVer === e.version}
+                  onToggle={() => setOpenVer((v) => nextOpenOlder(v, e.version))}
+                />
               ))}
             </section>
           )}

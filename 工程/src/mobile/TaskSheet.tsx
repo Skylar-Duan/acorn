@@ -109,7 +109,11 @@ function TaskSheetBody({ task }: { task: Task }) {
   // 全仓七处安排日期共用这一份，绝不在这儿再写一份
   const presets = duePresets(today);
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
-  const { open: openSubs, done: doneSubs } = useMemo(() => splitSubtasks(task.subtasks), [task.subtasks]);
+  // 母任务一起传进去：没自己填日期的那几步按母任务的日子排，跟屏幕上显示的日期一致（同 TaskCard）
+  const { open: openSubs, done: doneSubs } = useMemo(
+    () => splitSubtasks(task.subtasks, task),
+    [task.subtasks, task.due, task.dueTime],
+  );
   const canFoldDone = doneSubs.length >= SUB_DONE_PEEK;
   const doneShown = canFoldDone ? showDone ?? !foldDoneSubs(task.subtasks) : true;
 

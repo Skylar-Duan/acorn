@@ -217,6 +217,54 @@
   overflow-wrap: anywhere;
 }
 
+/* ═══════════ 「更多」里清单 / 需求方按住换位置（v1.14.1） ═══════════
+   桌面侧栏那两张表早就能拖着换顺序，手机上一直拖不动——触摸屏根本不触发 HTML5 拖拽。
+   手势和落库都跟侧栏共用（core/touchSort + store 的 moveList / moveWho），这儿只管长相，
+   而长相也照抄侧栏那一套（app.css 的 .side nav li.lifted / .move-over），两端一个口径。 */
+
+/* 组标题右边那句小字。位置跟 .group-head .act 一样贴在胶囊右边，但它不是链接，
+   所以用 --ink-3 不用 accent——摆成能点的样子而点不动，比不写更糟 */
+.mshell .mgroup-hint {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* 被拎起来的那一行要肉眼可见地离开队列：手指正压在上面，不浮起来用户根本看不出
+   自己已经拎住了东西。投影走主题那份大投影，深浅六套主题都自动成立 */
+.mshell .mli.lifted {
+  background: var(--accent-soft);
+  box-shadow: var(--shadow);
+  transform: scale(1.02);
+  position: relative;
+  z-index: 2;
+}
+/* 落点线画在目标行的**上缘**，跟 store.moveBefore「挪到它前面」这件事对得上 */
+.mshell .mli.move-over {
+  box-shadow: inset 0 2px 0 var(--accent);
+  background: var(--accent-soft);
+}
+/* 只给**能拖的那两张表**加过渡（带 data-sort 的行才参与排序）。写成裸 .mli 会把标签行、
+   「新建清单」那一行也罩进去：它们拖不动，却要为此把 :active 那下瞬时的按压反馈
+   拖成一慢一慢的淡入淡出——按下去慢半拍，是白亏的 */
+.mshell .mli[data-sort] {
+  transition: transform var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+/* 排序中别让长按顺手选中文字、或者弹出系统那张复制菜单 */
+.mshell .mli.lifted,
+.mshell .mli.lifted * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* ═══════════ 「加一个习惯」那张纸 ═══════════
    跟「记一条」一个规矩：名字一个框，周期一排胶囊，底下一颗主按钮，全靠点。
    胶囊本体复用 mobile-sheet.css 的 .msh-opt / .msh-chips，这里只管这张纸自己的间架 */

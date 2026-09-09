@@ -1,4 +1,9 @@
-// 设置：外观 / 云账号 / 版本更新 / 数据 / 导出导入 / 行为 / 一句话记事 / 关于。分节卡片，可折叠。
+// 设置：通用 / 外观 / 云账号 / 数据 / 导出与导入 / 版本更新 / 关于。分节卡片，一次只摊开一节。
+//
+// v1.14.1 重排（PM 原话「行为改名为通用，并且顺序上放在最前面，其他顺序也整理一下，
+// 按照其他 app 的一般习惯」）：常用开关在最前，主题外观次之，账号与数据居中，
+// 版本更新这类一年点不了几次的沉到底 —— iOS 设置 / Notion / Todoist 都是这个走法。
+// 原来独立的「一句话记事」并进「通用」，在里面叫「快捷用语指南」。
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
 import { APP_VERSION, DATA_VERSION } from "../core/model";
@@ -24,6 +29,12 @@ import { updaterSupported } from "../core/updater";
 import MobileHead from "../mobile/MobileHead";
 import "../styles/settings.css";
 
+/** 设置页那些节在本机记忆里的键前缀（侧栏是 `acorn-side-`）。
+ *  侧栏那行同步指示要滚到「云账号」，喊的就是 forceFoldOpen("cloud", SET_FOLD_PREFIX) */
+const SET_FOLD_PREFIX = "acorn-set-";
+/** 设置页所有节共用这一个 group：useFold 凭它保证「一次只摊开一节」 */
+const SET_GROUP = "settings";
+
 /**
  * 设置页的一节（v1.9.1 起可折叠）。
  *
@@ -31,9 +42,19 @@ import "../styles/settings.css";
  * （全库没有任何法律条款文本）。
  *
  * **正文用高度收（grid 0fr↔1fr），不下树。** 条件渲染会把数据节的备份列表 state 清掉、
- * 让行为节里打了一半的快捷键输入框重挂并被 useEffect 复位——用户打的东西当场没。
- * 开合记在本机 localStorage（`acorn-set-<id>`），跟侧栏折叠同一套（core/useFold）。
+ * 让通用节里打了一半的快捷键输入框重挂并被 useEffect 复位——用户打的东西当场没。
  * 收起时标题右边给一行摘要，不点开也知道里面是什么。
+ *
+ * 开合记在本机 localStorage（`acorn-set-<id>`），跟侧栏折叠同一套（core/useFold）。
+ *
+ * v1.14.1 起一次只摊开一节：所有节都传同一个 group（SET_GROUP），useFold 自己保证互斥——
+ * 展开一节，同组别的自动收起。侧栏那行同步指示 forceFoldOpen("cloud", "acorn-set-")
+ * 也照旧管用，被它掰开的那一节同样会把邻居收掉。
+ *
+ * defaultOpen 只在「这一节还没被记过」时说了算。老用户本机记着 v1.14.0 那会儿摊开的几节
+ * （那时「外观」「云账号」各自 defaultOpen，可能好几条都写着开），升上来第一次进设置页，
+ * 摊开的是他上次留着的那一节而不是「通用」——这是记忆该有的样子，不是错。
+ * 真机量过：从头到尾没有哪一帧是两节同时摊着的，useFold 在首帧之前就分完了胜负。
  */
 function SetSection({
   id,
@@ -52,7 +73,7 @@ function SetSection({
   anchorId?: string;
   children: React.ReactNode;
 }) {
-  const [open, toggle] = useFold(id, defaultOpen, "acorn-set-");
+  const [open, toggle] = useFold(id, defaultOpen, SET_FOLD_PREFIX, SET_GROUP);
   return (
     <div className={`set-section${open ? "" : " set-closed"}`} id={anchorId}>
       <button type="button" className="set-head" aria-expanded={open} onClick={toggle}>
@@ -168,6 +189,7 @@ export default function Settings() {
   const shortcutFlash = useCommitFlash();
   const [autoOn, setAutoOn] = useState(settings.autostart);
   const guide = useGuideEntry();
+  const weekendName = settings.weekendDay === "sat" ? "周六" : "周日";
 
   useEffect(() => {
     void dataStatus().then(setStatus).catch(() => setStatus(null));
@@ -328,160 +350,76 @@ export default function Settings() {
       {isMobile ? (
         <MobileHead
           title="设置"
-          sub="外观、账号、数据与行为"
+          sub="通用、外观、账号与数据"
           search={false}
           onBack={() => navigate("today")}
         />
       ) : (
         <div className="view-head">
           <h1>设置</h1>
-          <span className="sub">外观、账号、数据与行为</span>
+          <span className="sub">通用、外观、账号与数据</span>
         </div>
       )}
       <div className="view-body set-body">
-        {/* ---------- 外观 ---------- */}
+        {/* ---------- 通用（v1.14.1 前叫「行为」，PM 点名改名并挪到第一位） ---------- */}
+        {/* 原来单独一节的「一句话记事」也并进这儿，在这里叫「快捷用语指南」。
+            这一节两端都有：指南和「周末指的是」手机电脑一样要有，所以不整节判空
+            （以前手机上前两行被 hasDesktopFeatures 挡掉、专注那行再收起来就只剩空壳）。
+            defaultOpen：一进设置页摊开的就是它——第一节，也是最常动的那几个开关 */}
         <SetSection
-          id="look"
-          title="外观"
+          id="general"
+          title="通用"
           defaultOpen
-          summary={`${THEMES.find((t) => t.id === settings.theme)?.name ?? ""} · ${MODES.find((m) => m.id === settings.mode)?.name ?? ""}`}
+          summary={
+            hasDesktopFeatures
+              ? `快捷用语指南 · 全局快捷键 ${settings.quickAddShortcut}`
+              : `快捷用语指南 · 周末指${weekendName}`
+          }
         >
-          <div className="set-desc">六款主题，每款配一幅背景画，淡淡地垫在任务下面。</div>
-          <div className="set-themes">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                className={`set-theme-card${settings.theme === t.id ? " on" : ""}`}
-                onClick={() => updateSettings({ theme: t.id })}
-              >
-                <span className="set-swatch" data-theme={t.id} data-mode={swatchMode}>
-                  <ThemeScene theme={t.id} variant="card" />
-                  <span className="set-sw-accent" />
-                </span>
-                <span className="set-theme-name">{t.name}</span>
-                <span className="set-theme-note">{t.note}</span>
-              </button>
-            ))}
-          </div>
+          {/* 快捷用语指南：两端说的是同一件事，但入口不一样——桌面是侧栏那颗「＋ 记一条」，
+              手机是右下角那个 ＋。别在手机上指一个不存在的侧栏 */}
           <div className="set-row">
-            <div className="set-row-label">深浅模式</div>
+            <div className="set-row-label">
+              快捷用语指南
+              <span className="set-hint">
+                日期、清单、需求方、重要性、循环，可以写在同一句里；
+                {hasDesktopFeatures ? "也可以点侧栏的「＋ 记一条」，" : "也可以在记一条那个框里，"}
+                用输入框下面那排按钮点选。
+              </span>
+              {/* 手机上开不了独立窗口，guideCtl 会 fallback 成应用内的全屏 sheet，
+                  这句话得跟着实际形态走，别许一个手机上不存在的窗口。
+                  也别说「点右边」：窄屏上这一行会换行，按钮跑到标签底下去了 */}
+              <span className="set-hint">
+                {hasDesktopFeatures
+                  ? "点「打开用法」，会开一个单独的窗口，里面是一组可以照着抄的例子"
+                  : "点「打开用法」，里面是一组可以照着抄的例子"}
+              </span>
+            </div>
+            <div className="set-ctl">
+              <button className="btn" onClick={guide.open}>打开用法</button>
+            </div>
+          </div>
+          {/* 记事时「周末」「下周末」落在周六还是周日。默认周日；解析器（core/parse.ts）按它算。
+              紧跟着指南放：这一条本身就是「一句话怎么解释」的一部分 */}
+          <div className="set-row">
+            <div className="set-row-label">
+              周末指的是
+              <span className="set-hint">记事时写「周末」「下周末」，按这一天算</span>
+            </div>
             <div className="set-ctl">
               <div className="set-seg">
-                {MODES.map((m) => (
+                {([["sat", "周六"], ["sun", "周日"]] as const).map(([id, name]) => (
                   <button
-                    key={m.id}
-                    className={settings.mode === m.id ? "on" : undefined}
-                    onClick={() => updateSettings({ mode: m.id })}
+                    key={id}
+                    className={(settings.weekendDay ?? "sun") === id ? "on" : undefined}
+                    onClick={() => updateSettings({ weekendDay: id })}
                   >
-                    {m.name}
+                    {name}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-        </SetSection>
-
-        {/* ---------- 云账号 ---------- */}
-        {/* anchorId 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找。
-            那边滚之前会先 forceFoldOpen("cloud", "acorn-set-") 把这一节打开 */}
-        <SetSection
-          id="cloud"
-          title="云账号"
-          defaultOpen
-          anchorId="set-cloud"
-          summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}
-        >
-          <div className="set-desc">
-            登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
-          </div>
-          <AccountPanel />
-        </SetSection>
-
-        {/* ---------- 版本更新（手机和桌面都有） ---------- */}
-        {updaterSupported && (
-          <SetSection id="update" title="版本更新" summary={`当前 v${APP_VERSION}`}>
-            <div className="set-desc">
-              每次启动会自动检查一次，有新版本会提示；这里也可以手动检查。新版本在应用内下载安装。
-              {hasDesktopFeatures && "电脑上安装前橡果会先退出，否则新版本装不进来。"}
-            </div>
-            <UpdatePanel />
-          </SetSection>
-        )}
-
-        {/* ---------- 数据 ---------- */}
-        <SetSection id="data" title="数据" summary={status ? status.dir : "正在检查…"}>
-          <div className="set-desc">每天首次保存时自动留一份备份，保留 30 份。</div>
-          <div className="set-row">
-            <span
-              className={`set-dot${status ? (status.dirOk ? " ok" : " bad") : ""}`}
-              title={status ? (status.dirOk ? "文件夹正常" : "文件夹不可用") : "正在检查"}
-            />
-            <span className="set-path">{status ? status.dir : "正在检查…"}</span>
-            {inTauri && hasDesktopFeatures && (
-              <div className="set-ctl">
-                <button className="btn" onClick={() => void changeDir()}>更换文件夹</button>
-              </div>
-            )}
-          </div>
-          {inTauri && (
-            <div className="set-row">
-              <div className="set-row-label">每日备份</div>
-              <div className="set-ctl">
-                <button className="btn ghost" onClick={() => void toggleBackups()}>
-                  {backups ? "收起备份列表" : "打开备份列表"}
-                </button>
-              </div>
-            </div>
-          )}
-          {backups &&
-            (backups.length === 0 ? (
-              <div className="set-empty">还没有备份。每天首次保存时会自动留一份。</div>
-            ) : (
-              <div className="set-backups">
-                {backups.map((b) => (
-                  <div key={b.name} className="set-backup-row">
-                    <span className="set-backup-name">{b.name}</span>
-                    <span className="set-backup-size">{Math.max(1, Math.round(b.size / 1024))} KB</span>
-                    <button className="btn ghost" onClick={() => void restoreOne(b.name)}>恢复</button>
-                  </div>
-                ))}
-              </div>
-            ))}
-        </SetSection>
-
-        {/* ---------- 导出与导入 ---------- */}
-        <SetSection id="io" title="导出与导入" summary={hasDesktopFeatures ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}>
-          {hasDesktopFeatures ? (
-            <>
-          <div className="set-desc">导出为通用格式；导入会整体替换现有数据。</div>
-          <div className="set-actions">
-            <button className="btn" onClick={() => void exportAs("json")}>导出 JSON</button>
-            <button className="btn" onClick={() => void exportAs("csv")}>导出 CSV</button>
-            <button className="btn" onClick={() => void exportAs("md")}>导出 Markdown</button>
-            <span className="set-flex" />
-            <button className="btn" onClick={() => void importJson()}>导入 JSON…</button>
-          </div>
-            </>
-          ) : (
-            <div className="set-desc">
-              手机上不提供文件导出。迁移数据请用上面的「云账号」：两端登录同一个账号，
-              使用的就是同一份数据。
-            </div>
-          )}
-        </SetSection>
-
-        {/* ---------- 行为 ---------- */}
-        {/* 这一节两端都有：「周末指的是」手机电脑一样要选，所以不再整节判空
-            （以前手机上前两行被 hasDesktopFeatures 挡掉、专注那行再收起来就只剩空壳） */}
-        <SetSection
-          id="behavior"
-          title="行为"
-          summary={
-            hasDesktopFeatures
-              ? `全局快捷键 ${settings.quickAddShortcut} · 周末指${settings.weekendDay === "sat" ? "周六" : "周日"}`
-              : `周末指${settings.weekendDay === "sat" ? "周六" : "周日"}`
-          }
-        >
           {hasDesktopFeatures && (
           <div className="set-row">
             <div className="set-row-label">
@@ -545,21 +483,44 @@ export default function Settings() {
             </div>
           </div>
           )}
-          {/* 记事时「周末」「下周末」落在周六还是周日。默认周日；解析器（core/parse.ts）按它算 */}
+        </SetSection>
+        {/* 用法那张纸必须留在折叠容器之外：容器 overflow:hidden 会把它裁掉 */}
+        {guide.sheet}
+
+        {/* ---------- 外观 ---------- */}
+        <SetSection
+          id="look"
+          title="外观"
+          summary={`${THEMES.find((t) => t.id === settings.theme)?.name ?? ""} · ${MODES.find((m) => m.id === settings.mode)?.name ?? ""}`}
+        >
+          <div className="set-desc">六款主题，每款配一幅背景画，淡淡地垫在任务下面。</div>
+          <div className="set-themes">
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                className={`set-theme-card${settings.theme === t.id ? " on" : ""}`}
+                onClick={() => updateSettings({ theme: t.id })}
+              >
+                <span className="set-swatch" data-theme={t.id} data-mode={swatchMode}>
+                  <ThemeScene theme={t.id} variant="card" />
+                  <span className="set-sw-accent" />
+                </span>
+                <span className="set-theme-name">{t.name}</span>
+                <span className="set-theme-note">{t.note}</span>
+              </button>
+            ))}
+          </div>
           <div className="set-row">
-            <div className="set-row-label">
-              周末指的是
-              <span className="set-hint">记事时写「周末」「下周末」，按这一天算</span>
-            </div>
+            <div className="set-row-label">深浅模式</div>
             <div className="set-ctl">
               <div className="set-seg">
-                {([["sat", "周六"], ["sun", "周日"]] as const).map(([id, name]) => (
+                {MODES.map((m) => (
                   <button
-                    key={id}
-                    className={(settings.weekendDay ?? "sun") === id ? "on" : undefined}
-                    onClick={() => updateSettings({ weekendDay: id })}
+                    key={m.id}
+                    className={settings.mode === m.id ? "on" : undefined}
+                    onClick={() => updateSettings({ mode: m.id })}
                   >
-                    {name}
+                    {m.name}
                   </button>
                 ))}
               </div>
@@ -567,31 +528,106 @@ export default function Settings() {
           </div>
         </SetSection>
 
-        {/* ---------- 一句话记事 ---------- */}
-        <SetSection id="syntax" title="一句话记事" summary="日期、清单、需求方写在同一句里 · 打开用法说明">
-          {/* 两端说的是同一件事，但入口不一样：桌面是侧栏那颗「＋ 记一条」，
-              手机是右下角那个 ＋。别在手机上指一个不存在的侧栏 */}
+        {/* ---------- 云账号 ---------- */}
+        {/* anchorId 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找。
+            那边滚之前会先 forceFoldOpen("cloud", "acorn-set-") 把这一节打开 */}
+        <SetSection
+          id="cloud"
+          title="云账号"
+          anchorId="set-cloud"
+          summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}
+        >
           <div className="set-desc">
-            日期、清单、需求方、重要性、循环，可以写在同一句里；
-            {hasDesktopFeatures ? "也可以点侧栏的「＋ 记一条」，" : "也可以在记一条那个框里，"}
-            用输入框下面那排按钮点选。
+            登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
-          <div className="set-row">
-            <div className="set-row-label">
-              写法说明
-              {/* 手机上开不了独立窗口，guideCtl 会 fallback 成应用内的全屏 sheet，
-                  这句话得跟着实际形态走，别许一个手机上不存在的窗口 */}
-              <span className="set-hint">
-                {hasDesktopFeatures ? "在单独的窗口里打开，一组可以照着抄的例子" : "一组可以照着抄的例子"}
-              </span>
-            </div>
-            <div className="set-ctl">
-              <button className="btn" onClick={guide.open}>打开用法</button>
-            </div>
-          </div>
+          <AccountPanel />
         </SetSection>
-        {/* 用法那个 sheet 必须留在折叠容器之外：容器 overflow:hidden 会把它裁掉 */}
-        {guide.sheet}
+
+        {/* ---------- 数据 ---------- */}
+        <SetSection
+          id="data"
+          title="数据"
+          summary={status ? status.dir : "正在检查…"}
+        >
+          <div className="set-desc">每天首次保存时自动留一份备份，保留 30 份。</div>
+          <div className="set-row">
+            <span
+              className={`set-dot${status ? (status.dirOk ? " ok" : " bad") : ""}`}
+              title={status ? (status.dirOk ? "文件夹正常" : "文件夹不可用") : "正在检查"}
+            />
+            <span className="set-path">{status ? status.dir : "正在检查…"}</span>
+            {inTauri && hasDesktopFeatures && (
+              <div className="set-ctl">
+                <button className="btn" onClick={() => void changeDir()}>更换文件夹</button>
+              </div>
+            )}
+          </div>
+          {inTauri && (
+            <div className="set-row">
+              <div className="set-row-label">每日备份</div>
+              <div className="set-ctl">
+                <button className="btn ghost" onClick={() => void toggleBackups()}>
+                  {backups ? "收起备份列表" : "打开备份列表"}
+                </button>
+              </div>
+            </div>
+          )}
+          {backups &&
+            (backups.length === 0 ? (
+              <div className="set-empty">还没有备份。每天首次保存时会自动留一份。</div>
+            ) : (
+              <div className="set-backups">
+                {backups.map((b) => (
+                  <div key={b.name} className="set-backup-row">
+                    <span className="set-backup-name">{b.name}</span>
+                    <span className="set-backup-size">{Math.max(1, Math.round(b.size / 1024))} KB</span>
+                    <button className="btn ghost" onClick={() => void restoreOne(b.name)}>恢复</button>
+                  </div>
+                ))}
+              </div>
+            ))}
+        </SetSection>
+
+        {/* ---------- 导出与导入 ---------- */}
+        <SetSection
+          id="io"
+          title="导出与导入"
+          summary={hasDesktopFeatures ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}
+        >
+          {hasDesktopFeatures ? (
+            <>
+          <div className="set-desc">导出为通用格式；导入会整体替换现有数据。</div>
+          <div className="set-actions">
+            <button className="btn" onClick={() => void exportAs("json")}>导出 JSON</button>
+            <button className="btn" onClick={() => void exportAs("csv")}>导出 CSV</button>
+            <button className="btn" onClick={() => void exportAs("md")}>导出 Markdown</button>
+            <span className="set-flex" />
+            <button className="btn" onClick={() => void importJson()}>导入 JSON…</button>
+          </div>
+            </>
+          ) : (
+            <div className="set-desc">
+              手机上不提供文件导出。迁移数据请用上面的「云账号」：两端登录同一个账号，
+              使用的就是同一份数据。
+            </div>
+          )}
+        </SetSection>
+
+        {/* ---------- 版本更新（手机和桌面都有） ---------- */}
+        {/* 排在倒数第二：一年也点不了几次，主流 App 都把它压在「关于」头上 */}
+        {updaterSupported && (
+          <SetSection
+            id="update"
+            title="版本更新"
+            summary={`当前 v${APP_VERSION}`}
+          >
+            <div className="set-desc">
+              每次启动会自动检查一次，有新版本会提示；这里也可以手动检查。新版本在应用内下载安装。
+              {hasDesktopFeatures && "电脑上安装前橡果会先退出，否则新版本装不进来。"}
+            </div>
+            <UpdatePanel />
+          </SetSection>
+        )}
 
         {/* 回收站那一节 v1.10.0 撤了：侧栏「更多」里已经挂着它，设置页再放一个「打开回收站」是重复入口（用户点名） */}
 

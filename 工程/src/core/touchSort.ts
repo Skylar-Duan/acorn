@@ -11,6 +11,12 @@
 // 状态机做成纯函数，是因为这类手势的 bug 全在时序上：按下就滑（在滚动）、
 // 长按还没到就抬手（是点击）、进了排序模式再抬手（是落位）——这三条必须能单测，
 // 靠在真手机上反复戳是试不全的。
+//
+// 文件下半截（v1.14.1 加）是把这台状态机接到真事件上的那层 React 钩子。上半截照旧一个
+// react 的字都不认，单测还是对着纯函数跑。
+
+import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 /** 按住多久算「长按」。再短会跟滚动抢手，再长会让人以为没反应 */
 export const LONG_PRESS_MS = 450;
@@ -85,4 +91,141 @@ export function up(s: SortState): {
 /** 手势被系统打断（来电、手势导航、多指）——一律作废，不留半个状态 */
 export function cancel(): SortState {
   return IDLE;
+}
+
+// ───────────────── 下面是把上面这台状态机接到真事件上的那层（v1.14.1） ─────────────────
+
+/** 一行的 `data-sort` 长这样：`list:abc` / `who:小明`。把「是谁」从里面读出来。
+ *  单抽一个函数是因为它是整条命中测试里唯一会写歪的一步——前缀长度差一个字符，
+ *  拖谁都变成拖了个空名字，而界面上看起来一切正常。 */
+export function readSortKey(kind: string, attr: string | null | undefined): string | null {
+  if (!attr) return null;
+  const head = `${kind}:`;
+  if (!attr.startsWith(head)) return null;
+  return attr.slice(head.length) || null;
+}
+
+/**
+ * 排完序抬手那一下，浏览器还会补一次 click——不吞掉的话「给清单换个位置」会顺手
+ * 跳进那张清单。**在捕获阶段、挂在 document 上**吞：手指常常抬在别的行、甚至别的表
+ * 或者一张格子上，只盯着被拖的那一行是拦不住的。
+ *
+ * 留一道兜底超时：这一下 click 要是压根没来（手指抬在了空处、被系统吃了），
+ * 监听不能一直挂着——否则下一次好端端的点击会被它吞掉，界面就成了「点不动」。
+ *
+ * 返回撤销函数，组件卸载时调一下，别把监听留在文档上。
+ */
+export function eatNextClick(ttlMs = 400): () => void {
+  if (typeof document === "undefined") return () => {};
+  let done = false;
+  const stop = (e: Event) => {
+    done = true;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const off = () => {
+    if (!done) document.removeEventListener("click", stop, { capture: true });
+    done = true;
+  };
+  document.addEventListener("click", stop, { capture: true, once: true });
+  setTimeout(off, ttlMs);
+  return off;
+}
+
+/**
+ * 手指版的「按住换位置」：按住不动一会儿把这一行拎起来 → 移动改落点 → 抬手落位。
+ *
+ * 用在手机「更多」页的清单 / 需求方两张表（views/MobileMore.tsx）。触摸屏上 HTML5 拖拽
+ * 根本不触发，所以桌面侧栏那套 draggable 在手机上等于不存在——这层是补那个洞的。
+ *
+ * `kind` 只用来给 `data-sort` 打前缀，好让命中测试认得出「同一张表里的行」：
+ * 清单拖不到需求方头上去，反过来也一样。
+ *
+ * `onDrop` 一律交给 store 里现成的重排函数（moveList / moveWho），这儿一个字都不许自己写库——
+ * 清单的顺序跟数据走会同步到别的设备，需求方的顺序存在本机设置里，两者语义不同，
+ * 只有 store 那两个函数分得清。
+ *
+ * 桌面侧栏（components/Sidebar.tsx）眼下还带着一份自己的同款实现，它跟那边的 HTML5 拖拽
+ * 缠在一起，这一轮不许动那个文件。**下一轮把它换成这一份**——同一个手势不该有两份实现。
+ */
+export function useLongPressSort(
+  kind: string,
+  onDrop: (from: string, to: string) => void,
+  hint: { over: string | null; set: (v: string | null) => void },
+) {
+  const [st, setSt] = useState<SortState>(IDLE);
+  const timer = useRef<number | null>(null);
+  const eater = useRef<(() => void) | null>(null);
+
+  function stopTimer() {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
+
+  // 排序中要把页面按住。React 的 onTouchMove 是被动监听，preventDefault 无效，
+  // 必须自己挂一个 passive:false 的原生监听，否则手指一动整页就滚走了
+  useEffect(() => {
+    if (st.phase !== "sorting") return;
+    const block = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => document.removeEventListener("touchmove", block);
+  }, [st.phase]);
+
+  useEffect(
+    () => () => {
+      stopTimer();
+      eater.current?.();
+    },
+    [],
+  );
+
+  /** 手指底下压着的是哪一行。用实时命中测试而不是记录每行的位置——这一页会滚、表会变长 */
+  function keyAt(x: number, y: number): string | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const row = el?.closest?.(`[data-sort^="${kind}:"]`) as HTMLElement | null;
+    return readSortKey(kind, row?.getAttribute("data-sort"));
+  }
+
+  function finish(next: SortState) {
+    stopTimer();
+    setSt(next);
+    hint.set(null);
+  }
+
+  return {
+    /** 这一行现在正被拎着吗（界面上要浮起来） */
+    lifted: (self: string) => st.phase === "sorting" && st.self === self,
+    props: (self: string) => ({
+      "data-sort": `${kind}:${self}`,
+      onPointerDown: (e: ReactPointerEvent) => {
+        if (e.pointerType === "mouse") return; // 鼠标在别处走 HTML5 拖拽那套
+        const next = down(st, self, e.clientX, e.clientY);
+        if (next === st) return;
+        setSt(next);
+        // 抓住指针：手指滑出这一行之后还要继续收到 move / up
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        stopTimer();
+        timer.current = window.setTimeout(() => setSt((s) => hold(s)), LONG_PRESS_MS);
+      },
+      onPointerMove: (e: ReactPointerEvent) => {
+        if (st.phase === "idle") return;
+        const next = move(st, e.clientX, e.clientY, keyAt);
+        if (next === st) return;
+        if (next.phase === "idle") stopTimer(); // 判成滚动了，计时器也得停
+        setSt(next);
+        hint.set(next.over ? `${kind}:${next.over}` : null);
+      },
+      onPointerUp: () => {
+        if (st.phase === "idle") return;
+        const r = up(st);
+        // 拖过就吞掉紧跟着那一下 click（空拖也算拖过）：松手不能顺带跳进这一行
+        if (r.sorted) eater.current = eatNextClick();
+        finish(r.next);
+        if (r.drop) onDrop(r.drop.from, r.drop.to);
+      },
+      onPointerCancel: () => finish(cancel()),
+    }),
+  };
 }

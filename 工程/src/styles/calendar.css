@@ -208,12 +208,22 @@
 .mshell .mhead-fit .cal-nav { flex: 1 1 auto; }
 .mshell .mhead-fit .cal-nav .all-sort { margin-right: auto; }
 
+/* 整页交回给浏览器滚。这条上面那段窄屏媒体查询里本来就有一份，但它到 761px 就失效了：
+   手机一转横屏视口有 892px，.view-body.cal-body 掉回 base 的 overflow: hidden，
+   网格直接被裁在屏幕中间——七行里后四行连滚都滚不到（实测 412 高的横屏下，
+   最后一行的底在 586px，可视区只到 324px）。月视图同样被裁，只是格子矮、露得多一点。
+   写在 .mshell 里：手机横竖屏都能滚，桌面没有 .mshell，一个像素不动 */
+.mshell .view-body.cal-body { overflow-y: auto; }
+
 /* 星期行：一行灰色小字排在纸的上面当说明。左右内边距跟网格一致，七列才对得齐 */
 .mshell .cal-week { padding: 0 4px 8px; }
 
 /* 网格本身是一张纸：跟 .mcard 同一副长相（22px 圆角、两层投影、不描边）。
    格子之间不再画发丝线——一格只有一个数字和几颗点，线是多余的 */
 .mshell .cal-grid {
+  /* 按内容定高、不跟着 flex 拉伸——跟上面那句 overflow-y 是一套的：
+     光让外面能滚不够，网格自己还是 flex: 1 的话会被压回可视高度，然后自己把七行裁掉 */
+  flex: none;
   gap: 0;
   padding: 6px 4px 8px;
   background: var(--card);
@@ -255,12 +265,88 @@
    邻月那格的 .cal-dots 自己还有一层 .45，两层相乘更淡，正是想要的。 */
 .mshell .cal-dot.ok { background: var(--ok); opacity: .45; }
 
-/* 周视图：七列拍成七行的写法留着（上面窄屏块里），这儿只把行排整齐：
-   日期圆 · 周几 · 那几颗点，横着一行，行与行之间一根发丝线 */
-.mshell .cal-grid.week { padding: 0 4px; }
-.mshell .cal-grid.week .cal-cell { flex-wrap: nowrap; gap: 10px; padding: 0 10px; min-height: 48px; }
-.mshell .cal-grid.week .cal-cell + .cal-cell { border-top: 1px solid var(--m-sep); }
-.mshell .cal-grid.week .cal-wd { flex: none; font-size: var(--fs-sm); color: var(--ink-2); }
+/* ---------- 周视图：一天一行竖着排（v1.14.1） ----------
+   PM v1.13.0 真机原话：「日历里面的周视窗不对，我想要的是竖着的，有点像其他日历的周视窗，
+   能够显示有多少任务，甚至部分文字显示」。原来那版是七列拍成七行的 48px 窄条，
+   一行里只有日期圆 + 周几 + 几颗点，看得出忙不忙、看不出忙什么。
+
+   现在一行三段，从左到右：日期（几号在上、周几在下，今天是实心圆）· 这天的事（写标题）·
+   右边待办/做完各几行。一行挂 .cal-wrow，行内怎么摆全写在它身上 ——
+   桌面周视图走的是没有 .mshell 的那一套，一个字都碰不到。
+
+   「七列拍成七行」这条自己写在这儿，不再蹭上面那段 @media (max-width: 760px)：
+   手机一转横屏视口就有 892px，媒体查询整段失效，只剩这儿的 grid-auto-rows: 60px 生效，
+   竖排列表当场散成七根 60px 高的挤压柱子（标题只剩「装·」一个字加省略号）。
+   同理把那排「一二三四五六日」的列头也在这儿关掉——竖排的一天一行跟它对不上。
+
+   够不够写字是量出来的，不是拍脑袋（Playwright 实测，13px 的汉字一个正好 13px 宽）：
+   中间标题那一栏 360 宽时 224px、390 宽 254px、430 宽 294px，也就是 17 / 19 / 22 个汉字。
+   一句话说清一件事绰绰有余，所以这一版写文字，没退回 PM 兜底说的「不够就只显示数量」。
+   行高钉死 60px：七行一样高，一眼能比出哪天最满；两行 13px 的字加上下留白正好 */
+.mshell .cal-body.cal-week-mode .cal-week { display: none; }
+.mshell .cal-grid.week { padding: 6px 4px; grid-template-columns: 1fr; grid-auto-rows: 60px; }
+.mshell .cal-grid.week .cal-wrow {
+  flex-flow: row nowrap; align-items: center;
+  gap: 10px; padding: 0 8px; min-height: 0; overflow: hidden;
+}
+.mshell .cal-grid.week .cal-wrow + .cal-wrow { border-top: 1px solid var(--m-sep); }
+
+/* 左边那一柱：几号在上、周几在下，30px 宽固定，七行的日期才对得成一条竖线 */
+.mshell .cal-wdate {
+  flex: none; width: 30px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.mshell .cal-grid.week .cal-wrow .cal-num { width: 26px; height: 26px; font-size: 14px; }
+.mshell .cal-grid.week .cal-wrow .cal-wd {
+  flex: none; font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.1;
+}
+
+/* 中间：这一天的事，最多两行，放不下的标题一行省略号 */
+.mshell .cal-wpeek {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 3px;
+}
+.mshell .cal-wline {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: 13px; line-height: 1.35; color: var(--ink);
+}
+.mshell .cal-wline .cal-dot { flex: none; }
+.mshell .cal-wtitle {
+  flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 做完那行：压淡 + 划掉，跟「已完成」列表一个口径；点也自带那层压淡（.cal-dot.ok） */
+.mshell .cal-wline.done { color: var(--ink-3); }
+.mshell .cal-wline.done .cal-wtitle { text-decoration: line-through; }
+/* 还剩几条没列出来。挂在最后一行末尾，另起一行会把钉死的行高撑破 */
+.mshell .cal-wmore {
+  flex: none; font-size: var(--fs-xs); color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 右边那一柱：还欠着几条、做完了几条，各是一颗点加一个数。
+   **数的是条，跟中间列出来的、跟底下那份清单一一对上**（一件事的三条子任务同一天勾完
+   就是三条），所以「列出来的 + 「+N」」永远等于这两个数之和，一屏之内不会冒出三个数。
+   点的颜色沿用一整套口径（逾期 warn / 计划 accent / 做完 ok 且压淡），
+   所以不看数字、只扫颜色也分得出这天欠着的多还是干完的多 */
+.mshell .cal-wn {
+  flex: none; min-width: 26px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+}
+.mshell .cal-wnum {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+
+/* 点开的那一行：整行淡底 + 左边一道竖杠。月视图那套「只给日期垫个圆」在一整行上太轻，
+   看不出选中的是哪一行。日期圆在淡底上会糊掉，所以改成 accent 的字；今天那颗实心圆不动 */
+.mshell .cal-grid.week .cal-wrow.cal-picked {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.mshell .cal-grid.week .cal-wrow.cal-picked .cal-num:not(.today) {
+  background: transparent; color: var(--accent); font-weight: 600;
+}
 
 /* 网格底下「这一天」的列表：一颗胶囊标题（跟今天页的段标题同款）+ 一张 .mcard 里的行
    （MobileRow：点一行拉出任务详情那张纸，左右滑跟别处一样）。

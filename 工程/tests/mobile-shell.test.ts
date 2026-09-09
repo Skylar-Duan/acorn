@@ -243,14 +243,19 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
 });
 
 describe("④ 底部导航：固定五项、固定不动", () => {
-  it("常驻四格 + 更多，一共五项；顺序是 今天 / 习惯 / 计划 / 已完成", () => {
+  it("常驻四格 + 更多，一共五项；顺序是 今天 / 习惯 / 计划 / 四象限", () => {
     const tabs = shellSource.slice(shellSource.indexOf("const TABS = ["), shellSource.indexOf("] as const;"));
     // v1.11.1：「随手记」退出常驻位（用户：「加号标签就能随手记」），空出来那格给「习惯」
     expect(tabs).not.toContain('id: "inbox"');
     expect(tabs).not.toContain("随手记");
+    // v1.14.1：「已完成」和「四象限」对调（用户：「四象限跟已完成换位置，已完成收进去」）。
+    // 常驻位留给还要动手的地方，回头看的收进「更多」
     const order = [...tabs.matchAll(/id: "(\w+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(["today", "habits", "plan", "done"]);
-    for (const label of ["今天", "习惯", "计划", "已完成"]) expect(tabs).toContain(label);
+    expect(order).toEqual(["today", "habits", "plan", "quadrant"]);
+    for (const label of ["今天", "习惯", "计划", "四象限"]) expect(tabs).toContain(label);
+    // 已完成不许还挂在导航上（同一个入口摆两遍就说不清了）
+    expect(tabs).not.toContain('id: "done"');
+    expect(tabs).not.toContain("已完成");
     // 第五格是「更多」，它不是 ViewId，走壳子自己的一个本地开关
     expect(shellSource).toContain("const [moreOpen, setMoreOpen] = useState(false);");
     expect(shellSource).toContain("更多");
@@ -630,12 +635,14 @@ describe("⑨ 更多：账号 + 四张格子 + 三张表", () => {
   });
 
   it("四张格子和三张表都走同一个 navigate，跟侧栏一个口径", () => {
-    // v1.11.2：「习惯」已经钉在底部导航上，同一个入口不摆两遍——这一格换成「四象限」
-    for (const v of ["calendar", "quadrant", "stats", "trash"]) {
+    // v1.11.2：「习惯」已经钉在底部导航上，同一个入口不摆两遍——这一格换成「四象限」；
+    // v1.14.1 四象限进了底部导航，这一格再换成「已完成」（导航上那格给了四象限）
+    for (const v of ["calendar", "done", "stats", "trash"]) {
       expect(moreSource, v).toContain(`navigate("${v}")`);
     }
     expect(moreSource).not.toContain('navigate("habits")');
-    expect(moreSource).toContain("日历、四象限、清单，和你的账号");
+    expect(moreSource).not.toContain('navigate("quadrant")');
+    expect(moreSource).toContain("日历、已完成、清单，和你的账号");
     expect(moreSource).toContain('navigate("list", { listId: l.id })');
     expect(moreSource).toContain('navigate("who", { who })');
     expect(moreSource).toContain('navigate("tag", { tag })');

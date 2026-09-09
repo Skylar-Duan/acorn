@@ -18,7 +18,7 @@ import { cardMs } from "../core/motion";
 import { doneGroups } from "../core/plan";
 import type { DateRow } from "../core/store";
 import {
-  doneRows, droppedRows, rowDoneAt, rowDoneDay, rowDoneGuessed,
+  doneRows, droppedRows, navigate, rowDoneAt, rowDoneDay, rowDoneGuessed,
   rowDroppedAt, rowDroppedDay, rowTaskIds, useApp,
 } from "../core/store";
 import type { PinIds } from "../core/pin";
@@ -219,8 +219,11 @@ export default function Done() {
 
   return (
     <section className="main">
+      {/* 手机上这一页 v1.14.1 起是从「更多」那四宫格点进来的子页（底部导航第四格让给了四象限），
+          所以要带返回箭头——跟同一格里的日历 / 统计 / 回收站一个口径。少了它就成了「进得去、
+          底下五格还一个都不高亮、也没有明显的路回来」的死胡同。桌面上它仍是侧栏常驻项，不受影响 */}
       {isMobile ? (
-        <MobileHead title="已完成" sub={sub} extra={filters} />
+        <MobileHead title="已完成" sub={sub} onBack={() => navigate("today")} extra={filters} />
       ) : (
         <div className="view-head">
           <h1>已完成</h1>

@@ -25,7 +25,7 @@ export function GuideSheet({ onClose }: { onClose: () => void }) {
     <div className="gd-sheet" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="gd-sheet-panel">
         <div className="gd-win-head">
-          <h1>一句话记事</h1>
+          <h1>快捷用语指南</h1>
           <span className="sub">日期、清单、需求方、重要性、循环，都能写在同一句里</span>
           <button className="gd-sheet-close" title="关闭" onClick={onClose}>×</button>
         </div>

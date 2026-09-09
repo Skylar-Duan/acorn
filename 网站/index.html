@@ -38,7 +38,7 @@
         不想记这套写法，输入框下面就是一排按钮，点着选一样。</p>
       </div>
 
-      <p class="meta">当前版本 <span data-release="version">v1.14.0</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
+      <p class="meta">当前版本 <span data-release="version">v1.14.1</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
       <div class="cta-row">
         <a class="btn" href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe">↓ 下载 Windows 版</a>
         <a class="btn btn-ghost" href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">查看源码</a>
@@ -240,10 +240,24 @@
          用接口里的更新说明在最上面补一条。逻辑在 /utilities/_shared/tool-release.js。 -->
     <div class="releases"
          data-release-api="https://acorn.cdpandas.com/api/desktop/latest"
-         data-release-static="1.14.0">
+         data-release-static="1.14.1">
 
       <div class="rel">
-        <div class="meta"><div class="ver">v1.14.0</div><div class="date" data-release="date">2026-09-04</div></div>
+        <div class="meta"><div class="ver">v1.14.1</div><div class="date" data-release="date">2026-09-09</div></div>
+        <div>
+          <p><b>一批小修：卡片、设置、排序、日历。</b></p>
+          <ul>
+            <li>更新日志里「更早的版本」和设置里的分节都改成手风琴：一次只摊开一块，开合有动画</li>
+            <li>设置页重排：「行为」改叫「通用」放到最前，快捷用语指南收了进去；其余按常见次序排</li>
+            <li>没单独填日期的子任务跟着母任务的日期一起排，不再被沉到最底下</li>
+            <li>手机日历的周视图改成一天一行竖着排，直接写出这天有什么事、有几件</li>
+            <li>手机底部：四象限升到常驻，已完成收进「更多」；清单和需求方能长按拖动换顺序了</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.14.0</div><div class="date">2026-09-04</div></div>
         <div>
           <p><b>某一步也能自己重复了。</b></p>
           <ul>
@@ -270,6 +284,10 @@
         </div>
       </div>
 
+      <!-- 默认只展开最近三版（Skylar 2026-09-02 定），更早的收进这里；样式 .rel-more 在共用 tool-page.css -->
+      <details class="rel-more">
+      <summary>更早的版本（14）</summary>
+
       <div class="rel">
         <div class="meta"><div class="ver">v1.12.0</div><div class="date">2026-09-03</div></div>
         <div>
@@ -284,9 +302,6 @@
         </div>
       </div>
 
-      <!-- 默认只展开最近三版（Skylar 2026-09-02 定），更早的收进这里；样式 .rel-more 在共用 tool-page.css -->
-      <details class="rel-more">
-      <summary>更早的版本（13）</summary>
 
       <div class="rel">
         <div class="meta"><div class="ver">v1.11.0</div><div class="date">2026-09-02</div></div>

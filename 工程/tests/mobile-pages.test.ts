@@ -7,7 +7,8 @@
 //   ① 习惯页：一件一行绝不折行，加习惯走右下角那颗 ＋（用户：「那个加号被遮住了是什么问题」）
 //   ② 「加一个习惯」那张纸：新建 / 编辑一套件，删除按两下
 //   ③ 四象限：手机上自己一页，桌面上还是「计划」里的一个 tab
-//   ④ 「更多」：习惯撤了（它已经在底部导航上），换成四象限
+//   ④ 「更多」那一格：习惯撤了（它已经在底部导航上），先换成四象限；
+//      v1.14.1 四象限也上了导航，这一格现在是「已完成」
 //   ⑤ 「随手记」这个词在手机端一处不剩，但那份数据一条没少
 //   ⑥ 自由伸缩：新写的布局里没有会撑破 360 的固定宽度
 //   ⑦ 桌面一个像素不许变
@@ -173,13 +174,22 @@ describe("③ 四象限：手机上自己一页", () => {
     expect(appSource).toContain('case "quadrant": return isMobile ? <Quadrant key={bodyKey} /> : <Plan key={bodyKey} />;');
   });
 
-  it("手机上自己带顶栏 + 返回，桌面上还是只画格子", () => {
+  it("手机上自己带顶栏，桌面上还是只画格子", () => {
     expect(nl(stripComments(quadrantSource))).toMatch(
       /if \(isMobile\) \{\s*return \(\s*<section className="main">\s*<MobileHead/,
     );
-    expect(quadrantSource).toContain('onBack={() => navigate("today")}');
     expect(quadrantSource).toContain("search={false}");
     expect(quadrantSource).toContain("return board;");
+  });
+
+  // v1.14.1：它从「更多」里那一格升成了底部导航第四格。常驻页画一颗返回箭头是自相矛盾的——
+  // 点下去跳到「今天」，而底下那一格还高亮着说你就在这儿。五个常驻页要一个口径
+  it("🔴 上了底部导航就不该再有返回箭头（跟今天 / 习惯 / 计划一个口径）", () => {
+    expect(stripComments(quadrantSource)).not.toContain("onBack");
+    // 那一格确实在底部导航上（不然这条断言等于什么都没管住）
+    expect(shellSource).toContain('{ id: "quadrant", label: "四象限"');
+    // 顺带把 import 清干净：navigate 只为那颗返回箭头引进来过
+    expect(quadrantSource).not.toMatch(/^\s*aliveTasks.*navigate,\s*$/m);
   });
 
   it("手机的「计划」永远是列表，那对 tab 不画；桌面那对一个字没动", () => {
@@ -198,16 +208,19 @@ describe("③ 四象限：手机上自己一页", () => {
   });
 });
 
-describe("④ 「更多」：习惯撤了，换成四象限", () => {
-  it("四格是 日历 / 四象限 / 统计 / 回收站", () => {
-    for (const v of ["calendar", "quadrant", "stats", "trash"]) {
+describe("④ 「更多」：习惯撤了，四象限也走了，那一格现在是已完成", () => {
+  it("四格是 日历 / 已完成 / 统计 / 回收站", () => {
+    for (const v of ["calendar", "done", "stats", "trash"]) {
       expect(moreSource, v).toContain(`navigate("${v}")`);
     }
-    // 习惯已经钉在底部导航上，同一个入口不摆两遍
+    // 习惯和四象限都已经钉在底部导航上，同一个入口不摆两遍
     expect(moreSource).not.toContain('navigate("habits")');
     expect(moreSource).not.toContain("IcoHabits");
-    expect(moreSource).toContain("<IcoQuad />");
-    expect(moreSource).toContain("按重要和紧急分四格");
+    expect(moreSource).not.toContain('navigate("quadrant")');
+    expect(moreSource).not.toContain("IcoQuad");
+    // v1.14.1：四象限那颗图标搬去了底部导航（用户：「四象限跟已完成换位置」）
+    expect(shellSource).toContain("IcoQuad");
+    expect(moreSource).toContain("<IcoDone size={24} />");
   });
 
   it("四象限那颗图标跟其它几颗同一套笔画（24 网格、1.8 描边，不是 emoji）", () => {

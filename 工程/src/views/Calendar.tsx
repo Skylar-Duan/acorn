@@ -23,9 +23,12 @@ const WEEK_HEAD = ["一", "二", "三", "四", "五", "六", "日"];
 const MAX_SHOWN_MONTH = 3;
 const MAX_SHOWN_WEEK = 10;
 
-/** 手机格子里最多几颗点（v1.12.1）。月视图一格 56px 高，三颗就是极限；周视图一格是一整行，给多些 */
+/** 手机月视图一格里最多几颗点（v1.12.1）。一格 56px 高，三颗就是极限。
+ *  周视图 v1.14.1 起不画点了——一天一行、直接写事情的名字，见 weekLines */
 const MAX_DOTS_MONTH = 3;
-const MAX_DOTS_WEEK = 6;
+/** 手机周视图一行里最多列几条事，多出来的挂「+N」。
+ *  行高钉死 60px（七行一样高），两行 13px 的字加上下留白正好，第三行就挤了 */
+const MAX_WEEK_LINES = 2;
 /** 点的三种颜色：逾期 warn / 计划 accent / 已完成 ok（样式见 calendar.css 的 .cal-dot）。
  *  已完成那颗是**同色系但压淡**的——森林主题里 ok 和 accent 是同一个色号，不压就分不出来 */
 export type DotKind = "late" | "plan" | "ok";
@@ -56,7 +59,43 @@ export function dayDots(counts: Record<DotKind, number>, max: number): DotKind[]
   return out.slice(0, max);
 }
 
-/** 月 / 周（v1.9.1）。周视图只是「7 格横排、格子更高」，不带时间轴 */
+/** 手机周视图里，一天那一行要列出来的几条事 */
+export type WeekLine = { key: string; kind: DotKind; title: string };
+
+/**
+ * 手机周视图（v1.14.1）：一天一行，行里直接写事情的名字。这个函数定「列哪几条、还剩几条」。
+ * 规矩跟全 App 一致：
+ *  · 还欠着的排前面（已按重要性排过序），做完的排后面；
+ *  · **一条就是一条，跟网格底下那块「这一天」的清单一一对上**——那块列的是行
+ *    （母任务一行、每条当天勾掉的子任务各一行），这儿就也数行。
+ *    最初那版把做完的按件去重（三条子任务只算一条），结果被折叠掉的两条既不列出来
+ *    也不算进 rest，「+N」该挂的时候不挂：屏幕上写着一条、点进去清单里躺着四条，
+ *    PM 根本看不出这天还有没显示完的事。数行以后 `列出来的条数 + rest` 恒等于底下的行数。
+ *  · 一件事既欠着母任务、又在这天做完了某条子任务时出两行——那本来就是两件不同的事实。
+ * 逾期与否是整天的属性（这天已经过去了还没做完），所以由调用方传进来。
+ * 纯函数，tests/mobile-calendar-week.test.ts 钉着
+ */
+export function weekLines(
+  open: Task[],
+  done: DateRow[],
+  late: boolean,
+  max: number,
+): { lines: WeekLine[]; rest: number } {
+  const all: WeekLine[] = [
+    ...open.map((t) => ({ key: t.id, kind: (late ? "late" : "plan") as DotKind, title: t.title })),
+    // 子任务写子任务的名字，母任务写自己的。key 前面加个 d：同一件事既欠着又做完了半条时，
+    // 待办那行的 key 就是 task.id，不加前缀会跟 rowKey 撞车、React 当场报重复 key
+    ...done.map((r) => ({
+      key: `d${rowKey(r)}`,
+      kind: "ok" as DotKind,
+      title: r.sub ? r.sub.title : r.task.title,
+    })),
+  ];
+  return { lines: all.slice(0, max), rest: Math.max(0, all.length - max) };
+}
+
+/** 月 / 周（v1.9.1）。桌面的周视图只是「7 格横排、格子更高」，不带时间轴；
+ *  手机的周视图 v1.14.1 起是一天一行竖着排（见下面 isMobile 那一支） */
 type CalMode = "month" | "week";
 const MODE_KEY = "acorn-calendar-mode";
 function loadMode(): CalMode {
@@ -124,7 +163,6 @@ export default function Calendar() {
     }
   };
   const maxShown = mode === "week" ? MAX_SHOWN_WEEK : MAX_SHOWN_MONTH;
-  const maxDots = mode === "week" ? MAX_DOTS_WEEK : MAX_DOTS_MONTH;
   const [dropYmd, setDropYmd] = useState<string | null>(null);
   const [quickYmd, setQuickYmd] = useState<string | null>(null);
   const [quickText, setQuickText] = useState("");
@@ -317,16 +355,77 @@ export default function Calendar() {
             const hidden = open.length - shownOpen.length + (done.length - shownDone.length);
             // 周视图里七天全是「这一周的」，不发灰；月视图才把补齐用的邻月日子压暗
             const inMonth = mode === "week" || ymd.slice(0, 7) === anchor.slice(0, 7);
-            // 手机（v1.12.1）：一格只画「日期 + 最多几颗点」，不塞文字、不画补记框、不拖放——
-            // 事情叫什么名字全由网格底下常驻的那块列表交代。点一格就是切到这一天。
+            // 手机：两种视图两副长相，都不画补记框、不拖放（那是桌面的事）。
+            //   · 月视图（v1.12.1）：一格只有「日期 + 最多三颗点」，不塞文字——
+            //     51px 宽的格子里标题只写得下一个字，事情叫什么由网格底下那块列表交代；
+            //   · 周视图（v1.14.1）：一天一整行，横向宽度一下子从 51px 变成两百多，
+            //     写得下标题，所以直接把事情的名字写出来。
+            // 两边点一格都是切到这一天。
             // 逾期 = 这天已经过去了还没做完：过去的日子里所有还开着的事都是逾期的
             if (isMobile) {
               const late = cmpYMD(ymd, today) < 0;
+              const shownDay = picked ?? today;
+              // 周视图（v1.14.1）：一天一行竖着排，像别家日历的周视窗——
+              // 左边日期（几号 + 周几，今天是实心圆）、中间这天的事（真写名字）、右边数量。
+              // PM v1.13.0 真机原话：「日历里面的周视窗不对，我想要的是竖着的……
+              // 能够显示有多少任务，甚至部分文字显示」。原来那版是七列拍成七行的 48px 窄条，
+              // 只有日期圆和几颗点，一眼看不出这天到底是什么事。
+              // 放不放得下字是量出来的：标题那一栏 360 宽 224px、390 宽 254px、430 宽 294px，
+              // 13px 的汉字一个正好 13px，也就是 17 / 19 / 22 个字——够说清一件事，
+              // 所以这一版写文字，没退回 PM 兜底说的「不够就只显示数量」
+              if (mode === "week") {
+                const { lines, rest } = weekLines(open, done, late, MAX_WEEK_LINES);
+                // 右边那两个数跟 weekLines 一个口径：**数行，不按件去重**。
+                // 一屏之内三处必须对得上——行里列出来的 + 「+N」= 右边两个数之和 = 底下清单的行数。
+                // （手机月视图那几颗绿点数的也是行：dayDots 收的就是 done.length。
+                //   胶囊上那句「N 件」是另一个口径、也明写着「件」，两者不冲突）
+                const doneN = done.length;
+                return (
+                  <div
+                    key={ymd}
+                    className={`cal-cell cal-wrow${shownDay === ymd ? " cal-picked" : ""}`}
+                    onClick={() => setPicked(ymd)}
+                  >
+                    <span className="cal-wdate">
+                      <span className={`cal-num${ymd === today ? " today" : ""}`}>
+                        {Number(ymd.slice(8, 10))}
+                      </span>
+                      <span className="cal-wd">周{WEEK_HEAD[(dayOfWeek(ymd) + 6) % 7]}</span>
+                    </span>
+                    {/* 选中的那一行不画预览：它的完整清单就紧挨在网格下面那块里，
+                        同一屏摆两遍是重复（任务书原话「别让同一屏出现两份重复的当天列表」）。
+                        左边的日期和右边那两个数照旧留着，这一行仍然看得出「今天有几件」 */}
+                    <span className="cal-wpeek">
+                      {shownDay === ymd ? null : lines.map((l, i) => (
+                        <span key={l.key} className={`cal-wline${l.kind === "ok" ? " done" : ""}`}>
+                          <i className={`cal-dot ${l.kind}`} />
+                          <span className="cal-wtitle">{l.title || "（未命名）"}</span>
+                          {/* 「+N」挂在最后一行末尾：另起一行会把钉死的行高撑破 */}
+                          {i === lines.length - 1 && rest > 0 && <span className="cal-wmore">+{rest}</span>}
+                        </span>
+                      ))}
+                    </span>
+                    <span className="cal-wn">
+                      {open.length > 0 && (
+                        <span className="cal-wnum">
+                          <i className={`cal-dot ${late ? "late" : "plan"}`} />
+                          {open.length}
+                        </span>
+                      )}
+                      {doneN > 0 && (
+                        <span className="cal-wnum">
+                          <i className="cal-dot ok" />
+                          {doneN}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              }
               const dots = dayDots(
                 { late: late ? open.length : 0, plan: late ? 0 : open.length, ok: done.length },
-                maxDots,
+                MAX_DOTS_MONTH,
               );
-              const shownDay = picked ?? today;
               return (
                 <div
                   key={ymd}
@@ -460,7 +559,9 @@ export default function Calendar() {
 
         {/* 手机（v1.12.1）：网格底下**常驻**「这一天」的列表。默认今天，点别的格子切过去，
             永远有东西可看——下半屏是内容不是空白（PM：「下面的留白不符合审美」）。
-            行走 MobileRow：点一行拉出任务详情那张纸，左右滑、长按都跟今天页一样 */}
+            行走 MobileRow：点一行拉出任务详情那张纸，左右滑、长按都跟今天页一样。
+            周视图（v1.14.1）也留着它，两块不重复：上面那七行是**最多两条的预览**（截断 + 「+N」），
+            这一块才是能点能滑的完整清单，同一天的事在这儿才有完整标题和全部操作 */}
         {isMobile &&
           (() => {
             const day = picked ?? today;

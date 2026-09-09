@@ -17,7 +17,7 @@ import { navigate, useApp } from "../core/store";
 import type { ViewId } from "../core/store";
 import { openSheet } from "./sheetStore";
 import MobileMore from "../views/MobileMore";
-import { IcoDone, IcoHabits, IcoMore, IcoPlan, IcoPlus, IcoToday } from "./icons";
+import { IcoHabits, IcoMore, IcoPlan, IcoPlus, IcoQuad, IcoToday } from "./icons";
 import "../styles/mobile-shell.css";
 
 /** 底部那五格。**固定五项**——常驻位再多一个就谁都记不住了。
@@ -25,12 +25,16 @@ import "../styles/mobile-shell.css";
  *  v1.11.1 起那个「随手」记东西的常驻位撤了（用户原话：「手机版没必要，那个加号标签就能记」）：
  *  记一条走右下角那颗 ＋，一个入口就够了。v1.11.2 把这条走完——手机上那个词一处都不留了，
  *  没归清单的事在「计划」「今天」「日历」里照常排着，一条都没少。
- *  空出来的那格给「习惯」——它是每天都要点开打卡的，收在「更多」里等于逼人每天多点两下。 */
+ *  空出来的那格给「习惯」——它是每天都要点开打卡的，收在「更多」里等于逼人每天多点两下。
+ *
+ *  v1.14.1「已完成」和「四象限」对调（用户原话：「四象限跟已完成换位置，已完成收进去」）：
+ *  常驻位该留给**还要动手的地方**。四象限是排轻重缓急的，天天要看；已完成是回头看的，
+ *  一周想不起来点几次——它现在在「更多」页那四宫格里，一步就到。 */
 const TABS = [
   { id: "today", label: "今天", Icon: IcoToday },
   { id: "habits", label: "习惯", Icon: IcoHabits },
   { id: "plan", label: "计划", Icon: IcoPlan },
-  { id: "done", label: "已完成", Icon: IcoDone },
+  { id: "quadrant", label: "四象限", Icon: IcoQuad },
 ] as const;
 
 /** 这几页上不出现「记一条」：它们要么是回头看的（已完成 / 统计 / 回收站 / 日历），
@@ -38,7 +42,11 @@ const TABS = [
  *
  *  v1.11.2 把「习惯」从这张表里拿掉了：用户看到那一页没有 ＋，第一反应是
  *  「那个加号被遮住了是什么问题」——一颗每页都在的按钮突然缺席，读起来是坏了，不是没有。
- *  现在习惯页也有 ＋，只是它加出来的是**一个习惯**（拉 HabitSheet），不是一条任务 */
+ *  现在习惯页也有 ＋，只是它加出来的是**一个习惯**（拉 HabitSheet），不是一条任务。
+ *
+ *  v1.14.1 换位置之后这张表一个字没动，但两头的道理要说清楚：「已完成」离开了底部导航
+ *  仍然在这张表里（它是从「更多」进去的，性质没变，还是回头看的地方）；「四象限」进了
+ *  底部导航也仍然不在表里（那儿是排轻重缓急的地方，记一条落得下）。 */
 const NO_FAB: ViewId[] = ["done", "calendar", "settings", "stats", "trash"];
 
 export default function MobileShell({ children }: { children: ReactNode }) {

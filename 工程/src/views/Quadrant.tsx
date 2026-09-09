@@ -3,14 +3,15 @@
 // 两端两种身份：
 //   · 桌面：2026-08-28 起它是「计划」里的一种看法（见 views/Plan.tsx），标题栏归 Plan 管，
 //     这个文件只画格子本身。
-//   · 手机（2026-09-03）：它自己就是一页，从「更多」里那一格进。手机顶栏放不下
-//     「列表 / 四象限」两个 tab——那两个 tab 挤在标题下面，既难点、也看不出是两种东西。
+//   · 手机（2026-09-03）：它自己就是一页。手机顶栏放不下「列表 / 四象限」两个 tab——
+//     那两个 tab 挤在标题下面，既难点、也看不出是两种东西。
 //     独立成页之后它得自己带 MobileHead：顶部安全区只在那儿留了一份，漏了就顶到状态栏底下。
+//     v1.14.1 起这一页从底部导航第四格进（原来在「更多」里），**不再带返回箭头**——理由见下面手机分支。
 import { useMemo, useState } from "react";
 import type { Task } from "../core/model";
 import { addDays, cmpYMD, formatShort, todayYMD } from "../core/dates";
 import {
-  aliveTasks, byPriorityThenOrder, completeTask, expandTask, navigate,
+  aliveTasks, byPriorityThenOrder, completeTask, expandTask,
   setTasksDue, updateTask, useApp,
 } from "../core/store";
 import { isMobile } from "../core/platform";
@@ -130,14 +131,16 @@ export default function QuadrantBoard() {
     </div>
   );
 
-  // 手机：自己一页，自己带顶栏。「返回」回今天——手机上没有「上一页」这回事（跟清单页同一条）
+  // 手机：自己一页，自己带顶栏。**没有返回箭头**——v1.14.1 起它是底部导航第四格，
+  // 跟今天 / 习惯 / 计划一样是「常驻的地方」，不是从哪儿点进来的子页。常驻页画一颗返回，
+  // 点下去只会莫名其妙跳到「今天」，而底下那一格还高亮着说你就在这儿。
+  // （「更多」里那四项——日历 / 已完成 / 统计 / 回收站——才是子页，那四页各带各的返回。）
   if (isMobile) {
     return (
       <section className="main">
         <MobileHead
           title="四象限"
           sub="按重要和紧急分四格"
-          onBack={() => navigate("today")}
           search={false}
         />
         {board}

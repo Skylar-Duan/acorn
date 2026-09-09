@@ -251,7 +251,7 @@ describe("aliveSubtasks 在各处生效：回收站里的那步哪儿都不出�
       sub("s3", "还欠着"),
       sub("s4", "欠着但删了", { deletedAt: OLD }),
     ];
-    const { open, done } = splitSubtasks(subs);
+    const { open, done } = splitSubtasks(subs, { due: null, dueTime: null });
     expect(open.map((s) => s.id)).toEqual(["s3"]);
     expect(done.map((s) => s.id)).toEqual(["s1"]);
     // 三条做完的里有一条删了 → 只剩两条，不够折叠的阈值
