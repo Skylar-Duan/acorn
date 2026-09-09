@@ -267,6 +267,9 @@ export async function downloadPackage(
  *   下好的包时会遇到，调用方当场重新下一遍，不算失败。
  * - `"handed-off"`：安装器已经起来了，**但橡果还在跑**。
  * - `"cancelled"`：用户在交接之前点了「稍后再说」，什么都没发生。
+ * - `"install-failed"`：（安卓，v1.14.2 起）系统**真的动手装了、没装成，而且告诉了我们为什么**。
+ *   这一种不是 installPackage 当场返回的——交接那一刻还没结果，是后来 watchInstallResult
+ *   问出来的终态（状态码 + 系统原话）。调用方拿它去点亮界面上那行可截图的小字。
  *
  * 没有「装好了」这一种，因为装好了这个进程早就不在了，没人接得到返回值。
  * 换句话说：只要这个函数返回了，界面就必须把出口还给用户——
@@ -274,7 +277,13 @@ export async function downloadPackage(
  * 桌面上 exit_app 也可能没生效。以前这里返回 true 就让界面停在「安装中」，
  * 用户回到橡果看到的是一个一个按钮都没有的全屏遮罩，只能强杀进程。
  */
-export type InstallOutcome = "failed" | "needs-permission" | "missing" | "handed-off" | "cancelled";
+export type InstallOutcome =
+  | "failed"
+  | "needs-permission"
+  | "missing"
+  | "handed-off"
+  | "cancelled"
+  | "install-failed";
 
 /**
  * 最近一次交接失败时系统报的原话（Rust 或安卓插件抛上来的那一句）；null = 上一次没失败。
@@ -284,11 +293,137 @@ export type InstallOutcome = "failed" | "needs-permission" | "missing" | "handed
  */
 export let lastInstallError: string | null = null;
 
+/**
+ * 这一次交接走的哪条路（安卓）。
+ * · `"session"` = PackageInstaller 会话，主路。**只有这条能问到终态**（装成没装成、为什么）。
+ * · `"view"`    = 老的 ACTION_VIEW，兜底。拉起来就完，结果拿不到。
+ * null = 还没交接过，或者这台设备不是安卓。
+ */
+export type InstallVia = "session" | "view";
+
+export let lastInstallVia: InstallVia | null = null;
+
+/** 走兜底那条时，主路是为什么起不来的（系统原话）；null = 没走兜底 */
+export let lastFallbackReason: string | null = null;
+
+/** 走了兜底那条就明说。界面把这句画进小字里——「装上了但走的哪条路」是排查的第一个岔口 */
+export function viaNote(
+  via: InstallVia | null = lastInstallVia,
+  fallback: string | null = lastFallbackReason,
+): string | null {
+  if (via !== "view") return null;
+  return `走的是兜底那条（老式安装界面）：系统的安装会话起不来${fallback ? `——${fallback}` : ""}`;
+}
+
+/** 界面小字默认该显示的那句：先用失败原话，没有就看这次是不是走了兜底那条 */
+export function installWhy(): string | null {
+  return lastInstallError ?? viaNote();
+}
+
 /** 安卓插件 install 命令的回话（见 InstallPlugin.kt） */
 interface InstallReply {
   launched: boolean;
   /** launched=false 时为什么："permission" = 先去开「允许安装未知应用」；"missing" = 递去的包已经不在了 */
   reason?: string;
+  /** launched=true 时走的哪条路："session"（主路）/ "view"（兜底）。老包不带这个字段 */
+  mode?: string;
+  /** mode="view" 时：主路为什么没走成（系统原话） */
+  fallback?: string;
+}
+
+/**
+ * 系统对上一次安装会话的终态（见 InstallPlugin.kt 的 lastResult / Rust 的 install_status）。
+ *
+ * `code` 是 PackageInstaller 那几个状态码的名字（STATUS_FAILURE_BLOCKED 之类），
+ * `message` 是系统的 EXTRA_STATUS_MESSAGE 原话。两样一起画成一行小字，用户截图我们就能查。
+ */
+export interface InstallStatus {
+  status: number;
+  code: string;
+  ok: boolean;
+  message: string;
+}
+
+type StatusReply = Partial<InstallStatus> & { done?: boolean };
+
+/** 问一次「上一次那个包装成了没」。还没有结果、问不到、不是安卓，一律 null（不给红字） */
+export async function readInstallStatus(): Promise<InstallStatus | null> {
+  if (!isAndroid) return null;
+  try {
+    const r = await inv<StatusReply | null>("install_status");
+    if (!r || r.done !== true) return null;
+    return {
+      status: typeof r.status === "number" ? r.status : 0,
+      code: typeof r.code === "string" && r.code !== "" ? r.code : "STATUS_UNKNOWN",
+      ok: r.ok === true,
+      message: typeof r.message === "string" ? r.message : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 隔多久问一次终态 */
+export const INSTALL_POLL_MS = 1500;
+/** 最多问多少次（1.5 秒 × 200 ≈ 5 分钟）。人在系统确认页上磨蹭再久也够了 */
+export const INSTALL_POLL_TRIES = 200;
+
+/**
+ * 盯着系统的安装结果，拿到终态就返回；一直没有就返回 null。
+ *
+ * 为什么是「问」不是「等推送」：装成功的那一刻系统会把橡果这个进程整个换掉，推也推不到；
+ * 而失败时用户会退回橡果——这条命令在 App 被系统杀掉又重开之后照样答得上来。
+ *
+ * `stillOn`：这一轮还算不算数（用户取消了 / 又点了一次 / 界面已经卸载）。
+ * `wait` 和 `tries` 只为可测：测试里换成「立刻返回」，免得挂着一个五分钟的定时器。
+ */
+export async function watchInstallResult(
+  stillOn: () => boolean = () => true,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  tries: number = INSTALL_POLL_TRIES,
+): Promise<InstallStatus | null> {
+  if (!isAndroid) return null;
+  for (let i = 0; i < tries; i++) {
+    await wait(INSTALL_POLL_MS);
+    if (!stillOn()) return null;
+    const st = await readInstallStatus();
+    if (st !== null) return st;
+  }
+  return null;
+}
+
+/**
+ * 状态码翻成一句人话。查不到对应的就给空串——那时界面只显示状态码和系统原话，
+ * 照样能截图发给我们，比一句「装不上」强得多。
+ */
+export function installFailureSay(code: string): string {
+  switch (code) {
+    case "STATUS_FAILURE_ABORTED":
+      return "安装被中止了——多半是在系统那个确认页上点了取消，也可能是手机管家替你按的。";
+    case "STATUS_FAILURE_BLOCKED":
+      return "手机的安全策略把这次安装挡下了（常见于「手机管家」「纯净模式」这类拦截）。";
+    case "STATUS_FAILURE_CONFLICT":
+      return "和这台手机上已经装着的橡果对不上（多半是签名不一样），先把旧的卸掉再装。";
+    case "STATUS_FAILURE_INCOMPATIBLE":
+      return "这个安装包和这台手机不匹配（系统版本或处理器架构对不上）。";
+    case "STATUS_FAILURE_INVALID":
+      return "安装包本身有问题（多半没下完整），重新下一次再装。";
+    case "STATUS_FAILURE_STORAGE":
+      return "手机存储空间不够，腾一点再装。";
+    case "STATUS_PENDING_USER_ACTION":
+    case "CONFIRM_NOT_LAUNCHED":
+      return "系统的安装确认页没能弹出来。";
+    case "STATUS_FAILURE":
+      return "系统没能装上，也没说清原因。";
+    default:
+      return "";
+  }
+}
+
+/** 可截图的那一行：状态码 + 系统原话。界面画成「（原因：…）」那行小字 */
+export function installStatusText(s: InstallStatus): string {
+  const head = `安装没成：${s.code}（状态码 ${s.status}）`;
+  return s.message ? `${head}｜系统原话：${s.message}` : head;
 }
 
 /** 把抛上来的东西变成一句能念的话。Rust 的 Err(String) 到这儿是裸字符串，不是 Error */
@@ -308,8 +443,11 @@ export const EXIT_GRACE_MS = 4000;
 /**
  * 把包交给系统安装器。
  *
- * 安卓走 App 自己的安卓插件（gen/android/.../com/cdpandas/acorn/InstallPlugin.kt，命令 install_apk）：
- * 它用 FileProvider 把缓存目录里的文件变成 content:// URI、带上 APK 的 mime 再拉起系统安装界面。
+ * 安卓走 App 自己的安卓插件（gen/android/.../com/cdpandas/acorn/InstallPlugin.kt，命令 install_apk）。
+ * **v1.14.2 起主路是 PackageInstaller 会话**：插件自己开会话、写字节、commit，系统事后把
+ * 状态码和原因广播回来（这里返回之后由 watchInstallResult 问出终态）。老的 ACTION_VIEW 留作兜底：
+ * 那条只是「把包丢给系统的安装器 Activity」，各家定制系统各有拦截，而且**失败了什么都拿不到**，
+ * v1.13/v1.14 装不上就是查不下去。走了兜底那条时 lastInstallVia = "view"，界面小字会说明。
  * **不能走官方 opener 插件的 openPath**：它的安卓实现只有一个 `open(url)`，拿到裸文件路径就直接
  * ACTION_VIEW，既没有 content:// 也没有 mime，系统找不到能开它的 Activity——v1.12.0 之前手机上
  * 「这台手机无法直接启动安装界面」每一台都会出，就是这个原因。
@@ -341,9 +479,16 @@ export async function installPackage(
 ): Promise<InstallOutcome> {
   if (!stillOn()) return "cancelled"; // 还没动手，说停就停
   lastInstallError = null;
+  lastInstallVia = null;
+  lastFallbackReason = null;
   try {
     if (isAndroid) {
       const reply = await inv<InstallReply>("install_apk", { path });
+      if (reply?.launched) {
+        // 走的哪条路：主路（能问到终态）还是兜底（拉起来就完）。老包不带 mode，当不知道处理
+        lastInstallVia = reply.mode === "session" ? "session" : reply.mode === "view" ? "view" : null;
+        lastFallbackReason = typeof reply.fallback === "string" && reply.fallback !== "" ? reply.fallback : null;
+      }
       if (!reply?.launched) {
         // 系统那个「允许安装未知应用」还没开：插件已经把人送到开关那儿了，这儿什么都没装
         if (reply?.reason === "permission") return "needs-permission";

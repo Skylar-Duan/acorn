@@ -87,7 +87,10 @@ export default function UpdateDialog() {
           </p>
         )}
         {run.phase === "handed-off" && <p className="update-note">{HANDOFF_MSG}</p>}
+        {/* 三行各干一件事，顺序就是人读的顺序：红字说「怎么办」、note 说「发生了什么」（人话）、
+            why 说「状态码 + 系统原话」（可截图）。装失败时三行一起出现 */}
         {run.err && <p className="update-err">{run.err}</p>}
+        {run.note && <p className="update-note">{run.note}</p>}
         {/* 系统报的原话，小字：在真机上看到这一行就能把原因原样念给我们，不用再猜是哪台手机的问题 */}
         {run.why && (
           <p className="update-note">
@@ -95,7 +98,6 @@ export default function UpdateDialog() {
             <span className="update-hint" style={{ overflowWrap: "anywhere" }}>（原因：{run.why}）</span>
           </p>
         )}
-        {run.note && <p className="update-note">{run.note}</p>}
         {fb && <p className="update-note">{fallbackText(fb, info)}</p>}
 
         <div className="update-foot">

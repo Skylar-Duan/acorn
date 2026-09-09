@@ -733,20 +733,31 @@ fn run_installer(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 安卓：把下好的 APK 交给系统安装器（App 自己的安卓插件 InstallPlugin.kt）。
+/// 安卓：把下好的 APK 装上（App 自己的安卓插件 InstallPlugin.kt）。
 ///
-/// 为什么不能用 opener 插件的 openPath：它的安卓实现只有一个 `open(url)`，拿到缓存目录里的
+/// **v1.14.2 起主路是 PackageInstaller 会话 API**：插件自己开一个安装会话、把 APK 字节写进去、
+/// commit，系统再把**带状态码和原因**的结果广播回来（终态用下面的 install_status 取）。
+/// 换掉的是老的 `Intent(ACTION_VIEW)`——那条路只是「把包丢给系统的安装器 Activity」，
+/// 各家定制系统各有拦截，而且**失败了我们什么都拿不到**（Activity 起来了就算成功），
+/// 用户只能说「装不上」，我们只能猜。会话 API 起不来时插件仍会退回 ACTION_VIEW 兜底。
+///
+/// 为什么两条都不能用 opener 插件的 openPath：它的安卓实现只有一个 `open(url)`，拿到缓存目录里的
 /// 裸文件路径就直接 `Intent(ACTION_VIEW, path.toUri())`——既没有 content:// 也没有 mime，
 /// 系统找不到能开它的 Activity，每一台手机都失败（v1.12.0 之前 App 内安装从来没成功过，就是这个原因）。
-/// InstallPlugin 走 FileProvider 出 content:// URI、带上 APK 的 mime 再拉起安装界面；
-/// 系统还没允许橡果装应用时，先把用户送到那个开关，回 `{ "launched": false, "reason": "permission" }`。
 ///
+/// 系统还没允许橡果装应用时，插件先把用户送到那个开关，回 `{ "launched": false, "reason": "permission" }`。
 /// 递过去的包不在缓存里了（复用上次下好的包、但系统清过缓存）回 `{ "launched": false, "reason": "missing" }`，
 /// 前端据此当场重新下载，不算失败。
 ///
-/// 回话原样透给前端：`{ "launched": true }` 或上面那两个。插件里任何异常都以 Err(字符串) 回来，
-/// 启动时插件压根没注册上（类没编进包）也是 Err(字符串)、原话里带注册失败的原因——
-/// 前端把它画成小字，用户能把真实原因原样念给我们，不用再猜是哪台手机的问题。
+/// 插件那头**不在安卓主线程上干活**：开会话之后要把 13MB 的 APK 整个拷进去再 fsync，
+/// 主线程卡住就是界面全不响应、极端情况「橡果无响应」。所以它只在主线程做两个便宜的检查，
+/// 其余丢给自己的工作线程，回话由那条线程发。这里照旧阻塞等回话（run_mobile_plugin 本来就是等），
+/// 等在哪个线程它不关心。
+///
+/// 回话原样透给前端：`{ "launched": true, "mode": "session" | "view", … }` 或上面那两个。
+/// 插件里任何异常都以 Err(字符串) 回来，启动时插件压根没注册上（类没编进包）也是 Err(字符串)、
+/// 原话里带注册失败的原因——前端把它画成小字，用户能把真实原因原样念给我们，
+/// 不用再猜是哪台手机的问题。
 ///
 /// 不加 `#[cfg(target_os = "android")]`：invoke_handler 那张表两端共用。桌面上前端不会调它，真调到只报错。
 /// 写成 async：run_mobile_plugin 要阻塞等安卓那边回话，别占着主线程。
@@ -767,6 +778,39 @@ async fn install_apk(app: AppHandle, path: String) -> Result<serde_json::Value, 
     {
         let _ = (app, path);
         Err("只有安卓才走这条".into())
+    }
+}
+
+/// 安卓：问一句「上一次交给系统的那个包，装成了没」。
+///
+/// PackageInstaller 的终态是**异步**回来的（系统广播 → 插件里那个运行时注册的接收器），
+/// 交接那一刻还不知道结果，所以前端在「已交给系统安装器」之后按秒来问这一条。
+///
+/// 回话：`{ "done": false }` = 还没有结果（系统那个确认页多半还开着）；
+/// `{ "done": true, "ok": bool, "status": 数字, "code": "STATUS_FAILURE_BLOCKED", "message": "系统原话" }`。
+/// **状态码和系统原话一起带上**：界面把它画成一行小字，用户截图发过来就能查是哪一类失败，
+/// 不用再靠「装不上」三个字猜三个版本。
+///
+/// 装成功的那一刻系统会把橡果这个进程换掉，所以问到的几乎都是失败——而那正是我们要的。
+///
+/// 拿不到（没注册上 / 插件报错）一律 Err(字符串)，前端当「还没有结果」处理，不给红字。
+/// 跟 install_apk 一样不加 cfg：invoke_handler 那张表两端共用，桌面上回 null。
+#[tauri::command]
+async fn install_status(app: AppHandle) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        let h = app.state::<InstallHandle<tauri::Wry>>();
+        return match &h.0 {
+            Ok(plugin) => plugin
+                .run_mobile_plugin::<serde_json::Value>("lastResult", serde_json::json!({}))
+                .map_err(|e| e.to_string()),
+            Err(why) => Err(format!("这个安装包里没带安卓的安装组件（{why}）")),
+        };
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(serde_json::Value::Null)
     }
 }
 
@@ -982,6 +1026,7 @@ pub fn run() {
             save_download_raw,
             run_installer,
             install_apk,
+            install_status,
             is_smoke,
             write_smoke_report,
             exit_app,

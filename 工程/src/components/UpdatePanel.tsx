@@ -139,10 +139,12 @@ export default function UpdatePanel() {
         </>
       )}
 
+      {/* 三行各干一件事，顺序就是人读的顺序：红字说「怎么办」、note 说「发生了什么」（人话）、
+          why 说「状态码 + 系统原话」（可截图）。装失败时三行一起出现 */}
       {run.err && <p className="acct-err">{run.err}</p>}
+      {run.note && <p className="hint">{run.note}</p>}
       {/* 系统报的原话，小字：拿着这一行就能查，不用再猜是哪台手机的问题 */}
       {run.why && <p className="hint" style={{ overflowWrap: "anywhere" }}>（原因：{run.why}）</p>}
-      {run.note && <p className="hint">{run.note}</p>}
     </div>
   );
 }

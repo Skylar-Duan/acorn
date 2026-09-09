@@ -5,6 +5,18 @@
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
 
+## v1.14.2 · 2026-09-09
+
+> 用户放行安卓那条后单独一路（Workflow + 挑刺复核 + 回炉），把「手机版更新无法自动安装」真正修掉；顺带把 v1.14.1 那批手机端改动一起带上手机。
+
+- **安卓 App 内安装改走 `PackageInstaller` 会话**（`src-tauri/android/InstallPlugin.kt` 95→458 行）：`SessionParams(MODE_FULL_INSTALL)` → `createSession` → `openWrite`（写完 `fsync`）→ `commit(PendingIntent)`；回执用**运行时注册**的 BroadcastReceiver（`ContextCompat.registerReceiver` + `RECEIVER_NOT_EXPORTED`，不改 manifest）；`STATUS_PENDING_USER_ACTION` 拉起系统确认页；终态带 `EXTRA_STATUS` + `EXTRA_STATUS_MESSAGE` 原话回前端。原 `ACTION_VIEW` 留作兜底（主路抛异常才走，界面标明「走的是兜底那条」）。
+  根因：`ACTION_VIEW` 只是「把 APK 丢给系统安装器」，Activity 起了就算成功，**装没装成、为什么没成，App 一无所知**——所以此前三次都修不到点上。
+- 复核挑出并回炉的 5 条：① **major** 整条会话（含 13MB 拷贝）跑在安卓 UI 主线程 → 挪进单线程 Executor，外层 catch 收 `Throwable`（工作线程漏异常 = 前端 await 永不返回）；② 注册接收器改走 `ContextCompat`（API 33 以下裸注册对外开放，别的应用能伪造终态）；③ 接收器/终态/会话号提到 companion（进程级），Activity 重建也丢不了结果；④ 回执按 `EXTRA_SESSION_ID` 认领、开新轮前先 `abandon` 上一轮（连点两次不会张冠李戴）；⑤ 验证包改名 `DO-NOT-SHIP`，避免误发。
+- 前端：`InstallOutcome` 加 `install-failed`；`watchInstallResult` 轮询终态（1.5s × 200 ≈ 5 分钟）；`installStatusText()` 把「状态码 + 名字 + 系统原话」压成可截图的一行；`installFailureSay()` 把状态码翻成人话；成功清掉已下好的包，`INVALID` 也清（包本身坏），其余保留供重试。
+- `scripts/android-dexcheck.py` 加字符串断言（`android.content.pm.extra.STATUS/STATUS_MESSAGE/SESSION_ID`、会话 action、`install_status`/`lastResult`），少一条就不收包。
+- 版本 1.14.2；测试 56 文件 1791 条全绿；桌面与安卓两个包一起发。
+- **真机未验**（本机无安卓设备）：只做到「编得过 + 类与 @Command 方法真在 dex 里 + 逻辑对照 Android 文档」。装不上时红字下那行灰字就是给 PM 截图用的。
+
 ## v1.14.1 · 2026-09-09
 
 > 把 PM 账本里「橡木开发」逾期的那批做完（安卓 App 内安装那条他叫停了，没动）。Workflow 六路并行 + 逐路挑刺复核 + 硬伤回炉。

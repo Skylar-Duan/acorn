@@ -6,7 +6,7 @@
 // 底线跟同步一样：**查更新绝不能挡住启动**。调用方一律 void 不 await，
 // 没网就报一条小消息，本地照常用。
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { showToast } from "./store";
@@ -14,8 +14,9 @@ import { todayYMD } from "./dates";
 import { APP_VERSION } from "./model";
 import { isAndroid } from "./platform";
 import {
-  downloadPackage, fetchUpdate, installPackage, isCancelled, lastInstallError, shouldOffer,
-  updaterSupported, type InstallOutcome, type UpdateInfo,
+  downloadPackage, fetchUpdate, installFailureSay, installPackage, installStatusText, installWhy,
+  isCancelled, lastInstallVia, shouldOffer, updaterSupported, watchInstallResult,
+  type InstallOutcome, type UpdateInfo,
 } from "./updater";
 
 /**
@@ -331,6 +332,20 @@ export const HANDOFF_MSG = isAndroid
 export const NEEDS_PERMISSION_MSG =
   "系统要先允许橡果安装应用。已经跳到那个开关，打开后回来再点一次「下载并安装」。";
 
+/**
+ * （安卓 v1.14.2 起）系统**真的动手装了、但没装成**时说的话。
+ *
+ * 跟 INSTALL_FALLBACK_MSG 分得很清：那句说的是「安装界面压根没起来」，这句说的是
+ * 「起来了、系统把它拒了」，出路也不一样——前者只能改用浏览器，后者多半再点一次就成。
+ * 最后一句是给我们自己留的：以前用户只能说「装不上」，现在他截那一行就够了。
+ */
+export const INSTALL_FAILED_MSG =
+  "系统没能把这一版装上。可以再点一次「重试」；还是不行就用下面的按钮在浏览器里下载、手动安装。" +
+  "把下面「原因：」那一行截图发给我们，就能查出是哪一步被挡住了。";
+
+/** 装成功了、而橡果居然还活着时说的话（正常情况下这个进程早被系统换掉了，看不到这句） */
+export const INSTALL_DONE_MSG = "新版本已经装好了。";
+
 /** 交接之后界面该停在哪儿。抽成纯函数是为了测得到：这里每一个分支都对应
  *  「用户回到橡果时还点不点得动东西」，卡死过一次的就是这一段 */
 export interface RunRest {
@@ -343,12 +358,25 @@ export interface RunRest {
   note: string | null;
 }
 
-/** `why` 默认取最近一次交接失败的原话（lastInstallError）；测试里可以直接递 */
-export function afterInstall(outcome: InstallOutcome, why: string | null = lastInstallError): RunRest {
+/**
+ * `why` 默认取最近一次交接的原话：失败了就是失败原话（lastInstallError），
+ * 没失败但走了兜底那条就说明这件事（viaNote）——两样都由 installWhy() 算。测试里可以直接递。
+ * `say` 只有 "install-failed" 用得上：状态码翻出来的那句人话。
+ */
+export function afterInstall(
+  outcome: InstallOutcome,
+  why: string | null = installWhy(),
+  say: string | null = null,
+): RunRest {
   // "missing" 正常到不了这儿（start 里复用的包不见了会当场重下）；万一刚下好的包转眼就没了，
   // 按失败报、原因在 why 里
   if (outcome === "failed" || outcome === "missing") {
     return { phase: "failed", manual: true, err: INSTALL_FALLBACK_MSG, why, note: null };
+  }
+  // 系统真的装了、没装成，而且这回它说了为什么：三行各干一件事——
+  // 红字说「怎么办」、note 说「发生了什么」（人话）、why 说「状态码 + 系统原话」（可截图）
+  if (outcome === "install-failed") {
+    return { phase: "failed", manual: true, err: INSTALL_FAILED_MSG, why, note: say };
   }
   // 系统还没允许橡果装应用：人已经被送到那个开关了，这儿什么都没坏，
   // 安安静静回 idle 摆一句说明，等他开完回来再点一次
@@ -357,11 +385,21 @@ export function afterInstall(outcome: InstallOutcome, why: string | null = lastI
   }
   // 交接前叫停了：什么都没发生，安安静静回到原样，不留红字也不给备用方案
   if (outcome === "cancelled") return { phase: "idle", manual: false, err: null, why: null, note: null };
-  // 装没装成只有用户知道，所以既不报错也不停在「安装中」：把出口全摆出来
-  return { phase: "handed-off", manual: true, err: null, why: null, note: null };
+  // 交出去了。装没装成这一刻还不知道（安卓主路会在后面问出来），所以既不报错也不停在「安装中」：
+  // 把出口全摆出来。why 这时不是错误，而是「走的是兜底那条」那句说明——没走兜底就是 null
+  return { phase: "handed-off", manual: true, err: null, why, note: null };
 }
 
-export function useUpdateRun() {
+/**
+ * 盯安装终态的节奏。默认走真表（1.5 秒问一次、最多五分钟）；
+ * 测试里换成「立刻返回、只问几次」，免得挂着一个五分钟的定时器。
+ */
+export interface WatchOpts {
+  wait?: (ms: number) => Promise<void>;
+  tries?: number;
+}
+
+export function useUpdateRun(watchOpts: WatchOpts = {}) {
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [pct, setPct] = useState(0);
   const [got, setGot] = useState(0);
@@ -378,6 +416,18 @@ export function useUpdateRun() {
    *  取消完立刻再点一次「下载并安装」的话，上一轮的 reject 会晚一步到，
    *  没有这道闸门它就会把新一轮的「下载中」按回 idle，进度条从此不动 */
   const runIdRef = useRef(0);
+  /** 盯终态的节奏。放进 ref 是因为 start 是 useCallback([])，直接闭包会永远用第一次渲染那份 */
+  const watchRef = useRef(watchOpts);
+  watchRef.current = watchOpts;
+
+  // 组件没了就把这一轮作废。盯安装终态那个循环靠 mine() 退出——不作废的话它会自己转满五分钟，
+  // 还会对着已经卸载的组件 setState
+  useEffect(
+    () => () => {
+      runIdRef.current += 1;
+    },
+    [],
+  );
 
   /** 中止这次下载，回到什么都没发生的样子。
    *  下载 27MB 要走一会儿，中途一定得有一条走得掉的路——这条路以前根本不存在 */
@@ -418,6 +468,29 @@ export function useUpdateRun() {
     const onLaunched = () => {
       if (mine()) setPhase("launching");
     };
+    /**
+     * 交出去之后守着系统的回话（只在安卓主路）。这是 v1.14.2 的重点：
+     * 以前装失败了界面什么都不知道，用户只能说「装不上」。现在拿到状态码就当场摆出来。
+     */
+    const settle = async (still: () => boolean) => {
+      const st = await watchInstallResult(still, watchRef.current.wait, watchRef.current.tries);
+      if (st === null || !still()) return;
+      if (st.ok) {
+        // 极少走到：装成功系统会把橡果换掉。真走到了就把包清掉、说一句
+        forgetReadyPackage();
+        setNote(INSTALL_DONE_MSG);
+        return;
+      }
+      // 只有「包本身坏了」才把它忘掉（下次老老实实重下）。被拦下 / 被取消时包是好的，
+      // 留着让人一键重试——重下 12MB 才是真惹人烦
+      if (st.code === "STATUS_FAILURE_INVALID") forgetReadyPackage();
+      const done = afterInstall("install-failed", installStatusText(st), installFailureSay(st.code));
+      setPhase(done.phase);
+      setManual(done.manual);
+      setErr(done.err);
+      setWhy(done.why);
+      setNote(done.note);
+    };
     try {
       let path = ready ?? (await fetchPackage());
       if (!mine()) return; // 已经被取消（或被新的一轮顶掉）：包下好了也不装
@@ -450,6 +523,12 @@ export function useUpdateRun() {
       setErr(rest.err);
       setWhy(rest.why);
       setNote(rest.note);
+      // 安卓主路（PackageInstaller）：包交出去了，终态还在后头。盯着它——
+      // 装成了这个进程会被系统换掉、根本问不到；问得到的基本都是失败，那正是要摆到界面上的东西。
+      // 兜底那条（ACTION_VIEW）没有回执，问也白问，不盯
+      if (isAndroid && rest.phase === "handed-off" && lastInstallVia === "session") {
+        void settle(mine);
+      }
     } catch (e) {
       if (!mine()) return; // 作废掉的那一轮，取消时状态已经复位过了
       if (isCancelled(e)) {
