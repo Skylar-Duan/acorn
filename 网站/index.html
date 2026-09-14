@@ -27,7 +27,7 @@
   <div class="wrap with-icon">
     <img class="app-icon" src="assets/icon.svg" alt="橡果 Acorn 应用图标">
     <div>
-      <div class="kicker">Windows 桌面应用 · 免费开源</div>
+      <div class="kicker">Windows 桌面应用 · 网页版 · 免费开源</div>
       <h1>橡果 Acorn</h1>
       <p class="lede">多数待办工具都假设事情是你自己给自己安排的。橡果不是——它记得每件事是<b>谁交办的</b>，侧栏按人分栏，一眼看清欠了哪位同事几件事。</p>
 
@@ -41,8 +41,11 @@
       <p class="meta">当前版本 <span data-release="version">v1.14.3</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
       <div class="cta-row">
         <a class="btn" href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe">↓ 下载 Windows 版</a>
+        <!-- /app/ 是橡果 App 本体（网页版，v1.15.0 起），不是另一张介绍页；
+             它由橡果自己的 publish-web.sh 发到 /var/www/acorn-web/，不走 publish_utility.py -->
+        <a class="btn btn-ghost" href="https://acorn.cdpandas.com/app/">打开网页版</a>
         <a class="btn btn-ghost" href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">查看源码</a>
-        <span class="cta-note">安装包 <span data-release="size">7MB</span>，装的时候不需要管理员权限，装完会自己检查更新</span>
+        <span class="cta-note">安装包 <span data-release="size">7MB</span>，装的时候不需要管理员权限，装完会自己检查更新。网页版不用装，浏览器打开就是同一个橡果，登录同一个邮箱看到的是同一份事。</span>
       </div>
     </div>
   </div>
@@ -99,7 +102,8 @@
 
       <div class="card">
         <h3>电脑和手机同一份事 <span class="tag">可选</span></h3>
-        <p>一个邮箱就能跨设备。新装的设备登录后直接拿到云端那份；这台设备上已经记了事的话，登录时会问你是把两边合起来还是用云端那份。同一件事两边都改过，以改得晚的那次为准。</p>
+        <p>手机上不用装：用 Safari 打开 <a href="https://acorn.cdpandas.com/app/">acorn.cdpandas.com/app/</a>，点底下的「分享」，再选「添加到主屏幕」，它就跟一个 App 一样待在手机桌面上，打开就是橡果。安卓的 Chrome 在右上角菜单里，也是「添加到主屏幕」。</p>
+        <p style="margin-top:8px">一个邮箱就能跨设备。新装的设备登录后直接拿到云端那份；这台设备上已经记了事的话，登录时会问你是把两边合起来还是用云端那份。同一件事两边都改过，以改得晚的那次为准。</p>
         <p style="margin-top:8px">断网、服务器出问题都不影响你继续用，本机那份照常读写。不注册的话跟以前完全一样，一个字都不会往外传。</p>
         <p style="margin-top:8px">登录之后，退出登录会把这台设备上的数据一起清掉，只留云端那一份——清之前橡果会先跟服务器对一次账，没对上就一条都不清。</p>
       </div>

@@ -29,6 +29,26 @@ const appCss = read("src/styles/app.css");
 /** 仓库里 CRLF / LF 混着用，断言不许把行尾当内容的一部分 */
 const nl = (s: string) => s.replace(/\r\n/g, "\n");
 
+/**
+ * 切出一整条规则的身子（含选择器那一行），从行首的 `选择器 {` 一直到行首那个 `}`。
+ *
+ * 🔴 为什么不用 `css.slice(css.indexOf("A"), css.indexOf("B"))`：
+ * 这两个 indexOf 找的是**整份文件里第一次出现**，而 CSS 顶上那几十行注释里
+ * 往往就把后面那些块的名字先说了一遍。结尾锚点撞进注释、排在开头锚点前面时，
+ * JS 的 slice 在 start > end 时一律返回 ""——于是下面每一条 expect 都在对着空串断言，
+ * 恒真，永远绿。v1.15.0 复核就是这么抓到 `:root` 那条 color-mix 断言是假绿的
+ * （":root {" 在 571，"@supports" 撞上第 13 行注释里那三个字，只有 535）。
+ * 这里改成按「行首的选择器 → 行首的右花括号」找，注释里的字缩进着，钉不住行首，撞不进来。
+ */
+const ruleBody = (css: string, selector: string) => {
+  const text = nl(css);
+  const at = text.indexOf(`\n${selector} {\n`);
+  expect(at, `${selector}：这条规则找不着了`).toBeGreaterThan(-1);
+  const end = text.indexOf("\n}", at);
+  expect(end, `${selector}：这条规则没收尾`).toBeGreaterThan(at);
+  return text.slice(at, end + 2);
+};
+
 describe("① 方向 A 的那批 --m-* token：名字和值都不许悄悄改", () => {
   // 名字是**跨文件的约定**：mobile-pages.css（习惯 / 四象限 / 更多）引的就是这几个。
   // 值抄自画板 方案/手机端设计稿/PolishA.dc.html
@@ -64,10 +84,15 @@ describe("① 方向 A 的那批 --m-* token：名字和值都不许悄悄改", 
     // 老 WebView 不认 color-mix 时，写在自定义属性里的值不会「降级到上一条声明」，
     // 而是让**用到它的那条属性整个作废**（invalid at computed-value time）——边框直接消失。
     // 所以 :root 里那套必须是纯 var()/字面值，color-mix 只出现在 @supports 块里
-    const root = mobileCss.slice(mobileCss.indexOf(":root {"), mobileCss.indexOf("@supports"));
+    const root = ruleBody(mobileCss, ":root");
+    // 先钉住「真的切出东西来了」：切空了下面那条 not.toContain 会恒真（v1.15.0 复核踩过）
+    expect(root.length, ":root 那一段切空了").toBeGreaterThan(1000);
+    expect(root).toContain("--m-card-radius: 22px;");
     expect(root).not.toContain("color-mix");
+    // 深色那份也是自定义属性，同一条铁律
+    expect(ruleBody(mobileCss, '[data-mode="dark"]')).not.toContain("color-mix");
     expect(mobileCss).toContain("@supports (color: color-mix(in srgb, #000 50%, #fff)) {");
-    const up = mobileCss.slice(mobileCss.indexOf("@supports"));
+    const up = mobileCss.slice(mobileCss.indexOf("@supports (color: color-mix(in srgb, #000 50%, #fff)) {"));
     expect(up).toContain("--m-cb-border: color-mix(in srgb, var(--accent) 35%, var(--card));");
   });
 
@@ -102,16 +127,16 @@ describe("② A 的长相铺到了列表、段标题、顶栏、导航、＋", (
     expect(cb).toContain("background: var(--card);");
   });
 
-  it("🔴 一行的视觉顺序是 圈 → 小圆点 → 标题 → 日期，四件都写了 order", () => {
-    // DOM 里色条排在圈前面（MobileRow 这一版没动），靠 flex 的 order 摆对。
-    // 漏写一个，它的 order 就是 0，会整个跑到 order:1 前面去
-    for (const line of [
-      ".mrow-cb { order: 1; }",
-      ".mrow-bar { order: 2; }",
-      ".mrow-title { order: 3; }",
-      ".mrow-when { order: 4; }",
-    ]) {
-      expect(shellCss, line).toContain(line);
+  it("🔴 一行的视觉顺序是 圈 → 小圆点 → 那一叠字，靠 DOM 顺序不靠 order", () => {
+    // v1.11.2~v1.14：DOM 里色条排在圈前面，视觉顺序靠 flex 的 order 摆回来。
+    // v1.15.0 重写 MobileRow（一件事一张卡、标题折两行）时把 DOM 本身摆对了，
+    // 那四条 order 是给旧 DOM 打的补丁，留着只会误导下一个人 —— 一起撤掉
+    const rowSource = read("src/mobile/MobileRow.tsx");
+    const body = rowSource.slice(rowSource.indexOf('className={`swipe-body mrow'));
+    expect(body.indexOf('className={`mrow-cb')).toBeLessThan(body.indexOf('className={`mrow-bar'));
+    expect(body.indexOf('className={`mrow-bar')).toBeLessThan(body.indexOf('className="mrow-main"'));
+    for (const line of [".mrow-cb { order:", ".mrow-bar { order:", ".mrow-title { order:", ".mrow-when { order:"]) {
+      expect(shellCss, line).not.toContain(line);
     }
     // 重要性从 3px 竖条改成 8px 小圆点（画板里的 .dot）
     expect(shellCss).toContain(".mrow-bar { width: 8px; height: 8px; border-radius: 50%;");
@@ -304,5 +329,52 @@ describe("⑤ 那颗小橡果只在「今天」露一次脸", () => {
   it("今天页那句副标题带上了 A 的语气", () => {
     expect(todaySource).toContain("· 还剩 ${left} 件，慢慢来");
     expect(todaySource).toContain('" · 都做完了"');
+  });
+});
+
+// v1.15.0 · 手机任务卡整体重做的第三块：详情纸里的子任务也得读得完。
+//
+// 用户 2026-09-14 的原话把两处一起点了名：「手机版任务、子任务框卡片感弱，
+// 一长条只能横拖查看，不能一次性读完」。列表行那一半在 mobile-shell.test.ts 里钉着，
+// 这一半在这儿：看的那一档折两行，改的那一档从单行 <input> 换成会自己长高的 textarea。
+describe("⑥ 详情纸里的子任务：看得完，也改得开（v1.15.0）", () => {
+  const taskSheet = read("src/mobile/TaskSheet.tsx");
+
+  it("看的那一档折两行就打住，单行省略号那一套撤了", () => {
+    const base = sheetCss.slice(sheetCss.indexOf(".msh-subtitle {"), sheetCss.indexOf("button.msh-subtitle {"));
+    // nowrap 留着就永远折不了行
+    expect(base).not.toContain("white-space: nowrap;");
+    const btn = sheetCss.slice(sheetCss.indexOf("button.msh-subtitle {"), sheetCss.indexOf("textarea.msh-subtitle"));
+    // line-clamp 三句是一套，少一句就整个不生效
+    expect(btn).toContain("display: -webkit-box;");
+    expect(btn).toContain("-webkit-box-orient: vertical;");
+    expect(btn).toContain("-webkit-line-clamp: 2;");
+  });
+
+  it("🔴 改的那一档是 textarea + 复用 components/autogrow，不自己造一份长高的算法", () => {
+    expect(taskSheet).toContain('import { growArea, oneLine } from "../components/autogrow";');
+    const sub = taskSheet.slice(taskSheet.indexOf("function SubRow("));
+    expect(sub).toContain('<textarea\n            className="msh-subtitle"');
+    expect(sub).toContain("ref={growArea}");
+    expect(sub).toContain("growArea(e.currentTarget);");
+    // 单行 input 那一版不许留着
+    expect(sub).not.toContain('<input\n            className="msh-subtitle"');
+    // 高度由 growArea 写在 style 上：既不许有滚动条也不许手动拉
+    expect(sheetCss).toContain("textarea.msh-subtitle { resize: none; overflow: hidden;");
+  });
+
+  it("回车还是「说完了」不是换行：拦回车 + oneLine 兜住粘贴进来的换行", () => {
+    const sub = taskSheet.slice(taskSheet.indexOf("function SubRow("));
+    const enter = sub.slice(sub.indexOf('if (e.key === "Enter"'));
+    expect(enter.slice(0, 160)).toContain("e.preventDefault();");
+    expect(enter.slice(0, 160)).toContain("e.currentTarget.blur();");
+    // 子任务标题是一行字段，混进换行会一路脏到列表行和搜索结果里
+    expect(sub).toContain("const t = oneLine(v).trim();");
+  });
+
+  it("行本身上下补了内边距：两行的时候字不许顶到上下沿", () => {
+    const row = sheetCss.slice(sheetCss.indexOf("\n.msh-sub {"), sheetCss.indexOf(".msh-subwrap + .msh-subwrap"));
+    expect(row).toContain("min-height: 46px;");
+    expect(row).toContain("padding: 10px 20px;");
   });
 });

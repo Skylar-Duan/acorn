@@ -125,6 +125,29 @@ describe("① 习惯页：一件一行，绝不折行", () => {
     expect(branch).toContain('<div className="group-head">今天不用做</div>');
   });
 
+  // v1.15.0：今天页把纸从「一组一张长卡」下放到了每一行，这一页同一天跟上。
+  // 不跟就是两副长相，切一下页签就看得出来——「跟今天一模一样的形制」是这一页的死约定
+  it("🔴 一个习惯一张卡，跟今天页同一副长相（形制变了这一页必须同一天跟上）", () => {
+    const card = pagesCss.slice(
+      pagesCss.indexOf(".mshell .mcard.mhb-card {"),
+      pagesCss.indexOf(".mshell .mhb-cb {"),
+    );
+    // 容器退成透明的，纸归每一行
+    expect(card).toContain("background: none;");
+    expect(card).toContain("box-shadow: none;");
+    expect(card).toContain("overflow: visible;");
+    expect(card).toContain("border-radius: var(--m-card-radius, 22px);");
+    expect(card).toContain("box-shadow: var(--m-card-shadow, var(--shadow-sm));");
+    // 卡与卡之间那道缝跟今天页同一个 token
+    expect(card).toContain("margin-top: var(--m-card-gap, 10px);");
+    // 老那根从 56px 起的发丝线撤干净（卡分开了就不该再夹一根线）
+    expect(pagesCss).not.toContain(".mshell .mhb-card > .mhb-row + .mhb-row::before {");
+    // 行高跟今天页同口径：最矮 --m-row-h，不是定高
+    expect(card).toContain("min-height: var(--m-row-h, 58px);");
+    // 习惯名仍然一行省略号（这一页名字本来就短，折行只会让一屏看得更少）——上面那条已经钉过
+    expect(habitsSource).toContain("形制**跟「今天」一模一样**");
+  });
+
   it("空态是一张卡一句话，指的是右下角那颗 ＋", () => {
     expect(branch).toContain('<div className="mcard mhb-blank">');
     expect(branch).toContain("需要反复做的事放在这里，每天打卡。点右下角的 ＋ 加一个。");
@@ -280,8 +303,11 @@ describe("⑥ 自由伸缩：360 宽也放得下", () => {
     for (const v of ["--m-row-h", "--m-cb", "--m-touch"]) {
       expect(pagesCss, v).toContain(`var(${v},`);
     }
-    // 样式那一版新加的几个 token 也接上了：那边调完观感，这几页自动跟上
-    for (const v of ["--m-card-shadow", "--m-cb-border", "--m-cb-bw", "--m-sep"]) {
+    // 样式那一版新加的几个 token 也接上了：那边调完观感，这几页自动跟上。
+    // v1.15.0 起 --m-sep 不在这份名单里了：习惯页从「一组一张长卡 + 行间发丝线」
+    // 换成了「一个习惯一张卡」（跟今天页同一天换的形制），卡自己分开，就没有分隔线可画了。
+    // 换上来的是 --m-card-gap / --m-card-radius / --m-row-pad 这三个「卡」的尺度
+    for (const v of ["--m-card-shadow", "--m-cb-border", "--m-cb-bw", "--m-card-radius", "--m-card-gap", "--m-row-pad"]) {
       expect(pagesCss, v).toContain(`var(${v},`);
     }
     // --m-cb-border 是**颜色**不是 border 简写：写成 `border: var(--m-cb-border)` 时

@@ -6,7 +6,10 @@ import { byList, byWho, completionByDay, exportWeekMarkdown, weeklyReview } from
 import * as persist from "../core/persist";
 import { navigate, showToast, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
-import { hasDesktopFeatures, isMobile } from "../core/platform";
+// canSaveFile 一个开关同时管两头：按钮上写什么、按下去走哪条路。
+// 以前写着「导出」的是 hasDesktopFeatures、真干活的那句判的是 inTauri，
+// 电脑浏览器里两边对不上——按钮说导出，实际是复制（v1.15.0 网页版拆开关时发现）
+import { canSaveFile, isMobile } from "../core/platform";
 import { WhoBadge } from "../components/TaskRow";
 import MobileHead from "../mobile/MobileHead";
 
@@ -70,10 +73,17 @@ export default function StatsView() {
       // 判据必须连手机一起问（v1.10.0）。原来只看 inTauri：安卓上它是真，
       // 于是走文件保存那条路——save() 在安卓给回的是 content:// URI，
       // Rust 侧 fs::write 写不了，用户只会看到一句「导出失败：…」。
-      // 设置页早就明说「手机上不提供文件导出」，这颗按钮当时没跟着改
-      if (!persist.inTauri || !hasDesktopFeatures) {
+      // 设置页早就明说「手机上不提供文件导出」，这颗按钮当时没跟着改。
+      // v1.15.0 起这一句和按钮上那几个字认的是**同一个** canSaveFile，不会再各说各话
+      if (!canSaveFile) {
         await navigator.clipboard.writeText(md);
         showToast("本周小结已复制到剪贴板", false);
+        return;
+      }
+      // 浏览器里没有保存对话框，交给下载
+      if (!persist.inTauri) {
+        persist.downloadTextFile(`橡果周报-${review.weekStart}.md`, md);
+        showToast("本周小结已交给浏览器下载", false);
         return;
       }
       const { save } = await import("@tauri-apps/plugin-dialog");
@@ -271,7 +281,7 @@ export default function StatsView() {
             </div>
           </div>
           <button className="btn" onClick={() => void onExport()}>
-            {hasDesktopFeatures ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}
+            {canSaveFile ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}
           </button>
         </div>
       </div>

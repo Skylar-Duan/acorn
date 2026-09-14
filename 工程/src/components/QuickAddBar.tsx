@@ -196,7 +196,7 @@ export default function QuickAddBar({
             return true;
           }}
           autoFocus={autoFocus}
-          placeholder={placeholder ?? "记一条…「周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"}
+          placeholder={placeholder ?? "记一条…「~周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"}
           lists={lists.map((l) => l.name)}
           tags={tagNames}
           whos={whoNames}

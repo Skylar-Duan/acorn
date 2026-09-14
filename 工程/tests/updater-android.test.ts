@@ -35,8 +35,13 @@ import dialogSource from "../src/components/UpdateDialog.tsx?raw";
 import panelSource from "../src/components/UpdatePanel.tsx?raw";
 
 // jsdom 的 UA 不是安卓，整份文件把「这台设备」顶成安卓
+// v1.15.0 起 platform.ts 还管着 inTauri / isWeb 那一族（真源从 persist.ts 挪过去了），
+// 整份顶掉的话这些也得给全，否则 persist.ts 那句转手导出会当场找不到 inTauri。
+// 这里描的是「装在安卓手机上的那个 App」：在 Tauri 里、不是网页、存不了文件
 vi.mock("../src/core/platform", () => ({
   isAndroid: true, isIOS: false, isMobile: true, hasDesktopFeatures: false, NARROW_PX: 760,
+  inTauri: true, isWeb: false, isWebBuild: false, isDesktopShell: false, canSaveFile: false,
+  isStandalone: () => false,
 }));
 vi.mock("../src/core/persist", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/core/persist")>()),

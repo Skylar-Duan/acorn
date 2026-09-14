@@ -209,6 +209,67 @@ describe("安排日期弹层：一套规矩，不用猜这次要不要点确定"
 });
 
 // ---------------------------------------------------------------------------
+// v1.15.0：点卡片里的别处，浮层就该消失（用户原话「点别处要自动消失，而不是必须再点一下日期」）。
+// 这条路只写在组件顶上那条 document mousedown 监听里，跟上面那套「点预设关窗 / 点日历格留窗」
+// 半点不沾——那套规矩是 v1.9.0 定的，一个字不改。
+// ---------------------------------------------------------------------------
+
+/** 组件顶上那条 document mousedown 监听的源码片段（从 `function onDoc` 到下一个 `function onKey`） */
+const onDoc = taskCardSource.slice(
+  taskCardSource.indexOf("function onDoc"),
+  taskCardSource.indexOf("function onKey"),
+);
+/** 「只收浮层不收卡片」那个收尾函数的片段 */
+const closeMenus = taskCardSource.slice(
+  taskCardSource.indexOf("function closeMenus"),
+  taskCardSource.indexOf("closeMenusRef.current = closeMenus"),
+);
+
+describe("点卡片里的别处：浮层自己消失，卡片留着", () => {
+  it("点到卡外还是老样子：先落库再收整张卡", () => {
+    expect(onDoc).toContain("flushRef.current();");
+    expect(onDoc).toContain("expandTask(null);");
+  });
+
+  it("点在卡里、不在浮层也不在小签上 → 只收浮层", () => {
+    expect(onDoc).toContain("closeMenusRef.current();");
+  });
+
+  it("两处放过一个不能少：浮层自己，和任何小签", () => {
+    // .popmenu：里面就是给人点的（预设 / 日历格 / 时间框 / 需求方与标签的输入框）
+    // .pill：mousedown 比按钮自己的 click 早一步，不放过的话「点 📅 把它收起来」
+    //        会变成这儿先关掉、紧接着 click 又开回来，那颗键就永远按不动
+    expect(onDoc).toContain('.closest(".popmenu")');
+    expect(onDoc).toContain('.closest(".pill")');
+  });
+
+  it("closeMenus 只动浮层，绝不顺手把卡片也收了", () => {
+    expect(closeMenus).not.toContain("expandTask");
+  });
+
+  it("卡里那几个浮层一起收（主任务那六个走 menu，子任务那两个走 subMenu）", () => {
+    expect(closeMenus).toContain("setMenu(null)");
+    expect(closeMenus).toContain("setSubMenu(null)");
+  });
+
+  it("带输入框的需求方 / 标签，收之前先把框里的字落库——跟点卡外同一条路", () => {
+    expect(closeMenus).toContain('if (menu === "who") commitWho();');
+    expect(closeMenus).toContain('if (menu === "tags") commitTags();');
+  });
+
+  it("这条新路没有落进日期弹层那几段：任务卡的日期框照旧连 onDone 都不给", () => {
+    // v1.9.0 的老规矩：点日历格生效、弹层留着好接着设时间。加「点别处收浮层」不许动它
+    const dateField = dateMenu.slice(dateMenu.indexOf("<DateField"), dateMenu.indexOf('type="time"'));
+    expect(dateField).not.toContain("onDone");
+    expect(dateField).not.toContain("setMenu(null)");
+    expect(dateField).not.toContain("closeMenus");
+    // 落库回调里也不许出现关浮层的动作
+    const commit = taskCardSource.slice(taskCardSource.indexOf("function commitDraft"));
+    expect(commit.slice(0, 400)).not.toContain("setMenu");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 「安排日期只有一套规矩」是 README 上白纸黑字的承诺，那就得是全仓五个入口都算数。
 // 第五处（随手记那排「也可以点选：」里的 📅）v1.9.0 收口时才补上——在那之前它还
 // 本地现算着「今天 / 明天 / 下周一」，跟另外四处对不上，「明天」这个已经决定去掉的

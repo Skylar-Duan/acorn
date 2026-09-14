@@ -10,6 +10,8 @@ import { doneOn, isDueOn, sortHabitsForDay, toggleCheck, DEFAULT_HABIT_REPEAT } 
 import { addDays, cmpYMD, formatShort, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
+// 只用它一个 loadSession（读令牌在不在，不发网络请求）。cloud 不回头依赖 store，没有环
+import * as cloud from "./cloud";
 
 // 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
 // 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换。
@@ -90,9 +92,37 @@ interface AppState {
   dataFromNewer: { schema: number } | null;
   /** 当前数据是空的，但别处找到了有内容的数据文件夹——由用户拍板要不要用（null = 没这回事） */
   rescue: persist.DataCandidate[] | null;
+  /** **盘上根本没有账本文件**（不是「读出来是 0 件事」，是 data.json 压根不存在）。
+   *
+   *  开机自动取回云端那份（syncCtl.initSync）拿它当第一道闸门，所以这两件事必须分得清清楚楚：
+   *  「读出来是 0 件事」有可能是用户自己把事全做完删光了，那份空账本是他的真实意愿，
+   *  拿云端去盖它就是擅自改用户的数据；而「文件不存在」只可能是新机器、刚清空过、
+   *  或者指针指到了一个空文件夹——本机这边没有任何值得保留的东西。 */
+  noDataFile: boolean;
   /** 本机数据已经被清空（登出时的隐私路径）。置上之后一律不再落盘——
    *  防抖写入、提醒消费的 requestSave、快速添加窗任何一条都能在删完之后再写一份回来 */
   wiped: boolean;
+  /** **写盘失败，已经停手**（null = 没这回事）。一条写不进去就停，不是「说一声接着写」。
+   *
+   *  为什么非停不可（本体那台机器就是这么用的）：数据文件夹在一块随身盘上，盘还没挂上
+   *  就打开了橡果——Rust 侧「盘符不在」跟「文件还没建」同样返回 NotFound，于是界面上
+   *  是一本空账本。这时候只要有任何一次写盘成功（盘插回来的那一刻起就成功了），
+   *  那本空账本就会盖在真账本上，旧的 data.json 被改名再删掉，当天的备份也因为开机时
+   *  文件不存在而根本没生成——真账本就没了。
+   *
+   *  所以：写失败 → 置上它 → doSave 一律拒绝 → 界面挂一条**不会自己消失**的提示条。
+   *  只有一次成功的保存（用户点「重试」）才清得掉。 */
+  saveError: string | null;
+  /** 网页版查到服务器上换了新版（null = 没这回事）。
+   *
+   *  **为什么放进 store**：屏幕底下「那一条」只有一个位置（.toast 全是 fixed 在同一处），
+   *  而想说话的不止一处——撤销、「有新版了」、手机上「把橡果放到桌面」。
+   *  各自存各自的 state 就谁也看不见谁，两条一起出现时叠成一团、按钮压按钮。
+   *  摆在这儿，谁都问得到现在轮到谁说话：撤销 > 有新版了 > 放到桌面。
+   *
+   *  摆在顶层而不是 ui 里：ui 是一整个对象，各处测试都按完整字面量造它，
+   *  往里加字段等于逼着一堆不相干的文件跟着改一行，而这一条跟 ui 的别的字段没有关系。 */
+  webNewVersion: string | null;
   ui: UIState;
   focus: FocusState;
   undoDepth: number;
@@ -118,7 +148,10 @@ export const appStore = createStore<AppState>(() => ({
   loadError: null,
   dataFromNewer: null,
   rescue: null,
+  noDataFile: false,
   wiped: false,
+  saveError: null,
+  webNewVersion: null,
   ui: {
     view: "today", listId: null, who: null, tag: null, ...loadFold(),
     expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, changelogOpen: false,
@@ -141,19 +174,48 @@ function doSave(): Promise<void> {
   const s = appStore.getState();
   // 数据没加载成功时绝不落盘——否则会拿默认空库覆盖磁盘上的真数据。
   // wiped：用户刚把本机这份清掉了，任何一次回写都等于白清。
+  // saveError：上一次写就没写进去（盘掉线、目录只读、磁盘满）。**这时候更要停手**——
+  // 界面上这份很可能是一本空账本（盘没挂上时读不到文件，跟「首次运行」长得一模一样），
+  // 等盘一接回来，随便哪一次自动保存都会把它盖在真账本上。用户点了「重试」才放行。
   // **这里没有 dataFromNewer**（v1.9.1 拆掉）：更新版本写的数据照样存得回去，
-  // 未知字段一个不丢。这三条防的是别的事（空库覆盖、目录不可用、清空后回写），别混为一谈
-  if (s.wiped || !s.loaded || s.loadError) return Promise.resolve();
+  // 未知字段一个不丢。这几条防的是别的事（空库覆盖、目录不可用、清空后回写），别混为一谈
+  if (s.wiped || !s.loaded || s.loadError || s.saveError) return Promise.resolve();
   const p = persist
     .saveData(s.data)
+    .then(() => {
+      // 写进去了才敢说「存回去了」：上一条提示条到此为止
+      if (appStore.getState().saveError) appStore.setState({ saveError: null });
+    })
     .catch((e) => {
-      showToast(`保存失败：${String(e)}`, false);
+      haltSaving(e);
     })
     .finally(() => {
       if (inflightSave === p) inflightSave = null;
     });
   inflightSave = p;
   return p;
+}
+
+/** 写盘出了岔子：停手，并把话摆到界面上（不做成会自己消失的 toast——
+ *  4 秒之后它就没了，而「已经停止保存」这件事得一直摆着，直到真的存回去为止） */
+export function haltSaving(e: unknown): void {
+  appStore.setState({ saveError: String(e) || "数据暂时存不回文件夹" });
+}
+
+/** 界面上那条提示条的「重试」：清掉闸门，当场再写一次。写成了返回 true。
+ *  盘接回来了、网盘解锁了、腾出空间了——用户点一下就该恢复，不用重开橡果 */
+export async function retrySave(): Promise<boolean> {
+  const s = appStore.getState();
+  // 这几种状态下本来就不该往盘上写（刚清空过、还没读进来、正站在「数据打不开」那一屏）。
+  // 收掉提示等于骗人说「存回去了」，所以原样留着
+  if (s.wiped || !s.loaded || s.loadError) return false;
+  appStore.setState({ saveError: null });
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  await doSave();
+  return appStore.getState().saveError === null;
 }
 
 function scheduleSave() {
@@ -321,61 +383,114 @@ export function dismissToast() {
   appStore.setState({ ui: { ...ui, toast: null } });
 }
 
+/** 网页版查到服务器上换了新版。**这一条不会自己消失**：刷新是用户的事，不该一眨眼就没了。
+ *  摆在 store 里是为了让手机上那条「把橡果放到桌面」看得见它，好主动让位（同一个位置只能站一个） */
+export function setWebNewVersion(v: string | null) {
+  if (appStore.getState().webNewVersion === v) return;
+  appStore.setState({ webNewVersion: v });
+}
+
 // ---------- 初始化 ----------
 
 export async function initStore(): Promise<void> {
+  // ---- 第一段：读 ----
+  // **只有这一段失败才算「数据打不开」。** 读成功之后的写盘、备份出岔子是另一回事
+  //（第三段），那时账本已经好端端在内存里了，为一次写不进去把整个界面换成一屏墙，
+  // 用户连自己的事都看不见，还退不出来——那正是本体那台机器陷进去的死循环（v1.15.0 修）。
+  let freshStart = false;
+  let res: persist.LoadResult;
   try {
     // 上一次「退出登录并清空本机」留下的一次性标记：这一次启动不许建默认账本。
     // defaultData() 带两条**每次都换新 id** 的清单「工作」「生活」，一旦落盘，
     // 用户重新登录就把它们当「本机新建的清单」推上云，云端和另一台设备各多出一对，
     // 只能手工一条条删。空着就好，登录之后云端那份会把内容填回来。
-    const freshStart = await persist.takeFreshStart().catch(() => false);
-    let res: persist.LoadResult;
+    freshStart = await persist.takeFreshStart().catch(() => false);
     try {
       res = await persist.loadData();
-    } catch (first) {
+    } catch {
       // 瞬时抖动（移动硬盘唤醒等）重试一次再放弃
       await new Promise((r) => setTimeout(r, 800));
       res = await persist.loadData();
     }
-    // 磁盘上那份比本机新：**照常读进来**（v1.9.1 拆墙）。本机不认识的字段原样留着，
-    // 界面弹一次「已有更新版橡果」的框（App.tsx 的 NewerDataDialog），取消了照常用，仅此而已。
-    // 以前这里换空账本 + return，用户打开橡果看见的是一屏「版本过旧」，自己的日志一条也进不来
-    const loadedData = res.data;
-    // 刚清空过（freshStart）就用真正的空账本
-    const data =
-      loadedData ?? (freshStart ? { ...defaultData(), lists: [], tasks: [] } : defaultData());
-    // 回收站 30 天自动清理。清掉的同样立墓碑，否则另一台设备同步过来会把它们又拉回来
-    const cutoff = Date.now() - 30 * 86400000;
-    const expired = data.tasks.filter(
-      (t) => t.deletedAt && new Date(t.deletedAt).getTime() <= cutoff,
-    );
-    if (expired.length) {
-      data.tasks = data.tasks.filter((t) => !expired.includes(t));
-      data.graveyard = bury(data.graveyard, expired.map((t) => t.id), new Date().toISOString());
-    }
-    // 单列在回收站里的子任务（v7）到期也清。**母任务的 updatedAt 不动**：清理不是用户编辑，
-    // 盖了戳等于把「删掉一步」当成刚改过去盖别的设备。子任务不立墓碑——它跟着母任务整条走，
-    // 别的设备到了日子自己也会清
-    const subExpired = (s: Subtask) => !!s.deletedAt && new Date(s.deletedAt).getTime() <= cutoff;
-    if (data.tasks.some((t) => t.subtasks.some(subExpired))) {
-      data.tasks = data.tasks.map((t) =>
-        t.subtasks.some(subExpired) ? { ...t, subtasks: t.subtasks.filter((s) => !subExpired(s)) } : t,
-      );
-    }
-    undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
-    coalesce = null;
-    appStore.setState({
-      data,
-      loaded: true,
-      loadError: null,
-      // 栈清了计数也必须跟着清。**两者一旦对不上，undo() 就是个空转的死循环**：
-      // 它拿不到栈顶就直接 return，一个字都不动，undoDepth 却永远大于 0
-      undoDepth: 0,
-      // 只点亮提示条，不拦任何东西
-      dataFromNewer: res.tooNew ? { schema: res.schema } : null,
-    });
+  } catch (e) {
+    appStore.setState({ loaded: true, loadError: String(e) });
+    return;
+  }
 
+  // ---- 第二段：算 + 装进内存（纯计算，不碰磁盘） ----
+  // 磁盘上那份比本机新：**照常读进来**（v1.9.1 拆墙）。本机不认识的字段原样留着，
+  // 界面弹一次「已有更新版橡果」的框（App.tsx 的 NewerDataDialog），取消了照常用，仅此而已。
+  // 以前这里换空账本 + return，用户打开橡果看见的是一屏「版本过旧」，自己的日志一条也进不来
+  const loadedData = res.data;
+  // 🔴 一个字都没读到的时候，先问一句**这个文件夹到底还在不在**（v1.15.0）。
+  //
+  // Rust 侧 load_data 对「盘符不在 / 目录被删了 / 目录读不了」返回的是 NotFound，
+  // 跟「文件还没建」同一档，到了这儿都是 data == null——于是数据盘没挂上时，
+  // 橡果长得跟第一次打开一模一样：一本空账本，什么错都不报。用户对着它记几条，
+  // 盘一接回来，第一次自动保存就把空账本盖在真账本上，旧文件被改名再删掉，
+  // 当天的备份也因为开机时文件不存在而根本没生成。**真账本就这么没的。**
+  //
+  // data_status 那边是真写一个探针文件，问得出「目录在不在、写不写得进去」。
+  // 只有它明说 dirOk === false 才拦（问不出来、浏览器环境一律照旧往下走，
+  // 宁可少拦一次，也不能把第一次打开橡果的人挡在一屏错误后面）。
+  if (loadedData == null) {
+    const st = await persist.dataStatus().catch(() => null);
+    if (st && st.dirOk === false) {
+      appStore.setState({
+        loaded: true,
+        loadError: `这个文件夹这会儿用不了（放在移动硬盘或网盘上的话，多半是还没接上）：${st.dir}`,
+      });
+      return;
+    }
+  }
+  // 盘上根本没有账本文件（首次运行、刚清空过、指针指到了空文件夹）。
+  // 这是「登录过就别造默认清单」和「开机自动取回云端那份」共同的第一道闸门
+  const noDataFile = loadedData == null;
+  // 这台设备**已经登录过**（只问令牌在不在，不发一个网络请求，挡不得启动）。
+  // 读不出来就当没登录：那一路照旧建默认账本，只会多不会少
+  const signedIn = noDataFile && !!(await cloud.loadSession().catch(() => null));
+  // 刚清空过（freshStart）用真正的空账本；**已经登录过、而盘上连账本文件都没有**的也一样
+  //（v1.15.0）——那两条每次都换新 id 的「工作 / 生活」一落盘就会被当成本机新建的清单推上云，
+  // 另一台设备上凭空多出一对重复清单，正是这么来的。空着就好，云端那份马上会填回来
+  const data =
+    loadedData ?? (freshStart || signedIn ? { ...defaultData(), lists: [], tasks: [] } : defaultData());
+  // 回收站 30 天自动清理。清掉的同样立墓碑，否则另一台设备同步过来会把它们又拉回来
+  const cutoff = Date.now() - 30 * 86400000;
+  const expired = data.tasks.filter(
+    (t) => t.deletedAt && new Date(t.deletedAt).getTime() <= cutoff,
+  );
+  if (expired.length) {
+    data.tasks = data.tasks.filter((t) => !expired.includes(t));
+    data.graveyard = bury(data.graveyard, expired.map((t) => t.id), new Date().toISOString());
+  }
+  // 单列在回收站里的子任务（v7）到期也清。**母任务的 updatedAt 不动**：清理不是用户编辑，
+  // 盖了戳等于把「删掉一步」当成刚改过去盖别的设备。子任务不立墓碑——它跟着母任务整条走，
+  // 别的设备到了日子自己也会清
+  const subExpired = (s: Subtask) => !!s.deletedAt && new Date(s.deletedAt).getTime() <= cutoff;
+  if (data.tasks.some((t) => t.subtasks.some(subExpired))) {
+    data.tasks = data.tasks.map((t) =>
+      t.subtasks.some(subExpired) ? { ...t, subtasks: t.subtasks.filter((s) => !subExpired(s)) } : t,
+    );
+  }
+  undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
+  coalesce = null;
+  appStore.setState({
+    data,
+    loaded: true,
+    loadError: null,
+    // 这一轮是重新读进来的，上一轮那条「存不回去」到此为止（接着写不进去的话，
+    // 下面第三段会当场再置上；tests 里反复 initStore 也不会被上一条卡住）
+    saveError: null,
+    noDataFile,
+    // 栈清了计数也必须跟着清。**两者一旦对不上，undo() 就是个空转的死循环**：
+    // 它拿不到栈顶就直接 return，一个字都不动，undoDepth 却永远大于 0
+    undoDepth: 0,
+    // 只点亮提示条，不拦任何东西
+    dataFromNewer: res.tooNew ? { schema: res.schema } : null,
+  });
+
+  // ---- 第三段：写（落盘 + 备份）。这一段出错**只给一条提示条，不上那一屏墙** ----
+  try {
     // 这里空空如也的时候，先别急着建一本空账本落盘——指针指歪 / 换了机器 / 数据在另一个
     // 文件夹时，那本空账本会盖在真数据前面，让人以为数据没了。先去别处找找，找到就让用户选。
     if (data.tasks.length === 0) {
@@ -386,11 +501,19 @@ export async function initStore(): Promise<void> {
         return; // 用户拍板前不写盘、不做备份
       }
     }
-    // 刚清空过就连这一下落盘也跳过：盘上一个字都不该留，等登录后由云端填回来
-    if (loadedData == null && !freshStart) await persist.saveData(data);
+    // 刚清空过就连这一下落盘也跳过：盘上一个字都不该留，等登录后由云端填回来。
+    // 「登录过 + 没有账本文件」那一路同理：空账本不落盘，等云端那份回来（signedIn）
+    if (loadedData == null && !freshStart && !signedIn) await persist.saveData(data);
     await persist.ensureDailyBackup();
   } catch (e) {
-    appStore.setState({ loaded: true, loadError: String(e) });
+    // 读得好好的，只是存不回去（移动硬盘掉线、目录只读、磁盘满、备份目录被网盘锁着）。
+    // 用户的事一件不少地摆在眼前，他照常看照常改——这不是「数据打不开」那一屏墙。
+    //
+    // 但**从这一刻起不许再往盘上写**（v1.15.0）：写不进去的时候，界面上这份很可能
+    // 根本不是用户的账本（盘没挂上 → 读不到文件 → 一本空账本），盘一接回来就会盖上去。
+    // 所以这里不是「说一句就完了」的 4 秒 toast，而是一条常驻提示条 + 一颗「重试」，
+    // 真的存回去了它才消失。见 AppState.saveError 与 doSave 的第一行
+    haltSaving(e);
   }
 }
 
@@ -399,6 +522,12 @@ export async function resolveRescue(dir: string | null): Promise<void> {
   if (dir) {
     await persist.setDataDir(dir); // 目标已有数据时不会被覆盖，只改指针
     location.reload();
+    return;
+  }
+  // 「数据打不开」那一屏上也能开这张卡（v1.15.0：那一屏原来只有重试和一颗死按钮）。
+  // 那儿内存里这份不是用户的账本，一个字都不许往盘上写——关掉卡片就是关掉，仅此而已
+  if (appStore.getState().loadError) {
+    appStore.setState({ rescue: null });
     return;
   }
   appStore.setState({ rescue: null });
@@ -1164,23 +1293,28 @@ export function renameList(id: string, name: string) {
   mutate((d) => ({ ...d, lists: d.lists.map((l) => (l.id === id ? { ...l, name } : l)) }));
 }
 
-/** 一串东西里，把 dragId 挪到 overId **前面**。
+/** 一串东西里，把 dragId 挪到 overId **前面**；overId 给 null 就是挪到**队尾**。
  *  必须「先抽出再定位」：先算好目标下标再抽，往下拖时下标会因为抽走而错一格，
- *  结果就落到目标后面去了——跟界面上画在目标上边的那条落点线对不上 */
-function moveBefore(order: string[], dragId: string, overId: string): string[] | null {
+ *  结果就落到目标后面去了——跟界面上画在目标上边的那条落点线对不上。
+ *
+ *  为什么要有 null 这一档（v1.15.0）：「挪到某一行前面」这句话表达不了「排到最后一个」——
+ *  手机上卡片能一路拖过最后一行，落下去却只能停在倒数第二格，看着就是没拖动。
+ *  桌面那套 HTML5 拖拽只会传真行进来，不受影响 */
+function moveBefore(order: string[], dragId: string, overId: string | null): string[] | null {
   const next = [...order];
   const from = next.indexOf(dragId);
-  if (from < 0 || !next.includes(overId)) return null;
+  if (from < 0) return null;
+  if (overId !== null && !next.includes(overId)) return null;
   next.splice(from, 1);
-  const to = next.indexOf(overId);
+  const to = overId === null ? next.length : next.indexOf(overId);
   next.splice(to, 0, dragId);
   return next;
 }
 
-/** 侧栏里把某张清单拖到另一张上面。整组重新编号，order 只是「第几个」不带别的含义。
+/** 把某张清单拖到另一张上面（overId 给 null = 拖到最后一个）。整组重新编号，order 只是「第几个」不带别的含义。
  *  清单的顺序跟着数据走（会同步到别的设备）——它是一条真记录，不是本机偏好。
  *  **进撤销栈**：拖错了 Ctrl+Z 撤的就该是这一下，不能让它去撤上一件不相干的事 */
-export function moveList(dragId: string, overId: string) {
+export function moveList(dragId: string, overId: string | null) {
   if (dragId === overId) return;
   mutate((d) => {
     const sorted = [...d.lists].sort((a, b) => a.order - b.order).map((l) => l.id);
@@ -1191,9 +1325,9 @@ export function moveList(dragId: string, overId: string) {
   }, { toast: "清单顺序已调整" });
 }
 
-/** 侧栏里把某个需求方拖到另一个上面。存进设置 = 每台设备各排各的（见 Settings.whoOrder）。
+/** 把某个需求方拖到另一个上面（overName 给 null = 拖到最后一个）。存进设置 = 每台设备各排各的（见 Settings.whoOrder）。
  *  设置不进撤销栈也不同步，所以这一下 Ctrl+Z 撤不回来——再拖回去就是了 */
-export function moveWho(dragName: string, overName: string) {
+export function moveWho(dragName: string, overName: string | null) {
   if (dragName === overName) return;
   const names = allWho(appStore.getState().data).map((w) => w.who);
   const next = moveBefore(names, dragName, overName);

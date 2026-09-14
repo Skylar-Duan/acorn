@@ -139,8 +139,11 @@ describe("B3：切清单 / 切需求方 / 切标签也要重播正文淡入", ()
 
 describe("平滑滚动也得听「减少动态效果」", () => {
   it("命中就直接跳过去，不做平滑滚动", () => {
+    // v1.15.0 改名：revealCloudSection → revealSetSection(节 id, DOM 锚点)。
+    // 「数据异常」那行也要掰开设置页里的某一节，两处共用这一个函数，
+    // 所以「听不听减少动态效果」这条规矩也就只需要守在这一个地方
     const reveal = sidebarSource.slice(
-      sidebarSource.indexOf("function revealCloudSection"),
+      sidebarSource.indexOf("function revealSetSection"),
       sidebarSource.indexOf("function Ico"),
     );
     expect(reveal).toContain('matchMedia("(prefers-reduced-motion: reduce)")');

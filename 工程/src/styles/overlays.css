@@ -187,6 +187,11 @@
 .cl-old + .cl-old { margin-top: 8px; }
 .cl-old-btn { width: 100%; display: flex; align-items: baseline; gap: 12px; padding: 11px 14px; text-align: left; cursor: pointer; user-select: none; border-radius: 12px; }
 .cl-old-btn:hover { background: color-mix(in srgb, var(--ink) 3%, var(--card)); }
+/* 按下去的那一下（v1.15.0）：手机上没有 hover，原生那层蓝高亮又在 base.css 里全局关了，
+   不给回应就是「按了没动静」。这颗按钮自带 12px 圆角、又收在卡里，铺底色不会变成横条，
+   所以沿用 hover 那一档再压深一点。前一条是给不认 color-mix 的老 WebView 的退路，成对出现别拆 */
+.cl-old-btn:active { background: var(--bg); }
+.cl-old-btn:active { background: color-mix(in srgb, var(--ink) 6%, var(--card)); }
 .cl-old-ver { font-family: var(--serif); font-weight: 700; font-size: var(--fs-md); color: var(--ink); white-space: nowrap; }
 .cl-old-head { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-old-date { font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }

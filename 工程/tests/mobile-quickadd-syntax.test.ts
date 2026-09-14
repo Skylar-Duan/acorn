@@ -50,7 +50,7 @@ const NOW = new Date(2026, 8, 3, 10, 0, 0);
 const LISTS = ["工作", "生活", "产品"];
 const parse = (s: string, skip?: ParseChip["kind"][]) => parseQuickAdd(s, { now: NOW, listNames: LISTS, skip });
 /** 用户那句原话（加了空格、清单、需求方、重要性） */
-const SENTENCE = "下周一晚上 bill朋友来取东西 /生活 @bill !高";
+const SENTENCE = "~下周一晚上 bill朋友来取东西 /生活 @bill !高";
 
 describe("① 记一条那张纸：真的在解析，认出来的有胶囊、胶囊有 ×、标题行有「?」", () => {
   it("解析走全仓那一个 parseQuickAdd，喂了清单名（/生 能对上生活）和周末日设置", () => {
@@ -187,7 +187,7 @@ describe("② 打字 × 点选：谁说了算（quickAddMerge 纯函数）", () 
 
   it("两边都给了：打字优先，点选只补没打的（跟桌面「两边同时给了以打字为准」同一个口径）", () => {
     const pick: Picks = { ...EMPTY_PICKS, due: "2026-09-10", who: ["王工"], listId: "l-work", priority: 1 };
-    const m = merge(parse("下周一 买菜 @bill"), pick);
+    const m = merge(parse("~下周一 买菜 @bill"), pick);
     expect(m.due).toBe("2026-09-07"); // 打的下周一赢
     expect(m.who).toEqual(["bill"]); // 打的 @bill 赢，王工不合并进来
     expect(m.listId).toBe("l-work"); // 没打清单，点选补上
@@ -196,15 +196,15 @@ describe("② 打字 × 点选：谁说了算（quickAddMerge 纯函数）", () 
   });
 
   it("只打了「晚上」这种钟点：日期用点选过的那天，钟点用打的（解析器给的「今天/明天」只是兜底）", () => {
-    const m = merge(parse("晚上 买菜"), { ...EMPTY_PICKS, due: "2026-09-10" });
+    const m = merge(parse("~晚上 买菜"), { ...EMPTY_PICKS, due: "2026-09-10" });
     expect(m.due).toBe("2026-09-10");
     expect(m.dueTime).toBe("20:00");
     // 没点过日子就用兜底：10 点还没到晚上 8 点 → 今天
-    expect(merge(parse("晚上 买菜"), EMPTY_PICKS).due).toBe("2026-09-03");
+    expect(merge(parse("~晚上 买菜"), EMPTY_PICKS).due).toBe("2026-09-03");
   });
 
   it("打了日期、点选里有钟点：日期用打的，钟点由点选补（点选只补没打的）", () => {
-    const m = merge(parse("下周一 买菜"), { ...EMPTY_PICKS, due: "2026-09-10", dueTime: "18:00" });
+    const m = merge(parse("~下周一 买菜"), { ...EMPTY_PICKS, due: "2026-09-10", dueTime: "18:00" });
     expect(m.due).toBe("2026-09-07");
     expect(m.dueTime).toBe("18:00");
   });
@@ -224,10 +224,10 @@ describe("② 打字 × 点选：谁说了算（quickAddMerge 纯函数）", () 
   });
 
   it("改了点选之后打字那边又动了：签名对不上，重新以打字为准（谁后动谁说了算）", () => {
-    const p1 = parse("下周一 买菜");
+    const p1 = parse("~下周一 买菜");
     const o = withOverride({}, p1, "due");
     expect(merge(p1, { ...EMPTY_PICKS, due: "2026-09-10" }, o).due).toBe("2026-09-10");
-    const p2 = parse("明天 买菜");
+    const p2 = parse("~明天 买菜");
     expect(pickWins(p2, o, "due")).toBe(false);
     expect(merge(p2, { ...EMPTY_PICKS, due: "2026-09-10" }, o).due).toBe("2026-09-04");
   });
@@ -283,10 +283,10 @@ describe("② 打字 × 点选：谁说了算（quickAddMerge 纯函数）", () 
   });
 
   it("胶囊跟着「谁说了算」走：改完点选再改那句话，打字又赢，那颗又回来；标签永远画（没有点选）", () => {
-    const p1 = parse("下周一 买菜 #家务");
+    const p1 = parse("~下周一 买菜 #家务");
     const o = withOverride({}, p1, "due");
     expect(visibleChips(p1, merge(p1, { ...EMPTY_PICKS, due: "2026-09-10" }, o)).map((c) => c.kind)).toEqual(["tag"]);
-    const p2 = parse("明天 买菜 #家务");
+    const p2 = parse("~明天 买菜 #家务");
     expect(visibleChips(p2, merge(p2, { ...EMPTY_PICKS, due: "2026-09-10" }, o)).map((c) => c.kind)).toEqual(["date", "tag"]);
   });
 
@@ -304,13 +304,13 @@ describe("② 打字 × 点选：谁说了算（quickAddMerge 纯函数）", () 
     expect(d).toEqual(["date"]);
     expect(dropKind(d, "date")).toEqual(["date"]); // 按两下不会重复
     // 「下周一」回到标题；贴在它后面的「晚上」失去了依托，也一起留在标题里（解析器的成词规则）
-    const p = parse("下周一晚上 bill朋友来取东西", d);
-    expect(p.title).toBe("下周一晚上 bill朋友来取东西");
+    const p = parse("~下周一晚上 bill朋友来取东西", d);
+    expect(p.title).toBe("~下周一晚上 bill朋友来取东西"); // 整句照原样留着，连 ~ 一起
     expect(p.due).toBeNull();
     expect(p.dueTime).toBeNull();
     // 只 × 钟点：日期还认，「晚上」两个字回到标题
-    const p2 = parse("明天 晚上 买菜", dropKind([], "time"));
-    expect(p2.title).toBe("晚上 买菜");
+    const p2 = parse("~明天 ~晚上 买菜", dropKind([], "time"));
+    expect(p2.title).toBe("~晚上 买菜"); // 这一类不认了，它那个 ~ 也跟着原文留下
     expect(p2.due).toBe("2026-09-04");
     expect(p2.dueTime).toBeNull();
     // × 掉清单：「/生活」原样留着，不会再凭空建清单
@@ -320,7 +320,7 @@ describe("② 打字 × 点选：谁说了算（quickAddMerge 纯函数）", () 
   });
 
   it("循环词自带首个落点：「每周一」算打了日期，点选的日子不抢", () => {
-    const m = merge(parse("每周一 交周报"), { ...EMPTY_PICKS, due: "2026-09-10" });
+    const m = merge(parse("~每周一 交周报"), { ...EMPTY_PICKS, due: "2026-09-10" });
     expect(m.repeat).toEqual({ kind: "weekly", days: [1] });
     expect(m.due).toBe("2026-09-07");
   });

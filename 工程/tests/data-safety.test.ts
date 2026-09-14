@@ -20,11 +20,11 @@ import updaterSource from "../src/core/updater.ts?raw";
 import settingsSource from "../src/views/Settings.tsx?raw";
 import { defaultData, newTask } from "../src/core/model";
 import type { AppData } from "../src/core/model";
-import { addTask, appStore, clearUndo, flushSave, initStore } from "../src/core/store";
+import { addTask, appStore, clearUndo, flushSave, initStore, retrySave } from "../src/core/store";
 import * as persist from "../src/core/persist";
 import * as cloud from "../src/core/cloud";
 import { syncNow, syncNowChecked, syncStore } from "../src/core/syncCtl";
-import { WipeBlocked, restoreFromCloud, wipeLocalData } from "../src/core/wipe";
+import { RestoreAborted, WipeBlocked, restoreFromCloud, wipeLocalData } from "../src/core/wipe";
 
 /** inTauri 是模块里的常量，测试要两种环境都走一遍，所以做成可切换的 getter */
 const env = vi.hoisted(() => ({ tauri: false, fresh: false }));
@@ -53,6 +53,9 @@ vi.mock("../src/core/persist", async (importOriginal) => {
     takeFreshStart: vi.fn(async () => env.fresh),
     ensureDailyBackup: vi.fn(async () => false),
     findDataCandidates: vi.fn(async () => []),
+    // 「这个文件夹还在不在」：Rust 那边是真写一个探针文件。默认当它好端端在
+    dataStatus: vi.fn(async () => ({ dir: "S:\\userdata", dirOk: true, hasFile: false })),
+    saveData: vi.fn(actual.saveData),
   };
 });
 
@@ -61,6 +64,10 @@ const pullOnly = cloud.pullOnly as unknown as Mock;
 const purgeLocalFiles = persist.purgeLocalFiles as unknown as Mock;
 const snapshotBackup = persist.snapshotBackup as unknown as Mock;
 const takeFreshStart = persist.takeFreshStart as unknown as Mock;
+const dataStatus = persist.dataStatus as unknown as Mock;
+const saveData = persist.saveData as unknown as Mock;
+/** 真正写盘那份实现（mock 出厂时装的就是它）。某条用例让它失败一次之后，得能装回来 */
+const actualSaveData = saveData.getMockImplementation()!;
 
 const SESSION: cloud.Session = { token: "tok", email: "a@b.c", rev: 3, syncedAt: null };
 const NO_CHANGE = { added: 0, updated: 0, removed: 0 };
@@ -100,6 +107,10 @@ beforeEach(async () => {
   snapshotBackup.mockClear();
   snapshotBackup.mockResolvedValue("pre-restore-20260831-101010.json");
   takeFreshStart.mockClear();
+  dataStatus.mockClear();
+  dataStatus.mockResolvedValue({ dir: "S:\\userdata", dirOk: true, hasFile: false });
+  saveData.mockClear();
+  saveData.mockImplementation(actualSaveData);
   appStore.setState({
     data: localData(),
     loaded: true,
@@ -107,6 +118,7 @@ beforeEach(async () => {
     dataFromNewer: null,
     rescue: null,
     wiped: false,
+    saveError: null,
   });
   syncStore.setState({
     session: { ...SESSION },
@@ -310,6 +322,115 @@ describe("从云端整份覆盖本机：备份是硬前置", () => {
     const start = accountPanelSource.indexOf("已用云端第");
     expect(start).toBeGreaterThan(0);
     expect(accountPanelSource.slice(start, start + 200)).toContain("out.backup");
+  });
+});
+
+// 这一组是本项目自己的用法：数据文件夹在一块 S: 随身盘上，userdata 记的是绝对路径，
+// 两台机器轮流插。盘没挂上（或者开机自启比盘符出现还早）就打开橡果，会发生什么。
+describe("🔴 数据盘没挂上：不许把空账本写到真数据上", () => {
+  it("目录用不了 ≠ 第一次打开橡果：走「数据打不开」那一屏，不走首次运行", async () => {
+    // Rust 侧 load_data 对「盘符不在 / 目录不在」返回的是 NotFound，跟「文件还没建」
+    // 同一档，到了前端都是 data == null。不多问一句 dataStatus 的话，
+    // 用户看到的是一个「什么事都没有」的橡果：登录过是全空，没登录是「工作 / 生活」两张清单
+    localStorage.clear();
+    saveData.mockClear(); // 上面那句 beforeEach 自己写过一次盘，别把它算进来
+    dataStatus.mockResolvedValue({ dir: "S:\\userdata", dirOk: false, hasFile: false });
+
+    await initStore();
+
+    const s = appStore.getState();
+    expect(s.loadError).toContain("S:\\userdata");
+    // 一个字都没往盘上写：没有账本文件、也没有那两张默认清单
+    expect(localStorage.getItem("acorn-data")).toBeNull();
+    expect(saveData).not.toHaveBeenCalled();
+  });
+
+  it("对照组：目录好好的、只是还没有文件 → 照旧是第一次打开，该建的建、该落盘的落盘", async () => {
+    localStorage.clear();
+    dataStatus.mockResolvedValue({ dir: "S:\\userdata", dirOk: true, hasFile: false });
+    await initStore();
+    expect(appStore.getState().loadError).toBeNull();
+    expect(appStore.getState().data.lists.map((l) => l.name)).toEqual(["工作", "生活"]);
+    expect(localStorage.getItem("acorn-data")).not.toBeNull();
+  });
+
+  it("问不出来（浏览器 / 老版本 Rust）：不拦，宁可少拦一次也别把新用户挡在一屏错误后面", async () => {
+    localStorage.clear();
+    dataStatus.mockRejectedValue(new Error("没这个命令"));
+    await initStore();
+    expect(appStore.getState().loadError).toBeNull();
+  });
+
+  it("🔴 写盘失败之后**停手**：盘接回来之前，一个字都不许再往那个文件夹里写", async () => {
+    // 这一条是整条命：写不进去的时候，内存里这份很可能根本不是用户的账本。
+    // 以前失败只弹一条 4 秒 toast 就接着写，等盘一插回来（提醒消费、随手改一下、
+    // 甚至只是 400ms 的防抖到点），doSave 就把那本空账本盖上去，
+    // 旧 data.json 被改名再删掉，当天的备份又因为开机时文件不存在而根本没生成
+    await persist.saveData(localData("真账本里那条"));
+    appStore.setState({ data: { ...defaultData(), lists: [], tasks: [] }, loaded: true, saveError: null });
+    saveData.mockRejectedValueOnce(new Error("盘符不存在"));
+
+    addTask({ title: "盘没挂上的时候记的" });
+    await flushSave();
+    expect(appStore.getState().saveError).toContain("盘符不存在");
+
+    // 从这一刻起，写盘这条路整个关掉
+    saveData.mockClear();
+    addTask({ title: "又记了一条" });
+    await flushSave();
+    expect(saveData).not.toHaveBeenCalled();
+    // 盘上那份真账本一个字没动
+    expect(titles(onDisk())).toEqual(["真账本里那条"]);
+  });
+
+  it("用户点「重试」：真存回去了才把提示收掉，还没好就接着停手", async () => {
+    appStore.setState({ saveError: "盘符不存在" });
+    // 还是写不进去 → 提示留着，闸门照旧关着
+    saveData.mockRejectedValueOnce(new Error("盘符不存在"));
+    expect(await retrySave()).toBe(false);
+    expect(appStore.getState().saveError).toContain("盘符不存在");
+
+    // 盘接回来了 → 这一次写成了，提示收掉，往后照常保存
+    expect(await retrySave()).toBe(true);
+    expect(appStore.getState().saveError).toBeNull();
+    saveData.mockClear();
+    addTask({ title: "盘接回来之后记的" });
+    await flushSave();
+    expect(saveData).toHaveBeenCalled();
+  });
+
+  it("「数据打不开」那一屏上点重试不算数：那儿本来就不该写，别骗人说存回去了", async () => {
+    appStore.setState({ saveError: "盘符不存在", loadError: "目录不可用" });
+    saveData.mockClear();
+    expect(await retrySave()).toBe(false);
+    expect(saveData).not.toHaveBeenCalled();
+    expect(appStore.getState().saveError).toContain("盘符不存在");
+    appStore.setState({ loadError: null });
+  });
+});
+
+describe("🔴 开机自动取回：拉的这会儿本机多出了东西就不许覆盖", () => {
+  beforeEach(() => {
+    pullOnly.mockResolvedValue({ rev: 7, data: localData("云端的事"), updatedAt: null });
+  });
+
+  it("超出进来那一刻的条数 → 中止，内存和盘上都一个字不动", async () => {
+    // 手动那条路（用户自己点「从云端覆盖到这台设备」）不传这个数，覆盖就是他要的
+    await expect(restoreFromCloud({ abortIfTasksExceed: 0 })).rejects.toBeInstanceOf(RestoreAborted);
+    expect(titles(appStore.getState().data)).toEqual(["本机的事"]);
+    expect(titles(onDisk())).toEqual(["本机的事"]);
+    expect(snapshotBackup).not.toHaveBeenCalled();
+  });
+
+  it("对照组：这中间什么都没多出来，照旧覆盖", async () => {
+    const out = await restoreFromCloud({ abortIfTasksExceed: 1 });
+    expect(out.rev).toBe(7);
+    expect(titles(appStore.getState().data)).toEqual(["云端的事"]);
+  });
+
+  it("不传就是不设这道闸：手动覆盖一如既往", async () => {
+    await restoreFromCloud();
+    expect(titles(appStore.getState().data)).toEqual(["云端的事"]);
   });
 });
 

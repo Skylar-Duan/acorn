@@ -67,8 +67,9 @@ const CHIP_ICON: Record<ParseChip["kind"], string> = {
 const TRIGGER_KIND = { "#": "tag", "@": "who", "/": "list" } as const;
 type Trigger = keyof typeof TRIGGER_KIND;
 
-// 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）
-const TOKEN_RE = /(?:^|\s)([#@\/])([^\s#@\/!！]*)$/;
+// 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）。
+// ~ / ～ 也是边界：打「@李哥~3点」时那个 ~ 之后是时间，不该再往候选里筛人名
+const TOKEN_RE = /(?:^|\s)([#@\/])([^\s#@\/!！~～]*)$/;
 
 const MAX_ITEMS = 6;
 

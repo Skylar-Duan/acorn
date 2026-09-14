@@ -12,7 +12,7 @@ import { taskToSentence } from "../core/syntax";
 import {
   addList, addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
   dropTasks, expandTask, foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks,
-  SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
+  showToast, SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
@@ -28,6 +28,23 @@ const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中",
 /** 日期弹层里的每一次写库都带上它：**弹层期间一律不数顺延**。
  *  「这件事被往后推了几次」按弹层开→关整段算一次，落在 settleDuePopup 里 */
 const POPUP_WRITE = { noPostponeCount: true } as const;
+
+/** 这一句是不是「整段都是时间词，只是忘了打 ~」。
+ *  按空白切段，每段单独补上 ~ 再解析一遍：段段都变成纯时间要素、一个字都不剩下，才算数。
+ *  「报销单 重做」「复盘」这类正常标题里总有解析不掉的字，一段不成立整句就不成立——
+ *  用户在「快捷改」里真心改标题照旧改得动。只给 applyQuickPatch 用，见那儿的注释 */
+function isBareTimeOnly(text: string, weekendDay: "sat" | "sun" | undefined): boolean {
+  const segs = text.trim().split(/\s+/).filter(Boolean);
+  if (segs.length === 0) return false;
+  return segs.every((s) => {
+    const r = parseQuickAdd(`~${s}`, { now: new Date(), listNames: [], weekendDay });
+    return (
+      r.title === "" &&
+      r.chips.length > 0 &&
+      r.chips.every((c) => c.kind === "date" || c.kind === "time" || c.kind === "repeat")
+    );
+  });
+}
 
 type MenuName = "date" | "repeat" | "list" | "priority" | "who" | "tags" | null;
 
@@ -97,6 +114,9 @@ export default function TaskCard({ task }: { task: Task }) {
   const tagsSettled = useRef(false);
   /** 点卡外时的收尾函数。document 监听只挂一次，拿不到最新的 state，用 ref 每次渲染刷新 */
   const flushRef = useRef<() => void>(() => {});
+  /** 「点卡片里的别处 = 只收浮层、不收卡片」的收尾函数。跟 flushRef 同一个道理：
+   *  那条 document 监听的闭包停在首帧，读不到最新的 menu / subMenu，只能挂 ref */
+  const closeMenusRef = useRef<() => void>(() => {});
   /** 同上：那条监听的闭包停在首帧，要认「我是哪一件事」只能靠 ref 每次渲染刷新 */
   const taskIdRef = useRef(task.id);
   taskIdRef.current = task.id;
@@ -116,11 +136,22 @@ export default function TaskCard({ task }: { task: Task }) {
       // 「点开一件事马上去点它的日期」这个最常见的连贯动作正好落在这里。
       // 收起那一拍的收尾在 flushPending 里早就做过了，直接 return，不需要再做第二遍
       if (appStore.getState().ui.expandedId !== taskIdRef.current) return;
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+      if (!cardRef.current) return;
+      if (!cardRef.current.contains(e.target as Node)) {
         // A1「点走 = 提交」：卡片马上就要没了，先把还悬着的输入落库再收
         flushRef.current();
         expandTask(null);
+        return;
       }
+      // 点在卡里：浮层该跟着走人了（v1.15.0）。以前只有「再点一下那个小签」才关得掉，
+      // 于是点开日期浮层之后想去改标题，得先回头点一下 📅 才行——用户原话「点别处要自动消失」。
+      // 两处放过：
+      //   · 浮层自己（.popmenu）：里面就是给人点的，预设/日历格/时间框/需求方标签的输入框都在里头
+      //   · 任何小签（.pill）：mousedown 比按钮自己的 click 早一步，不放过的话
+      //     「点 📅 把它收起来」会变成这儿先关掉、紧接着 click 又把它开回来，那颗键就永远按不动了
+      const hit = e.target instanceof Element ? e.target : null;
+      if (hit?.closest(".popmenu") || hit?.closest(".pill")) return;
+      closeMenusRef.current();
     }
     function onKey(e: KeyboardEvent) {
       // Esc 是**丢弃**，不是「点走 = 提交」那条路（见 flushPending 的注释）。
@@ -329,8 +360,14 @@ export default function TaskCard({ task }: { task: Task }) {
   }
 
   /** 兜底：这件事没法用一句话无损表达（标题里带 # / @，或清单名里有空格）时，
-   *  退回老口径——写出哪类要素就改哪类，没写的不动 */
-  function applyQuickPatch(p: ParseResult) {
+   *  退回老口径——写出哪类要素就改哪类，没写的不动。
+   *
+   *  **这一档的框是空的**（baseText 是空串），用户对着提示从零打一句。时间严格模式之后
+   *  这里有个凶坑：漏打 ~ 的时间词不再被当成日期，而是原样落回 p.title，一回车
+   *  把原标题整条换掉（「报销 #12345」变成「明天 15点」，日期还一点没设）。
+   *  而且当场撤不出来——焦点还在框里，App 的 Ctrl+Z 被 inEditable() 挡着，
+   *  得先点到别处才轮得到撤销栈。所以下面拦一道，并如实说一声要打 ~。 */
+  function applyQuickPatch(p: ParseResult): boolean {
     const kinds = new Set(p.chips.map((c) => c.kind));
     const patch: Partial<Task> = {};
     if (kinds.has("date")) patch.due = p.due;
@@ -344,17 +381,22 @@ export default function TaskCard({ task }: { task: Task }) {
     if (kinds.has("who")) patch.who = [...new Set([...task.who, ...p.who])];
     if (kinds.has("list") && p.listName) patch.listId = ensureListId(p.listName);
     if (kinds.has("tag")) patch.tags = [...new Set([...task.tags, ...p.tags])];
-    if (p.title.trim()) patch.title = p.title.trim();
-    if (Object.keys(patch).length) updateTask(task.id, patch);
+    // 剩下这段话整个都是「没打 ~ 的时间词」= 用户是想排期、不是想改名，标题一个字不动
+    const bareTime = isBareTimeOnly(p.title, settings.weekendDay);
+    if (p.title.trim() && !bareTime) patch.title = p.title.trim();
+    const wrote = Object.keys(patch).length > 0;
+    if (wrote) updateTask(task.id, patch);
+    if (bareTime) showToast("时间前面要打个 ~ 才算数，标题先没动", false);
     setDraft(null);
+    return wrote; // 一个字没写就别闪那个 ✓（它的全部价值在于不说谎）
   }
 
   /** 整句改那一栏的提交口——回车、失焦、点卡外，三条路走的都是这一个函数。
    *  绝不另写一条：applySentence 里那两条保险（删光了不动手、只写真的变了的字段）
    *  一旦被绕过去，历史上出过的两个 bug 会一起回来 */
-  function commitSentence(p: ParseResult, raw: string) {
-    if (sentence.safe) applySentence(p, raw);
-    else applyQuickPatch(p);
+  function commitSentence(p: ParseResult, raw: string): boolean | void {
+    if (sentence.safe) return applySentence(p, raw);
+    return applyQuickPatch(p);
   }
 
   /** 子任务标题的回执计时（A7）：停手 TYPING_IDLE_MS 才闪，闪 FLASH_MS 后收 */
@@ -419,6 +461,23 @@ export default function TaskCard({ task }: { task: Task }) {
     dueFieldRef.current?.flush();
   }
   flushRef.current = flushPending;
+
+  /** 点了卡片里的别处（标题、备注、子任务那片、卡片空白）时的收尾：**只收浮层，卡片留着**。
+   *  卡片里同时只可能开着一个浮层，但开关分散在 menu / subMenu 两处，一并关掉最省心。
+   *
+   *  带输入框的那两个（需求方 / 标签）收之前先落一次库，跟「点卡外」走的是同一条路
+   *  （commitWho / commitTags 自带闸门，重复调用不会写第二遍）——不这么做的话，
+   *  在标签框里打完字顺手点一下卡片空白，那句话就白打了。
+   *
+   *  日期那边不用在这儿操心：欠着的那一次和顺延结算都挂在 menu 那个 effect 的清理里
+   *  （settleDuePopup），menu 一变成 null 自己就跑了 */
+  function closeMenus() {
+    if (menu === "who") commitWho();
+    if (menu === "tags") commitTags();
+    setMenu(null);
+    setSubMenu(null);
+  }
+  closeMenusRef.current = closeMenus;
 
   // 循环菜单的「每周X/每月X号」按任务自己的日期取形
   const wd = task.due ? new Date(task.due).getDay() : new Date().getDay();
@@ -622,7 +681,7 @@ export default function TaskCard({ task }: { task: Task }) {
               return true;
             }}
             onShiftEnter={() => expandTask(null)}
-            placeholder="＋ 子任务，回车添加（可以写「明天 !高」）"
+            placeholder="＋ 子任务，回车添加（可以写「~明天 !高」）"
             lists={[]}
             tags={[]}
             whos={[]}
@@ -876,8 +935,7 @@ export default function TaskCard({ task }: { task: Task }) {
           // A1：点走 = 提交，走的还是 commitSentence 那一条路，两条保险一个不少
           onBlurCommit={(p) => {
             if (live === baseText) return false; // 没改过就别写
-            commitSentence(p, live);
-            return true;
+            return commitSentence(p, live) !== false; // 快捷改一个字没写时不闪 ✓
           }}
           // A3 草稿保护：有草稿时第一下 Esc 只把这句还原（跟右边那个 ↺ 一个意思），
           // 第二下才冒泡出去收卡片。手一抖不至于前功尽弃
@@ -890,7 +948,7 @@ export default function TaskCard({ task }: { task: Task }) {
           placeholder={
             sentence.safe
               ? "改这句话就是改这件事，回车生效"
-              : "快捷改：输入「明天 15点 !高 #标签 /清单 @人」，写了哪类改哪类，回车生效"
+              : "快捷改：输入「~明天 ~15点 !高 #标签 /清单 @人」，写了哪类改哪类，回车生效"
           }
           lists={lists.map((l) => l.name)}
           tags={tagNames}

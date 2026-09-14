@@ -1,0 +1,19 @@
+{
+  "name": "橡果 Acorn",
+  "short_name": "橡果",
+  "description": "记得每件事是谁交办的待办工具。打一句话进去，日期、时间、清单、需求方、重要性一次到位。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "id": "/app/",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F3EB",
+  "theme_color": "#F4F3EB",
+  "icons": [
+    { "src": "/app/icons/acorn-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app/icons/acorn-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app/icons/acorn-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

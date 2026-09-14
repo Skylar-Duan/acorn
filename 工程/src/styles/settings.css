@@ -202,6 +202,11 @@
 .set-section .set-head .set-caret.up { transform: rotate(180deg); }
 .set-section .set-head:hover h2,
 .set-section .set-head:hover .set-caret { color: var(--accent); }
+/* 手指按下去的那一下（v1.15.0）：原生那层蓝高亮在 base.css 里全局关了，这儿补自家的回应。
+   **故意不铺底色**——这一行是通栏直角的，铺底色只是把那条蓝横条换成灰横条，等于没治；
+   改成标题和小三角一起变主题色，跟桌面鼠标划过去一模一样，形状一个像素不动 */
+.set-section .set-head:active h2,
+.set-section .set-head:active .set-caret { color: var(--accent); }
 .set-fold {
   display: grid;
   grid-template-rows: 1fr;

@@ -81,54 +81,54 @@ describe("解析：子任务里所有循环词都认", () => {
   const p = (s: string, now = MON, weekend?: "sat" | "sun") => parseSubtaskInput(s, now, [], weekend);
 
   it("每周末 大扫除 → 每周日重复，首个落点是本周日，标题干净", () => {
-    const r = p("每周末 大扫除", FRI);
+    const r = p("~每周末 大扫除", FRI);
     expect(r.repeat).toEqual({ kind: "weekly", days: [0] });
     expect(r.due).toBe("2026-08-23");
     expect(r.title).toBe("大扫除");
   });
 
   it("weekendDay 设成周六：「每周末」跟着变成每周六，落点提前到 22 号", () => {
-    const r = p("每周末 大扫除", FRI, "sat");
+    const r = p("~每周末 大扫除", FRI, "sat");
     expect(r.repeat).toEqual({ kind: "weekly", days: [6] });
     expect(r.due).toBe("2026-08-22");
     expect(r.title).toBe("大扫除");
   });
 
   it("每天 / 每2天 / 每周一三五 / 每月5号 / 每个工作日 都认，标题都清干净", () => {
-    expect(p("每天 记录体重").repeat).toEqual({ kind: "daily", every: 1 });
-    expect(p("每天 记录体重").title).toBe("记录体重");
-    expect(p("每2天 浇花").repeat).toEqual({ kind: "daily", every: 2 });
-    expect(p("每2天 浇花").title).toBe("浇花");
-    expect(p("每周一三五 跑步").repeat).toEqual({ kind: "weekly", days: [1, 3, 5] });
-    expect(p("每周一三五 跑步").title).toBe("跑步");
-    expect(p("每月5号 交房租").repeat).toEqual({ kind: "monthly", day: 5 });
-    expect(p("每月5号 交房租").title).toBe("交房租");
-    expect(p("每个工作日 站会").repeat).toEqual({ kind: "workday" });
-    expect(p("每个工作日 站会").title).toBe("站会");
+    expect(p("~每天 记录体重").repeat).toEqual({ kind: "daily", every: 1 });
+    expect(p("~每天 记录体重").title).toBe("记录体重");
+    expect(p("~每2天 浇花").repeat).toEqual({ kind: "daily", every: 2 });
+    expect(p("~每2天 浇花").title).toBe("浇花");
+    expect(p("~每周一三五 跑步").repeat).toEqual({ kind: "weekly", days: [1, 3, 5] });
+    expect(p("~每周一三五 跑步").title).toBe("跑步");
+    expect(p("~每月5号 交房租").repeat).toEqual({ kind: "monthly", day: 5 });
+    expect(p("~每月5号 交房租").title).toBe("交房租");
+    expect(p("~每个工作日 站会").repeat).toEqual({ kind: "workday" });
+    expect(p("~每个工作日 站会").title).toBe("站会");
   });
 
   it("循环词没带日期：due 落在第一个落点，跟整件事同一条路（firstOccurrence）", () => {
     // 8-17 本身是周一，「每周一」的第一个落点含今天
-    expect(p("每周一 交周报").due).toBe("2026-08-17");
+    expect(p("~每周一 交周报").due).toBe("2026-08-17");
     // 每天：今天就是落点
-    expect(p("每天 记录体重").due).toBe("2026-08-17");
+    expect(p("~每天 记录体重").due).toBe("2026-08-17");
     // 每月5号：这个月 5 号已经过了，落到下个月
-    expect(p("每月5号 交房租").due).toBe("2026-09-05");
+    expect(p("~每月5号 交房租").due).toBe("2026-09-05");
     // 每个工作日：周一本身就是工作日
-    expect(p("每个工作日 站会").due).toBe("2026-08-17");
+    expect(p("~每个工作日 站会").due).toBe("2026-08-17");
     // 一条有循环、没日期的子任务永远推不动，所以这一条不许回到 null
-    expect(p("每周一 交周报").due).not.toBeNull();
+    expect(p("~每周一 交周报").due).not.toBeNull();
   });
 
   it("句子里另写了日期：日期说了算，循环照旧带着", () => {
-    const r = p("每周一 交周报 后天");
+    const r = p("~每周一 交周报 ~后天");
     expect(r.repeat).toEqual({ kind: "weekly", days: [1] });
     expect(r.due).toBe("2026-08-19");
     expect(r.title).toBe("交周报");
   });
 
   it("清单 / 标签 / 需求方仍然不认，原文照留在标题里", () => {
-    const r = p("每天 发给 @李哥 的 #材料 /工作");
+    const r = p("~每天 发给 @李哥 的 #材料 /工作");
     expect(r.repeat).toEqual({ kind: "daily", every: 1 });
     expect(r.who).toEqual([]);
     expect(r.tags).toEqual([]);
@@ -147,14 +147,14 @@ describe("解析：那句「每月?」清理正则**保留**，只剩一种触�
   // 结论：留着。循环认了之后它不再是「循环词的残渣清扫」，而是「用户打了半句话」的兜底——
   // 光杆「每」后面没跟循环词、日期另写在别处，那个「每」不是标题的一部分
   it("光杆「每」+ 另写的日期：「每」不留在标题里", () => {
-    const r = p("每 交周报 明天");
+    const r = p("每 交周报 ~明天");
     expect(r.repeat).toBeNull();
     expect(r.due).toBe("2026-08-18");
     expect(r.title).toBe("交周报");
   });
 
   it("光杆「每月」同理", () => {
-    const r = p("每月 交房租 明天");
+    const r = p("每月 交房租 ~明天");
     expect(r.repeat).toBeNull();
     expect(r.title).toBe("交房租");
   });
@@ -164,8 +164,8 @@ describe("解析：那句「每月?」清理正则**保留**，只剩一种触�
   });
 
   it("成词的正文不误伤：「每日一记」「每人一份」里的「每」不是光杆", () => {
-    expect(p("每日一记 明天").title).toBe("每日一记");
-    expect(p("每人一份 明天").title).toBe("每人一份");
+    expect(p("每日一记 ~明天").title).toBe("每日一记");
+    expect(p("每人一份 ~明天").title).toBe("每人一份");
   });
 });
 
@@ -346,7 +346,7 @@ describe("创建：解析出的 repeat 一路存进去", () => {
 
   it("一条命令记全一条循环子任务：解析结果直接喂进 addSubtask", () => {
     const id = addTask({ title: "装修" });
-    const r = parseSubtaskInput("每周末 大扫除", FRI);
+    const r = parseSubtaskInput("~每周末 大扫除", FRI);
     addSubtask(id, r.title, { due: r.due, dueTime: r.dueTime, priority: r.priority || null, repeat: r.repeat });
     const s = onlySub(id);
     expect(s.title).toBe("大扫除");

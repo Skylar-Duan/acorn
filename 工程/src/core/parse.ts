@@ -1,7 +1,14 @@
 // 快速添加输入框的中文自然语言解析(纯逻辑,零 DOM)。
-// 符号分工:#标签 /清单 @需求方 !优先级。
+// 符号分工:#标签 /清单 @需求方 !优先级 ~时间。
 // 策略:按固定优先级依次扫描各类 token,用字符占用表防止同一段文字被解析两次;
 // 未被占用的字符收拢空白后即标题。同一字段出现多个 token 时,按出现位置后者生效。
+//
+// **时间严格模式(v1.15.0,用户拍板)**:跟时间有关的三类——日期、时段与钟点、循环——
+// 必须由一个 `~` 领着才算数。「~周五下午3点 提交周报」设日期;「下周去体检」一个字不动,
+// 整句就是标题。为什么这么定:不打符号的误认没法预防(「比分3-2」「上午班次表」这类防不胜防),
+// 而一件事被悄悄排到某一天,用户是在错过之后才发现的。代价是每次写时间多打一个字符,
+// 好处是规矩简单到不用记——**凡是跟时间有关的,前面打个 ~**,跟另外三个符号一个待遇。
+// 下面那 25 条日期/钟点正则一条没改,闸门只在 scan 里加了一处(见 gate)。
 
 import type { Priority, RepeatRule } from "./model";
 import {
@@ -110,11 +117,12 @@ function firstOccurrence(rule: RepeatRule, today: string): string {
 // ---------- 正则(共享实例,scan 内每次重置 lastIndex) ----------
 
 const RE = {
-  // 字符类统一排斥 / ——否则「#紧要/工作」会整体吞成一个标签,清单丢失
-  tag: /#([^\s#@/!！]+)/g,
+  // 字符类统一排斥 / ——否则「#紧要/工作」会整体吞成一个标签,清单丢失;
+  // 同样排斥 ~ 与 ～:「@李哥~3点」的人名到 ~ 为止,时间不能被吃进名字里
+  tag: /#([^\s#@/!！~～]+)/g,
   // '/' 必须在行首或空白之后,防止误吞 8/20 这类日期
-  list: /(?<!\S)\/([^\s#@/!！]+)/g,
-  who: /@([^\s#@/!！]+)/g,
+  list: /(?<!\S)\/([^\s#@/!！~～]+)/g,
+  who: /@([^\s#@/!！~～]+)/g,
   prioWord: /[!！](高|中|低)/g,
   prioBang: /[!！]+/g,
   repWorkday: /每个?工作日/g,
@@ -129,7 +137,7 @@ const RE = {
   // 可带「今年/明年」前缀。长词在前(「五一劳动节」不能被拆成「五一」+「劳动节」两截);
   // 「五一」「六一」后面不许贴着数字和量词——「五一号」「六一班」「十六一天」都不是节日
   holiday: new RegExp(
-    `(?<![^\\s#@/!！])(今年|明年)?(${HOLIDAY_WORDS.filter((w) => w !== "五一" && w !== "六一").join("|")}|(?:五一|六一)(?![\\d一二两三四五六七八九十号日月点起天周年个次份班届楼期]))`,
+    `(?<![^\\s#@/!！~～])(今年|明年)?(${HOLIDAY_WORDS.filter((w) => w !== "五一" && w !== "六一").join("|")}|(?:五一|六一)(?![\\d一二两三四五六七八九十号日月点起天周年个次份班届楼期]))`,
     "g",
   ),
   // 今年年底 / 今年底 / 明年年底 / 明年底(须在裸「年底」之前,否则「今年」两个字会漏在标题里)
@@ -144,14 +152,15 @@ const RE = {
   monthsAfter: new RegExp(`(?<!\\d)(${NUM})个?月后`, "g"),
   // 月底/月末/月初/月中,可带「下(个)/这(个)/本」前缀;年底
   monthPart: /(下个?|这个?|本)?月(底|末|初|中)|年底/g,
-  // 与 RE.list 同款左边界:必须在行首或空白后,防止「比分3-2」「得了3/4」这类正文被吞成日期
-  mmDd: /(?<!\S)(\d{1,2})-(\d{1,2})(?![\d-])/g,
-  mmSlashDd: /(?<!\S)(\d{1,2})\/(\d{1,2})(?![\d/])/g,
+  // 与 RE.list 同款左边界:必须在行首、空白后或那个 ~ 后(严格模式下真正写日期的写法是「~8-31」),
+  // 防止「比分3-2」「得了3/4」这类正文被吞成日期
+  mmDd: /(?<![^\s~～])(\d{1,2})-(\d{1,2})(?![\d-])/g,
+  mmSlashDd: /(?<![^\s~～])(\d{1,2})\/(\d{1,2})(?![\d/])/g,
   relWord: /大后天|后天|明天|明早|明晚|今早|今晚|今天/g,
   // 周末 / 本周末 / 这周末 / 下周末 / 下下周末(「上周末」为容错,产出过去日期)
   weekend: /(下下|下|上|本|这)?周末/g,
   // 下周前 / 本周前 / 这周前 = 本周日。「前」要成词尾,否则「下周前端联调」的「前」会被吞
-  weekDeadline: /[下本这]周(?:之前|以前|前(?![^\s#@/!！]))/g,
+  weekDeadline: /[下本这]周(?:之前|以前|前(?![^\s#@/!！~～]))/g,
   // 下下周三(须在「下周三」之前,否则会被截成「下」+「下周三」)
   nextNextWeek: /下下(?:周|星期)([一二三四五六日天])/g,
   otherWeek: /([上下本这])(?:周|星期)([一二三四五六日天])/g,
@@ -245,6 +254,36 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     return true;
   };
 
+  /** 被某个 ~ 领进门的那些字符。跟 consumed 分开记:只有时间那三类才「传染」,
+   *  「@李哥」后面紧跟的「3点」不算被李哥领着 */
+  const licensed: boolean[] = new Array<boolean>(input.length).fill(false);
+  /** 要过闸门的三类:日期、钟点(含时段词)、循环 */
+  const TIMEY = new Set<ParseChip["kind"]>(["date", "time", "repeat"]);
+  const isTilde = (c: string | undefined): boolean => c === "~" || c === "～";
+
+  /** 时间闸门:这个 token 前面有没有人领着?
+   *  · 紧邻的前一个字符是还没被占用的 ~ / ～,而且**那个 ~ 自己站在词头** → 认,
+   *    并把这个符号一起并进占用区间(返回它的下标);
+   *  · 紧邻的前一个字符已经在某个 ~ 领着的那一串里 → 也认(一个 ~ 管一整串:「~周五下午3点」);
+   *  · 别的一律不认(返回 -1),原文原样留在标题里。
+   *  中间空了格就断了——空格不在 licensed 里,得再打一个 ~。这条规矩写在用法页上。
+   *
+   *  **「~ 要站在词头」这条左边界跟 RE.list 的 / 是一个路数,是为了中文里当范围号用的波浪线**:
+   *  「预计 3～5天内 出结果」「报销 1~2个月后 到账」「档期 8/20~8/25」「面试 14:00～15:00 二轮」
+   *  ——范围号左边贴着的是正文(数字),不是词头,这时右半截不算时间,整句原样留给标题。
+   *  不然就正好是这一版要消灭的那件事:悄悄排了期,标题还被啃掉半截。
+   *  前面是「已被别的要素占掉的字符」照旧算词头,「@李哥~3点」「#紧要~明天」「/工作~明天」
+   *  「!高~明天」这些扫到时间之前就已经占上了。裸感叹号串(RE.prioBang)排在日期之后扫,
+   *  这会儿还没占上字,所以 [!！] 在这儿单独放行——「!!~明天」得照旧认。 */
+  const gate = (a: number): number => {
+    if (a === 0) return -1;
+    if (isTilde(input[a - 1]) && !consumed[a - 1]) {
+      const t = a - 1;
+      return t === 0 || consumed[t - 1] || /[\s!！]/.test(input[t - 1]) ? t : -1;
+    }
+    return licensed[a - 1] ? a : -1;
+  };
+
   // eatDeadline:日期 token 紧跟的「之前/以前/前」是 deadline 语气词,一并吞掉(日期不变)
   const scan = (
     re: RegExp,
@@ -260,18 +299,28 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
       const t = on(m);
       if (t === null) continue;
       if (skip.has(t.chip.kind)) continue; // 关掉的类别：不认、不吃字，原文留给标题
+      // 时间那三类过闸门：没有 ~ 领着就当没看见，这一串原样留给标题
+      const timey = TIMEY.has(t.chip.kind);
+      let start = a;
+      if (timey) {
+        start = gate(a);
+        if (start === -1) continue;
+      }
       if (eatDeadline) {
         const suf = DEADLINE.find((w) => input.startsWith(w, b));
         if (suf !== undefined && free(b, b + suf.length)) {
           // 单字「前」只在词尾（后面是空白/行尾/token 符号）才算语气词，
           // 否则会吞掉「前端」「前台」这类内容词的首字
           const after = input[b + suf.length];
-          const atBoundary = after === undefined || /[\s#@/!！]/.test(after);
+          const atBoundary = after === undefined || /[\s#@/!！~～]/.test(after);
           if (suf !== "前" || atBoundary) b += suf.length;
         }
       }
-      for (let i = a; i < b; i++) consumed[i] = true;
-      tokens.push({ start: a, chip: t.chip, apply: t.apply });
+      for (let i = start; i < b; i++) {
+        consumed[i] = true;
+        if (timey) licensed[i] = true; // 这一串后面还能再接时间词，不必重新打 ~
+      }
+      tokens.push({ start, chip: t.chip, apply: t.apply });
     }
   };
 
@@ -790,8 +839,9 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     const a = m.index;
     const b = a + m[0].length;
     const glued = a > 0 && consumed[a - 1];
-    const leftOk = a === 0 || glued || /\s/.test(input[a - 1]);
-    const rightOk = b === input.length || consumed[b] || /[\s#@/!！]/.test(input[b]);
+    // 领着它的那个 ~ 也算左边界（「~下午 开会」：这时 ~ 还没被占用，glued 是 false）
+    const leftOk = a === 0 || glued || /[\s~～]/.test(input[a - 1]);
+    const rightOk = b === input.length || consumed[b] || /[\s#@/!！~～]/.test(input[b]);
     if (!leftOk || (!rightOk && !glued)) return null;
     const w = m[0];
     const hm = PERIOD_TIME[w];
@@ -810,7 +860,7 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   // 全角/半角混合按总长度计级;紧跟普通正文(「!棒」)时按标点处理,不吞。
   scan(RE.prioBang, (m) => {
     const b = m.index + m[0].length;
-    if (b < input.length && !consumed[b] && !/[\s#@]/.test(input[b])) return null;
+    if (b < input.length && !consumed[b] && !/[\s#@~～]/.test(input[b])) return null;
     const n = m[0].length;
     const lv: Priority = n >= 3 ? 3 : n === 2 ? 2 : 1;
     return {

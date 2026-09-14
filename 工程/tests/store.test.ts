@@ -56,6 +56,9 @@ beforeEach(async () => {
       expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, toast: null,
       ctxMenu: null, foldAll: false, foldExcept: [], changelogOpen: false, quickAddOpen: false,
     },
+    // 写盘闸门：上一条用例把它置上过的话，这一条一个字都存不下去（doSave 第一行就 return）
+    saveError: null,
+    webNewVersion: null,
     focus: { taskId: null, running: false, endsAt: null, totalMinutes: 0 },
     undoDepth: 0,
   });

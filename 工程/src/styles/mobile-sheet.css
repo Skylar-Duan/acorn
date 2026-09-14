@@ -108,8 +108,10 @@ textarea.msh-title, textarea.msh-notes {
 /* 行本体必须是**不透明**的：左滑露出来的动作条就躺在它底下，透一点点就会一直隐隐透出红色。
    （以前这儿要单独补一层纸纹才不至于比周围白；v1.11.2 起整个手机端都不铺纸纹了，
    纸和行都是纯 --card，这条补丁就不需要了） */
+/* v1.15.0：上下补 10px 内边距。标题可以折两行了，原来那个「0 上下内距 + 46 最矮高」
+   在两行的时候会让字顶到上下沿——一行的时候还是 46 高，看不出区别 */
 .msh-sub {
-  display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 20px;
+  display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 20px;
 }
 .msh-subwrap + .msh-subwrap .msh-sub { border-top: 1px solid var(--hair); }
 /* 做完的那几条淡下去——**淡的是里面的字，不是整行**：整行调 opacity 会把底下的动作条透出来 */
@@ -129,11 +131,22 @@ textarea.msh-title, textarea.msh-notes {
   color: var(--on-accent); font-size: 13px; line-height: 1;
 }
 .msh-sb.ghost { opacity: .35; }
+/* 子任务标题（v1.15.0 起可以折两行）。
+   原来是「单行 + 省略号」，点开改又是个单行 <input>——长句子在这张纸上一样读不完，
+   用户 2026-09-14 说的「一长条只能横拖查看」就是指这儿。
+   看的那一档用 line-clamp 折到两行；改的那一档是会自己长高的 textarea（见 TaskSheet 的 SubRow）。
+   两档共用这一条打底，各自的 display 分开写：-webkit-box 套到 textarea 上会把输入框弄坏 */
 .msh-subtitle {
   flex: 1; min-width: 0; font-size: var(--fs-lg); color: var(--ink); text-align: left;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: transparent; border: 0; padding: 0; font-family: inherit; outline: none;
+  overflow-wrap: anywhere;
 }
+button.msh-subtitle {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden;
+}
+/* 自己长高的那一档：高度由 growArea 写在 style 上，所以既不许有滚动条也不许手动拉 */
+textarea.msh-subtitle { resize: none; overflow: hidden; line-height: 22px; }
 /* 「这一步会重复」小签（v8）。跟同一行的 .msh-droptag 逐字同款（圆角 999、--fs-xs、发丝边框），
    两个标签并排时看起来就是一套东西 */
 .msh-subrep {
@@ -284,3 +297,100 @@ textarea.msh-title, textarea.msh-notes {
 .msh-guide .gd-try, .msh-guide .gd-card { border-radius: 14px; box-shadow: none; }
 .msh-guide .gd-card:active { transform: none; }
 .msh-guide .gd-say { border-radius: 10px; }
+
+/* ═══════════ 账号那张纸（v1.15.0） ═══════════ */
+/* 「今天」右上角那颗头像点开的一张纸：头像、名字、邮箱、同步、自动登录、一键退出。
+   段与段之间靠间距分开，不画横线——这张纸上一共才四五件事，画线只会显得像张表格。 */
+
+.msh-acct-body { display: flex; flex-direction: column; gap: 14px; padding: 0 16px 8px; }
+.msh-acct-body .msheet-label { padding: 0; }
+
+/* 上面那一横条：左边头像，右边名字 + 邮箱 */
+.msh-acct-top { display: flex; align-items: center; gap: 14px; }
+
+/* 头像本身就是「换一张」的按钮。右下角压一颗小小的「换」字，
+   不然一颗光秃秃的圆没人知道它可以点 */
+.msh-acct-pic {
+  position: relative;
+  width: 64px; height: 64px; flex: none; padding: 0; overflow: hidden;
+  border-radius: 50%; border: 0;
+  background: var(--accent-soft); color: var(--accent);
+  font-family: inherit; font-size: 24px; font-weight: 600;
+  display: grid; place-items: center;
+  transition: background var(--dur-1) var(--ease);
+}
+.msh-acct-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.msh-acct-pic .edit {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  font-size: var(--fs-xs); font-weight: 400; line-height: 16px;
+  background: var(--ink); color: var(--card); opacity: .72;
+}
+.msh-acct-pic:active { background: color-mix(in srgb, var(--accent) 24%, var(--accent-soft)); }
+/* 没登录那一版：同一颗圆，但它不是按钮，只是个招呼 */
+.msh-acct-pic.big { width: 56px; height: 56px; }
+
+.msh-acct-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.msh-acct-namerow { display: flex; align-items: center; gap: 4px; }
+.msh-acct-mail {
+  font-size: var(--fs-xs); color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 同步那一行：左边一句状态，右边「立即同步」。
+   按钮按内容宽——.msh-opt 默认是 flex:1，在这儿会把那句状态挤没 */
+.msh-acct-sync { display: flex; align-items: center; gap: 10px; }
+.msh-acct-sync .msh-opt { flex: none; padding: 0 14px; }
+.msh-acct-state { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--ink-2); }
+/* 出错那一档才变色；「正在同步」不算出错，不许标红吓人 */
+.msh-acct-state.error { color: #C0564A; }
+
+/* 一行设置：左边一句事 + 一句为什么，右边一颗开关。整行可点（开关太小，按不准） */
+.msh-acct-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; border-radius: 16px; border: 0;
+  background: var(--bg); color: var(--ink);
+  font-family: inherit; font-size: var(--fs-md); text-align: left;
+}
+.msh-acct-row .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.msh-acct-row .why { font-size: var(--fs-xs); color: var(--ink-3); line-height: 18px; }
+/* 只说明、点不动的那一行（自启动）：灰一档，没有按下去的反馈——
+   它本来就不是按钮，不许假装自己是 */
+.msh-acct-row.dim .t { color: var(--ink-2); }
+button.msh-acct-row:active { background: color-mix(in srgb, var(--ink) 5%, var(--bg)); }
+
+/* 开关：跟设置页那颗同一副长相，但这张纸上不引 settings.css（那是桌面设置页的地盘） */
+.msh-switch {
+  position: relative; flex: none; width: 46px; height: 28px; border-radius: 999px;
+  background: var(--hair);
+  transition: background var(--dur-1) var(--ease);
+}
+.msh-switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--card); box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-1) var(--ease);
+}
+.msh-switch.on { background: var(--accent); }
+.msh-switch.on::after { transform: translateX(18px); }
+
+.msh-acct-err { font-size: var(--fs-sm); color: #C0564A; margin: 0; }
+
+/* 退出登录：说了保留本机，就不必做成红的。红色留给「清空」那条真删东西的路 */
+.msh-acct-out {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;
+  padding: 12px 14px; border-radius: 16px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink);
+  font-family: inherit; font-size: var(--fs-md); text-align: left;
+}
+.msh-acct-out .why { font-size: var(--fs-xs); color: var(--ink-3); }
+.msh-acct-out:active { background: var(--bg); }
+
+/* 没登录那一版：一颗圆 + 一句话 + 一颗按钮，别的什么都没有 */
+.msh-acct-none { display: flex; align-items: center; gap: 14px; }
+.msh-acct-none p { margin: 0; font-size: var(--fs-md); line-height: 22px; color: var(--ink-2); }
+.msh-acct-go {
+  width: 100%; min-height: 48px; border-radius: 16px; border: 0;
+  background: var(--accent); color: var(--on-accent);
+  font-family: inherit; font-size: var(--fs-md); font-weight: 600;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.msh-acct-go:active { opacity: .8; }

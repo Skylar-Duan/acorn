@@ -228,7 +228,9 @@ describe("P0-7 / P1-1 四象限与日历：两个视图原来一条手机媒体�
   });
 
   it("点一格 → 下面列出当天的事，而且这块只在窄屏出现", () => {
-    expect(calendarSource).toContain("const [picked, setPicked] = useState<string | null>(null);");
+    // v1.15.0：初值不再恒为 null——手机周视图借 picked 当「摊开的是哪张日卡」，
+    // 一进来得摊开今天那张（否则下半屏一片留白）。这条钉的是「只有一个 picked 在管这件事」
+    expect(calendarSource).toContain("const [picked, setPicked] = useState<string | null>(");
     expect(calendarSource).toContain('className="cal-daylist"');
     expect(calendarSource).toContain("setPicked((cur) => (cur === ymd ? null : ymd))");
     // 桌面格子里写得下标题，不需要这一层
@@ -283,10 +285,32 @@ describe("P1-3 手机上没有右键：长按弹同一份菜单", () => {
 });
 
 describe("P1-4 / P1-5 给手机用户看的东西，别指他做不到的操作", () => {
+  // v1.15.0 网页版：判据从 hasDesktopFeatures 换成 platform.canSaveFile
+  // （= 装在电脑上的橡果，或者任何浏览器）。**规矩没变，只是说得准了**——
+  // 原来「按钮上写什么」判 hasDesktopFeatures、「真干活那句」判 inTauri，
+  // 电脑浏览器里两边对不上：写着「导出」，按下去其实是复制。现在两处认同一个开关
   it("统计页导出：安卓上 save() 给回的是 content:// URI，fs::write 写不了，改成复制", () => {
-    expect(statsSource).toContain("if (!persist.inTauri || !hasDesktopFeatures) {");
+    expect(statsSource).toContain("if (!canSaveFile) {");
     expect(statsSource).toContain('showToast("本周小结已复制到剪贴板", false);');
-    expect(statsSource).toContain('{hasDesktopFeatures ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}');
+    expect(statsSource).toContain('{canSaveFile ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}');
+  });
+
+  it("🔴 按钮上那几个字和真干活那句必须是同一个判据，不许各判各的", () => {
+    // 这一条就是上面那笔账本身：两处各写各的，迟早又有一端「说的和做的不一样」
+    const act = statsSource.slice(statsSource.indexOf("async function onExport()"));
+    expect(act).toContain("if (!canSaveFile) {");
+    // 注释里还留着这笔账的来龙去脉（那是该留的），所以只判真代码：
+    // 判断用的那两种写法（三元、取反）和那个 import 都不许再出现
+    expect(statsSource).not.toContain("hasDesktopFeatures ?");
+    expect(statsSource).not.toContain("!hasDesktopFeatures");
+    expect(statsSource).not.toContain("import { hasDesktopFeatures");
+  });
+
+  it("浏览器里没有系统保存对话框，走下载；不许再退回去调 Tauri 的 save()", () => {
+    const act = statsSource.slice(statsSource.indexOf("async function onExport()"));
+    // 顺序有讲究：先「能不能存文件」，再「是不是浏览器」，最后才是 Tauri 那条
+    expect(act.indexOf("if (!canSaveFile) {")).toBeLessThan(act.indexOf("if (!persist.inTauri) {"));
+    expect(act).toContain("persist.downloadTextFile(");
   });
 
   it("「已完成」表头那句「或右键」按平台分叉", () => {
@@ -301,6 +325,29 @@ describe("P1-4 / P1-5 给手机用户看的东西，别指他做不到的操作"
     expect(s).toContain(': "点「打开用法」，里面是一组可以照着抄的例子"');
     // 手机那一支不许出现「窗口」两个字
     expect(s).not.toContain(': "点「打开用法」，会开一个单独的窗口');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v1.15.0 网页版：手机浏览器上的两条老毛病。桌面 WebView 里从来没犯过，
+// 因为那里的视口是固定的、也没有下拉刷新这回事
+// ---------------------------------------------------------------------------
+describe("P1-7 手机浏览器的视口会动，整页高度不能只写 100%", () => {
+  it("🔴 html/body/#root 补一份 100dvh：地址栏一放出来，底部导航就被顶出屏幕", () => {
+    // 100%（等同 100vh）参照的是「地址栏收起来」时那个大视口。Safari 里地址栏一出来，
+    // 屏幕实际矮了约 50px，而这一层还按大的算 —— 底下那排 60px 的导航整条看不见
+    expect(nl(baseCss)).toContain("@supports (height: 100dvh) {\n  html, body, #root { height: 100dvh; }\n}");
+  });
+
+  it("老引擎那条 100% 必须留着：认不得 dvh 的话，@supports 里那份整段不生效", () => {
+    // 删了它 = 老引擎上 height 没人管，#root 塌成 0，整页白
+    expect(baseCss).toContain("html, body, #root { height: 100%; }");
+  });
+
+  it("🔴 body 挡掉下拉刷新：往下拽是列表在滚，横着划是一行事的动作", () => {
+    // 不挡的话手指稍微斜一点就变成整页刷新，记到一半的东西全没
+    const body = nl(baseCss).slice(nl(baseCss).indexOf("\nbody {"), baseCss.indexOf("input, textarea, button"));
+    expect(body).toContain("overscroll-behavior: none;");
   });
 });
 

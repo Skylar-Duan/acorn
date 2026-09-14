@@ -238,7 +238,9 @@ function QuickAddBody({ listId }: { listId: string | null }) {
           className={`msh-qa-input${flash.on ? " commit-lit" : ""}`}
           value={text}
           autoFocus
-          placeholder="记一条…"
+          // 手机屏窄，放不下整句例子；但新规矩得有个地方提一句，不然打了「明天」没反应会以为坏了。
+          // 完整写法点右边那颗「?」能看到
+          placeholder="记一条…（时间前打个 ~）"
           enterKeyHint="done"
           aria-label="要记的这件事"
           onChange={(e) => {

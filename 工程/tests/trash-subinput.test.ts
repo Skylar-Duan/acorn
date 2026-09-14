@@ -88,13 +88,13 @@ describe("子任务便捷输入", () => {
   const p = (s: string) => parseSubtaskInput(s, NOW);
 
   it("认日期", () => {
-    const r = p("明天 画趋势图");
+    const r = p("~明天 画趋势图");
     expect(r.due).toBe(addDays(today, 1));
     expect(r.title).toBe("画趋势图");
   });
 
   it("认时间，只给时间就自己补日期", () => {
-    const r = p("15点 画趋势图");
+    const r = p("~15点 画趋势图");
     expect(r.dueTime).toBe("15:00");
     expect(r.due).toBe(today);
     expect(r.title).toBe("画趋势图");
@@ -107,7 +107,7 @@ describe("子任务便捷输入", () => {
   });
 
   it("日期+时间+重要性一起写", () => {
-    const r = p("明天 15点 !高 画趋势图");
+    const r = p("~明天 ~15点 !高 画趋势图");
     expect(r.due).toBe(addDays(today, 1));
     expect(r.dueTime).toBe("15:00");
     expect(r.priority).toBe(3);
@@ -124,21 +124,21 @@ describe("子任务便捷输入", () => {
 
   // v8 起循环也认了（详见 tests/subtask-repeat.test.ts）。这三条原来断言的是「不认」
   it("认循环：「每天」= 每天重复，due 落在第一个落点（今天）", () => {
-    const r = p("每天 记录体重");
+    const r = p("~每天 记录体重");
     expect(r.repeat).toEqual({ kind: "daily", every: 1 });
     expect(r.due).toBe(today);
     expect(r.title).toBe("记录体重");
   });
 
   it("「每周一」这种：认成每周一重复，首个落点是今天（8-17 本身就是周一）", () => {
-    const r = p("每周一 交周报");
+    const r = p("~每周一 交周报");
     expect(r.repeat).toEqual({ kind: "weekly", days: [1] });
     expect(r.due).toBe(today); // 「周一」按全应用既有口径含今天
     expect(r.title).toBe("交周报");
   });
 
   it("「每月28号」同理，不留光杆「每月」", () => {
-    const r = p("每月28号 交房租");
+    const r = p("~每月28号 交房租");
     expect(r.repeat).toEqual({ kind: "monthly", day: 28 });
     expect(r.due).toBe("2026-08-28");
     expect(r.title).toBe("交房租");
@@ -170,7 +170,7 @@ describe("addSubtask 带日期/重要性落库", () => {
 
   it("解析结果直接喂进去：一条命令记全一个子任务", () => {
     const id = addTask({ title: "写周报", due: "2026-09-01", priority: 1 });
-    const r = parseSubtaskInput("明天 15点 !高 画趋势图", new Date("2026-08-17T09:00:00"));
+    const r = parseSubtaskInput("~明天 ~15点 !高 画趋势图", new Date("2026-08-17T09:00:00"));
     addSubtask(id, r.title, { due: r.due, dueTime: r.dueTime, priority: r.priority || null });
     const s = getTask(id).subtasks[0];
     expect(s.title).toBe("画趋势图");

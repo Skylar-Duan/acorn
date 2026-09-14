@@ -197,8 +197,9 @@ export interface CandMatch {
   items: string[];
 }
 
-/** 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）。跟 SyntaxInput 那条一字不差 */
-const TOKEN_RE = /(?:^|\s)([#@/])([^\s#@/!！]*)$/;
+/** 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）。跟 SyntaxInput 那条一字不差。
+ *  ~ / ～ 也是边界：打「@李哥~3点」时那个 ~ 之后是时间，不该再往候选里筛人名 */
+const TOKEN_RE = /(?:^|\s)([#@/])([^\s#@/!！~～]*)$/;
 
 /** 一行横排放得下的颗数：多了要横滚，少了不够挑 */
 export const CAND_MAX = 8;

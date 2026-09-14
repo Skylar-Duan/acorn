@@ -5,7 +5,7 @@
 
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import type { AppData } from "./model";
+import type { AppData, Settings } from "./model";
 import { appStore, applyRemoteData, flushSave } from "./store";
 import { mergeData } from "./merge";
 import * as cloud from "./cloud";
@@ -30,6 +30,17 @@ interface SyncStore {
   /** 最近一次「每天补一轮」真发出去的时刻（**成功失败都记**）。只活在进程内。
    *  失败时 session.syncedAt 一动不动，光看它的话离线时每次切回窗口都会重跑一整轮 */
   lastAttemptAt: string | null;
+  /** 开机自动从云端取回之后要给用户的那句回执（null = 没这回事）。只活在进程内：
+   *  它是「刚刚发生了什么」，不是一个长期状态，重开橡果不该再说一遍。
+   *  界面在侧栏底下摆一行可点的字（Sidebar 的 .foot），点了去设置的云账号那一节 */
+  restored: { tasks: number; backup: string | null } | null;
+  /** 开机这一轮正在问云端 / 拉云端那份（true 时界面摆一块「正在取回」的占位）。
+   *
+   *  为什么要它：initStore 一返回界面就能用了，而这条路还在等网络往返——
+   *  用户看见的是一本**假的**空账本，第一反应就是开始重新记。等这边整份盖下去，
+   *  刚敲的那几条当着面消失。占位是第一道（别让人对着假账本干活），
+   *  wipe.restoreFromCloud 的 abortIfTasksExceed 是第二道（真记了就不覆盖）。 */
+  restoring: boolean;
 }
 
 export const syncStore = createStore<SyncStore>(() => ({
@@ -40,6 +51,8 @@ export const syncStore = createStore<SyncStore>(() => ({
   needsUpgrade: false,
   upgradeRetryAt: null,
   lastAttemptAt: null,
+  restored: null,
+  restoring: false,
 }));
 
 export function useSync<T>(selector: (s: SyncStore) => T): T {
@@ -120,6 +133,122 @@ export function syncFootState(
   return { bad: false, text: `已同步 ${humanTime(at)}` };
 }
 
+// ---------- 开机自动取回 ----------
+
+export interface AutoRestoreInput {
+  /** 盘上**连账本文件都没有**（store.noDataFile）。不是「读出来是 0 件事」 */
+  noDataFile: boolean;
+  /** 这台设备有登录态 */
+  signedIn: boolean;
+  /** 云端确实有内容（cloud.whoAmI().hasData）。问不出来一律传 false */
+  cloudHasData: boolean;
+}
+
+/**
+ * 开机该不该**自己**把云端那份取回来（用户 2026-09-14 拍板：做，但要三道硬闸门）。
+ *
+ * 三条同时成立才取，缺一不可：
+ * ① 盘上连账本文件都没有；② 已经登录；③ 云端确实有内容。
+ *
+ * **为什么不能直接用 fresh.isPristineLocal**：那条判据第一行就是
+ * `if (everSynced) return false`——同步过的设备一律不算全新。它服务的是「登录那一刻
+ * 要不要拿云端盖掉本机」，在那个场合判严是对的。而这里的场景恰恰相反：本体这台机器
+ * 同步过好多回，数据文件却不见了（指针指歪、文件夹没挂上、刚清空过），
+ * 拿那条判据来问永远得到 false，自动取回就永远不会发生。
+ *
+ * 这一条为什么敢更窄地放行：它要的不是「本机看起来是空的」，而是**本机那份压根不存在**。
+ * 「读出来是 0 件事」不算——那可能是用户自己把事全做完删光了，那份空账本是他的真实意愿，
+ * 拿云端去盖它就是擅自改用户的数据。文件不存在就没有任何东西会被盖掉，
+ * 加上取回之前照旧先留一份备份（wipe.restoreFromCloud 自带），这条路没有损失面。
+ */
+export function shouldAutoRestore(i: AutoRestoreInput): boolean {
+  return i.noDataFile && i.signedIn && i.cloudHasData;
+}
+
+/** 把回执收掉（用户点过那行字了） */
+export function dismissRestored(): void {
+  if (syncStore.getState().restored) set({ restored: null });
+}
+
+/** 开机这一轮：够条件就自己把云端那份取回来。取到了返回 true（这一轮就不用再合并了）。
+ *
+ *  为什么不走开机那一轮「合并」：本机是个空壳的时候，合并等于把空壳推上云——
+ *  云端那份一条不少地还在，但这台设备永远停在「什么都没有」，用户得自己找到
+ *  设置 → 云账号 → 从云端覆盖到这台设备 才救得回来。这正是账本里那条最高优先级的死循环。
+ *
+ *  restoreFromCloud 走**动态 import**：wipe.ts 反过来要用这里的 signOut / syncNowChecked，
+ *  静态互引就成了环。它只在这一条路上用一次，进函数再取最省事也最稳。 */
+async function autoRestoreOnBoot(session: Session): Promise<boolean> {
+  const s = appStore.getState();
+  // 闸门①：盘上得真没有账本文件。顺带把「读都没读成」「正等着用户在找回数据屏上拍板」
+  // 这两种状态挡在外面——那两种情况下本机这份不代表用户的账本，别在上面再动手
+  if (!s.loaded || s.loadError || s.rescue || !s.noDataFile) return false;
+  // 进这条路那一刻本机有几条事（正常是 0，这条路的前提就是盘上连账本文件都没有）。
+  // 拉云端那份要等一个甚至几十秒的网络往返，这个数是稍后「还能不能覆盖」的判据
+  const tasksAtStart = s.data.tasks.length;
+  // 从这里开始界面换成「正在从云端取回…」的占位：往下每一步都要等网络，
+  // 而这段时间里界面早就能用了，不挡住的话用户就在对着一本假的空账本干活
+  set({ restoring: true });
+  try {
+    // 闸门③：云端确实有内容。问一句 /api/me 就够，不用把整份拉下来；
+    // 问不出来（断网、服务器抽风）一律当「没有」，那就什么都不做，照旧走合并那条老路
+    let cloudHasData = false;
+    try {
+      cloudHasData = !!(await cloud.whoAmI(session.token)).hasData;
+    } catch {
+      return false;
+    }
+    // 闸门②由调用点保证（有 session 才进得来），仍然显式摆进判据里，省得哪天挪了地方漏掉
+    if (!shouldAutoRestore({ noDataFile: s.noDataFile, signedIn: true, cloudHasData })) return false;
+    try {
+      const { restoreFromCloud } = await import("./wipe");
+      // 自带「先落盘 → 先备份 → 云端空了就一个字不动」；
+      // abortIfTasksExceed 再加一道：这中间用户真记了东西就不覆盖了，退回合并
+      const out = await restoreFromCloud({ abortIfTasksExceed: tasksAtStart });
+      appStore.setState({ noDataFile: false });
+      set({ restored: { tasks: out.tasks, backup: out.backup } });
+      return true;
+    } catch {
+      // 取不回来（断网、备份写不下去、云端那份解不开），或者这中间用户已经动手记了东西
+      //（RestoreAborted）：本机一个字都没动，退回开机那一轮合并——
+      // 合并会把刚记的那几条跟云端那份并起来，两边都留住，还顺手推上云
+      return false;
+    }
+  } finally {
+    // 无论走哪条岔路都得把占位收掉，否则用户对着「正在取回…」再也回不来
+    set({ restoring: false });
+  }
+}
+
+// ---------- 自动登录（v1.15.0） ----------
+
+/**
+ * 这台设备「下次打开还认不认登录态」。缺这个字段一律当开着——
+ * 老数据、一直以来的桌面端都是打开就登录着的，升上来不能把人踢出去。
+ */
+export function autoLoginOn(s?: Pick<Settings, "autoLogin">): boolean {
+  const v = (s ?? appStore.getState().data.settings).autoLogin;
+  return v !== false;
+}
+
+/**
+ * 开关翻动时调一次。
+ *
+ * 关掉 = **当场把本机那份令牌删掉**，但内存里的登录态一个字不动：
+ * 这次照常同步照常用，下次打开才需要重新输密码。用户要的是「别替我记住密码」，
+ * 不是「立刻把我踢下线」——顺手 signOut 会让他刚记的几条停在本机，还以为传上去了。
+ *
+ * 重新打开 = 把现在这份登录态再写回去，否则开关拨回来了、下次打开还是得重输。
+ */
+export async function applyAutoLogin(on: boolean): Promise<void> {
+  if (!on) {
+    await cloud.saveSession(null);
+    return;
+  }
+  const s = syncStore.getState().session;
+  if (s) await cloud.saveSession(s);
+}
+
 // ---------- 对外 ----------
 
 /** 应用启动时调一次：有登录态就恢复出来，并立刻同步一轮 */
@@ -129,13 +258,26 @@ export async function initSync(): Promise<void> {
     set({ session: null, phase: "off", message: idleMessage(null) });
     return;
   }
+  // 自动登录关着却还留着令牌：多半是上一次关开关时那一下写盘没落地（进程被杀、盘满）。
+  // 以**用户拨过的那个开关**为准，顺手把令牌再删一次，别让它下次又把人自动登进去
+  if (!autoLoginOn()) {
+    await cloud.saveSession(null);
+    set({ session: null, phase: "off", message: idleMessage(null) });
+    return;
+  }
   // 重开一次橡果就该重新试一次：升级往往正是「关掉 → 装新版 → 打开」，
   // 不在这里清零的话，装完新版同步照旧不动，用户只能靠重新登录去撞开
   set({
     session, phase: "idle", message: idleMessage(session),
     needsUpgrade: false, upgradeRetryAt: null,
   });
+  // 这台设备是个空壳、而这个账号云端有东西：自己取回来，别摆一张只有一个选项的卡去问。
+  // **排在 watchData 之前**：取回会整份换掉内存那份数据，监听已经挂上的话，
+  // 这一下会被当成「用户改了东西」排一轮推送，侧栏那行先亮「有改动没传」再自己消下去
+  const restored = await autoRestoreOnBoot(session);
   watchData();
+  // 取回那条路自己就把版本号跟云端对齐了，这一轮不用再同步一次
+  if (restored) return;
   void syncNow();
 }
 

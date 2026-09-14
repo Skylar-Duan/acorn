@@ -76,7 +76,10 @@ describe("② 日历的手机分支：一格只有日期和点，底下常驻「
   it("点一格 = 切到这一天（不是开关）；默认今天；「今天」那颗键也把列表带回今天", () => {
     expect(mobileCell).toContain("onClick={() => setPicked(ymd)}");
     expect(mobileCell).toContain("const shownDay = picked ?? today;");
-    expect(calendarSource).toContain("if (isMobile) setPicked(null);");
+    // v1.15.0：切月/周之后仍然回到今天，只是周视图那边要写实今天那一天
+    // （picked 在周视图里兼当「摊开的是哪张卡」，置空等于七张全收起来）——见 mobile-calendar-week 的 ⑤
+    expect(calendarSource).toContain('if (isMobile) setPicked(m === "week" ? today : null);');
+    expect(calendarSource).toContain('if (isMobile) setPicked(mode === "week" ? todayYMD() : null);');
     // 窄桌面那条「再点一次收起来」的老路原样还在
     expect(calendarSource).toContain("setPicked((cur) => (cur === ymd ? null : ymd))");
   });
@@ -90,19 +93,28 @@ describe("② 日历的手机分支：一格只有日期和点，底下常驻「
     expect(calendarSource).toContain("{!isMobile && picked && (");
   });
 
-  it("常驻列表：默认今天，行走 MobileRow（点一行拉任务详情那张纸），空的那天一句「这天没有安排」", () => {
+  // v1.15.0：这块常驻列表只留给月视图了（周视图的清单搬进了每一天自己的卡，
+  // PM 原话「不要放在最下面」）。行的长相没变，只是抽成了 DayRows 两处共用
+  it("月视图的常驻列表：默认今天，行走 MobileRow（点一行拉任务详情那张纸），空的那天一句「这天没有安排」", () => {
     const list = calendarSource.slice(
-      calendarSource.indexOf("{isMobile &&\n          (() => {"),
+      calendarSource.indexOf("{isMobile && mode === \"month\" &&\n          (() => {"),
       calendarSource.indexOf("{!isMobile && picked && ("),
     );
+    expect(list.length).toBeGreaterThan(200);
     expect(list).toContain("const day = picked ?? today;");
     expect(list).toContain('<div className="cal-daylist">');
     expect(list).toContain('<div className="group-head split">');
     expect(list).toContain('<span className="group-label">');
-    expect(list).toContain('<div className="mcard">');
-    expect(list).toContain("<MobileRow key={t.id} task={t} />");
-    expect(list).toContain("<MobileRow key={rowKey(r)} task={r.task} sub={r.sub} doneDate={rowDoneDay(r)} />");
-    expect(list).toContain("这天没有安排");
+    expect(list).toContain("<DayRows open={open} done={done} />");
+    // 行本身在 DayRows 里（周视图卡内摊开的那块共用同一份）
+    const rows = calendarSource.slice(
+      calendarSource.indexOf("function DayRows("),
+      calendarSource.indexOf("/** 月 / 周（v1.9.1）"),
+    );
+    expect(rows).toContain('<div className="mcard">');
+    expect(rows).toContain("<MobileRow key={t.id} task={t} />");
+    expect(rows).toContain("<MobileRow key={rowKey(r)} task={r.task} sub={r.sub} doneDate={rowDoneDay(r)} />");
+    expect(rows).toContain("这天没有安排");
     expect(calendarSource).toContain('import MobileRow from "../mobile/MobileRow";');
     // 筛选（全部 / 计划 / 已完成）在这块列表上照样生效
     expect(list).toContain('filter === "done" ? [] : slot?.open ?? []');

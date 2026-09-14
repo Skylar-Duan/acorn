@@ -8,6 +8,27 @@
          左上角那颗 ☰ 会被状态栏压住，底部 toast / 批量条会被手势条盖掉 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>橡果 Acorn</title>
+
+    <!-- ↓ 网页版（acorn.cdpandas.com/app/）「添加到主屏幕」要用的几句。
+         桌面包和安卓包会把这几句一起带上，但两边都不看它：Tauri 的 WebView 不装 PWA，
+         多出来的只有 public/ 里那几个图标（合计 ~83 KB），所以不另开一份 html。
+         图标和 manifest 放在 public/，vite 会原样拷进产物；href 写 `/` 开头是为了让
+         vite 按各自的 base 改写（桌面 ./、网页 /app/），不要手改成相对路径。 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iPhone 认的是这一个，而且不认透明——所以给的是满版那张，圆角由系统去切 -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/acorn-192.png" />
+    <!-- 加到主屏幕后按独立 App 开：没有地址栏，也不会被 Safari 的上下栏夹着 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="橡果" />
+    <!-- 用 default 而不是 black-translucent：后者会让页面画到状态栏底下，
+         而 iOS 的状态栏字始终是白的，压在橡果这种浅色纸面上就看不清了。
+         default 让内容从状态栏下面开始，顶栏那些元素也不必再让一次位置 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- 浏览器地址栏 / 主屏启动图的底色，取默认主题「森林」的底纸色（themes.css --bg） -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F4F3EB" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#20241E" />
   </head>
   <body>
     <div id="root"></div>

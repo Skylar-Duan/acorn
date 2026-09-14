@@ -11,6 +11,8 @@
   --r-sm: 7px; --r-md: 10px; --r-lg: 14px;
   --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 15.5px;
   --fs-title: 26px; --fs-h2: 17px;
+  /* 网页版没登录时顶上那条提示的高度。两处要对齐：提示条自己、和 .shell 让出来的那一口 */
+  --web-note-h: 30px;
 
   /* ---------- 动效（v1.9.0 · B0）----------
      全应用的动画只认这三个值，别处不许再写字面时长。
@@ -46,6 +48,16 @@
 
 html, body, #root { height: 100%; }
 
+/* 手机浏览器里 100% 不够用（v1.15.0 网页版）。Safari / Chrome 的地址栏是会收放的，
+   而 100%（跟 100vh 一样）参照的是**地址栏收起来时**那个大视口——地址栏一放出来，
+   底下那排导航就被顶到屏幕外面，用户看到的是「底部按钮没了」。
+   dvh 认的是此刻的实际高度，收放都跟得上。
+   包一层 @supports：认不得 dvh 的老引擎照旧吃上面那条 100%，不会落成 0 高度白屏。
+   桌面 WebView 里两者恒等，一个像素都不动 */
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+
 body {
   font-family: var(--sans);
   font-size: var(--fs-md);
@@ -57,6 +69,10 @@ body {
     radial-gradient(118% 76% at 88% -10%, var(--accent-soft), transparent 60%),
     radial-gradient(86% 60% at -10% 110%, var(--accent-soft), transparent 64%);
   overflow: hidden;
+  /* 别让人把整页往下拽（v1.15.0 网页版）：手机浏览器默认「下拉刷新」，
+     而这个应用里往下拽是列表在滚、横着划是一行事的动作——手指稍微斜一点就触发整页刷新。
+     顺带把左右两边的橡皮筋回弹一起关掉：整页本来就不该动，动了只会跟滑动那一下抢手势 */
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   user-select: none;
   /* 换主题**不做**渐变（B7 已撤回，v1.9.0）：只给几块大面加底色过渡，
@@ -69,6 +85,15 @@ input, textarea, button { font-family: inherit; font-size: inherit; color: inher
 input, textarea { user-select: text; }
 button { cursor: pointer; background: none; border: none; }
 a { color: var(--accent); }
+
+/* 关掉安卓 WebView 出厂自带的那层按下高亮（v1.15.0）。
+   它是 2011 年 Holo 时代那个天蓝，既不认主题配色也不认圆角：按下去整个方框被铺满，
+   设置页那种通栏直角的标题行看上去就是「冒出来一条蓝横条」（用户真机原话：不要那种古老的感觉）。
+   跟折叠动画无关，所以只能从这里根上关，关一处设置卡片和版本日志一起干净。
+   **关掉就必须同一版把自家的按压反馈补回来**——只关不补，按下去毫无动静比蓝条更难受。
+   自家那一套：settings.css 的 .set-head:active、overlays.css 的 .cl-old-btn:active、
+   mobile-shell.css 末尾「按下去要有回应」一节 */
+* { -webkit-tap-highlight-color: transparent; }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
@@ -193,6 +218,35 @@ kbd {
   pointer-events: none;
 }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* 网页版没登录时顶上那一条（v1.15.0）。
+   桌面 App 和安卓 App 里永远不出现——那两端的数据在自己的磁盘上，没有这回事。
+   说的是实情不是广告：浏览器里的账本只在这台设备上，清了缓存、换台设备就没了，
+   苹果还会把长期不打开的网站数据整站清掉。所以它**不给关**，登录之后自己消失。
+   fixed 而不是排进版面：.shell 是 grid，插一个孩子进去会被当成侧栏那一列的格子。
+   往下让位靠外面那个 .web-note-on（下面那条），不靠这里 */
+.web-note {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  height: calc(var(--web-note-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  background: var(--accent-soft); color: var(--ink-2);
+  border-bottom: 1px solid var(--hair);
+  font-size: var(--fs-xs);
+}
+.web-note-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-note-btn { color: var(--accent); font-weight: 600; font-size: var(--fs-xs); flex: none; }
+.web-note-btn:hover { text-decoration: underline; }
+/* 手机上没有 hover，而全局那条 -webkit-tap-highlight-color: transparent 把原生高亮也关了，
+   所以自家的按压反馈得自己补——不补就是「按了没动静」。toast 里那几颗同理（撤销、刷新、
+   还有网页版那条「放到桌面」），一并补在这儿 */
+.web-note-btn:active, .toast button:active { opacity: .55; }
+/* 整个界面往下让出这一条的高度。.shell 是 height: 100% + border-box，
+   所以给它加 padding-top 就等于把可用高度减掉一条，底下那排导航照样贴着屏幕底 */
+.shell.web-note-on { padding-top: calc(var(--web-note-h) + env(safe-area-inset-top, 0px)); }
+/* 刘海已经由提示条顶着了，下面的手机顶栏就别再让第二次——不然标题底下会空出一大片。
+   只压 .mshell 里那份：整页盖过来的那几张纸（登录页、抽屉）在 .mshell 外面，它们仍要自己避让 */
+.shell.web-note-on .mshell { --m-safe-top: 0px; }
 
 /* 勾选圆圈 */
 .cb {

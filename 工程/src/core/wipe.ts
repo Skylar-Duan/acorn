@@ -59,6 +59,34 @@ export async function wipeLocalData(): Promise<{ rev: number }> {
   return { rev: gate.rev };
 }
 
+/** 自动取回半路发现「本机已经不是空的了」而主动中止。跟一般的报错分开：
+ *  这不是出了错，是**这一刻不该再覆盖**，调用方据此退回到合并那条路 */
+export class RestoreAborted extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "RestoreAborted";
+  }
+}
+
+export interface RestoreOpts {
+  /**
+   * 覆盖之前再核一次：内存里的事**超过这个数**就中止，一个字节都不写。
+   *
+   * 给开机自动取回用（syncCtl.autoRestoreOnBoot 传进来的是它起步那一刻的条数）。
+   * 为什么需要：从决定取回到真的写下去，中间隔着 whoAmI 一个网络往返加 pullOnly
+   * 拉整份账本——手机数据网络上轻松几秒到几十秒。这期间界面早就能用了，
+   * 用户看见一本空账本，第一反应就是开始重新记；等这边拉完整份盖下去，
+   * 刚敲的那几条当着面消失，撤销栈也被清了，Ctrl+Z 都撤不回来。
+   *
+   * 中止而不是「把新记的合进去再写」：合并这件事同步那条路本来就会做得更好
+   * （syncCtl 退回去跑一轮 syncNow，两边都留住，新记的那几条还会被推上云）。
+   * 在这里另写一遍合并，等于多一套会走偏的口径，而收益只是省一轮同步。
+   *
+   * **手动那条路不传这个**：用户自己点的「从云端覆盖到这台设备」，覆盖就是他要的。
+   */
+  abortIfTasksExceed?: number;
+}
+
 export interface CloudRestore {
   /** 覆盖下来的是云端第几版 */
   rev: number;
@@ -76,7 +104,7 @@ export interface CloudRestore {
  *
  * 云端是空的、或者拉取失败时**一个字都不动本机**：先拉到手，再备份，最后才写。
  */
-export async function restoreFromCloud(): Promise<CloudRestore> {
+export async function restoreFromCloud(opts?: RestoreOpts): Promise<CloudRestore> {
   const session = syncStore.getState().session;
   if (!session) throw new Error("先登录云账号，才能把云端那份取回来");
 
@@ -87,6 +115,14 @@ export async function restoreFromCloud(): Promise<CloudRestore> {
 
   // 先把攒着的写完，留出来的退路才是「覆盖前那一刻」的样子
   await flushSave();
+
+  // 拉这一份的工夫里，用户可能已经在对着那本空账本记东西了。**写之前再核一次**，
+  // 多出来的一条都不许被这次覆盖抹掉（判在 flushSave 之后：那几条这会儿已经在盘上了，
+  // 中止之后走同步那条路，它们会跟云端那份合起来，一条不少还能上云）
+  const before = opts?.abortIfTasksExceed;
+  if (before !== undefined && appStore.getState().data.tasks.length > before) {
+    throw new RestoreAborted("取回的这会儿你又记了东西，先不覆盖了，改成把两边合起来");
+  }
 
   // 备份是这条单向覆盖路上**唯一**的退路，确认框也白纸黑字承诺过会先备份，
   // 所以它是硬前置：写不成（磁盘满、备份目录被网盘/杀软锁着、移动硬盘掉线、目录只读）

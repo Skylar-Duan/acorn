@@ -28,7 +28,7 @@ import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
 import { FOCUS_ENABLED } from "../core/features";
-import { syncFootState, useSync } from "../core/syncCtl";
+import { dismissRestored, syncFootState, useSync } from "../core/syncCtl";
 import { openFoundUpdate, updateFootState, useUpdate } from "../core/updateCtl";
 import {
   IDLE, LONG_PRESS_MS, cancel, down, hold, move, up, type SortState,
@@ -43,21 +43,26 @@ import iconUrl from "../../src-tauri/icons/32x32.png";
  *  开了「减少动态效果」就直接跳过去，不做平滑滚动：base.css 那个 reduced-motion 块
  *  只压 animation-duration / transition-duration，管不了脚本发起的滚动；
  *  而滚动动画正是 reduced-motion 首要要抑制的一类（前庭不适）。 */
-function revealCloudSection(): void {
+function revealSetSection(key: string, anchorId: string): void {
   // 设置页现在分节可折叠（v1.9.1）：那一节要是收着，滚到一个收起的标题上用户什么也看不见。
   // 先把它打开（写进记忆 + 广播给已挂载的那一页），再滚
-  forceFoldOpen("cloud", "acorn-set-");
+  forceFoldOpen(key, "acorn-set-");
   const still =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   setTimeout(() => {
-    document.getElementById("set-cloud")?.scrollIntoView({
+    document.getElementById(anchorId)?.scrollIntoView({
       behavior: still ? "auto" : "smooth",
       block: "start",
     });
   }, 60);
 }
+
+const revealCloudSection = () => revealSetSection("cloud", "set-cloud");
+/** 「数据异常」那行字点了去的地方：设置 → 数据（换文件夹、看备份都在那儿）。
+ *  v1.15.0 之前那行是一句死字，看见了也没地方去 */
+const revealDataSection = () => revealSetSection("data", "set-data");
 
 function Ico({ d }: { d: string }) {
   return (
@@ -271,6 +276,9 @@ export default function Sidebar(
   const sync = syncFootState({
     session: syncSession, phase: syncPhase, needsUpgrade: syncNeedsUpgrade,
   });
+  /** 开机自动从云端取回了一份（v1.15.0）。这台设备上原来一个账本文件都没有，
+   *  橡果自己把云端那份拿了回来——得当面给用户一句回执，否则事情凭空出现，比不出现更吓人 */
+  const restored = useSync((s) => s.restored);
   // 版本检查也要在这行里有个交代。用户新装完打开橡果，以前「已是最新」是完全安静的，
   // 看不出到底查没查过（2026-09-02 反馈：「下载后没有检查更新的消息框」）。
   // 同样克制：不弹框不弹 toast，就这行小字加一截
@@ -706,7 +714,23 @@ export default function Sidebar(
       </nav>
       <div className="foot">
         {loadError ? <span className="bad" title={loadError} /> : <span className="ok" />}
-        {loadError ? "数据异常" : "数据已就绪"}
+        {/* 「数据异常」点得动：跟旁边那行「同步失败」一个口径——出了问题就得有地方可去。
+            去的是设置 → 数据，换文件夹、翻备份都在那一节里 */}
+        {loadError ? (
+          <button
+            className="foot-sync warn"
+            title={loadError}
+            onClick={() => {
+              navigate("settings");
+              onNavigate?.();
+              revealDataSection();
+            }}
+          >
+            数据异常
+          </button>
+        ) : (
+          "数据已就绪"
+        )}
         {sync && (
           <>
             <span className="sep">·</span>
@@ -736,6 +760,30 @@ export default function Sidebar(
             ) : (
               <span className={upd.bad ? "warn" : undefined}>{upd.text}</span>
             )}
+          </>
+        )}
+        {restored && (
+          <>
+            <span className="sep">·</span>
+            {/* 点得动：点了去设置 → 云账号，那儿能看清这个账号同步到哪一步了，
+                也有「从云端覆盖到这台设备」可以再来一次。点完这行字就收掉 */}
+            <button
+              className="foot-sync"
+              // 退路在哪儿也得说出来，跟手动登录那条路的回执一个口径（useAuthFlow.signInToast）：
+              // 万一取回来的不是他想要的，覆盖前那份还躺在 backups/ 里
+              title={
+                "这台设备上本来没有数据，橡果开机时把云端那份取了回来" +
+                (restored.backup ? `；覆盖前那份存进了 backups/${restored.backup}` : "")
+              }
+              onClick={() => {
+                dismissRestored();
+                navigate("settings");
+                onNavigate?.();
+                revealCloudSection();
+              }}
+            >
+              已从云端取回 {restored.tasks} 件事{restored.backup ? "，旧的已备份" : ""}
+            </button>
           </>
         )}
       </div>

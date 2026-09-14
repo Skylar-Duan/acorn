@@ -12,7 +12,14 @@
 //   · 左滑 = 露出 推明天 / 放弃 / 删除；已了结的行只露一个删除
 //   · 长按 = 底部动作单（取代桌面的右键菜单）；轻点 = 拉出任务详情那张纸
 //
-// 一条硬规矩：**一件事一行，绝不折行**。标题超长就省略号，不许把日期挤到第二行去。
+// 【v1.15.0 推翻了一条老规矩】
+// 2026-09-02 手机端方案拍板时定的是「一件事一行，绝不折行，标题超长就省略号」，
+// 源头是用户嫌旧版「行折成两行、像十几年前的表单」。
+// 2026-09-14 用户自己推翻了它，原话：「手机版任务、子任务框卡片感弱，
+// 一长条只能横拖查看，不能一次性读完」——390 宽的屏上标题实际只剩约 14 个中文字，
+// 子任务行前面再挂一颗「母任务名 ›」就只剩 9 个，长一点的事在列表里根本认不出来。
+// 现在的规矩是：**一件事一张卡，标题最多折两行**，日期和母任务名收到第二层小字去。
+// 代价用户当场认下了：首屏能看的件数从约 9 件降到 6–7 件。
 
 import { useRef, useState } from "react";
 import type { Subtask, Task } from "../core/model";
@@ -33,8 +40,12 @@ import "../styles/mobile-shell.css";
 /** 左滑露出来的那条动作条有多宽：三块 72px（.swipe-act 的宽度，定义在 mobile.css） */
 const ACT_W = 72;
 const LEFT_FULL = ACT_W * 3;
-/** 母任务名在子任务行前面最多写几个字，多了整行会被它吃掉 */
-const PARENT_MAX = 6;
+/** 「母任务名 ›」那颗小胶囊最多写几个字。
+ *  v1.14 是 6 —— 它当时跟标题挤在同一行，多一个字就从标题身上抢一个字。
+ *  v1.15.0 起它自己占第二层小字，抢不到标题了，放宽到 14：
+ *  「保富周报 2026 年第 37 期」这种名字至少能看出是哪一件事，而不是「保富周报…」。
+ *  仍然留一个上限：第二层不许折行，母任务名再长也不能把日期挤没（CSS 那边还有一层省略号兜底） */
+const PARENT_MAX = 14;
 
 /**
  * 长按弹出动作单之后，手指抬起来浏览器会补发一串鼠标兼容事件（mousedown → mouseup → click），
@@ -250,7 +261,8 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
-        <span className={`mrow-bar p${priority}`} />
+        {/* DOM 顺序就是视觉顺序：圈 → 重要性小圆点 → 右边那一叠。
+            v1.14 的 DOM 里色条排在圈前面、靠 CSS 的 order 摆回来，这一版把 DOM 本身摆对了 */}
         <button
           className={`mrow-cb${isDone ? " done" : ""}`}
           aria-label={isDropped ? "放回未完成" : isDone ? "标记未完成" : "完成"}
@@ -259,15 +271,21 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
             toggleDone();
           }}
         />
-        <span className="mrow-title">
-          {sub && (
-            <span className="mrow-parent">
-              {parent.length > PARENT_MAX ? `${parent.slice(0, PARENT_MAX)}…` : parent} ›
+        <span className={`mrow-bar p${priority}`} />
+        <span className="mrow-main">
+          <span className="mrow-title">{title || "（未命名）"}</span>
+          {/* 第二层小字：没日期也不是子任务的事就不摆这一层，卡跟着矮回一行的高度 */}
+          {(sub || when) && (
+            <span className="mrow-meta">
+              {sub && (
+                <span className="mrow-parent">
+                  {parent.length > PARENT_MAX ? `${parent.slice(0, PARENT_MAX)}…` : parent} ›
+                </span>
+              )}
+              {when && <span className={`mrow-when${overdue ? " warn" : ""}`}>{when}</span>}
             </span>
           )}
-          {title || "（未命名）"}
         </span>
-        {when && <span className={`mrow-when${overdue ? " warn" : ""}`}>{when}</span>}
       </div>
     </div>
   );

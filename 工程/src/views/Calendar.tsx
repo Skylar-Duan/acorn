@@ -94,6 +94,27 @@ export function weekLines(
   return { lines: all.slice(0, max), rest: Math.max(0, all.length - max) };
 }
 
+/**
+ * 「这一天」的完整清单：能点能滑的 MobileRow 行，一条都没有就一句话。
+ * v1.15.0 起两处共用同一份——周视图每张日卡摊开之后的那块，和月视图网格底下那块。
+ * 抄成两份早晚走样（一边加了「时间」另一边没加，用户点同一天看到两种长相）。
+ */
+function DayRows({ open, done }: { open: Task[]; done: DateRow[] }) {
+  if (open.length === 0 && done.length === 0) {
+    return <div className="cal-daylist-empty">这天没有安排</div>;
+  }
+  return (
+    <div className="mcard">
+      {open.map((t) => (
+        <MobileRow key={t.id} task={t} />
+      ))}
+      {done.map((r) => (
+        <MobileRow key={rowKey(r)} task={r.task} sub={r.sub} doneDate={rowDoneDay(r)} />
+      ))}
+    </div>
+  );
+}
+
 /** 月 / 周（v1.9.1）。桌面的周视图只是「7 格横排、格子更高」，不带时间轴；
  *  手机的周视图 v1.14.1 起是一天一行竖着排（见下面 isMobile 那一支） */
 type CalMode = "month" | "week";
@@ -154,8 +175,10 @@ export default function Calendar() {
       const inMonth = today.slice(0, 7) === a.slice(0, 7);
       return weekStart(inMonth ? today : a);
     });
-    // 手机：切了月/周，底下那块常驻列表回到今天——不然它可能停在一个新视图里根本看不见的日子上
-    if (isMobile) setPicked(null);
+    // 手机：切了月/周，选中的日子回到今天——不然它可能停在一个新视图里根本看不见的日子上。
+    // 周视图里 picked 还兼当「哪张日卡摊开着」（v1.15.0），所以切过去得明确落在今天那张上：
+    // 置成 null 的话七张卡全是收着的，下半屏又变回一片留白（v1.12.0 那个老毛病）
+    if (isMobile) setPicked(m === "week" ? today : null);
     try {
       localStorage.setItem(MODE_KEY, m);
     } catch {
@@ -179,8 +202,12 @@ export default function Calendar() {
   };
   /** 点开了哪一天（v1.10.0，窄屏用）。窄屏格子只有 51px 宽，条目标题只显示得下一个字，
    *  所以格子里改画圆点，点一格在网格下面列出当天的事。
-   *  这块在桌面上由 calendar.css 关掉——桌面格子里本来就写得下标题，不需要二级列表 */
-  const [picked, setPicked] = useState<string | null>(null);
+   *  这块在桌面上由 calendar.css 关掉——桌面格子里本来就写得下标题，不需要二级列表。
+   *  手机周视图（v1.15.0）借同一个值当「摊开的是哪一张日卡」：单值 = 同时只摊开一张。
+   *  初值在周视图下就是今天，一进来今天那张是开着的 */
+  const [picked, setPicked] = useState<string | null>(() =>
+    isMobile && loadMode() === "week" ? today : null,
+  );
 
   // 格子：月视图整月（周一开头，前后补齐到整周）；周视图就是 anchor 那一周的七天
   const cells = useMemo(() => {
@@ -292,8 +319,9 @@ export default function Calendar() {
       <button
         onClick={() => {
           setAnchor(normalizeAnchor(todayYMD(), mode));
-          // 手机：底下那块常驻列表也一起回到今天（picked 为空就是今天，见下面 .cal-daylist）
-          if (isMobile) setPicked(null);
+          // 手机：选中的日子也一起回到今天。月视图 picked 为空就是今天（见下面 .cal-daylist）；
+          // 周视图得写实今天那一天，否则七张卡会全收起来
+          if (isMobile) setPicked(mode === "week" ? todayYMD() : null);
         }}
       >
         今天
@@ -380,45 +408,65 @@ export default function Calendar() {
                 // （手机月视图那几颗绿点数的也是行：dayDots 收的就是 done.length。
                 //   胶囊上那句「N 件」是另一个口径、也明写着「件」，两者不冲突）
                 const doneN = done.length;
+                // 摊开的是不是这一张。沿用 picked 这一个值 ⇒ 同一时刻只摊开一张；
+                // 点已经开着的那张就收回去（一行既是开关也是当前位置，不另放一颗关闭键）
+                const unfolded = picked === ymd;
                 return (
-                  <div
-                    key={ymd}
-                    className={`cal-cell cal-wrow${shownDay === ymd ? " cal-picked" : ""}`}
-                    onClick={() => setPicked(ymd)}
-                  >
-                    <span className="cal-wdate">
-                      <span className={`cal-num${ymd === today ? " today" : ""}`}>
-                        {Number(ymd.slice(8, 10))}
+                  <div key={ymd} className={`cal-cell cal-wcard${unfolded ? " cal-open" : ""}`}>
+                    {/* 表头 = v1.14.1 那一行原样：收起来的时候长相一个像素不变
+                        （PM 原话「折叠后就是现在这样很好」）。点表头才切换展开 */}
+                    <div
+                      className={`cal-wrow${unfolded ? " cal-picked" : ""}`}
+                      onClick={() => setPicked((cur) => (cur === ymd ? null : ymd))}
+                    >
+                      <span className="cal-wdate">
+                        <span className={`cal-num${ymd === today ? " today" : ""}`}>
+                          {Number(ymd.slice(8, 10))}
+                        </span>
+                        <span className="cal-wd">周{WEEK_HEAD[(dayOfWeek(ymd) + 6) % 7]}</span>
                       </span>
-                      <span className="cal-wd">周{WEEK_HEAD[(dayOfWeek(ymd) + 6) % 7]}</span>
-                    </span>
-                    {/* 选中的那一行不画预览：它的完整清单就紧挨在网格下面那块里，
-                        同一屏摆两遍是重复（任务书原话「别让同一屏出现两份重复的当天列表」）。
-                        左边的日期和右边那两个数照旧留着，这一行仍然看得出「今天有几件」 */}
-                    <span className="cal-wpeek">
-                      {shownDay === ymd ? null : lines.map((l, i) => (
-                        <span key={l.key} className={`cal-wline${l.kind === "ok" ? " done" : ""}`}>
-                          <i className={`cal-dot ${l.kind}`} />
-                          <span className="cal-wtitle">{l.title || "（未命名）"}</span>
-                          {/* 「+N」挂在最后一行末尾：另起一行会把钉死的行高撑破 */}
-                          {i === lines.length - 1 && rest > 0 && <span className="cal-wmore">+{rest}</span>}
-                        </span>
-                      ))}
-                    </span>
-                    <span className="cal-wn">
-                      {open.length > 0 && (
-                        <span className="cal-wnum">
-                          <i className={`cal-dot ${late ? "late" : "plan"}`} />
-                          {open.length}
-                        </span>
-                      )}
-                      {doneN > 0 && (
-                        <span className="cal-wnum">
-                          <i className="cal-dot ok" />
-                          {doneN}
-                        </span>
-                      )}
-                    </span>
+                      {/* 摊开的那张不画预览：完整清单就在表头底下贴着，
+                          同一张卡上摆两遍是重复。左边的日期和右边那两个数照旧留着，
+                          这一行仍然看得出「这天有几件」 */}
+                      <span className="cal-wpeek">
+                        {unfolded ? null : lines.map((l, i) => (
+                          <span key={l.key} className={`cal-wline${l.kind === "ok" ? " done" : ""}`}>
+                            <i className={`cal-dot ${l.kind}`} />
+                            <span className="cal-wtitle">{l.title || "（未命名）"}</span>
+                            {/* 「+N」挂在最后一行末尾：另起一行会把钉死的行高撑破 */}
+                            {i === lines.length - 1 && rest > 0 && <span className="cal-wmore">+{rest}</span>}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="cal-wn">
+                        {open.length > 0 && (
+                          <span className="cal-wnum">
+                            <i className={`cal-dot ${late ? "late" : "plan"}`} />
+                            {open.length}
+                          </span>
+                        )}
+                        {doneN > 0 && (
+                          <span className="cal-wnum">
+                            <i className="cal-dot ok" />
+                            {doneN}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {/* 摊开的那块。收起时内容仍在树上、只是高度压成 0（跟设置页 .set-fold 同一套），
+                        所以有过渡动画；visibility 一起关掉，看不见的行才摸不到。
+                        onClick 在这儿截住：里面的行自带右滑完成、左滑动作条、长按动作单，
+                        手指在行上落一下要是冒泡到表头，这张卡会当场合上——
+                        表头的开关现在挂在 .cal-wrow 上，这块本来就不在它的冒泡路上，
+                        但这道闸留着：哪天有人图省事把开关提到整张卡上，它是唯一的护栏 */}
+                    <div
+                      className={`cal-wfold${unfolded ? "" : " shut"}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="cal-wfold-inner">
+                        <DayRows open={open} done={done} />
+                      </div>
+                    </div>
                   </div>
                 );
               }
@@ -557,12 +605,12 @@ export default function Calendar() {
           })}
         </div>
 
-        {/* 手机（v1.12.1）：网格底下**常驻**「这一天」的列表。默认今天，点别的格子切过去，
+        {/* 手机月视图（v1.12.1）：网格底下**常驻**「这一天」的列表。默认今天，点别的格子切过去，
             永远有东西可看——下半屏是内容不是空白（PM：「下面的留白不符合审美」）。
             行走 MobileRow：点一行拉出任务详情那张纸，左右滑、长按都跟今天页一样。
-            周视图（v1.14.1）也留着它，两块不重复：上面那七行是**最多两条的预览**（截断 + 「+N」），
-            这一块才是能点能滑的完整清单，同一天的事在这儿才有完整标题和全部操作 */}
-        {isMobile &&
+            只给月视图（v1.15.0）：周视图的清单已经摊在那一天自己的卡里了，
+            PM 原话「不要放在最下面」——点第三天还要把眼睛甩到屏幕最底下，就是他说的这件事 */}
+        {isMobile && mode === "month" &&
           (() => {
             const day = picked ?? today;
             const slot = byDay.get(day);
@@ -580,18 +628,8 @@ export default function Calendar() {
                   </span>
                   {count > 0 && <span className="cal-daylist-n">{count} 件</span>}
                 </div>
-                {open.length === 0 && done.length === 0 ? (
-                  <div className="cal-daylist-empty">这天没有安排</div>
-                ) : (
-                  <div className="mcard">
-                    {open.map((t) => (
-                      <MobileRow key={t.id} task={t} />
-                    ))}
-                    {done.map((r) => (
-                      <MobileRow key={rowKey(r)} task={r.task} sub={r.sub} doneDate={rowDoneDay(r)} />
-                    ))}
-                  </div>
-                )}
+                {/* 跟周视图卡里摊开的那块是同一份（DayRows），两处只此一处定义 */}
+                <DayRows open={open} done={done} />
               </div>
             );
           })()}

@@ -1,5 +1,6 @@
 // 主窗外壳：侧栏 + 视图路由 + 全局快捷键 + 撤销 toast + 批量操作条。
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import Sidebar from "./components/Sidebar";
 import Today from "./views/Today";
 import ListView from "./views/ListView";
@@ -16,20 +17,30 @@ import SearchOverlay from "./components/SearchOverlay";
 import ContextMenu from "./components/ContextMenu";
 import ThemeScene from "./components/ThemeScene";
 import DataRescue from "./components/DataRescue";
-import UpdateDialog from "./components/UpdateDialog";
+import UpdateDialog, { UpdateNudge } from "./components/UpdateDialog";
 import NewerDataDialog from "./components/NewerDataDialog";
 import ChangelogDialog from "./components/ChangelogDialog";
 import QuickAddDialog from "./components/QuickAddDialog";
 import { useLeaving } from "./components/motion";
 import {
   appStore, clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
-  hasChain, navigate, postponeTasks, setChainFolded, setChangelogOpen, setPaletteOpen,
-  setQuickAddOpen, setSearchOpen, setSelection, setTasksList, undo, useApp,
+  hasChain, navigate, postponeTasks, retrySave, setChainFolded, setChangelogOpen, setPaletteOpen,
+  setQuickAddOpen, setSearchOpen, setSelection, setTasksList, setWebNewVersion, undo, useApp,
 } from "./core/store";
 import { useUpdate } from "./core/updateCtl";
-import { isMobile } from "./core/platform";
+// 「数据打不开」那一屏上「检查更新」摆不摆得出来，认这一条（网页版没有包可下）
+import { updaterSupported } from "./core/updater";
+import { canSaveFile, isDesktopShell, isMobile, isWeb, isWebBuild } from "./core/platform";
 import { isLoginLater, isPristineLocal, shouldOfferLogin } from "./core/fresh";
+// 网页版「有新版了」：那边只管去问一句服务器，怎么提示在这儿（借的是撤销 toast 那身皮）
+import { reloadForUpdate, startWebUpdateWatch } from "./core/webUpdate";
 import * as cloud from "./core/cloud";
+// 「数据打不开」那一屏要就地办事，用的全是现成的那几套（见文件末尾 DataErrorScreen）
+import * as persist from "./core/persist";
+import { signOut, useSync } from "./core/syncCtl";
+import { toJsonFile } from "./core/transfer";
+import { APP_VERSION } from "./core/model";
+import { todayYMD } from "./core/dates";
 // 手机端（v1.11.0）：壳子 + 四张从底下抽出来的纸。桌面上这几个一个都不挂
 import MobileShell from "./mobile/MobileShell";
 import { TaskSheetHost } from "./mobile/TaskSheet";
@@ -38,6 +49,7 @@ import { ActionSheetHost } from "./mobile/ActionSheet";
 import { ListSettingsSheetHost } from "./mobile/ListSettingsSheet";
 import { HabitSheetHost } from "./mobile/HabitSheet";
 import { GuideSheetHost } from "./mobile/GuideSheetHost";
+import { AccountSheetHost } from "./mobile/AccountSheet";
 import { openLogin } from "./mobile/sheetStore";
 // 登录页两端都用：手机上是整页，桌面上是居中弹窗（组件自己分叉）
 import { LoginPageHost } from "./components/LoginPage";
@@ -90,9 +102,40 @@ export default function App() {
   // B6：退场那一拍里这两条还得挂在树上，元素没了动画就无从播起。
   // 期间 .leaving 会把它们的 pointer-events 关掉，不会误点到正在消失的按钮
   const { shown: toastShown, leaving: toastLeaving } = useLeaving(toast);
+  /** 顶上那条「没登录」提示要跟着登录态走，登录成功当场就该消失 */
+  const session = useSync((s) => s.session);
+  /** 这台设备上到底有没有登录过：**问过之前一律不显示**。
+   *  syncCtl 里那个 session 是 initSync 异步填进去的，刚起来时必然是 null，
+   *  照它判的话已经登录的人每次刷新都要先被那条提示晃一下 */
+  const [webSessionKnown, setWebSessionKnown] = useState<boolean | null>(null);
+  /** 网页版查到服务器上有新版了（桌面 / 安卓走 updater.ts 那条自己下包的路，跟这条无关）。
+   *  **存在 store 里**：屏幕底下那个位置只站得下一条，手机上「把橡果放到桌面」也想站那儿，
+   *  各存各的就谁也看不见谁，两条一起出现时叠成一团 */
+  const webNewVersion = useApp((s) => s.webNewVersion);
+  /** 写盘停手了（盘掉线 / 目录只读 / 磁盘满）。常驻一条提示，不给关，只给「重试」 */
+  const saveError = useApp((s) => s.saveError);
+  /** 开机正在从云端取回那份：先摆一块占位，别让人对着一本假的空账本干活 */
+  const restoring = useSync((s) => s.restoring);
   const { shown: bulkShown, leaving: bulkLeaving } = useLeaving(
     selectedIds.length > 1 ? selectedIds : null,
   );
+
+  // 网页版：没登录时顶上挂一条说清楚「这些事只在这台设备的浏览器里」。先问一次登录态
+  useEffect(() => {
+    if (!isWeb) return;
+    void cloud
+      .loadSession()
+      .then((s) => setWebSessionKnown(!!s))
+      .catch(() => setWebSessionKnown(false));
+  }, []);
+
+  // 网页版：隔一阵问一句服务器现在是哪一版，比手里这份新就说一声。
+  // 加到主屏幕的那个窗口按 Home 键收起来、隔天再点开是**不重新加载**的，
+  // 不提一句的话它能跑着上礼拜那份代码
+  useEffect(() => {
+    if (!isWebBuild) return;
+    return startWebUpdateWatch({ onNewVersion: (v) => setWebNewVersion(v) });
+  }, []);
 
   // toast 自动消散
   useEffect(() => {
@@ -104,8 +147,12 @@ export default function App() {
     };
   }, [toast]);
 
-  // 屏蔽 WebView2 原生右键菜单（输入框里保留系统菜单，用户要粘贴）
+  // 屏蔽 WebView2 原生右键菜单（输入框里保留系统菜单，用户要粘贴）。
+  // **只在 Tauri 里做**（v1.15.0）：这一句是为 WebView2 那个「刷新 / 后退 / 检查」菜单写的，
+  // 搬到真浏览器里就把人家的刷新、后退、复制链接、在新标签页打开一起掐了——
+  // 网页版用户右键一次什么都没有，第一反应是这页坏了
   useEffect(() => {
+    if (!persist.inTauri) return;
     function onCtx(e: MouseEvent) {
       const el = e.target as HTMLElement | null;
       const editable = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
@@ -233,7 +280,10 @@ export default function App() {
           pristine: isPristineLocal({ data: s.data, everSynced: !!session?.syncedAt }),
           later: isLoginLater(),
         });
-        if (offer) openLogin("first-run");
+        // 网页版**不拦登录墙**（v1.15.0，用户拍板）：打开就能记事，东西先存在这个浏览器里，
+        // 哪天登录了自动并进云端。代价（清缓存 / 换设备就没了）由顶上那条提示条如实说，
+        // 不靠一扇迎面挡住的门来说
+        if (offer && !isWeb) openLogin("first-run");
       })
       .catch(() => {
         /* 读不出登录态就当这次别问了：宁可少问一次，也不能给已登录的人弹一个登录框 */
@@ -274,16 +324,15 @@ export default function App() {
   if (!loaded) {
     return <div className="center-note"><span className="big">橡果</span>正在读取数据…</div>;
   }
-  if (loadError) {
+  if (loadError) return <DataErrorScreen error={loadError} />;
+  // 这台设备上还没有账本、而这个账号云端有东西：开机这一轮正在把它取回来。
+  // 那是一个网络往返加一整份账本，手机上可能要好几秒——这几秒里界面**不能**摆一本空账本
+  // 让人对着它开始记，取回一落地就是整份覆盖，刚记的当着面就没了（撤销也撤不回来）
+  if (restoring) {
     return (
       <div className="center-note">
-        <span className="big">数据打不开</span>
-        <span>{loadError}</span>
-        <span>数据文件夹当前不可用。数据若放在移动硬盘或网盘上，连接后点重试；也可以到设置里更换文件夹。</span>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn primary" onClick={() => location.reload()}>重试</button>
-          <button className="btn" onClick={() => navigate("settings")}>打开设置</button>
-        </div>
+        <span className="big">橡果</span>
+        正在把你在云端的那份取回这台设备…
       </div>
     );
   }
@@ -291,16 +340,40 @@ export default function App() {
   // 这份数据由更新版本的橡果写入：**照常渲染整个应用**，弹一次「已有更新版橡果」的框，
   // 给「现在更新 / 取消」两条路，取消了照常用（用户 2026-09-01 定的口径）。
   // 以前这里是一整屏墙，用户连自己的任务都看不见——那是拒绝加载，是产品原则上的错
+  /** 顶上那条提示到底挂不挂：跑在浏览器里 + 问过了 + 确实没登录，三条都成立才挂。
+   *  登录之后 session 立刻有值，这一条当场收掉 */
+  const webNote = isWeb && webSessionKnown === false && !session;
+
   const schemaNotice =
     dataFromNewer !== null && noticeClosed !== dataFromNewer.schema ? dataFromNewer.schema : null;
 
   return (
-    <div className={`shell${drawer ? " drawer-open" : ""}${isMobile ? " mobile" : ""}`}>
+    <div
+      className={`shell${drawer ? " drawer-open" : ""}${isMobile ? " mobile" : ""}${
+        webNote ? " web-note-on" : ""
+      }`}
+    >
+      {/* 网页版没登录时顶上那一条（v1.15.0）。**这不是可关的小提示，是这一端的实情**：
+          东西存在这个浏览器里，清了缓存、换台设备就没了，苹果还会把长期不开的网站数据清掉。
+          登录之后它自己消失（本地这些事会自动并进云端，fresh + merge 那条路早就跑通了）。
+          外面那个 web-note-on 负责把整个界面往下让出这一条的高度，见 base.css */}
+      {webNote && (
+        <div className="web-note">
+          <span className="web-note-txt">没登录，这些事只存在这台设备的浏览器里</span>
+          <button className="web-note-btn" onClick={() => openLogin("manual")}>登录</button>
+        </div>
+      )}
       {/* 主题风景水印只在桌面贴主区底部。手机上这一幅要撤掉：
           它 fixed 在屏幕底部、高 137px，而底部导航只有 60px——画里那颗太阳正好从
           导航条上沿露出小半个淡圆来（实测 390×844：风景 708→844，导航 784→844，
           露在外面 76px）。PM 第一眼就看见了那个「幽灵圆」。
           手机上这片风景改挂在顶栏后面（mobile/MobileHead 的 .mhead-scene），那才是它该在的地方 */}
+      {/* 🔴 写盘停手了。**不给关、也不会自己消失**（v1.15.0）：
+          数据文件夹这会儿写不进去（随身盘没接上、网盘锁着、磁盘满），而界面上这份很可能
+          根本不是用户的账本——盘没挂上时橡果读不到文件，长得跟第一次打开一模一样。
+          再继续自动保存，盘一接回来就把这本空账本盖在真账本上。所以：停手 + 一直说着，
+          直到用户点「重试」真的存回去为止 */}
+      {saveError && <SaveHaltBar error={saveError} top={webNote} />}
       {!isMobile && <ThemeScene theme={theme} />}
       {/* 手机上侧栏整套不上树：那儿走底部五格导航（MobileShell）。
           **抽屉那一套一个字没删**——桌面把窗口拖窄仍然是桌面，它还得靠 ☰ 拉开侧栏 */}
@@ -324,6 +397,7 @@ export default function App() {
           <ListSettingsSheetHost />
           <HabitSheetHost />
           <GuideSheetHost />
+          <AccountSheetHost />
         </>
       )}
       {/* 登录页两端都挂：手机上盖满一整页，桌面上是居中弹窗 */}
@@ -350,6 +424,15 @@ export default function App() {
         </div>
       )}
 
+      {/* 网页版有新代码了。借撤销 toast 那身皮，但**不会自己消失**——刷新是用户的事，
+          不该错过一眼就没了。撤销 toast 在时先让一让：两个抢同一个位置，会叠在一起 */}
+      {webNewVersion && !toastShown && (
+        <div className="toast">
+          橡果有新版了（v{webNewVersion}）
+          <button onClick={reloadForUpdate}>刷新</button>
+        </div>
+      )}
+
       {bulkShown && (
         <div className={`bulk-bar${bulkLeaving ? " leaving" : ""}`}>
           <span className="cnt">{bulkShown.length}</span> 项已选
@@ -372,6 +455,289 @@ export default function App() {
           <button className="btn ghost" onClick={clearSelection}>取消</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------- 「存不回去，已经停手」那一条 ----------
+
+/**
+ * 写盘失败时那条**常驻**提示。
+ *
+ * 为什么不是 toast：toast 四秒就没了，而「橡果已经停止保存」这件事得一直摆在眼前——
+ * 用户在这期间记的每一条都只在内存里，关掉窗口就没了，这不是说一句就算完的事。
+ *
+ * 为什么必须停止保存（本体那台机器的真实用法）：数据文件夹在一块随身盘上。
+ * 盘没挂上就打开橡果，读不到文件跟「第一次打开」长得一模一样，界面上是一本空账本；
+ * 盘一接回来，随便哪一次自动保存都会把这本空账本盖在真账本上，旧文件被改名再删掉，
+ * 当天的备份也没生成。所以出事之后一个字都不写，等用户把盘接上、点一下「重试」。
+ */
+function SaveHaltBar({ error, top }: { error: string; top: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div
+      role="alert"
+      style={{
+        position: "fixed",
+        // 网页版顶上那条「没登录」也占着最上面一行，别叠上去
+        top: top ? "calc(var(--web-note-h) + 10px + env(safe-area-inset-top, 0px))" : "calc(10px + env(safe-area-inset-top, 0px))",
+        left: "50%", transform: "translateX(-50%)",
+        zIndex: 300, maxWidth: "min(560px, calc(100vw - 24px))",
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        padding: "9px 14px", borderRadius: "var(--r-md)",
+        background: "var(--card)", color: "var(--ink)",
+        border: "1px solid var(--warn)", boxShadow: "var(--shadow)",
+        fontSize: "var(--fs-sm)", lineHeight: 1.6,
+      }}
+    >
+      <span>
+        <b style={{ color: "var(--warn)" }}>数据暂时存不回文件夹，已经停止保存</b>
+        ，免得把空的那份盖到你的数据上。接上硬盘或腾出空间后点「重试」；在这之前记的东西只在窗口里。
+        <span style={{ color: "var(--ink-2)" }}>（{error}）</span>
+        {failed && <span style={{ color: "var(--warn)" }}> 还是存不回去，再试试。</span>}
+      </span>
+      <button
+        className="btn primary"
+        style={{ flex: "none" }}
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setFailed(false);
+          void retrySave()
+            .then((ok) => setFailed(!ok))
+            .finally(() => setBusy(false));
+        }}
+      >
+        {busy ? "正在重试…" : "重试"}
+      </button>
+    </div>
+  );
+}
+
+// ---------- 「数据打不开」那一屏 ----------
+
+/** 一行：一颗按钮 + 一句「点了会发生什么」。按钮等宽，六行才排得齐 */
+// 窄窗口（手机、桌面把窗口拖窄）上让说明那半句换行落到按钮下面去，
+// 不换行的话 136px 的按钮加一句话在 390px 宽的屏上必然撑破边
+const DE_ROW: CSSProperties = { display: "flex", gap: 12, alignItems: "center", textAlign: "left", flexWrap: "wrap" };
+const DE_BTN: CSSProperties = { minWidth: 136, flex: "none" };
+const DE_SAY: CSSProperties = { color: "var(--ink-2)", fontSize: "var(--fs-sm)", lineHeight: 1.6 };
+
+/**
+ * 数据读不出来时看到的那一屏。
+ *
+ * **这一屏必须自带出路。** 程序画它之前就提前 return 了：侧栏、设置页、更新弹窗、登录窗
+ * 一个都没上树，所以任何「去设置里…」的按钮在这儿都是死的——v1.8.0 到 v1.14.3 那颗
+ * 「打开设置」就是这么一颗死按钮，它只把「我想去设置」记进 state，没有任何东西会读它。
+ * 用户于是卡在这一屏上：换不了文件夹、登不出也登不回、更不了新，只能把整个软件关掉，
+ * 下次打开还是它（2026-09-14 用户原话：「陷入死循环」）。
+ *
+ * 所以这里的规矩是：**能做的事就地摆出来，一件都不往别处转。**
+ */
+function DataErrorScreen({ error }: { error: string }) {
+  const session = useSync((s) => s.session);
+  /** 内存里还有没有东西值得导出。读失败时内存里通常是一本空账本，那就没什么可存的 */
+  const hasTasks = useApp((s) => s.data.tasks.length > 0);
+  const [dir, setDir] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"find" | "dir" | "out" | "off" | null>(null);
+  /** 刚才那一下的回话。只留一句，说完就停在那儿，不做成会自己消失的 toast——
+   *  这一屏上没有别的东西会动，消失的提示等于没说过 */
+  const [said, setSaid] = useState<string | null>(null);
+
+  // 用户最需要的一条线索：橡果到底在哪儿找他的账本。报错原文里几乎从来没有这个路径，
+  // 他看着「数据打不开」根本不知道该去哪个文件夹找
+  useEffect(() => {
+    let alive = true;
+    void persist
+      .getDataDir()
+      .then((d) => alive && setDir(d))
+      .catch(() => alive && setDir(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** 去别处找找。找到了就把现成的那张选择卡就地挂出来（这一屏上也挂着 DataRescue） */
+  async function findData() {
+    setBusy("find");
+    setSaid(null);
+    try {
+      const found = (await persist.findDataCandidates()).filter((c) => c.tasks > 0);
+      if (found.length) appStore.setState({ rescue: found });
+      // 指路只能指向这台设备上真有的那颗按钮：安卓上没有「换个文件夹」，
+      // 照着说就是把人往一颗不存在的按钮上引
+      else if (isDesktopShell) {
+        setSaid("常放数据的那几个位置都找过了，没找到别的账本。可以用下面的「换个文件夹」直接指给橡果。");
+      } else {
+        setSaid("常放数据的那几个位置都找过了，没找到别的账本。");
+      }
+    } catch (e) {
+      setSaid(`找的时候出错了：${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 换个文件夹。跟设置 → 数据 → 更换文件夹是同一套动作：选文件夹 → 改指针 → 重开 */
+  async function changeDir() {
+    setBusy("dir");
+    setSaid(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({ directory: true });
+      if (typeof picked !== "string") return;
+      await persist.setDataDir(picked); // 目标已有数据时不会被覆盖，只改指针
+      location.reload();
+    } catch (e) {
+      setSaid(`换不过去：${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 退出登录。**只断登录态，一个字数据都不碰**——这一屏上连数据都读不出来，
+   *  「退出并清空本机」那条路更不能走（它要先过 checkWipeGate，而闸门在这儿必然不通） */
+  async function doSignOut() {
+    setBusy("off");
+    setSaid(null);
+    try {
+      await signOut();
+      setSaid("已退出登录。这台设备上的数据一个字都没动；文件夹恢复正常之后重开橡果，就能重新登录。");
+    } catch (e) {
+      setSaid(`退不出去：${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 保险：把内存里这份存成 JSON。只在内存里确实还有东西时才给这颗按钮 */
+  async function exportJson() {
+    setBusy("out");
+    setSaid(null);
+    try {
+      // 浏览器里没有「保存到哪个路径」这回事，只有下载（跟设置页导出那条同一个口径）
+      if (isWeb) {
+        persist.downloadTextFile(
+          `acorn-${todayYMD()}.json`,
+          toJsonFile(appStore.getState().data, APP_VERSION),
+        );
+        setSaid("已经下载下来了。这份文件用「设置 → 导出与导入」能再读回来。");
+        return;
+      }
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        defaultPath: `acorn-${todayYMD()}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!path) return;
+      await persist.writeTextFile(path, toJsonFile(appStore.getState().data, APP_VERSION));
+      setSaid("已存好。这份文件用「设置 → 导出与导入」能再读回来。");
+    } catch (e) {
+      setSaid(`存不下来：${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    // 这一屏比原来那两行字高得多：小窗口上得能滚，也得留出左右两边的边距，
+    // 否则最要紧的那条路径会贴到屏幕边上
+    <div className="center-note" style={{ overflowY: "auto", padding: "24px 16px" }}>
+      <span className="big">数据打不开</span>
+      <p style={{ maxWidth: 540, textAlign: "center", lineHeight: 1.7, margin: 0 }}>
+        {isWeb ? (
+          <>
+            橡果没能读出存在这个浏览器里的那份数据。<b>先别清浏览器缓存</b>，
+            下面这几条路可以试试。
+          </>
+        ) : (
+          <>
+            橡果没能读到这台设备上的账本文件。<b>你记的事没有丢</b>，
+            它们还在下面这个文件夹里，只是橡果这会儿读不到。
+          </>
+        )}
+      </p>
+
+      {/* 路径摆在最前面：这是他最需要的一条线索。
+          网页版没有「文件夹」这回事，getDataDir() 在那边给回的是一句「存在这台设备的浏览器里」——
+          接在「橡果正在这个文件夹里找：」后面就成了病句，所以这行提示两端各说各的 */}
+      <div
+        style={{
+          maxWidth: 540, width: "100%", textAlign: "left", lineHeight: 1.7,
+          background: "var(--paper-2, transparent)", borderRadius: 8,
+        }}
+      >
+        <div style={DE_SAY}>{isWeb ? "这些事存在哪儿：" : "橡果正在这个文件夹里找："}</div>
+        <div style={{ wordBreak: "break-all", color: "var(--ink)" }}>{dir ?? "（正在确认…）"}</div>
+        <div style={{ ...DE_SAY, marginTop: 6 }}>读不到的原因：{error}</div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 540, width: "100%" }}>
+        <div style={DE_ROW}>
+          <button className="btn primary" style={DE_BTN} onClick={() => location.reload()}>重试</button>
+          <span style={DE_SAY}>
+            {isWeb ? "刷新一次再看看，多半是这一次没读上来。" : "数据放在移动硬盘或网盘上的话，接上再点这里。"}
+          </span>
+        </div>
+        {/* 「去别处找找」翻的是这台机器上的文件夹：浏览器里压根没有文件夹可翻
+            （findDataCandidates 在那边恒返回空），摆出来就是一颗按了什么都不会发生的按钮 */}
+        {persist.inTauri && (
+          <div style={DE_ROW}>
+            <button className="btn" style={DE_BTN} disabled={busy === "find"} onClick={() => void findData()}>
+              {busy === "find" ? "正在找…" : "去别处找找我的数据"}
+            </button>
+            <span style={DE_SAY}>到常放数据的几个位置翻一遍，找到了摆出来给你挑。</span>
+          </div>
+        )}
+        {/* 「换个文件夹」只有装在电脑上的橡果做得到：安卓上没有文件夹选择器，
+            浏览器里连 invoke 都不存在（按下去只会当场抛一句 TypeError 给用户看） */}
+        {isDesktopShell && (
+          <div style={DE_ROW}>
+            <button className="btn" style={DE_BTN} disabled={busy === "dir"} onClick={() => void changeDir()}>
+              换个文件夹
+            </button>
+            <span style={DE_SAY}>自己指一个文件夹给橡果，指完橡果重开一次。</span>
+          </div>
+        )}
+        {/* 现成的那颗「检查更新」：查到了把更新弹窗顶出来，下载安装还是走那一套。
+            这一屏上 UpdateDialog 也挂着，不然查到了也弹不出来。
+            网页版没有包可下（UpdateNudge 自己会返回 null），那就连这一行说明也别摆——
+            剩一句没有按钮的话挂在那儿，跟一颗死按钮一样让人干瞪眼 */}
+        {updaterSupported && (
+          <div style={DE_ROW}>
+            <span style={{ ...DE_BTN, display: "inline-flex", gap: 8, alignItems: "center" }}>
+              <UpdateNudge />
+            </span>
+            <span style={DE_SAY}>新版本可能已经修好了这个毛病。</span>
+          </div>
+        )}
+        {session && (
+          <div style={DE_ROW}>
+            <button className="btn" style={DE_BTN} disabled={busy === "off"} onClick={() => void doSignOut()}>
+              退出登录
+            </button>
+            <span style={DE_SAY}>只断开 {session.email} 这个账号，本机数据一个字都不动。</span>
+          </div>
+        )}
+        {/* canSaveFile：安卓上给不出文件（save() 回的是 content:// URI，写不了），
+            按下去只有一句「存不下来」。这一屏的立意就是一颗死按钮都不留 */}
+        {hasTasks && canSaveFile && (
+          <div style={DE_ROW}>
+            <button className="btn ghost" style={DE_BTN} disabled={busy === "out"} onClick={() => void exportJson()}>
+              导出一份 JSON
+            </button>
+            <span style={DE_SAY}>把橡果这会儿手里有的内容另存一份，留个底。</span>
+          </div>
+        )}
+      </div>
+
+      {said && <div style={{ maxWidth: 540, textAlign: "left", lineHeight: 1.7 }}>{said}</div>}
+
+      {/* 「找到了以前的数据」那张选择卡：以前它只挂在正常界面里，出错屏上根本挂不出来，
+          于是「去别处找找」这条路在最需要它的地方反而没有 */}
+      <DataRescue />
+      <UpdateDialog />
     </div>
   );
 }

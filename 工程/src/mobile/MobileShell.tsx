@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 import { navigate, useApp } from "../core/store";
 import type { ViewId } from "../core/store";
 import { openSheet } from "./sheetStore";
-import MobileMore from "../views/MobileMore";
+import MobileMore, { AddToHomeNudge } from "../views/MobileMore";
 import { IcoHabits, IcoMore, IcoPlan, IcoPlus, IcoQuad, IcoToday } from "./icons";
 import "../styles/mobile-shell.css";
 
@@ -68,6 +68,12 @@ export default function MobileShell({ children }: { children: ReactNode }) {
   return (
     <div className="mshell">
       {moreOpen ? <MobileMore onNavigate={() => setMoreOpen(false)} /> : children}
+
+      {/* 网页版：还没「添加到主屏幕」就在这儿提一句（能关，关了不再烦）。
+          桌面 App 和安卓 App 里这个组件自己判掉，一个节点都不会渲染。
+          为什么值得提：不登录的话账本只在这个浏览器里，而苹果对普通网站的数据说清就清，
+          加到主屏幕的那一份才留得住——所以这是安全网，不是广告 */}
+      <AddToHomeNudge />
 
       {showFab && (
         <button

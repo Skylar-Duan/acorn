@@ -43,7 +43,14 @@ const stripComments = (s: string) =>
 describe("① 手机上不渲染侧栏，但窄桌面窗口那套抽屉一个字没删", () => {
   it("App 把 ☰ / Sidebar / 遮罩三件一起圈进 !isMobile", () => {
     const src = nl(appSource);
-    expect(src).toContain('import { isMobile } from "./core/platform";');
+    // v1.15.0 网页版上线，这一行跟着多了几个（isWeb / isWebBuild / canSaveFile …）。
+    // 钉的还是同一件事：分叉读的是 platform.ts 那份判断，不在这一页自己另写一套。
+    // 所以不锁死这行**一共**引了哪几个（那个名单会随着别的改动长），只锁「这三个从 platform 来」
+    const imp = src.split("\n").find((l) => l.includes('from "./core/platform";')) ?? "";
+    expect(imp, "App.tsx 不再从 core/platform 引平台判断了？").toContain("import {");
+    for (const name of ["isMobile", "isWeb", "isWebBuild"]) expect(imp, name).toContain(name);
+    // 而且这一页不许自己再判一遍平台
+    expect(src).not.toMatch(/navigator\.userAgent|window\.__TAURI/);
     expect(src).toContain("{!isMobile && (");
     // 三件都在那个分支里
     const branch = src.slice(src.indexOf("{!isMobile && ("), src.indexOf("{isMobile ? <MobileShell>"));
@@ -142,17 +149,70 @@ describe("② RowList：手机上走 MobileRow，不画内嵌展开卡", () => {
     expect(shellCss).toContain(".mmore-acct, .mmore-tile { background-image: none;");
   });
 
-  it("行与行的分隔线从圆圈之后起（inset），不是通栏一刀切", () => {
-    const sep = shellCss.slice(
-      shellCss.indexOf(".mcard > .swipe-wrap + .swipe-wrap::before {"),
+  // 【v1.15.0 换规矩】v1.11.2~v1.14 是「一组一张长卡，行与行之间一根从 56px 起的发丝线」。
+  // 用户 2026-09-14 原话：「手机版任务、子任务框卡片感弱，一长条只能横拖查看」——
+  // 一张被切成几条的长纸读不出「这是一件事」。现在纸下放到每一行，发丝线跟着关掉：
+  // 卡自己分开了，再画一根线就是「分开的两张纸中间还夹着条线」。
+  it("一件事一张卡：纸在 .swipe-wrap 上，.mcard 退成透明容器，发丝线关掉", () => {
+    const one = shellCss.slice(
+      shellCss.indexOf(".mshell .mcard:has(> .swipe-wrap) {"),
       shellCss.indexOf("/* 「已完成 · N  展开」"),
     );
-    // 16 左内距 + 26 圆圈 + 14 = 56（画板 PolishA 那个数）
-    expect(sep).toContain("left: 56px;");
-    expect(sep).toContain("background: var(--m-sep);");
-    // 行本体是定位元素且底色不透明，不抬上来这根线会被它盖掉
-    expect(sep).toContain("z-index: 2;");
+    // 容器自己不再是纸
+    expect(one).toContain("background: none;");
+    expect(one).toContain("box-shadow: none;");
+    // 父盒子不许再裁一次，否则每张小卡的投影会被切掉半圈
+    expect(one).toContain("overflow: visible;");
+    // 纸（圆角 / 底 / 投影）归每一行
+    expect(one).toContain(".mshell .mcard:has(> .swipe-wrap) > .swipe-wrap {");
+    expect(one).toContain("border-radius: var(--m-card-radius);");
+    expect(one).toContain("box-shadow: var(--m-card-shadow);");
+    // 卡与卡之间那道缝走 token，不写裸数
+    expect(one).toContain("margin-top: var(--m-card-gap);");
+    // 右滑露出来的那层绿底跟着圆，否则四个角会露出直角的绿
+    expect(one).toContain("> .swipe-under { border-radius: inherit; }");
+    // 新引擎上那根线是被**关掉**的（见下一条：老引擎还留着它当底子）
+    expect(one).toContain(
+      ".mshell .mcard:has(> .swipe-wrap) > .swipe-wrap + .swipe-wrap::before { content: none; }",
+    );
+    // border-top 那种写法一处不剩（它会把行往下顶 1px，也没法只画一截）
     expect(shellCss).not.toContain(".mcard > .swipe-wrap + .swipe-wrap { border-top:");
+  });
+
+  // 认不得 :has 的老引擎（Chrome 105 以前）上面那一整组规则全失效，看到的是 v1.14 那副
+  // 「一组一张长卡」。要是发丝线也跟着没了，长卡就是一大块连着的字，一件事跟下一件事之间
+  // 没有任何分界。所以那根线留作**底子**（不带 :has 的裸规则），新引擎再用 content: none 关掉。
+  it("🔴 老引擎退路：发丝线作为基础规则还在，且写在 :has 那一组之前", () => {
+    const base = shellCss.indexOf(".mcard > .swipe-wrap + .swipe-wrap::before {");
+    const hasGroup = shellCss.indexOf(".mshell .mcard:has(> .swipe-wrap) {");
+    expect(base, "发丝线的基础规则不见了：老引擎上一整组事会糊成一块").toBeGreaterThan(-1);
+    expect(hasGroup).toBeGreaterThan(-1);
+    // 基础规则那一条不许自己带上 :has，否则老引擎一样看不到
+    expect(shellCss.slice(base - 8, base)).not.toContain(":has");
+    const body = shellCss.slice(base, shellCss.indexOf("}", base));
+    expect(body).toContain('content: "";');
+    expect(body).toContain("left: 56px;");
+    expect(body).toContain("background: var(--m-sep);");
+    // 关掉那条的权重压得住基础那条：.mshell + .mcard + :has(.swipe-wrap) + 两个 .swipe-wrap = 5 个类，
+    // 基础那条只有 3 个——谁先谁后都不影响结果，这里顺带钉一下它确实写在后面，读起来才是「先给底子再关掉」
+    expect(base).toBeLessThan(
+      shellCss.indexOf(".mshell .mcard:has(> .swipe-wrap) > .swipe-wrap + .swipe-wrap::before"),
+    );
+  });
+
+  // 日历周视图那张「一天一张卡」里仍然是「卡里一条条列」（E 那一版的形制），
+  // 所以那根线没消失，只是搬进了 calendar.css 里那一节，谁也别再往 mobile-shell 里加回来
+  it("周视图卡里那份清单还是「一张纸上一条条列」：线搬进了 calendar.css", () => {
+    const calCss = read("src/styles/calendar.css");
+    expect(calCss).toContain(".mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap {");
+    expect(calCss).toContain(
+      ".mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap + .swipe-wrap::before {",
+    );
+    const sep = calCss.slice(
+      calCss.indexOf(".mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap + .swipe-wrap::before {"),
+    );
+    expect(sep.slice(0, sep.indexOf("}"))).toContain("left: 56px;");
+    expect(sep.slice(0, sep.indexOf("}"))).toContain("background: var(--m-sep);");
   });
 
   it("按下去有回应：行底色微微变深（老 WebView 退成 --bg）", () => {
@@ -223,17 +283,55 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
     expect(rowSource).toContain('if (e.pointerType === "mouse") return;');
   });
 
-  it("一件事一行绝不折行：标题单行省略号，行高就是 --m-row-h", () => {
-    expect(shellCss).toContain("height: var(--m-row-h);");
-    const title = shellCss.slice(shellCss.indexOf(".mrow-title {"), shellCss.indexOf(".mrow-parent {"));
-    expect(title).toContain("white-space: nowrap;");
-    expect(title).toContain("text-overflow: ellipsis;");
+  // 【v1.15.0 换规矩】2026-09-02 定的是「一件事一行，绝不折行」（源头：用户嫌旧版
+  // 「行折成两行、像十几年前的表单」）。2026-09-14 用户自己推翻了它：
+  // 390 宽的屏上标题实际只剩约 14 个中文字，子任务行再挂一颗「母任务名 ›」只剩 9 个，
+  // 「不能一次性读完」。新规矩：标题最多折两行，行高只保底不封顶，
+  // 日期 / 母任务名收到第二层小字。代价（首屏 9 件 → 6–7 件）用户当场认下了。
+  it("标题折两行就打住；行高从「定高」改成「最矮多高」", () => {
+    const row = shellCss.slice(shellCss.indexOf("\n.mrow {"), shellCss.indexOf(".mrow-main {"));
+    expect(row).toContain("min-height: var(--m-row-h);");
+    // 定高那一句一处不剩，否则两行标题会被切掉半截
+    expect(row).not.toMatch(/^\s*height: var\(--m-row-h\);/m);
+    // 上下内边距走 token：内容比 60 高的时候靠它撑开
+    expect(row).toContain("padding: var(--m-row-pad) 16px;");
+
+    const title = shellCss.slice(shellCss.indexOf(".mrow-title {"), shellCss.indexOf(".mrow-meta {"));
+    // line-clamp 三句是一套，少一句就整个不生效
+    expect(title).toContain("display: -webkit-box;");
+    expect(title).toContain("-webkit-box-orient: vertical;");
+    expect(title).toContain("-webkit-line-clamp: 2;");
+    expect(title).toContain("overflow: hidden;");
+    // 单行省略号那一套得撤干净：留着 nowrap 就永远折不了行
+    expect(title).not.toContain("white-space: nowrap;");
+
     expect(mobileCss).toContain("--m-row-h: 60px;");
+    expect(mobileCss).toContain("--m-row-pad:");
+    expect(mobileCss).toContain("--m-card-gap:");
   });
 
-  it("子任务行前面那句「母任务名 ›」限 6 个字，不然整行被它吃掉", () => {
-    expect(rowSource).toContain("const PARENT_MAX = 6;");
+  it("右边是一叠不是一排：标题独占第一层，日期 / 母任务名在第二层", () => {
+    expect(rowSource).toContain('<span className="mrow-main">');
+    expect(rowSource).toContain('<span className="mrow-title">{title || "（未命名）"}</span>');
+    expect(rowSource).toContain('<span className="mrow-meta">');
+    // 既没日期也不是子任务的事不摆第二层，卡跟着矮回一行的高度
+    expect(rowSource).toContain("{(sub || when) && (");
+    const main = shellCss.slice(shellCss.indexOf(".mrow-main {"), shellCss.indexOf(".mrow-bar {"));
+    expect(main).toContain("flex-direction: column;");
+    // 不给 min-width: 0 的话，长标题会把整张卡撑破而不是折行
+    expect(main).toContain("min-width: 0;");
+    // 第二层只许一行：再折下去一张卡就没有下限了
+    const meta = shellCss.slice(shellCss.indexOf(".mrow-meta {"), shellCss.indexOf(".mrow-parent {"));
+    expect(meta).toContain("overflow: hidden;");
+  });
+
+  // 【v1.15.0 放宽】v1.14 限 6 个字，因为那会儿它跟标题挤在同一行、多一个字就抢标题一个字。
+  // 现在它自己占第二层，抢不到标题了
+  it("「母任务名 ›」那颗胶囊限 14 个字（第二层还有一层省略号兜底）", () => {
+    expect(rowSource).toContain("const PARENT_MAX = 14;");
     expect(rowSource).toContain("parent.length > PARENT_MAX");
+    const p = shellCss.slice(shellCss.indexOf(".mrow-parent {"), shellCss.indexOf(".mrow-when {"));
+    expect(p).toContain("text-overflow: ellipsis;");
   });
 
   it("上下留给列表滚动、左右归滑动：行上写死 touch-action: pan-y", () => {
@@ -732,5 +830,59 @@ describe("⑫ 颜色全是 token、时长全是变量（六主题 × 深浅自�
       expect(mobileCss, v).toContain(`${v}:`);
       expect(shellCss, v).toContain(`var(${v})`);
     }
+  });
+});
+
+// ⑬ v1.15.0：手机上点折叠冒出来的那条蓝横条。
+// 根因不在折叠动画，在**没人设过 -webkit-tap-highlight-color**：
+// 安卓 WebView 拿出厂默认的那个 Holo 天蓝，按下时铺满整个按钮的方框，
+// 设置页的标题行又通栏又直角，看上去就是一条蓝横条（用户原话「不要那种古老的感觉」）。
+// 这一组钉三件事，缺一件毛病就回来：关掉原生高亮、补上自家的反馈、反馈不许铺成横条。
+describe("⑬ 按下去的反馈是自家的，不是安卓出厂那层蓝", () => {
+  const baseCss = read("src/styles/base.css");
+  const settingsCss = read("src/styles/settings.css");
+  const overlaysCss = read("src/styles/overlays.css");
+
+  it("🔴 base.css 全局关掉原生 tap 高亮——这是根，删了设置卡片和版本日志的蓝条一起回来", () => {
+    expect(nl(stripComments(baseCss))).toMatch(/\*\s*\{\s*-webkit-tap-highlight-color:\s*transparent;\s*\}/);
+  });
+
+  it("🔴 设置页标题行按下去只变色不铺底：铺了还是通栏横条，只是从蓝换成灰，等于没治", () => {
+    const css = nl(settingsCss);
+    expect(css).toContain(".set-section .set-head:active h2,\n.set-section .set-head:active .set-caret { color: var(--accent); }");
+    // 同一条选择器上不许出现 background —— 一旦有人补底色，横条就回来了
+    const heads = [...css.matchAll(/\.set-head:active[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(heads.length).toBeGreaterThan(0);
+    for (const body of heads) expect(body, body.trim()).not.toMatch(/background/);
+  });
+
+  it("版本日志那个手风琴也补上按下的反馈（它跟设置卡片是同一个形状，同一个毛病）", () => {
+    expect(overlaysCss).toContain(".cl-old-btn:active { background: var(--bg); }");
+    expect(overlaysCss).toContain(".cl-old-btn:active { background: color-mix(in srgb, var(--ink) 6%, var(--card)); }");
+  });
+
+  it("底部导航 / 更多页四宫格 / 顶栏按钮各有一条 :active，且全锁在 .mshell 底下不连累电脑", () => {
+    const css = nl(shellCss);
+    for (const sel of [
+      ".mshell .mnav-tab:active .mnav-ico",
+      ".mshell .mnav-tab.on:active .mnav-ico",
+      ".mshell .mmore-tile:active",
+      ".mshell .mmore-acct:active",
+      ".mshell .mhead-btn:active",
+      ".mshell .mhead-plain:active",
+    ]) {
+      expect(css, sel).toContain(sel);
+    }
+    // 手机端的规则一条都不许裸奔到 .mshell 外面去
+    const naked = css
+      .split(/\r?\n/)
+      .filter((line: string) => /^\.m(nav|more|head)[\w-]*[.:]/.test(line.trim()) && line.includes(":active"));
+    expect(naked).toEqual([]);
+  });
+
+  it("按压反馈不许写在 .mrow 的 transform 上——那儿挂着滑动用的 translateX，写了滑动就废了", () => {
+    const rowBlocks = [...nl(shellCss).matchAll(/\.mrow:active[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(rowBlocks.length).toBeGreaterThan(0);
+    for (const body of rowBlocks) expect(body, body.trim()).not.toMatch(/transform/);
   });
 });

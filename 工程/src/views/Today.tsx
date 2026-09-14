@@ -64,6 +64,8 @@ export default function Today() {
           ring={{ done: doneToday.length, total }}
           // 那颗有表情的小橡果只在这一页露一次脸（画板 PolishA）
           mascot
+          // 头像也只在这一页：用户要的是「主页面右上角，方便一键登入登出」（v1.15.0）
+          account
         />
       ) : (
         <div className="view-head">

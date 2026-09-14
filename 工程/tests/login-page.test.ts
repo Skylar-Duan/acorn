@@ -259,6 +259,18 @@ describe("设置页「云账号」未登录时只剩一个入口", () => {
     }
   });
 
+  it("手机上多了一条更近的路，两处说的是同一件事（v1.15.0）", () => {
+    // 「今天」右上角那颗头像点开的账号纸上也有一颗「退出登录」，接的是这一页的
+    // 「只退出登录，保留本机」。**清空本机那条路只在这一页有**——它得先当场同步成功才放行，
+    // 不该出现在一点就中的地方。两处各写各的话，早晚有一处让人以为按了会清数据
+    expect(accountPanelSource).toContain("手机上「今天」右上角那颗头像点开也能退出登录");
+    expect(accountPanelSource).toContain("做的是「保留本机」这一条");
+    // v1.15.0 网页版把开关拆开后，这一行里的 hasDesktopFeatures 换成了 canSaveFile
+    // （电脑上的浏览器也能把文件交到用户手上，只是走下载；给不了的只剩安卓 App）。
+    // 这条断言钉的一直是同一件事：平台判断从 platform.ts 来，不在这一页自己写一套
+    expect(accountPanelSource).toContain('import { canSaveFile, isMobile } from "../core/platform";');
+  });
+
   it("设置页那节收起来时的一句话分登录没登录说", () => {
     expect(settingsSource).toContain('summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}');
   });

@@ -5,6 +5,77 @@
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
 
+## v1.15.0 · 2026-09-15
+
+> 账本「橡木开发」里 9/20 及以前未打勾的 9 条，一次做完。第二位是因为**网页版是新的一端**（新入口新机制），
+> 其余 8 条按规矩都是小修。Workflow 六波十路（第一波五路并行，其后按共用文件串行）+ 七维挑刺复核。
+
+**G · 快捷语的时间要打 `~`（用户 9/14 拍板「严格：不加 ~ 就不认」）**
+- `parse.ts` 的 `scan()` 按 `chip.kind` 加闸门（date / time / repeat 三类），新增 `licensed[]` 记「被某个 ~ 领进门的字符」。
+  25 条日期/时间正则**一条没改**——闸门只有一处，以后新加的写法自动受管。
+  半角 `~` 与全角 `～` 都认；一个 `~` 管紧跟着它的一整串（空格即断）；接不上时间词时 `~` 当普通字符留在标题里。
+- `syntax.ts` 的 `taskToSentence` 生成 `~日期 ~钟点 ~循环`（三段各带一个 ~，中间有空格）；`UNSAFE_NAME` 加 `~～`。
+  **这是最容易漏的一处**：不补 ~ 会让往返对账全线判不一致，所有带时间的任务掉进「快捷改」降级。
+- 连带：`SyntaxInput` / `mobile/quickAddMerge` 两份 `TOKEN_RE` 认 ~ 作边界；`smoke.ts` 自检句；`GuideContent` 新增一节「时间前面打个 ~」（正反两张卡）+ 各节例句全改；三处 placeholder；`TaskCard` / `TaskSheet` 的子任务 placeholder。
+- `tests/tilde-time.test.ts` 25 条（含「界面文案要跟规矩对得上」一组源码断言）。老断言「标题含日期词 → 不 safe」按新规矩如实改写。
+
+**D · 「数据打不开」那一屏从死胡同改成有出路（最高优先级）**
+- 根因：`App.tsx` 在画那一屏之前就提前 return，侧栏/设置页/更新弹窗/登录窗统统没上树，**那颗「打开设置」是个死按钮**（v1.8.0 起）。
+- 新的 `DataErrorScreen`：显示当前数据文件夹完整路径 + 五条真出路（重试 / 去别处找找 / 换个文件夹 / 检查更新 / 退出登录），有数据时多给「导出一份 JSON」。`DataRescue` 那张选择卡能就地挂出来。
+- `store.ts`：读成功就算成功——写盘/备份失败只给提示条，不再上墙；已登录且盘上没有账本文件时不再自造「工作/生活」两条清单（云端多出重复清单的来源）。
+- `syncCtl.ts` 新增开机自动取回，**三道硬闸门**：盘上连账本文件都没有（不是「读出来 0 件事」）+ 已登录 + 云端有内容。取前留备份，取后侧栏给可点回执。现成的「是不是全新设备」判据不能用（它规定同步过的一律不算全新）。
+- `Sidebar.tsx`：`revealCloudSection` 抽成通用的 `revealSetSection(节id, 锚点)`，「数据异常」那行跟「同步失败」一样能点。
+- `tests/data-error-exits.test.ts` 28 条。
+
+**C · 电脑任务卡：点卡片里别处，六个小浮层一起收**
+- `TaskCard.tsx` 顶部那条 document mousedown 三岔路（顺序不能乱）：不是当前那张 → return；点到卡外 → 落库 + 收卡；**点在卡里且不在 `.popmenu` / `.pill` 上 → `closeMenus()` 只收浮层**。
+- 带输入框的需求方 / 标签在收之前走 `commitWho` / `commitTags`。「放过 `.pill`」是硬需求：mousedown 早于 click，不放过等于按不动。
+- v1.9.0 那三颗钉子原样保住并重新钉：任务卡 DateField 上不给 `onDone`、落库回调里不关浮层、点日历格留窗。
+
+**I · 手机任务卡整体重做（用户 9/14 拍板，推翻 9/02 的「一件事一行，绝不折行」）**
+- 圆角/投影/裁切从 `.mcard` 下放到每行的 `.swipe-wrap`，删掉行间发丝线，`.mcard` 退成透明容器——五个视图 JSX 一个字没改。
+- `MobileRow` 改成「左边圈 + 右边一叠」：标题独占第一层、`line-clamp: 2`（约 32 字），日期/母任务名收到第二层；`--m-row-h` 从「固定高」变「最矮多高」；`PARENT_MAX` 6 → 14。
+- 详情纸子任务：看的一档 `line-clamp: 2`，改的一档从单行 `<input>` 换成复用 `autogrow.ts` 的 `textarea`。
+- 习惯页跟同一形制（有断言钉死）。首屏件数 9 → 6~7，是用户认下的取舍。
+
+**H · 关掉安卓原生按下高亮，补自家反馈**
+- 根因：全仓从没写过 `-webkit-tap-highlight-color`，安卓 WebView 用出厂默认的 Holo 蓝；`.set-head` 又通栏又直角，按下去就是一条蓝横杠。
+- `base.css` 全局关掉（**全仓唯一一处，删了所有页面的蓝条一起回来**），然后按已有的成对写法（老式底色兜底 + `color-mix` 压深）补回：设置标题行**故意不铺底色**（铺了还是通栏横条，只是从蓝换成灰），改成标题和小三角变主题色；底部导航、更多页四宫格、顶栏按钮、版本日志手风琴各补一条。
+- 从今往后手机上新加的可点元素，谁加谁补 `:active`。
+
+**F · 更多页拖动换位：跟手 + 其他行让位**
+- `touchSort.ts` **只增不改**（`useLongPressSort` 等桌面侧栏共用的一个字没动），新增纯函数 `slotOf / shiftOf / dropKeyOf / clampDy / settleDy / edgeScroll` + 新钩子 `useCardSort`。
+- 落点线整条撤掉，落点改成「让出来的空位」；行的位移写在**行内 style**（每行各走各的距离），所以 `.mli.lifted` 里故意没有 transform。拖到上下边缘列表自己滚。
+- `store.ts` 的 `moveBefore/moveList/moveWho` 落点参数放宽成 `string | null`（null = 排队尾）——不放宽的话拖到最后松手会停在倒数第二格。
+- 拖动全程不写数据，松手且真换了位置才落一次。`tests/mobile-reorder.test.ts` 63 条（几何纯函数单独一节，jsdom 里 `getBoundingClientRect` 全返回 0）。
+
+**B · 手机账号入口**
+- `Settings` 加三个**可选**字段 `autoLogin / profileName / profileAvatar`，靠 `{ ...defaultSettings(), ...d.settings }` 自动补齐，**`DATA_VERSION` 仍是 8**（动了会把没升级的桌面端挡成 409）。设置天生不参与同步（`merge.ts` 的 `settings: local.settings`），所以这三样是「这台设备的事」。
+- `MobileHead` 加 `account` prop（**只有 Today 传**），新建 `mobile/AccountSheet.tsx` 走现成抽屉栈。退出登录从四步变两步，接的是「只退出登录，保留本机」——**「退出并清空本机」永远只在设置 → 云账号，永远先过 `checkWipeGate`**。
+- 头像走 `input type=file` + canvas 压到 128×128 JPEG（整份数据每次同步连它一起传，服务端单账号 5MB）。
+- `autoLogin` 口径「缺字段 = 开着」（`v !== false`），老数据和桌面端升上来不会被踢下线；关掉的当场 `cloud.saveSession(null)`。
+
+**A · 网页版（这一版走第二位的原因）**
+- `platform.ts` 从两个开关拆成六个：`isMobile`（只说长相）/ `hasDesktopFeatures`（只说长相，= !isMobile）/ `isDesktopShell`（真装在电脑上的那个）/ `isWeb` / `canSaveFile` / `isWebBuild`。**判「按了要真管用」一律用 `isDesktopShell` / `canSaveFile`。** `inTauri` 真源从 `persist.ts` 挪进 `platform.ts`（`persist.ts` 转手再导出，全仓十几处 import 没改）。
+- `persist.ts` 浏览器分支 localStorage → IndexedDB（上层一行没动）。三条规矩：没有 IndexedDB 那条路一个 `await` 都不许有（`store.test` 的防抖 400ms 钉着）、写成功就删掉 localStorage 那份、老数据自动搬家。新增公用的 `downloadTextFile` / `pickTextFile`。
+- 四个「说的和做的不一样」修掉：设置页全局快捷键/导入导出、统计页导出按钮、账号面板导出、全局屏蔽右键（只留给 Tauri）。
+- PWA：`manifest.webmanifest` + 192/512 图标（`start_url` / `scope` 都是 `/app/`）、`index.html` 那几行声明、`base.css` 的 `100dvh`（`@supports` 包着，老引擎那条 100% 必须留）+ `overscroll-behavior: none`。
+- 「添加到主屏幕」引导住在 `MobileMore.tsx`（导出 `useAddToHome / AddToHomeNudge / hushAddToHome`，`MobileShell` 反向引用会成环）。关掉的标记 `acorn-a2hs-off`，必须 `acorn-` 开头（清空本机按前缀扫）。
+- `webUpdate.ts`：网页版没有「检查更新」，改成轻量版本轮询 → 借现成 toast 提一句「有新版了，点这里刷新」。
+- 发布：`vite.config.ts` 加 web 构建（`dist-web`）、`nginx-acorn.conf` 加 `location /app/`（`/`、`/api/`、`/download/` 三段不动）、新建 `server/deploy/publish-web.sh`（**不走 10 的 `publish_utility.py`**，那条通道校验工具页模板）。介绍页加「打开网页版」按钮 + iPhone 添加到主屏说明。
+- 字体：网页版首屏 ~183 KB 可看可用，5.5 MB 字体后跟；桌面/安卓两端仍是本地文件，没改。
+
+**E · 手机日历周视图，每天一张能摊开的卡**
+- 每天从「一行」变「一张卡」：原来那一行原样当表头（收起来一个像素没动），底下接展开区，把原先钉在屏幕最下面那块清单的内容搬进来；`.cal-daylist` 改成只在月视图渲染，两处共用同一个 `DayRows`。
+- 一次只摊开一张；切到周视图默认摊开今天（别回到 v1.12.0「下面全是留白」）。展开区**挡住点击冒泡**，否则 `MobileRow` 的右滑/左滑/长按会把卡当场关掉。
+- 七行的高度仍写在 `.mshell` 自己那节——横屏视口 892px，760px 的媒体查询整段失效（有历史教训）。顺带修了「周三」标签在横屏下整个消失。
+
+**这一版没做、明确留着的**
+- 安卓开机广播 + 前台服务（「提醒不开 App 也能响」）：独立功能，通知栏常驻 + 耗电 + 国产手机逐层放行，要用户单独点头。这一版手机上的「自动启动」只给一句实话。
+- 「卡片单独摘出来、不进 Utility」：那是 cdpandas 门户首页的卡片归属，代码在 10-Platform，已留言。
+- 离线可用（Service Worker）、推送通知：用户明确说先不做。
+- 版本 1.15.0；测试 63 文件 2037 条全绿（开工时 57 文件 1800 条）。
+
 ## v1.14.3 · 2026-09-09
 
 > 用户问：「电脑版没更新对吧，这种情况下点开还是会弹出来更新到 1.14.2，这种怎么处理？」

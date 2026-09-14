@@ -3,7 +3,10 @@
    ASCII / 常用标点符号」子集出来的 woff2（约 8000 字），四个文件合计约 5.5 MB；
    以前那套按 unicode-range 切成 582 片的文楷 Lite 在安装包里占 35 MB，而且正文一直是系统字体，两端不一致。
    子集外的生僻字会回落到后面的系统字体（微软雅黑 / 安卓自带的思源），不会缺字，只是那一个字风格略有出入。
-   子集化脚本与字符集见 CHANGELOG v1.11.0；重跑：fontTools.subset --text-file=chars.txt --flavor=woff2。 */
+   子集化脚本与字符集见 CHANGELOG v1.11.0；重跑：fontTools.subset --text-file=chars.txt --flavor=woff2。
+
+   注意：这份是**桌面包和安卓包**用的。网页版另有一份 fonts-web.css（只带正文、不带文楷），
+   vite 在 `--mode web` 下用别名换过去——改这里的字体时顺手看一眼那边要不要跟。 */
 
 @font-face {
   font-family: "Noto Sans SC";

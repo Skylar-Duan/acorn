@@ -35,7 +35,8 @@ export async function maybeRunSmoke(): Promise<boolean> {
     const reread = (await persist.loadData()).data;
     check("落盘后重读", !!reread && reread.tasks.some((t) => t.id === id1) && reread.tasks.find((t) => t.id === id2)?.done === true);
 
-    const p = parseQuickAdd("明天下午3点 交周报 /工作 @李哥 #紧要 !高", {
+    // 时间要打 ~ 才算数（v1.15.0 严格模式）：这句自检故意按用户该有的写法写
+    const p = parseQuickAdd("~明天下午3点 交周报 /工作 @李哥 #紧要 !高", {
       now: new Date(),
       listNames: ["工作"],
     });

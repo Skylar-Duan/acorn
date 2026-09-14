@@ -152,8 +152,11 @@ describe("④ 一次只摊开一节，走 core/useFold 的同组互斥", () => {
   it("侧栏那行同步指示还能把「云账号」掰开（它喊的是 acorn-set-cloud）", () => {
     expect(sections().map((s) => s.id)).toContain("cloud");
     expect(code).toContain('anchorId="set-cloud"');
-    expect(stripComments(nl(read("src/components/Sidebar.tsx"))))
-      .toContain('forceFoldOpen("cloud", "acorn-set-")');
+    // v1.15.0：掰开 + 滚过去抽成了通用的 revealSetSection(节 id, DOM 锚点)，
+    // 因为「数据异常」那行也要用同一套去「数据」那一节。云账号这条去处一个字没变
+    const side = stripComments(nl(read("src/components/Sidebar.tsx")));
+    expect(side).toContain('revealSetSection("cloud", "set-cloud")');
+    expect(side).toContain('forceFoldOpen(key, "acorn-set-")');
   });
 });
 
@@ -176,5 +179,70 @@ describe("⑤ 「通用」里放的是通用的东西，别的没混进来", () 
     const guideRow = body.slice(body.indexOf("快捷用语指南"), body.indexOf("周末指的是"));
     // 这一段里 hasDesktopFeatures 只用来挑措辞（三元），不能整行判掉（&&）
     expect(guideRow).not.toContain("hasDesktopFeatures && (");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⑥ v1.15.0 网页版：这一页上「按了要真管用」的几行，判据得换人。
+//
+// 以前只有 hasDesktopFeatures 一个开关（= !isMobile），于是**电脑上的浏览器**一开
+// 就被当成装好的桌面 App：摆一个按了没反应的全局快捷键、一颗点下去当场报「导出失败」的导出。
+// 现在拆成两件事，这一组逐行认定的就是「网页上到底该显示什么」：
+//   · 讲长相的（侧栏在哪、点哪儿记一条）留 hasDesktopFeatures —— 电脑浏览器仍是桌面那副样子
+//   · 讲本事的（系统热键、开机自启、换数据文件夹、开独立窗口）换 isDesktopShell
+//   · 讲「能不能把文件交到用户手上」的换 canSaveFile —— 浏览器走下载，只有安卓 App 给不了
+// ---------------------------------------------------------------------------
+describe("⑥ 网页上该显示什么：按了不管用的，一律不显示", () => {
+  it("🔴 全局快捷键只给装在电脑上的橡果：浏览器里注册不了系统级热键", () => {
+    const body = sectionBody("general");
+    // lastIndexOf：这一节的摘要里也提了一句「全局快捷键」，要的是底下那一行真正的开关
+    const row = body.slice(body.lastIndexOf("全局快捷键"));
+    // 整行判掉，而且判的是 isDesktopShell
+    expect(body).toContain("{isDesktopShell && (");
+    expect(row).not.toContain("hasDesktopFeatures");
+  });
+
+  it("开机自启 / 更换文件夹同理，而且不必再写 inTauri &&（isDesktopShell 已经含着它）", () => {
+    expect(code).toContain("开机自启");
+    expect(code).not.toContain("{inTauri && hasDesktopFeatures && (");
+  });
+
+  it("「打开用法」那句认 isDesktopShell：浏览器里开不了独立窗口，跟手机一样退成应用内那张纸", () => {
+    const body = sectionBody("general");
+    const guideRow = body.slice(body.indexOf("快捷用语指南"), body.indexOf("周末指的是"));
+    expect(guideRow).toContain("{isDesktopShell");
+    expect(guideRow).toContain("会开一个单独的窗口");
+  });
+
+  it("但「点侧栏的＋记一条」这句仍认 hasDesktopFeatures：那是长相，电脑浏览器也有侧栏", () => {
+    const body = sectionBody("general");
+    const guideRow = body.slice(body.indexOf("快捷用语指南"), body.indexOf("周末指的是"));
+    expect(guideRow).toContain('{hasDesktopFeatures ? "也可以点侧栏的「＋ 记一条」，"');
+  });
+
+  it("🔴 导出与导入认 canSaveFile：网页上要有，只有安卓 App 那一档说「请用云账号迁移」", () => {
+    const io_ = sectionBody("io");
+    expect(io_).toContain("{canSaveFile ? (");
+    expect(io_).toContain('summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}');
+    expect(io_).toContain("手机上不提供文件导出");
+  });
+
+  it("🔴 浏览器那条路是真接上了的：导出走下载、导入走选文件，不是摆着好看", () => {
+    // 这两句要是没了，网页上点导出就又回到「导出失败」那一幕
+    expect(code).toContain("downloadTextFile(");
+    expect(code).toContain("pickTextFile()");
+    // 而且是在「不在 Tauri 里」那一支上，不是把桌面那条顶掉
+    const exp = code.slice(code.indexOf("async function exportAs"), code.indexOf("async function importJson"));
+    expect(exp).toContain("if (!inTauri) {");
+    expect(exp).toContain("@tauri-apps/plugin-dialog");
+  });
+
+  it("🔴 导入前留底那句话，两端说的都得是各自真会发生的事", () => {
+    // 浏览器里没有 backups 文件夹，说「自动留一份恢复备份」就是骗人——那儿是下载给他
+    expect(code).toContain('"导入前会自动留一份恢复备份"');
+    expect(code).toContain('"导入前会先把现在这份下载下来留底"');
+    const imp = code.slice(code.indexOf("async function importJson"));
+    expect(imp).toContain("pre-import-");
+    expect(imp).toContain("acorn-导入前-");
   });
 });

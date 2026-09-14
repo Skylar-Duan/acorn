@@ -10,8 +10,13 @@
 // 跟 mobile-calendar.test.ts 一个路数：像素在 jsdom 里量不出来（没有布局引擎、没有媒体查询），
 // 真的宽度在 Playwright 那一轮量过（360 / 390 / 430 三个宽度，中间标题栏 224 / 254 / 294px，
 // 13px 的汉字写得下 17 / 19 / 22 个——所以走「显示文字」这条路，没退回只显示数量）。
-// 这里钉两件事：① weekLines 这个纯函数——一行列哪几条、还剩几条，「N 件」的口径不许被改走样；
-// ② 改法还在不在源码里，以及**桌面那一套一个字没动**。
+// v1.15.0 起这一行成了一张卡的**表头**：收起来长相一个像素不变（PM：「折叠后就是现在这样很好」），
+// 点一下在它自己底下摊开完整清单——原来那块清单摆在屏幕最底下，点第三天眼睛得甩到最下面去看
+// （PM：「每日做成卡片展开，不要放在最下面」）。见下面的 ⑤、⑥。
+//
+// 这里钉三件事：① weekLines 这个纯函数——一行列哪几条、还剩几条，「N 件」的口径不许被改走样；
+// ② 改法还在不在源码里，以及**桌面那一套一个字没动**；③ 卡的折叠：同时只开一张、
+// 默认开今天、摊开区挡住点击冒泡（不挡的话，手指在行上滑一下就把卡合上了）。
 // 样式只能用 node:fs 读：vitest 默认不处理 CSS，`import x from "a.css?raw"` 读回来是空串。
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -154,9 +159,10 @@ describe("② 手机周视图的源码：一天一行，日期 · 这天的事 �
     expect(weekBranch).toContain("{open.length}");
   });
 
-  it("点一行 = 切到这一天，跟月视图点一格一样；选中的那行自己有个样子", () => {
-    expect(weekBranch).toContain("onClick={() => setPicked(ymd)}");
-    expect(weekBranch).toContain('${shownDay === ymd ? " cal-picked" : ""}');
+  // v1.15.0 起点一行不再只是「选中」，而是把这一天摊开／收起（见下面 ⑥）。
+  // 「选中的那天自己有个样子」这条规矩没变，只是换成了「摊开的那张」
+  it("摊开的那张表头自己有个样子（原来那条 cal-picked 的规矩没丢）", () => {
+    expect(weekBranch).toContain('className={`cal-wrow${unfolded ? " cal-picked" : ""}`}');
   });
 
   it("周视图这一支不画点阵、不画条目、不画补记框、不拖放", () => {
@@ -174,19 +180,30 @@ describe("② 手机周视图的源码：一天一行，日期 · 这天的事 �
 });
 
 describe("③ 周视图那一行怎么摆（样式，全在 .mshell 里）", () => {
-  it("行高钉死 60px：七行一模一样高，一眼比得出哪天最满", () => {
+  // v1.15.0：60px 从网格的 grid-auto-rows 挪到表头 .cal-wrow 自己身上——网格现在按内容定高
+  // （卡摊开了要长出来），行高还是得钉死，不然七张卡的表头不一样高
+  it("表头高度钉死 60px：七张卡收起来一模一样高，一眼比得出哪天最满", () => {
     const cell = weekCss.slice(weekCss.indexOf(".mshell .cal-grid.week .cal-wrow {"));
     const body = cell.slice(0, cell.indexOf("}"));
+    expect(body).toContain("display: flex;");
     expect(body).toContain("flex-flow: row nowrap;");
     expect(body).toContain("align-items: center;");
+    expect(body).toContain("height: 60px;");
   });
 
-  it("🔴 「七列拍成七行」写在 .mshell 自己这儿，不蹭那段 760px 的媒体查询", () => {
-    // 手机一转横屏视口就是 892px，媒体查询整段失效。只留 grid-auto-rows: 60px 的话，
-    // 竖排列表当场散成七根 60px 高的挤压柱子（标题只剩「装·」一个字加省略号）
+  it("🔴 「七列拍成七行」「表头 60px」都写在 .mshell 自己这儿，不蹭那段 760px 的媒体查询", () => {
+    // 手机一转横屏视口就是 892px，媒体查询整段失效。这几条要是挪进去，
+    // 竖排列表当场散成七根挤压柱子（标题只剩「装·」一个字加省略号）
     expect(weekCss).toContain(
-      ".mshell .cal-grid.week { padding: 6px 4px; grid-template-columns: 1fr; grid-auto-rows: 60px; }",
+      ".mshell .cal-grid.week { padding: 6px 4px; grid-template-columns: 1fr; grid-auto-rows: min-content; }",
     );
+    // 卡自己也一样：媒体查询里那条 .cal-grid.week .cal-cell 会给它横排 + 9px 11px 的内边距，
+    // 横屏下失效、竖屏下生效 —— 两边都得由 .mshell 这一条统一盖掉
+    const card = weekCss.slice(weekCss.indexOf(".mshell .cal-grid.week .cal-wcard {"));
+    const cardBody = card.slice(0, card.indexOf("}"));
+    expect(cardBody).toContain("flex-flow: column nowrap;");
+    expect(cardBody).toContain("padding: 0;");
+    expect(cardBody).toContain("overflow: hidden;");
     // 「一二三四五六日」那排列头跟竖排的一天一行对不上，横屏下也得关掉
     expect(weekCss).toContain(".mshell .cal-body.cal-week-mode .cal-week { display: none; }");
     // 同一个道理：能滚这件事也不能只写在媒体查询里，否则横屏下七行里后四行滚都滚不到。
@@ -196,10 +213,15 @@ describe("③ 周视图那一行怎么摆（样式，全在 .mshell 里）", () 
     expect(grid.slice(0, grid.indexOf("}"))).toContain("flex: none;");
   });
 
-  it("🔴 .cal-wrow 不是个摆设：TSX 挂了它，行内那套摆法就真写在它身上", () => {
-    expect(stripComments(calendarSource)).toContain("cal-cell cal-wrow");
+  it("🔴 .cal-wcard / .cal-wrow 不是摆设：TSX 挂了它们，样式就真写在它们身上", () => {
+    const src = stripComments(calendarSource);
+    expect(src).toContain("cal-cell cal-wcard");
+    expect(src).toContain("cal-wrow");
+    expect(weekCss).toContain(".mshell .cal-grid.week .cal-wcard {");
     expect(weekCss).toContain(".mshell .cal-grid.week .cal-wrow {");
-    expect(weekCss).toContain(".mshell .cal-grid.week .cal-wrow + .cal-wrow { border-top: 1px solid var(--m-sep); }");
+    // 🔴 分隔线挂在**卡**之间，不是行之间：挂在行上，表头跟它自己摊开的那块中间会多一道线
+    expect(weekCss).toContain(".mshell .cal-grid.week .cal-wcard + .cal-wcard { border-top: 1px solid var(--m-sep); }");
+    expect(weekCss).not.toContain(".cal-wrow + .cal-wrow");
   });
 
   it("左边日期那一柱固定 30px，几号在上周几在下——七行的日期对得成一条竖线", () => {
@@ -268,7 +290,7 @@ describe("④ 桌面的日历一个像素没动", () => {
   });
 
   it("🔴 新写的那几个类名一个都没漏进桌面那一段", () => {
-    for (const s of ["cal-wrow", "cal-wdate", "cal-wpeek", "cal-wtitle", "cal-wline", "cal-wmore", "cal-wnum"]) {
+    for (const s of ["cal-wcard", "cal-wfold", "cal-wrow", "cal-wdate", "cal-wpeek", "cal-wtitle", "cal-wline", "cal-wmore", "cal-wnum"]) {
       expect(beforeMshell, s).not.toContain(s);
     }
   });
@@ -284,28 +306,135 @@ describe("④ 桌面的日历一个像素没动", () => {
   });
 });
 
-describe("⑤ 底下那块完整清单：周视图也留着，跟行里的预览不是两份一样的东西", () => {
+// v1.15.0 · PM 原话：「手机版，日历界面，周界面，每日做成卡片展开，不要放在最下面，
+// 折叠后就是现在这样很好」。
+// v1.14.1 那版是「七行 + 屏幕最底下一块清单」：点第三天，眼睛得甩到屏幕最下面才看得见内容。
+// 现在每一天是一张卡 —— 收起来就是原来那一行（一个像素不变），点一下在**它自己底下**摊开
+// 完整清单；月视图底下那块照旧，因为月视图一格里根本写不下字。
+describe("⑤ 每一天是一张能摊开的卡", () => {
+  const weekBranch = calendarSource.slice(
+    calendarSource.indexOf('if (mode === "week") {\n                const { lines, rest }'),
+    calendarSource.indexOf("const dots = dayDots("),
+  );
+
+  it("卡 = 表头 + 摊开区；表头才是开关，点已经开着的那张就收回去", () => {
+    expect(weekBranch).toContain('className={`cal-cell cal-wcard${unfolded ? " cal-open" : ""}`}');
+    expect(weekBranch).toContain('className={`cal-wrow${unfolded ? " cal-picked" : ""}`}');
+    expect(weekBranch).toContain("onClick={() => setPicked((cur) => (cur === ymd ? null : ymd))}");
+    expect(weekBranch).toContain('className={`cal-wfold${unfolded ? "" : " shut"}`}');
+  });
+
+  it("🔴 同时只摊开一张：沿用 picked 这一个值，不另开一个 state（两个值早晚不同步）", () => {
+    expect(weekBranch).toContain("const unfolded = picked === ymd;");
+    expect(stripComments(calendarSource)).not.toMatch(/useState[^\n]*(expandedDay|openDay|foldDay)/);
+  });
+
+  it("🔴 摊开区必须挡住点击冒泡——里面的行自带右滑完成 / 左滑动作条 / 长按动作单，"
+    + "手指一落要是冒泡上去，这张卡会当场合上", () => {
+    const fold = weekBranch.slice(weekBranch.indexOf('className={`cal-wfold'));
+    expect(fold).toContain("onClick={(e) => e.stopPropagation()}");
+    // 且这道闸在 DayRows 之前就拦住：截在摊开区容器上，不是靠每一行自己去截
+    expect(fold.indexOf("stopPropagation")).toBeLessThan(fold.indexOf("<DayRows"));
+  });
+
+  it("🔴 摊开的那天不再画预览：完整清单就贴在表头底下，同一张卡上摆两遍是重复", () => {
+    expect(weekBranch).toContain("{unfolded ? null : lines.map((l, i) => (");
+  });
+
+  it("🔴 切到周视图默认摊开今天：一进来下半屏就有内容，不许回到 v1.12.0 那片留白", () => {
+    expect(calendarSource).toContain('if (isMobile) setPicked(m === "week" ? today : null);');
+    // 一进页面就已经是周视图（上次关掉时停在周）时同样得摊开今天
+    expect(calendarSource).toContain('isMobile && loadMode() === "week" ? today : null,');
+    // 「今天」那颗键也一样：周视图下把今天那张摊开，不是把七张全收起来
+    expect(calendarSource).toContain('if (isMobile) setPicked(mode === "week" ? todayYMD() : null);');
+  });
+
+  it("🔴 三处数字仍然对得上：卡里摊开的行数 = 表头两个数之和 = 列出来的 + 「+N」", () => {
+    // 摊开区喂的就是表头那两个数用的同一对 open / done —— 不是另取一份、也没再筛一道
+    expect(weekBranch).toContain("<DayRows open={open} done={done} />");
+    expect(weekBranch).toContain("const doneN = done.length;");
+    expect(weekBranch).toContain("weekLines(open, done, late, MAX_WEEK_LINES)");
+  });
+
+  it("摊开区照抄设置页 .set-fold 那套折叠：1fr↔0fr + visibility，时长走 --dur-2", () => {
+    const fold = weekCss.slice(weekCss.indexOf(".mshell .cal-wfold {"));
+    const body = fold.slice(0, fold.indexOf("}"));
+    expect(body).toContain("grid-template-rows: 1fr;");
+    expect(body).toContain("overflow: hidden;");
+    expect(body).toContain("transition: grid-template-rows var(--dur-2) var(--ease);");
+    // 收起来：高度压成 0 + 关掉命中与朗读。两条 transition 必须写在同一句里——
+    // transition 是简写，分两句写后一句会把前一句顶掉，折叠就成了瞬间跳变
+    const shut = weekCss.slice(weekCss.indexOf(".mshell .cal-wfold.shut {"));
+    const shutBody = shut.slice(0, shut.indexOf("}"));
+    expect(shutBody).toContain("grid-template-rows: 0fr;");
+    expect(shutBody).toContain("visibility: hidden;");
+    expect(shutBody).toContain(
+      "transition: grid-template-rows var(--dur-2) var(--ease), visibility var(--dur-2) var(--ease);",
+    );
+    // min-height / min-width 成对归零：grid 子项默认收不到内容最小宽度以下，
+    // 少一条，一条长标题就能把整张卡撑出屏幕（设置页踩过同一个坑）
+    const inner = weekCss.slice(weekCss.indexOf(".mshell .cal-wfold > .cal-wfold-inner {"));
+    const innerBody = inner.slice(0, inner.indexOf("}"));
+    expect(innerBody).toContain("min-height: 0;");
+    expect(innerBody).toContain("min-width: 0;");
+  });
+
+  it("摊开的那张：表头那道 accent 竖杠接到摊开区，两块读成同一天的一张卡", () => {
+    expect(weekCss).toContain(
+      ".mshell .cal-grid.week .cal-wcard.cal-open .cal-wfold { box-shadow: inset 3px 0 0 var(--accent); }",
+    );
+    expect(weekCss).toContain(".mshell .cal-grid.week .cal-wrow.cal-picked {");
+  });
+
+  it("卡里那张 .mcard 不再自带纸：网格本身已经是一张纸，纸上叠纸是两层投影", () => {
+    // 选择器写够长，免得被同文件里那条给 .mcard 归零外边距的规则盖过去
+    expect(weekCss).toContain(".mshell .view-body.cal-body .cal-wfold .mcard {");
+    const mc = weekCss.slice(weekCss.indexOf(".mshell .view-body.cal-body .cal-wfold .mcard {"));
+    expect(mc.slice(0, mc.indexOf("}"))).toContain("box-shadow: none;");
+  });
+});
+
+describe("⑥ 底下那块完整清单：只留给月视图，周视图的清单在各自的卡里", () => {
   const list = calendarSource.slice(
-    calendarSource.indexOf("{isMobile &&\n          (() => {"),
+    calendarSource.indexOf("{isMobile && mode === \"month\" &&\n          (() => {"),
     calendarSource.indexOf("{!isMobile && picked && ("),
   );
 
-  it("常驻列表没有按月/周分叉，点哪天就列哪天——周视图点一行同样切过去", () => {
-    expect(list).toContain("const day = picked ?? today;");
-    expect(list).toContain('<div className="cal-daylist">');
-    expect(list).toContain("<MobileRow key={t.id} task={t} />");
-    // 这块不看 mode：切到周视图不该让它消失，也不该另写一份
-    expect(stripComments(list)).not.toContain("mode");
+  it("🔴 周视图不再在屏幕最底下另摆一块——PM 原话「不要放在最下面」", () => {
+    expect(list.length).toBeGreaterThan(200);
+    expect(calendarSource).toContain('{isMobile && mode === "month" &&');
   });
 
-  it("行里只是预览（最多两条 + 「+N」），完整的能点能滑的清单只有底下那一份", () => {
-    expect(calendarSource).toContain("const MAX_WEEK_LINES = 2;");
-    // 周视图那一支不许自己再渲染一遍 MobileRow
-    const weekBranch = calendarSource.slice(
-      calendarSource.indexOf('if (mode === "week") {\n                const { lines, rest }'),
-      calendarSource.indexOf("const dots = dayDots("),
+  it("月视图那块照旧：点哪天列哪天，默认今天，一条都没有时一句「这天没有安排」", () => {
+    expect(list).toContain("const day = picked ?? today;");
+    expect(list).toContain('<div className="cal-daylist">');
+    expect(list).toContain("<DayRows open={open} done={done} />");
+    expect(calendarSource).toContain("这天没有安排");
+  });
+
+  it("🔴 两处共用同一份清单（DayRows），不许各抄一遍——抄两遍早晚走样", () => {
+    const rows = calendarSource.slice(
+      calendarSource.indexOf("function DayRows("),
+      calendarSource.indexOf("/** 月 / 周（v1.9.1）"),
     );
-    expect(weekBranch).not.toContain("MobileRow");
-    expect(weekBranch).not.toContain("cal-daylist");
+    expect(rows).toContain("<MobileRow key={t.id} task={t} />");
+    expect(rows).toContain("<MobileRow key={rowKey(r)} task={r.task} sub={r.sub} doneDate={rowDoneDay(r)} />");
+    expect(rows).toContain('<div className="mcard">');
+    expect(rows).toContain("这天没有安排");
+    // 手机这一路只此一处渲染 MobileRow、只此一处写那句「这天没有安排」
+    // （桌面窄屏那块 {!isMobile && picked &&} 是另一套行，它自己那句不算）
+    const mobilePart = calendarSource.slice(0, calendarSource.indexOf("{!isMobile && picked && ("));
+    expect(mobilePart.split("<MobileRow").length - 1).toBe(2);
+    expect(mobilePart.split("这天没有安排").length - 1).toBe(1);
+  });
+
+  it("表头里仍然只是预览（最多两条 + 「+N」），能点能滑的整条清单在摊开区里", () => {
+    expect(calendarSource).toContain("const MAX_WEEK_LINES = 2;");
+    const head = calendarSource.slice(
+      calendarSource.indexOf('className={`cal-wrow${unfolded'),
+      calendarSource.indexOf('className={`cal-wfold${unfolded'),
+    );
+    expect(head).not.toContain("MobileRow");
+    expect(head).not.toContain("DayRows");
   });
 });

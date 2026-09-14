@@ -177,6 +177,28 @@
   display: grid;
   place-items: center;
 }
+/* 右上角那颗头像圆钮（v1.15.0，只有「今天」摆一颗）。
+   跟搜索那颗一样大、排在它右边，但长相反过来：搜索是浮起来的白纸片，
+   头像是**实心的一小片主题色**——一眼看得出这颗不是又一个工具，是「你自己」。
+   overflow:hidden 是给上传的那张图用的：它自己不带圆角，靠这颗圆钮把它裁圆 */
+.mhead-avatar {
+  width: var(--m-touch);
+  height: var(--m-touch);
+  flex: none;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+/* cover 而不是 contain：头像框是圆的，图得填满它，宁可裁掉圆外面看不见的那两条 */
+.mhead-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mhead-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .mhead-count { font-size: 13px; color: var(--ink-3); flex: none; }
 
@@ -297,7 +319,13 @@
   flex: none;
 }
 
-/* ---------- 列表：一组一张卡（画板 ①，A 版） ---------- */
+/* ---------- 列表：一件事一张卡（v1.15.0） ----------
+   v1.11.2~v1.14 是「一组一张长卡」：卡里一行接一行，中间只有一根发丝线。
+   用户 2026-09-14 的原话：「卡片感弱，一长条只能横拖查看」——一张被切成好几条的长纸，
+   既读不出「这是一件事」，也没地方让标题折行。
+   这一版把纸**下放到每一行**：.mcard 退成透明的容器，圆角 / 投影 / 裁切都归 .swipe-wrap
+   （它本来就 overflow: hidden，本来就是一行的外框），卡与卡之间留一道 --m-card-gap。
+   五个视图的 JSX 一个字没动，换的只是这几条 CSS。 */
 .mcard {
   margin: 0 12px;
   border-radius: var(--m-card-radius);
@@ -310,11 +338,20 @@
 .mcard + .mcard { margin-top: 8px; }
 /* 「更多」里那张单独一行的卡（随手记）：前面是四宫格，得自己隔开一段 */
 .mcard-solo { margin-top: 14px; }
-/* 行与行之间一根发丝线，**从打卡圈之后起**（16 左内距 + 26 圆圈 + 14 = 56px，画板 A 那个数）。
-   通栏那种一刀切下来的线把一张卡切成好几片；缩进之后一列圆圈是连着的，整张卡才是一张纸。
-   画在 .swipe-wrap 上而不是行本体上：行本体会跟着手指左右跑，分隔线得钉在原地。
-   用伪元素而不是 border-top：border 没法只画一截。z-index 是必需的——
-   行本体（.swipe-body）是定位元素且底色不透明，不抬上来这根线会被它盖掉 */
+
+/* 装的是「一行行事」的那种卡，整个退成透明容器，纸让给每一行自己。
+   **为什么用 :has 而不是给那五个视图加一个类**：同一个 .mcard 还装着别的东西——
+   「更多」页那三张表装的是 .mli（清单 / 需求方 / 标签），那几张仍然是「一组一张卡」；
+   习惯页装的是 .mhb-row，它自己在 mobile-pages.css 里直接点名跟上。
+   :has 正好把「装的是什么」这件事说清楚，也就不用去动那五个视图的 JSX。
+   认不得 :has 的老引擎（Chrome 105 以前，那也是不认 color-mix 的那一档）两条规则一起失效，
+   看到的就是 v1.14 那副「一组一张长卡」的长相——退化一档，不会坏。
+   overflow 要放开：每张小卡自己裁切，父盒子再裁一次会把投影切掉半圈 */
+
+/* 先把 v1.14 那根发丝线原样留作**底子**：老引擎认不得 :has，整组新规则一起失效，
+   要是这根线也没了，一整张长卡就是一大块连着的字，一件事跟下一件事之间没有任何分界。
+   新引擎看到下面 :has 那一组里把它关掉（content: none），显示的还是「一件事一张卡」。
+   56px = 16 左内距 + 26 圆圈 + 留白，跟「更多」页那几张表同一条竖线 */
 .mcard > .swipe-wrap + .swipe-wrap::before {
   content: "";
   position: absolute;
@@ -326,6 +363,27 @@
   z-index: 2;
   pointer-events: none;
 }
+
+.mshell .mcard:has(> .swipe-wrap) {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.mshell .mcard:has(> .swipe-wrap) > .swipe-wrap {
+  border-radius: var(--m-card-radius);
+  background: var(--card);
+  box-shadow: var(--m-card-shadow);
+}
+.mshell .mcard:has(> .swipe-wrap) > .swipe-wrap + .swipe-wrap { margin-top: var(--m-card-gap); }
+/* 卡已经各自分开了，中间再画一根线就是「分开的两张纸中间还夹着条线」——把上面那根底子关掉。
+   日历周视图那边仍然是「一天一张卡、卡里一条条列」，它在 calendar.css 里用更长的选择器
+   把这根线又点回来了，那边不受影响 */
+.mshell .mcard:has(> .swipe-wrap) > .swipe-wrap + .swipe-wrap::before { content: none; }
+/* 右滑露出来的那层绿底得跟着圆。.swipe-wrap 的 overflow: hidden 本来就会裁，
+   但它底下躺着的是个 transform 元素，老引擎在「圆角 + transform」这一组上裁不干净，
+   会在四个角露出直角的绿。让它自己也圆一份，多这一句永远不亏（inherit 取的就是上面那个值） */
+.mshell .mcard:has(> .swipe-wrap) > .swipe-wrap > .swipe-under { border-radius: inherit; }
 
 /* 「已完成 · N  展开」：今天页把做完的那一组默认收成一行。
    跟 .group-head.split 一个间架：满宽一行、胶囊在左、「展开」贴右缘，只是胶囊淡一档
@@ -358,24 +416,37 @@
 
 .mshell .empty { padding: 48px 18px; }
 
-/* ---------- 一行事（画板 ①②，A 版） ---------- */
+/* ---------- 一行事（v1.15.0：一张卡，标题读得完） ----------
+   v1.14 是「一排横的 flex」：圈 · 小圆点 · 标题 · 日期，日期一直占着右边那一格，
+   390 宽的屏上标题实际只剩约 226px ≈ 14 个中文字，再被子任务那颗「母任务名 ›」一挤只剩 9 个。
+   这一版改成「左边一个圈 + 右边一叠」：标题独占第一层、最多折两行，
+   日期和母任务名收进第二层小字。首屏能看的件数从约 9 件降到 6–7 件——
+   用户 2026-09-14 认下了这个代价，换的是「一次性读完」。 */
 .mrow {
   display: flex;
+  /* 居中而不是顶对齐：一行字的行（清单里的大多数）靠 min-height 撑到 60 高，
+     顶对齐的话字会吊在上沿、底下空一大截。折成两行时圈落在两行中间，也还是稳的 */
   align-items: center;
   gap: 12px;
-  height: var(--m-row-h);
-  padding: 0 16px;
+  /* 定高改下限（--m-row-h 的语义跟着变，见 mobile.css）：一行字还是 60 高，
+     折了两行、或者底下挂了小字，就自己长高 */
+  min-height: var(--m-row-h);
+  padding: var(--m-row-pad) 16px;
   /* 上下留给列表滚动，左右归 useSwipeRow */
   touch-action: pan-y;
 }
-/* 画板 A 把一行的顺序换了：**先打卡圈**，再那颗表示重要性的小圆点，然后才是标题。
-   圈站在最左边、一列连成一条，是这一版「点得准、看得顺」的骨架。
-   DOM 里色条排在圈前面（MobileRow 这一版不归我动），所以用 flex 的 order 把视觉顺序摆对。
-   四件都得写 order：不写的默认是 0，会整个跑到 order:1 前面去 */
-.mrow-cb { order: 1; }
-.mrow-bar { order: 2; }
-.mrow-title { order: 3; }
-.mrow-when { order: 4; }
+/* 顺序就是 DOM 顺序：圈 → 小圆点 → 右边那一叠。
+   v1.14 那三条 order 是给「色条排在圈前面」那版 DOM 打的补丁，
+   v1.15.0 重写 MobileRow 时把 DOM 本身摆对了，补丁就不需要了 */
+/* 右边那一叠：标题在上，日期 / 母任务名在下。min-width: 0 少不了——
+   不给的话 flex 子项的最小宽度是内容宽度，长标题会把整张卡撑破而不是折行 */
+.mrow-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 /* 重要性从「一根 3px 的竖条」改成 A 那颗 8px 的小圆点（画板里的 .dot）。
    没设重要性的也画一颗极淡的，一列才不参差 */
 .mrow-bar { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--hair); }
@@ -421,29 +492,45 @@
   transform: rotate(40deg);
 }
 
-/* 一件事一行，绝不折行——这是手机版最要紧的一条 */
+/* 标题：最多折两行，第三行起省略号（v1.15.0 推翻了 2026-09-02 定的「绝不折行」）。
+   -webkit-line-clamp 必须配 display: -webkit-box + box-orient，三句是一套，少一句就不生效。
+   字号回到 16：日期不再跟它抢同一行了，15.5 那半档是当初挤出来的，现在不用挤 */
 .mrow-title {
-  flex: 1;
-  min-width: 0;
-  /* 15.5 而不是 16：标题小了半档，母任务那颗胶囊和右边的日期才挤得下（画板 A） */
-  font-size: 15.5px;
+  font-size: 16px;
   line-height: 22px;
   color: var(--ink);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  /* 长英文 / 长链接不换行的话会顶破卡片，折行也救不了 */
+  overflow-wrap: anywhere;
 }
-/* 子任务行前面那句「母任务名 ›」：A 把它从一句灰字换成一颗小胶囊，
-   「这是别人家的一步」这件事被圈起来说，而不是靠颜色淡下去暗示 */
+/* 第二层小字：母任务名 · 日期。一行装不下就裁掉，不许再折——
+   第二层再折下去，一张卡就没有下限了 */
+.mrow-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+/* 子任务那句「母任务名 ›」：A 把它从一句灰字换成一颗小胶囊，
+   「这是别人家的一步」这件事被圈起来说，而不是靠颜色淡下去暗示。
+   v1.15.0 它从标题前面挪到了第二层——标题那一行从此整行都是标题 */
 .mrow-parent {
-  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 11.5px;
+  line-height: 16px;
   color: var(--m-chip-ink);
   background: var(--m-chip-bg);
   border-radius: 999px;
   padding: 1px 8px;
-  margin-right: 6px;
-  vertical-align: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mrow-when {
   flex: none;
@@ -455,6 +542,8 @@
 .mrow.settled .mrow-title { color: var(--ink-3); text-decoration: line-through; }
 /* 按下去要有回应：轻点那一下底色微微变深，长按的头半秒也是同一个色
    （不同的话，同一根手指按在同一行上会看到两种反应）。
+   v1.15.0 起这一下变深是**整张卡**变深（行本体就是卡里的那张纸，四角跟着卡一起圆），
+   比 v1.14 那种「长卡里有一条变了色」明确得多。
    前一条是给不认 color-mix 的老 WebView 的退路 */
 .mrow:active, .mrow.pressing { background: var(--bg); }
 .mrow:active, .mrow.pressing { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
@@ -808,7 +897,9 @@
   font-size: 15.5px;
   text-align: left;
 }
-.mli + .mli { border-top: 1px solid var(--hair); }
+/* 「更多」那三张表仍然是「一组一张卡」（一个清单不是一件事，不该各占一张纸），
+   所以行与行之间那根线留着——v1.15.0 之后它是全手机端**唯一**还在用 --m-sep 的地方 */
+.mli + .mli { border-top: 1px solid var(--m-sep); }
 .mli .n { margin-left: auto; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .mli.add { color: var(--accent); }
 .mli .who-ava {
@@ -914,3 +1005,38 @@
    卡片会直接顶在标题下沿。有组标题的那几页不受影响（组标题自带 22px 上内距） */
 .mshell .view-body > .mcard:first-child,
 .mshell .view-body > .task-row:first-child { margin-top: 14px; }
+
+/* ---------- 按下去要有回应（v1.15.0） ----------
+   base.css 里把安卓 WebView 那层出厂的蓝高亮全局关了（那是用户点名的「古老感觉」）。
+   关掉之后这几处就成了「按下去毫无动静」，比蓝条还难受，所以同一版把自家的反馈补齐。
+   写法照抄现成的 .mrow:active / .mli:active：先一条老式底色兜底，再用 color-mix 微微压深，
+   不认 color-mix 的老 WebView 吃前一条——两条成对出现，别拆。
+   整节全锁在 .mshell 底下：电脑端有鼠标划过的 hover，一个字不动 */
+
+/* 底部导航：变深的是图标那颗胶囊，不是整格。
+   整格变深的话，五格里有一格被涂黑，比原来那条蓝还显眼 */
+.mshell .mnav-tab:active .mnav-ico { background: var(--hair); }
+.mshell .mnav-tab:active .mnav-ico { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+/* 当前那一格本来就垫着 accent-soft，按下去往主题色再走一档，才看得出「我按到的是它」 */
+.mshell .mnav-tab.on:active .mnav-ico { background: var(--accent-soft); }
+.mshell .mnav-tab.on:active .mnav-ico { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* 更多页那四张纸片：整张轻轻往下压一点，像纸被手指按实。
+   这儿写 transform 是安全的（跟一行事不一样，四宫格身上没有滑动用的 translateX） */
+.mshell .mmore-tile { transition: transform var(--dur-1) var(--ease); }
+.mshell .mmore-tile:active { transform: scale(.97); }
+.mshell .mmore-tile:active { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
+/* 账号那张横条也是可点的纸片，跟四宫格同一副反应 */
+.mshell .mmore-acct { transition: transform var(--dur-1) var(--ease); }
+.mshell .mmore-acct:active { transform: scale(.99); }
+
+/* 顶栏的两颗按钮：搜索那颗是浮起来的小纸片，按下去就让它落回纸面（影子收掉、底色压深一档）；
+   返回那颗是透明的，只能靠底色说话，圆成一颗正圆才不会又出现方块 */
+.mshell .mhead-btn:active { background: var(--bg); box-shadow: none; }
+.mshell .mhead-btn:active { background: color-mix(in srgb, var(--ink) 6%, var(--card)); box-shadow: none; }
+.mshell .mhead-plain:active { border-radius: 50%; background: var(--hair); }
+.mshell .mhead-plain:active { border-radius: 50%; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+/* 头像那颗：底色本来就是主题色的一层浅底，按下去往深里再走一档。
+   **不加缩放**——它挨着屏幕右上角，缩一下会像要掉出去（四宫格在页面中间，缩才好看） */
+.mshell .mhead-avatar:active { background: var(--accent); color: var(--on-accent); }
+.mshell .mhead-avatar:active { background: color-mix(in srgb, var(--accent) 30%, var(--accent-soft)); color: var(--accent); }

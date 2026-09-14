@@ -18,11 +18,13 @@ import { errText } from "../core/useAuthFlow";
 import { openLogin } from "../mobile/sheetStore";
 import { appStore, showToast } from "../core/store";
 import { checkWipeGate, restoreFromCloud, wipeLocalData } from "../core/wipe";
-import { getDataDir, inTauri, purgeTargets, writeTextFile } from "../core/persist";
+import { downloadTextFile, getDataDir, inTauri, purgeTargets, writeTextFile } from "../core/persist";
 import { toJsonFile } from "../core/transfer";
 import { APP_VERSION } from "../core/model";
 import { todayYMD } from "../core/dates";
-import { hasDesktopFeatures } from "../core/platform";
+// canSaveFile 而不是 hasDesktopFeatures（v1.15.0）：电脑上的浏览器也能把文件交到用户手上，
+// 只是走的是下载不是系统对话框。真正给不了的只有安卓 App
+import { canSaveFile, isMobile } from "../core/platform";
 
 /** 两屏而已。留着这个 step 是因为下面每一处「已登录」的判断都跟它成对写着，
  *  换成裸 session 判断会让那一大段的分支条件各写各的 */
@@ -84,13 +86,21 @@ export default function AccountPanel() {
   /** 闸门没过时的出口之一：先把这台机器上的东西导成一个 JSON 文件 */
   const doExportBeforeWipe = () =>
     run(async () => {
+      const json = toJsonFile(appStore.getState().data, APP_VERSION);
+      // 浏览器里没有系统保存对话框，交给下载。这一颗按钮尤其不能报错：
+      // 用户正卡在「清空之前先留一份」这一步上，按了没反应等于把他堵死在这儿
+      if (!inTauri) {
+        downloadTextFile(`acorn-${todayYMD()}.json`, json);
+        showToast("已交给浏览器下载。确认文件存好之后再执行清空", false);
+        return;
+      }
       const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
         defaultPath: `acorn-${todayYMD()}.json`,
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!path) return;
-      await writeTextFile(path, toJsonFile(appStore.getState().data, APP_VERSION));
+      await writeTextFile(path, json);
       showToast("已导出。确认文件保存好之后再执行清空", false);
     });
 
@@ -220,11 +230,20 @@ export default function AccountPanel() {
           清空前会先同步一次，没有上传成功的内容不会被清空。
           只想停掉同步、或者换个账号登，用「只退出登录，保留本机」——那条不动这台设备上的任何东西。
         </p>
+        {/* 手机上还有一条更近的路，两处说的必须是同一件事：那颗头像里的「退出登录」
+            接的就是这儿的「只退出登录，保留本机」。**清空本机那条路只在这一页有**，
+            它得先当场同步成功才放行，不该出现在一点就中的地方 */}
+        {isMobile && (
+          <p className="hint">
+            手机上「今天」右上角那颗头像点开也能退出登录，做的是「保留本机」这一条；
+            头像、名字和「下次打开还认这台手机」也在那张纸上。
+          </p>
+        )}
         {wipeBlock && (
           <div className="set-row col" style={{ padding: 0 }}>
             <p className="acct-err">未能确认本机数据都已上传云端，因此一条都没有清空：{wipeBlock}</p>
             <div className="acct-actions">
-              {hasDesktopFeatures && (
+              {canSaveFile && (
                 <button className="btn" disabled={busy} onClick={doExportBeforeWipe}>
                   先导出一份 JSON
                 </button>

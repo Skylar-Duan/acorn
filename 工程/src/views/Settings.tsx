@@ -12,13 +12,16 @@ import { pad2, todayYMD, toYMD } from "../core/dates";
 import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
 import { useFold } from "../core/useFold";
 import {
-  dataStatus, getDataDir, inTauri, listBackups, readTextFile, restoreBackup,
-  saveData, setDataDir, writeTextFile,
+  dataStatus, downloadTextFile, getDataDir, inTauri, listBackups, pickTextFile, readTextFile,
+  restoreBackup, saveData, setDataDir, writeTextFile,
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
 import { useSync } from "../core/syncCtl";
-import { hasDesktopFeatures, isMobile } from "../core/platform";
+// 开关拆成了两件事（v1.15.0）：hasDesktopFeatures 只说「界面是桌面那一套吗」，
+// isDesktopShell 才是「这台机器真做得到吗」。电脑上的浏览器前者真、后者假——
+// 这一页以前只认前者，于是网页上摆着一个按了没反应的全局快捷键、一颗点了必报错的导出
+import { canSaveFile, hasDesktopFeatures, isDesktopShell, isMobile, isWeb } from "../core/platform";
 import { FOCUS_ENABLED } from "../core/features";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
@@ -285,6 +288,13 @@ export default function Settings() {
         csv: { name: "CSV", ext: "csv", make: () => buildCsv(data) },
         md: { name: "Markdown", ext: "md", make: () => buildMarkdown(data) },
       }[kind];
+      // 浏览器里没有「存到哪个文件夹」这回事，交给下载就是了（v1.15.0 网页版）。
+      // 以前这里不分青红皂白去调 Tauri 的保存对话框，在电脑浏览器上是当场一句「导出失败」
+      if (!inTauri) {
+        downloadTextFile(`acorn-${todayYMD()}.${meta.ext}`, meta.make());
+        showToast("已交给浏览器下载", false);
+        return;
+      }
       const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
         defaultPath: `acorn-${todayYMD()}.${meta.ext}`,
@@ -300,10 +310,17 @@ export default function Settings() {
 
   async function importJson() {
     try {
-      const dlg = await import("@tauri-apps/plugin-dialog");
-      const path = await dlg.open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
-      if (typeof path !== "string") return;
-      const raw = await readTextFile(path);
+      // 两端各有各的「挑一份文件」：桌面是系统对话框给路径、Rust 读；浏览器是 <input type="file">
+      let raw: string | null;
+      if (inTauri) {
+        const dlg = await import("@tauri-apps/plugin-dialog");
+        const path = await dlg.open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+        if (typeof path !== "string") return;
+        raw = await readTextFile(path);
+      } else {
+        raw = await pickTextFile();
+      }
+      if (raw == null) return;
       let parsed: unknown;
       try {
         parsed = JSON.parse(raw);
@@ -324,18 +341,28 @@ export default function Settings() {
         ? `\n\n这份文件是更新版本的橡果导出的（数据版本 ${res.schema}，这台设备只认到 ${DATA_VERSION}）。` +
           `新版本才有的内容在这台设备上看不见也编辑不了，但会原样保留，升级后就能看到。`
         : "";
-      const ok = await dlg.ask(
-        `导入将覆盖当前全部数据（导入前会自动留一份恢复备份）。\n该文件${from}，含 ${res.data.tasks.length} 条任务。${warn}\n\n确定继续吗？`,
-        { title: "导入数据", kind: "warning" },
-      );
+      // 留底那句话两端不一样，说的必须是各自真会发生的事：
+      // 桌面往 backups 文件夹里写一份，浏览器里没有那个文件夹，只能把现在这份下载给他
+      const keep = inTauri
+        ? "导入前会自动留一份恢复备份"
+        : "导入前会先把现在这份下载下来留底";
+      const question =
+        `导入将覆盖当前全部数据（${keep}）。\n该文件${from}，含 ${res.data.tasks.length} 条任务。${warn}\n\n确定继续吗？`;
+      const ok = inTauri
+        ? await (await import("@tauri-apps/plugin-dialog")).ask(question, { title: "导入数据", kind: "warning" })
+        : window.confirm(question);
       if (!ok) return;
-      // 冲掉在途的防抖写入，再把当前数据留一份 pre-import 备份，最后写入导入内容
+      // 冲掉在途的防抖写入，再把当前数据留一份底，最后写入导入内容
       const { flushSave, appStore } = await import("../core/store");
       await flushSave();
-      const dir = await getDataDir();
       const now = new Date();
       const stamp = `${toYMD(now).replace(/-/g, "")}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
-      await writeTextFile(`${dir}\\backups\\pre-import-${stamp}.json`, JSON.stringify(appStore.getState().data)).catch(() => {});
+      if (inTauri) {
+        const dir = await getDataDir();
+        await writeTextFile(`${dir}\\backups\\pre-import-${stamp}.json`, JSON.stringify(appStore.getState().data)).catch(() => {});
+      } else {
+        downloadTextFile(`acorn-导入前-${stamp}.json`, toJsonFile(appStore.getState().data, APP_VERSION));
+      }
       await saveData(res.data);
       location.reload();
     } catch (e) {
@@ -371,7 +398,9 @@ export default function Settings() {
           title="通用"
           defaultOpen
           summary={
-            hasDesktopFeatures
+            // 网页上没有全局快捷键这回事（那是系统级热键，浏览器给不了），
+            // 所以这句摘要认 isDesktopShell 而不是「长得像不像桌面」
+            isDesktopShell
               ? `快捷用语指南 · 全局快捷键 ${settings.quickAddShortcut}`
               : `快捷用语指南 · 周末指${weekendName}`
           }
@@ -390,7 +419,9 @@ export default function Settings() {
                   这句话得跟着实际形态走，别许一个手机上不存在的窗口。
                   也别说「点右边」：窄屏上这一行会换行，按钮跑到标签底下去了 */}
               <span className="set-hint">
-                {hasDesktopFeatures
+                {/* 开得起独立窗口的只有装在电脑上的那个橡果：浏览器里 guideCtl 同样会
+                    fallback 成应用内那张全屏的纸，所以这句也得认 isDesktopShell */}
+                {isDesktopShell
                   ? "点「打开用法」，会开一个单独的窗口，里面是一组可以照着抄的例子"
                   : "点「打开用法」，里面是一组可以照着抄的例子"}
               </span>
@@ -404,7 +435,7 @@ export default function Settings() {
           <div className="set-row">
             <div className="set-row-label">
               周末指的是
-              <span className="set-hint">记事时写「周末」「下周末」，按这一天算</span>
+              <span className="set-hint">记事时写「~周末」「~下周末」，按这一天算</span>
             </div>
             <div className="set-ctl">
               <div className="set-seg">
@@ -420,7 +451,9 @@ export default function Settings() {
               </div>
             </div>
           </div>
-          {hasDesktopFeatures && (
+          {/* 全局快捷键是系统级热键，只有装在电脑上的橡果注册得了。
+              以前这里判的是 hasDesktopFeatures，于是电脑浏览器里摆着一个按了没反应的输入框 */}
+          {isDesktopShell && (
           <div className="set-row">
             <div className="set-row-label">
               全局快捷键
@@ -447,7 +480,7 @@ export default function Settings() {
             </div>
           </div>
           )}
-          {inTauri && hasDesktopFeatures && (
+          {isDesktopShell && (
             <div className="set-row">
               <div className="set-row-label">
                 开机自启
@@ -547,6 +580,7 @@ export default function Settings() {
         <SetSection
           id="data"
           title="数据"
+          anchorId="set-data"
           summary={status ? status.dir : "正在检查…"}
         >
           <div className="set-desc">每天首次保存时自动留一份备份，保留 30 份。</div>
@@ -556,7 +590,7 @@ export default function Settings() {
               title={status ? (status.dirOk ? "文件夹正常" : "文件夹不可用") : "正在检查"}
             />
             <span className="set-path">{status ? status.dir : "正在检查…"}</span>
-            {inTauri && hasDesktopFeatures && (
+            {isDesktopShell && (
               <div className="set-ctl">
                 <button className="btn" onClick={() => void changeDir()}>更换文件夹</button>
               </div>
@@ -592,11 +626,16 @@ export default function Settings() {
         <SetSection
           id="io"
           title="导出与导入"
-          summary={hasDesktopFeatures ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}
+          summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}
         >
-          {hasDesktopFeatures ? (
+          {/* canSaveFile：电脑上的橡果走系统对话框，浏览器（含 iPhone 上的网页版）走下载，
+              只有安卓 App 两条路都没有（save() 给回 content:// URI，Rust 侧写不了） */}
+          {canSaveFile ? (
             <>
-          <div className="set-desc">导出为通用格式；导入会整体替换现有数据。</div>
+          <div className="set-desc">
+            导出为通用格式；导入会整体替换现有数据。
+            {isWeb && "网页版导出的文件会直接下载到这台设备上。"}
+          </div>
           <div className="set-actions">
             <button className="btn" onClick={() => void exportAs("json")}>导出 JSON</button>
             <button className="btn" onClick={() => void exportAs("csv")}>导出 CSV</button>
@@ -623,7 +662,7 @@ export default function Settings() {
           >
             <div className="set-desc">
               每次启动会自动检查一次，有新版本会提示；这里也可以手动检查。新版本在应用内下载安装。
-              {hasDesktopFeatures && "电脑上安装前橡果会先退出，否则新版本装不进来。"}
+              {isDesktopShell && "电脑上安装前橡果会先退出，否则新版本装不进来。"}
             </div>
             <UpdatePanel />
           </SetSection>
@@ -634,7 +673,12 @@ export default function Settings() {
         {/* ---------- 关于（不折叠） ---------- */}
         <div className="set-section set-about">
           <span className="set-about-brand">橡果 Acorn</span>
-          <span className="set-about-line">v{APP_VERSION} · 本地优先的待办工具 · 数据保存在你自己的磁盘上。</span>
+          {/* 「保存在你自己的磁盘上」这句在网页版是假的：那儿的账本在浏览器里。
+              这一页别处都已经如实说了，这一行也得跟上 */}
+          <span className="set-about-line">
+            v{APP_VERSION} · 本地优先的待办工具 ·{" "}
+            {isWeb ? "数据存在这台设备的浏览器里，登录之后才有云端那一份。" : "数据保存在你自己的磁盘上。"}
+          </span>
           {/* 跟侧栏版本号点开的是同一个弹窗，别三处各讲一遍 */}
           <button className="btn ghost" onClick={() => setChangelogOpen(true)}>查看更新日志</button>
         </div>

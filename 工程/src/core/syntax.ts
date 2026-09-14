@@ -5,6 +5,11 @@
 // 用户口径（2026-08-28）：**自动生成**这句话，**不存**当初输入时打的那句——
 // 存了就得跟着字段改动同步维护，迟早对不上；现算永远是对的。
 //
+// v1.15.0 起时间要打 ~ 才算数（严格模式），所以这句话里的日期、钟点、循环**必须各自带一个 ~**：
+// 写成「~2026-08-31 ~15:00 ~每周一 …」。少一个 ~ 就读不回来，往返对账立刻判不一致，
+// 界面会把所有带日期的任务从「整句改」降级成「快捷改」——用户看到的是「怎么突然不能改整句了」。
+// 三个 ~ 分开打而不是共用一个：中间隔着空格，一个 ~ 只管紧跟着它的那一串（见 core/parse.ts 的闸门）。
+//
 // 日期一律写成 2026-08-31 这种带年份的写法，不写「8月31日」：
 // 「8月31日」在解析器里遇到已经过去的日子会被理解成明年（本来就该这样，
 // 记事的时候没人会记去年的事），但倒着生成时任务本来就可能逾期，
@@ -17,8 +22,9 @@ const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
 
 const PRIO_TOKEN: Record<Priority, string> = { 0: "", 1: "!低", 2: "!中", 3: "!高" };
 
-/** 名字里带这些字符就写不进一句话（会被当成下一个标记的开头） */
-const UNSAFE_NAME = /[\s#@/!！]/;
+/** 名字里带这些字符就写不进一句话（会被当成下一个标记的开头）。
+ *  ~ / ～ 也算：清单名叫「工作~A」的话，那个 ~ 会去领后面的字当时间 */
+const UNSAFE_NAME = /[\s#@/!！~～]/;
 
 /** 循环规则写成解析器认得的样子。注意每周是「每周一三五」不是「每周一、三、五」——
  *  顿号不在解析器的字符类里，写了就读不回来 */
@@ -61,11 +67,12 @@ export function taskToSentence(task: Task, ctx: SentenceCtx): TaskSentence {
   const parts: string[] = [];
   const omitted = new Set<string>();
 
-  if (task.due) parts.push(task.due);
-  if (task.due && task.dueTime) parts.push(task.dueTime);
+  // 时间那三样各带一个 ~，不然读回来全是空（严格模式，见文件开头）
+  if (task.due) parts.push(`~${task.due}`);
+  if (task.due && task.dueTime) parts.push(`~${task.dueTime}`);
   if (task.repeat) {
     const rep = repeatToSyntax(task.repeat);
-    if (rep) parts.push(rep);
+    if (rep) parts.push(`~${rep}`);
     else omitted.add("repeat");
   }
   if (task.priority) parts.push(PRIO_TOKEN[task.priority]);

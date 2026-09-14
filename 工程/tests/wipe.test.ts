@@ -306,13 +306,18 @@ describe("侧栏那行同步指示", () => {
     expect(foot).toContain("foot-sync");
     expect(foot).toContain('navigate("settings")');
     expect(foot).toContain("revealCloudSection()");
-    // 落点得真的在设置页上，不然滚了个寂寞
-    expect(sidebarSource).toContain('getElementById("set-cloud")');
+    // v1.15.0：「掰开那一节 + 滚到它跟前」这套动作抽成了 revealSetSection(节 id, DOM 锚点)——
+    // 旁边那行「数据异常」现在也要走同一套（它去的是「数据」那一节）。
+    // 规矩一个字没变，只是从一处写死拆成了「通用动作 + 两个去处」，断言跟着拆成两截：
+    // ① 云账号这条去处还在
+    expect(sidebarSource).toContain('revealSetSection("cloud", "set-cloud")');
+    // ② 通用动作还是「先按 acorn-set- 前缀掰开那一节，再滚到锚点上」
+    expect(sidebarSource).toContain('forceFoldOpen(key, "acorn-set-")');
+    expect(sidebarSource).toContain("getElementById(anchorId)");
+    // 落点得真的在设置页上，不然滚了个寂寞。
     // v1.9.1 起那一节是可折叠的 SetSection，id 经 anchorId 透传渲染到 DOM
     expect(settingsSource).toContain('anchorId="set-cloud"');
     expect(settingsSource).toContain("id={anchorId}");
-    // 滚过去之前得先把那一节打开，不然滚到一个收着的标题上等于没滚
-    expect(sidebarSource).toContain('forceFoldOpen("cloud", "acorn-set-")');
   });
 });
 

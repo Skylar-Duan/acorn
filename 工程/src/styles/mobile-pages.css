@@ -15,28 +15,37 @@
    窄屏规则会把打卡圈甩到标题下面第二行——用户说的「比例不对」就是这个。
    现在改成跟「今天」一模一样的形制：一组一张卡，一件事一行，绝不折行。 */
 
-/* 一行习惯。左圈 · 中名字 · 右最近七天，三块横着排，中间那块吃掉所有剩余宽度 */
+/* v1.15.0：跟「今天」一起换形制——**一个习惯一张卡**。
+   今天页那边把纸从「一组一张长卡」下放到了每一行（mobile-shell.css 的 .mcard:has(> .swipe-wrap)），
+   这一页不跟的话，切一下页签就会看到两副长相。
+   这儿不用 :has：容器自己带着 .mhb-card 这个类，直接点名就行 */
+.mshell .mcard.mhb-card {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  /* 每张小卡自己裁切；父盒子再裁一次会把投影切掉半圈 */
+  overflow: visible;
+}
+
+/* 一行习惯 = 一张卡。左圈 · 中名字 · 右最近七天，三块横着排，中间那块吃掉所有剩余宽度 */
 .mshell .mhb-row {
   position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  height: var(--m-row-h, 58px);
-  /* 16 而不是 14：跟「今天」那一列圈站在同一条竖线上（.mrow 也是 0 16px）。
+  /* 定高改下限，跟 .mrow 同一个口径（--m-row-h 在 v1.15.0 起是「最矮多高」）。
+     习惯名仍然一行省略号——这一页的名字本来就短，折行只会让一屏看得更少 */
+  min-height: var(--m-row-h, 58px);
+  /* 16 而不是 14：跟「今天」那一列圈站在同一条竖线上（.mrow 也是左右 16px）。
      差 2px 在切页签的时候看得出来——一列圈会整体挪一下 */
-  padding: 0 16px;
+  padding: var(--m-row-pad, 12px) 16px;
+  border-radius: var(--m-card-radius, 22px);
+  background: var(--card);
+  box-shadow: var(--m-card-shadow, var(--shadow-sm));
 }
-/* 行与行之间那根发丝线从圆圈之后起，跟 .mcard 里的任务行**同一个数**（16 + 26 + 14 = 56）。
-   用伪元素而不是 border-top：border 没法只画一截 */
-.mshell .mhb-card > .mhb-row + .mhb-row::before {
-  content: "";
-  position: absolute;
-  left: 56px;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: var(--m-sep, var(--hair));
-}
+/* 卡与卡之间那道缝，跟今天页同一个数。
+   v1.14 这儿是一根从 56px 起的发丝线（一张长卡切几条），v1.15.0 起卡自己分开了，线就多余了 */
+.mshell .mhb-card > .mhb-row + .mhb-row { margin-top: var(--m-card-gap, 10px); }
 
 /* 打卡圈。今天该做的可点，今天不用做的灰着按不动——
    按下去会打出一次「计划外」的卡，而这一页正在说的是「今天该做哪几个」 */
@@ -217,10 +226,19 @@
   overflow-wrap: anywhere;
 }
 
-/* ═══════════ 「更多」里清单 / 需求方按住换位置（v1.14.1） ═══════════
+/* ═══════════ 「更多」里清单 / 需求方按住换位置（v1.14.1；v1.15.0 改成真拖动） ═══════════
    桌面侧栏那两张表早就能拖着换顺序，手机上一直拖不动——触摸屏根本不触发 HTML5 拖拽。
-   手势和落库都跟侧栏共用（core/touchSort + store 的 moveList / moveWho），这儿只管长相，
-   而长相也照抄侧栏那一套（app.css 的 .side nav li.lifted / .move-over），两端一个口径。 */
+   手势和落库都跟侧栏共用（core/touchSort + store 的 moveList / moveWho），这儿只管长相。
+
+   v1.14.1 那一版只在目标行的上缘画一条线：手指在屏幕上走，卡片却钉在原处，
+   人只能靠一条细线猜自己会落在哪儿。用户的原话是「像 notability 一样可以真的把这个
+   卡片拖着到处跑，拖到下面其他位置，其他卡片自动上移」。所以 v1.15.0 换成：
+   拎起来的那张贴着手指走，其余的行实时让开一行的位置，空出来的那一格就是落点——
+   **落点线（.move-over）整条撤掉**，位置已经用空位说清楚了，再画一条线是两套说法。
+
+   位移一律走 transform：动 top / margin 会让整张表每帧重排，手机上一眼就能看出掉帧。
+   每一行各走各的距离，写不进样式表，具体数值由 core/touchSort 算好写在行内 style 上；
+   这儿只管一件事——**谁该有过渡、谁不许有**。 */
 
 /* 组标题右边那句小字。位置跟 .group-head .act 一样贴在胶囊右边，但它不是链接，
    所以用 --ink-3 不用 accent——摆成能点的样子而点不动，比不写更糟 */
@@ -237,25 +255,38 @@
   white-space: nowrap;
 }
 
+/* 拖动中这张卡不许再裁切：卡片要浮出纸面（放大一点、带投影），.mcard 自己的
+   overflow: hidden 会把投影连着圆角一起切掉，看着就像行被压在玻璃底下 */
+.mshell .mcard.sorting { overflow: visible; }
+/* 只在拖着的这一小会儿提前铺图层。常年挂着的话，长表上每一行都各占一层显存，白亏 */
+.mshell .mcard.sorting .mli[data-sort] { will-change: transform; }
+
+/* 让位的那些行就靠这条过渡「自动上移」。只给**能拖的那两张表**加（带 data-sort 的行才参与排序）：
+   写成裸 .mli 会把标签行、「新建清单」那一行也罩进去，它们拖不动，
+   却要为此把 :active 那下瞬时的按压反馈拖成一慢一慢的淡入淡出——按下去慢半拍，是白亏的。
+   ⚠️ 这条必须排在下面 .mli.lifted 之前：两条的权重一样重（都是三个类），同重就比先后，
+   写在后面的赢。放在后面的话，被拎起的那一行会同时吃到这份 transform 过渡——
+   于是手指快划时卡片吊在后面几十像素，停手才滑过来对齐，「把卡片拖着跑」那件事就废了 */
+.mshell .mli[data-sort] {
+  transition: transform var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
 /* 被拎起来的那一行要肉眼可见地离开队列：手指正压在上面，不浮起来用户根本看不出
-   自己已经拎住了东西。投影走主题那份大投影，深浅六套主题都自动成立 */
+   自己已经拎住了东西。四角跟着圆起来——它这会儿是一张被捏在手里的卡片，不再是表里的一行。
+   投影走主题那份大投影，深浅六套主题都自动成立。
+   **transition 里故意没有 transform**：位移是跟着手指来的，给它加过渡卡片就会拖在手指后面。
+   靠「写在 [data-sort] 后面」压住上面那条，别把这一段挪到它前面去 */
 .mshell .mli.lifted {
   background: var(--accent-soft);
   box-shadow: var(--shadow);
-  transform: scale(1.02);
+  border-radius: var(--m-card-radius, 22px);
   position: relative;
   z-index: 2;
+  transition: background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
-/* 落点线画在目标行的**上缘**，跟 store.moveBefore「挪到它前面」这件事对得上 */
-.mshell .mli.move-over {
-  box-shadow: inset 0 2px 0 var(--accent);
-  background: var(--accent-soft);
-}
-/* 只给**能拖的那两张表**加过渡（带 data-sort 的行才参与排序）。写成裸 .mli 会把标签行、
-   「新建清单」那一行也罩进去：它们拖不动，却要为此把 :active 那下瞬时的按压反馈
-   拖成一慢一慢的淡入淡出——按下去慢半拍，是白亏的 */
-.mshell .mli[data-sort] {
-  transition: transform var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+/* 松手那一下：卡片从手指底下飞回让出来的那一格，这一程才需要 transform 的过渡。
+   飞完了才落库（见 touchSort 的 useCardSort），所以这一小段的时长跟 --dur-1 是同一个值 */
+.mshell .mli.lifted.landing {
+  transition: transform var(--dur-1) var(--ease), background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 /* 排序中别让长按顺手选中文字、或者弹出系统那张复制菜单 */
 .mshell .mli.lifted,

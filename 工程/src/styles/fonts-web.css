@@ -1,0 +1,34 @@
+/* 网页版专用的字体声明（v1.15.0）。
+   vite.config.ts 在 `--mode web` 下把 base.css 里那句 `@import "./fonts.css"` 指到这份，
+   桌面包和安卓包仍然读 fonts.css，两边互不影响。
+
+   为什么要分两份：装在电脑上的字体是一次性的，5.5 MB 躺在硬盘里没人心疼；
+   挂在网页上是**每个新访客第一次打开都要下一遍**，手机流量尤其疼。
+   所以网页这端做了取舍：
+
+   · 正文（Noto Sans SC，regular + bold 共约 2.29 MB）**留着**。
+     它铺满整屏，换成系统字体会立刻变成另一个产品，不值当省。
+     两个文件都在 index.html 里被 preload（由 vite 插件按打包后的真实文件名注入），
+     配 font-display: swap——首屏先用系统字体出字，字体到了再换上，一秒都不用等。
+
+   · 标题（LXGW WenKai 文楷，regular + medium 共约 3.22 MB）**网页版先不带**。
+     它只用在标题和少数几处，却占了总量的六成。去掉后 --serif 会依次回落到
+     「LXGW WenKai Screen（用户自己装过就用）→ KaiTi / 楷体 → 系统 serif」，
+     iPhone 上落到宋体、安卓上落到思源宋体——都是书卷气的字，风格不至于跑偏。
+     等以后真要补回来，正确做法是首屏之后再动态插一条 @font-face，而不是在这里加回去。 */
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/notosanssc-regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  /* 500–900 全落到这一档，跟 fonts.css 保持一致 */
+  font-weight: 500 900;
+  font-display: swap;
+  src: url("../assets/fonts/notosanssc-bold.woff2") format("woff2");
+}

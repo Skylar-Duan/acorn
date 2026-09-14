@@ -299,7 +299,7 @@ function TaskSheetBody({ task }: { task: Task }) {
             <span className="msh-sb ghost" aria-hidden />
             <input
               value={newSub}
-              placeholder="添加子任务，可以直接写「明天 !高」"
+              placeholder="添加子任务，可以直接写「~明天 !高」"
               enterKeyHint="done"
               onChange={(e) => setNewSub(e.target.value)}
               onKeyDown={(e) => {
@@ -561,7 +561,8 @@ function TaskSheetBody({ task }: { task: Task }) {
   );
 }
 
-/** 一条子任务：22px 圆角方框 + 标题 + 右边的日期，整行能左滑露出「放弃 / 删除」。
+/** 一条子任务：圆角方框 + 标题 + 右边的日期，整行能左滑露出「放弃 / 删除」。
+ *  标题最多折两行（v1.15.0，跟列表行同一条新规矩）；点开原地改的那一下换成会长高的 textarea。
  *
  *  **必须是模块级组件**，不能写成组件体内的局部函数：useSwipeRow 是个 hook，一行得有一份
  *  自己的手势状态；而写在 render 里每次都是个新组件类型，React 会把行整个卸载重建——
@@ -619,14 +620,27 @@ function SubRow({ task, sub, today }: { task: Task; sub: Subtask; today: string 
             {sub.title || "（未命名）"}
           </button>
         ) : (
-          <input
+          /* v1.15.0：这儿原先是个单行 <input>，改起来长句子只看得见一截、只能横拖——
+             用户说的「不能一次性读完」有一半出在这里（另一半是列表行，见 MobileRow）。
+             换成会自己长高的 textarea，复用 components/autogrow 那一份（桌面任务卡用的是同一份）。
+             回车仍然是「说完了」不是换行，换行由 oneLine 在 commit 里吃掉——
+             子任务标题是**一行字段**，混进换行会一路脏到列表行和搜索结果里 */
+          <textarea
             className="msh-subtitle"
+            rows={1}
             autoFocus
+            ref={growArea}
             value={draft}
             enterKeyHint="done"
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              growArea(e.currentTarget);
+              setDraft(e.target.value);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
               if (e.key === "Escape") setDraft(null); // Esc 是丢弃
             }}
             onBlur={() => {

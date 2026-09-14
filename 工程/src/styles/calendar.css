@@ -282,14 +282,81 @@
    够不够写字是量出来的，不是拍脑袋（Playwright 实测，13px 的汉字一个正好 13px 宽）：
    中间标题那一栏 360 宽时 224px、390 宽 254px、430 宽 294px，也就是 17 / 19 / 22 个汉字。
    一句话说清一件事绰绰有余，所以这一版写文字，没退回 PM 兜底说的「不够就只显示数量」。
-   行高钉死 60px：七行一样高，一眼能比出哪天最满；两行 13px 的字加上下留白正好 */
+   行高钉死 60px：七行一样高，一眼能比出哪天最满；两行 13px 的字加上下留白正好。
+
+   v1.15.0：一天从「一行」变成「一张能摊开的卡」（.cal-wcard = 表头 .cal-wrow + 摊开区 .cal-wfold）。
+   PM 原话「每日做成卡片展开，不要放在最下面，折叠后就是现在这样很好」——所以那 60px
+   从网格的 grid-auto-rows 挪到 .cal-wrow 自己身上（网格改按内容定高），
+   收起来的时候这一行长相一个像素不变；分隔线也跟着从行挪到卡，
+   否则表头和它自己摊开的那块之间会多画一道线 */
 .mshell .cal-body.cal-week-mode .cal-week { display: none; }
-.mshell .cal-grid.week { padding: 6px 4px; grid-template-columns: 1fr; grid-auto-rows: 60px; }
-.mshell .cal-grid.week .cal-wrow {
-  flex-flow: row nowrap; align-items: center;
-  gap: 10px; padding: 0 8px; min-height: 0; overflow: hidden;
+.mshell .cal-grid.week { padding: 6px 4px; grid-template-columns: 1fr; grid-auto-rows: min-content; }
+/* 卡本身只负责竖着摞两块。这几条得写全：.cal-cell 的基础样式和那段 760px 媒体查询里的
+   `.cal-grid.week .cal-cell` 都会落到它头上（内边距 9px 11px、横排、min-height 44px），
+   一律在这儿盖掉——**并且写在 .mshell 里而不是媒体查询里**：手机一转横屏视口就有 892px，
+   媒体查询整段失效，只剩这儿的规则还在管事 */
+.mshell .cal-grid.week .cal-wcard {
+  display: flex; flex-flow: column nowrap; align-items: stretch;
+  gap: 0; padding: 0; min-height: 0; overflow: hidden;
 }
-.mshell .cal-grid.week .cal-wrow + .cal-wrow { border-top: 1px solid var(--m-sep); }
+.mshell .cal-grid.week .cal-wcard + .cal-wcard { border-top: 1px solid var(--m-sep); }
+/* 表头 = 原来那一行。60px 写死在它身上（同样不放媒体查询里，理由同上） */
+.mshell .cal-grid.week .cal-wrow {
+  display: flex; flex: none; flex-flow: row nowrap; align-items: center;
+  gap: 10px; padding: 0 8px; height: 60px; min-height: 0; overflow: hidden;
+}
+/* 摊开区：grid-template-rows 1fr↔0fr 的那套折叠（跟设置页 .set-fold 一个写法，
+   收起时内容仍在树上、只是高度压成 0，所以能做过渡）。
+   visibility 必须跟 grid-template-rows 写在同一条 transition 简写里——
+   分开写后一条会把前一条顶掉，折叠就成了瞬间跳变 */
+.mshell .cal-wfold {
+  display: grid; grid-template-rows: 1fr; min-height: 0; overflow: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease);
+}
+/* min-height / min-width 成对归零：grid 子项默认收不到内容最小宽度以下，
+   不写这两条，一条长标题就能把整张卡撑出屏幕（设置页踩过同一个坑） */
+.mshell .cal-wfold > .cal-wfold-inner { min-height: 0; min-width: 0; padding: 2px 0 10px; }
+/* 摊开的那张：表头那道 accent 竖杠一路接到摊开区，两块才读成「同一天」的一张卡，
+   而不是「一行 + 一坨不知道属于谁的清单」 */
+.mshell .cal-grid.week .cal-wcard.cal-open .cal-wfold { box-shadow: inset 3px 0 0 var(--accent); }
+.mshell .cal-wfold.shut {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease), visibility var(--dur-2) var(--ease);
+}
+/* 卡里那张 .mcard 卸掉自己的纸：网格本身已经是一张纸了，纸上再叠一张纸是两层投影。
+   选择器写够长（带上 .view-body.cal-body），免得被同一文件里那条给 .mcard 归零外边距的规则盖过 */
+.mshell .view-body.cal-body .cal-wfold .mcard {
+  margin: 0; background: none; box-shadow: none; border-radius: 0;
+}
+/* v1.15.0：列表那边的纸从 .mcard 下放到了每一行（.mcard:has(> .swipe-wrap)），
+   于是「卡里不许再叠一张纸」这件事得在行这一层再说一遍——不然摊开的这一天里
+   每条事都变成一张小卡，周视图那张卡里就成了纸上叠纸。
+   摊开区里仍然是「一天一张卡、卡里一条条列」，形制不变。
+   选择器同样写到 5 个类以上，免得被上面那条给 .swipe-wrap 铺纸的规则盖过去 */
+.mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap {
+  margin-top: 0; background: none; box-shadow: none; border-radius: 0;
+}
+/* 卡里没有卡了，行与行之间就得有根线才分得开。这根线原先长在 mobile-shell.css 里、
+   所有列表共用；v1.15.0 那边的行各自成卡、线撤了，只剩这儿还需要，就搬到这儿来。
+   56px = 16 左内距 + 26 圆圈 + 留白，跟「更多」页那几张表同一条竖线。
+   伪元素而不是 border-top：border 没法只画一截，也会把行往下顶 1px */
+.mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap + .swipe-wrap::before {
+  content: "";
+  position: absolute;
+  left: 56px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--m-sep);
+  z-index: 2;
+  pointer-events: none;
+}
+/* 空的那天：卡里就一句话，不再垫一张纸（底下那块常驻列表才需要垫，它是独立的一块） */
+.mshell .cal-wfold .cal-daylist-empty {
+  padding: 14px 8px 12px; text-align: left;
+  background: none; box-shadow: none; border-radius: 0;
+}
 
 /* 左边那一柱：几号在上、周几在下，30px 宽固定，七行的日期才对得成一条竖线 */
 .mshell .cal-wdate {
@@ -297,8 +364,10 @@
   display: flex; flex-direction: column; align-items: center; gap: 1px;
 }
 .mshell .cal-grid.week .cal-wrow .cal-num { width: 26px; height: 26px; font-size: 14px; }
+/* display 得自己写：基础样式里 .cal-wd 是 display:none，放出来那条只写在 760px 媒体查询里，
+   横屏（892px）就失效——那时日期底下的「周三」会整个消失 */
 .mshell .cal-grid.week .cal-wrow .cal-wd {
-  flex: none; font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.1;
+  display: block; flex: none; font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.1;
 }
 
 /* 中间：这一天的事，最多两行，放不下的标题一行省略号 */
@@ -359,7 +428,10 @@
   border-radius: 0;
   box-shadow: none;
 }
-/* 正文已经有 12px 内边距：胶囊那 18px 外边距收成 6px（跟习惯页同一个数），卡片贴到 0 */
+/* 正文已经有 12px 内边距：胶囊那 18px 外边距收成 6px（跟习惯页同一个数），卡片贴到 0。
+   v1.15.0 重算过这一条：纸虽然下放到了每一行，左右外边距仍然归 .mcard 这个容器管
+   （行只管自己的圆角和投影，不带左右外边距），所以这条照旧成立——
+   底下这块列表的卡和别的页一样宽，都是「屏宽 − 24」，整个手机端还是一条竖线 */
 .mshell .view-body.cal-body .group-head.split { margin: 18px 6px 8px; }
 .mshell .view-body.cal-body .mcard { margin-left: 0; margin-right: 0; }
 /* 胶囊右边那句「N 件」 */

@@ -132,6 +132,19 @@ export interface Settings {
    *  放在设置里 = 每台设备各排各的：需求方不是一条真实记录，只是任务上的一个名字，
    *  给它建一张会同步的表不值当 */
   whoOrder: string[];
+  /** 下次打开还认不认这台设备上的登录态（v1.15.0，手机端右上角那张账号纸上的开关）。
+   *  缺这个字段一律当**开着**：老数据和一直以来的桌面端都是「打开就是登录着的」，
+   *  升上来不能突然把人踢出去。
+   *
+   *  关掉的那一刻本机那份令牌就删了（syncCtl.applyAutoLogin）——这次照常用，
+   *  下次打开要重新输密码。**这三个字段都只是这台设备的事**：设置不参与云同步
+   *  （merge.ts 的 `settings: local.settings`），所以手机关掉自动登录不会连累电脑。 */
+  autoLogin?: boolean;
+  /** 自己给自己起的名字，显示在账号纸和右上角那颗头像上。空着就用邮箱顶上 */
+  profileName?: string;
+  /** 头像：压到 128×128 的 JPEG dataURL（AccountSheet 选完图当场压）。
+   *  必须压过再存——整份数据每次同步都会连它一起传，服务端单账号只给 5MB */
+  profileAvatar?: string;
 }
 
 /** 应用版本号（构建时由 package.json 注入；测试环境没有这个宏时退到 dev） */
@@ -178,6 +191,13 @@ export function defaultSettings(): Settings {
     sortMode: "time",
     weekendDay: "sun",
     whoOrder: [],
+    // v1.15.0 新增的三个**都是可选字段**，所以 DATA_VERSION 一个字不动（仍是 8）：
+    // migrate 是 `{ ...defaultSettings(), ...d.settings }`，老数据读进来自动补上，
+    // 还没升级的桌面端读到它们也只是多几个不认识的键，照读照存。
+    // 升版本才是真麻烦——那会让老客户端被服务端 409 挡在门外
+    autoLogin: true,
+    profileName: "",
+    profileAvatar: "",
   };
 }
 

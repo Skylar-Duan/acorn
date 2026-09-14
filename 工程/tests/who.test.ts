@@ -86,7 +86,7 @@ describe("解析：一句话里写几个 @ 就是几个人", () => {
     expect(p("@李哥 @王姐 对账").who).toEqual(["李哥", "王姐"]);
   });
   it("跟其他语法混写，各管各的", () => {
-    const r = p("明天下午3点 季度复盘 /工作 @李哥 @张总 #汇报 !高");
+    const r = p("~明天下午3点 季度复盘 /工作 @李哥 @张总 #汇报 !高");
     expect(r.who).toEqual(["李哥", "张总"]);
     expect(r.listName).toBe("工作");
     expect(r.tags).toEqual(["汇报"]);

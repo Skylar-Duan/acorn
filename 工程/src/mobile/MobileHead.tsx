@@ -12,8 +12,10 @@
 
 import type { ReactNode } from "react";
 import { setSearchOpen, useApp } from "../core/store";
+import { useSync } from "../core/syncCtl";
 import ThemeScene from "../components/ThemeScene";
-import { IcoBack, IcoSearch } from "./icons";
+import { IcoBack, IcoSearch, IcoWho } from "./icons";
+import { openSheet } from "./sheetStore";
 import "../styles/mobile-shell.css";
 
 export interface MobileHeadProps {
@@ -36,6 +38,10 @@ export interface MobileHeadProps {
   extra?: ReactNode;
   /** 标题右边那颗有表情的小橡果。**只有「今天」传 true**——见下面 AcornMascot 的注脚 */
   mascot?: boolean;
+  /** 右上角那颗头像圆钮，点开账号纸（v1.15.0）。
+   *  **只有「今天」传它**——用户原话是「主页面。右上角」。每一页都摆一颗，
+   *  等于把「你还没登录」这句话在每一页上重说一遍，那是催促不是入口 */
+  account?: boolean;
   /** 顶栏后面那片风景的高度跟顶栏整块走，而不是固定的 --m-scene-h（v1.12.1）。
    *  给顶栏底下还挂着两排控件的页面用（日历）：固定高会越过顶栏切进第一行日期的中间。
    *  样式见 mobile-shell.css 的 .mhead-fit */
@@ -97,8 +103,42 @@ export function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
+/**
+ * 头像上显示哪个字。名字优先于邮箱——用户自己起的名字才是他认得的自己。
+ * 两边都空着（还没登录）返回空串，由调用处画一个人形轮廓。
+ *
+ * 取「第一个字」而不是首字母缩写：中文名取一个字正好，邮箱取一个字母也够认。
+ */
+export function avatarInitial(name: string | undefined, email: string | undefined): string {
+  const src = (name ?? "").trim() || (email ?? "").trim();
+  return src ? [...src][0].toUpperCase() : "";
+}
+
+/** 右上角那颗头像圆钮。有图用图，没图用名字/邮箱的头一个字，没登录画个人形 */
+function AccountButton() {
+  const avatar = useApp((s) => s.data.settings.profileAvatar);
+  const name = useApp((s) => s.data.settings.profileName);
+  const session = useSync((s) => s.session);
+  const initial = avatarInitial(name, session?.email);
+  return (
+    <button
+      className="mhead-avatar"
+      aria-label={session ? "账号" : "登录"}
+      onClick={() => openSheet({ kind: "account" })}
+    >
+      {avatar ? (
+        <img src={avatar} alt="" />
+      ) : initial ? (
+        <span>{initial}</span>
+      ) : (
+        <IcoWho size={22} />
+      )}
+    </button>
+  );
+}
+
 export default function MobileHead({
-  title, sub, ring, search = true, onBack, dot, small, right, extra, mascot, sceneFit,
+  title, sub, ring, search = true, onBack, dot, small, right, extra, mascot, account, sceneFit,
 }: MobileHeadProps) {
   // 顶栏后面那片风景用的就是桌面那六幅（ThemeScene，颜色全走主题 token）。
   // 挂在这儿而不是壳子里：每个视图的第一块都是 .mhead，挂在它身上就等于每页都有，
@@ -133,6 +173,8 @@ export default function MobileHead({
             <IcoSearch />
           </button>
         )}
+        {/* 头像摆在最右：账号这类东西在哪个应用里都在最右上角，手指也是那儿最顺 */}
+        {account && <AccountButton />}
       </div>
       {extra && <div className="mhead-extra">{extra}</div>}
     </div>
