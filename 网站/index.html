@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>橡果 Acorn · 记得每件事是谁交办的待办工具 · cdpandas</title>
-<meta name="description" content="Windows 待办工具，免费开源。打一句「周五下午3点 提交周报 /工作 @李哥 !高」，日期、时间、清单、需求方、重要性五样一次到位；侧栏按人分栏，一眼看清欠了哪位同事几件事。习惯单独打卡，电脑和手机同一份事，数据在你自己的机器上。">
+<meta name="description" content="待办工具，Windows / 安卓 / 网页三端，免费开源。打一句「周五下午3点 提交周报 /工作 @李哥 !高」，日期、时间、清单、需求方、重要性五样一次到位；侧栏按人分栏，一眼看清欠了哪位同事几件事。习惯单独打卡，电脑和手机同一份事，数据在你自己的机器上。">
 <link rel="icon" href="assets/icon.svg">
 <link rel="canonical" href="https://acorn.cdpandas.com/">
 
@@ -27,7 +27,7 @@
   <div class="wrap with-icon">
     <img class="app-icon" src="assets/icon.svg" alt="橡果 Acorn 应用图标">
     <div>
-      <div class="kicker">Windows 桌面应用 · 网页版 · 免费开源</div>
+      <div class="kicker">Windows · 安卓 · 网页版 · 免费开源</div>
       <h1>橡果 Acorn</h1>
       <p class="lede">多数待办工具都假设事情是你自己给自己安排的。橡果不是——它记得每件事是<b>谁交办的</b>，侧栏按人分栏，一眼看清欠了哪位同事几件事。</p>
 
@@ -38,14 +38,40 @@
         不想记这套写法，输入框下面就是一排按钮，点着选一样。</p>
       </div>
 
-      <p class="meta">当前版本 <span data-release="version">v1.14.3</span> · Windows 10 / 11 x64 · 数据存在你自己的机器上</p>
+      <p class="meta">当前版本 <span data-release="version">v1.15.0</span> · Windows / 安卓 / 网页 · 数据存在你自己的机器上</p>
       <div class="cta-row">
-        <a class="btn" href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe">↓ 下载 Windows 版</a>
+        <!-- 下载是一个按钮 + 一个弹窗，不是并排堆平台按钮：平台只会越来越多
+             （将来还有 iOS / macOS），首屏也不该替访客猜他在什么设备上。
+             弹窗的内容源是下面那个 [data-download-dialog]，逻辑在
+             /utilities/_shared/tool-download.js。 -->
+        <button class="btn" type="button" data-download-open>↓ 下载</button>
         <!-- /app/ 是橡果 App 本体（网页版，v1.15.0 起），不是另一张介绍页；
              它由橡果自己的 publish-web.sh 发到 /var/www/acorn-web/，不走 publish_utility.py -->
         <a class="btn btn-ghost" href="https://acorn.cdpandas.com/app/">打开网页版</a>
-        <a class="btn btn-ghost" href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">查看源码</a>
-        <span class="cta-note">安装包 <span data-release="size">7MB</span>，装的时候不需要管理员权限，装完会自己检查更新。网页版不用装，浏览器打开就是同一个橡果，登录同一个邮箱看到的是同一份事。</span>
+        <span class="cta-note">电脑版和手机版都不要管理员权限，装完会自己检查更新。网页版不用装，浏览器打开就是同一个橡果，登录同一个邮箱看到的是同一份事。</span>
+      </div>
+
+      <!-- 下载弹窗的内容源：每个平台一行，版本号与安装包大小各读各的接口
+           （桌面版 7MB、安卓版 13MB，是两个数），读不到就用这里写死的兜底值。
+           下载地址用的是固定文件名，永远指向最新版，不随发版改。
+           新增一个平台 = 在这儿加一个 [data-download-item]，别的都不用动。 -->
+      <div data-download-dialog hidden
+           data-title="下载橡果"
+           data-note="装完会自己检查更新，查到新版就地下载安装。数据存在你自己的设备上，电脑和手机登同一个邮箱看到的是同一份事。">
+        <div data-download-item
+             data-label="Windows"
+             data-sub="Windows 10 / 11 · x64"
+             data-href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe"
+             data-api="https://acorn.cdpandas.com/api/desktop/latest"
+             data-version="1.15.0"
+             data-size="7285617"></div>
+        <div data-download-item
+             data-label="安卓"
+             data-sub="Android · arm64"
+             data-href="https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"
+             data-api="https://acorn.cdpandas.com/api/android/latest"
+             data-version="1.15.0"
+             data-size="13235033"></div>
       </div>
     </div>
   </div>
@@ -220,7 +246,7 @@
 
     <div class="panel" style="margin-top:26px">
       <h3>安装须知</h3>
-      <p>点上面的「下载 Windows 版」，双击安装即可，<b>装完开箱即用</b>。</p>
+      <p>点上面的「下载」，挑 Windows 版，双击安装即可，<b>装完开箱即用</b>。</p>
       <ul style="margin-top:10px;padding-left:18px;color:var(--fg2);font-size:14px">
         <li>Windows 10 / 11（64 位）；<b>按用户安装，不需要管理员权限</b></li>
         <li>装完会自己检查更新：打开橡果会查有没有新版，查到就地下载安装</li>
@@ -527,6 +553,7 @@
   </div>
 </footer>
 
+<script src="/utilities/_shared/tool-download.js" defer></script>
 <script src="/utilities/_shared/tool-release.js" defer></script>
 <script src="/utilities/_shared/tool-board.js" defer></script>
 </body>
