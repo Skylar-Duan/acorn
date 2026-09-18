@@ -21,7 +21,8 @@ import {
   setQuickAddOpen, setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
   trashedSubtaskRows,
 } from "../core/store";
-import { APP_VERSION, LIST_COLORS } from "../core/model";
+import { LIST_COLORS } from "../core/model";
+import { shortVersion, versionLabel } from "../core/version";
 import { forceFoldOpen, useFold } from "../core/useFold";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import DateField from "./DateField";
@@ -503,7 +504,7 @@ export default function Sidebar(
         橡果
         {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
             跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
-        <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>v{APP_VERSION}</button>
+        <button className="ver" title={`${versionLabel()} · 查看更新日志`} onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>
         {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
             .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
         <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>

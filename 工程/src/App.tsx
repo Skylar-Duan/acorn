@@ -53,6 +53,7 @@ import { AccountSheetHost } from "./mobile/AccountSheet";
 import { openLogin } from "./mobile/sheetStore";
 // 登录页两端都用：手机上是整页，桌面上是居中弹窗（组件自己分叉）
 import { LoginPageHost } from "./components/LoginPage";
+import { IS_BETA } from "./core/version";
 
 function inEditable(): boolean {
   const el = document.activeElement;
@@ -254,9 +255,11 @@ export default function App() {
   // 装了新版之后第一次打开：把更新日志摆出来，让人知道这一版改了什么。
   // **只在 upgrade 这一档弹**：第一次装橡果的人（install）什么都还没用过，
   // 迎面一屏版本历史毫无意义——那一刻该请他登录（判据见 core/fresh.shouldOfferLogin，
-  // 登录框的界面另有人做）。同一版又开一次（same）当然也不弹
+  // 登录框的界面另有人做）。同一版又开一次（same）当然也不弹。
+  // **测试版也不弹**：更新日志只收正式发出去的版本，测试版在里面没有自己那一条，
+  // 弹出来只会把上一个正式版的主卡再念一遍；测试版改了什么看验收单（交付验收/）
   useEffect(() => {
-    if (firstRun === "upgrade") setChangelogOpen(true);
+    if (firstRun === "upgrade" && !IS_BETA) setChangelogOpen(true);
   }, [firstRun]);
 
   // 第一次装橡果、还什么都没记过的那一刻，请人登录一次（判据全在 core/fresh.ts，纯函数、有单测）：

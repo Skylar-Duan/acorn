@@ -4,6 +4,28 @@
 > **给使用者看的那份在 `src/core/changelog.ts`**（打进包里，侧栏版本号点开就是它），
 > 写法是产品向的：一堆小修一句总结，真正的新能力才单独一条，不带文件名和变量名。
 > **两处都要写**——改了功能先去那儿加一条人话，再回这儿记细节。`tests/changelog.test.ts` 会拦住漏写。
+> 2026-09-18 起：三端各排各的号，改动先攒在下面「未发布」里、不给号；用户说发布时再定每一端的号，
+> 这一节改成带号的标题，同时往 `changelog.ts` 补产品向条目。验收单是 `../交付验收/橡果 v1 怎么验.html`。
+
+## 未发布（接在三端 v1.15.0 之后）
+
+- **三端各排各的号**（用户 2026-09-18 定）：真源 `versions.json`（`public` 三端公开号 + `beta` 测试版计数），
+  vite 把整张表写进产物（`__APP_VERSIONS__`），打包脚本再盖一个「这一包是谁、几号」的戳（`__APP_BUILD__`，
+  来自 `ACORN_BUILD_PLATFORM` / `ACORN_BUILD_VERSION`）。运行时 `core/version.ts` 按 `APP_PLATFORM`
+  （网页构建 → web；安卓 UA → android；其余 desktop）挑自己那格。`model.APP_VERSION`、`updater.compareVersions` 改为转手导出。
+- **测试版**：号 = 公开号下一个小修号 + `-beta.N`（1.15.0 → 1.15.1-beta.1）。`compareVersions` 认 semver 预发布段：
+  同号测试版 < 正式版、beta 序号按数字比。界面显示 `shortVersion`（「测试版 1」）/ `versionLabel`（「桌面版 测试版 1（v1.15.0 之后）」），
+  不露占位号。测试版开机不弹更新日志（`App.tsx` 的 `!IS_BETA`）。
+- **打包入口** `scripts/build-app.mjs <desktop|android> [--beta]`：用 tauri `--config` 临时盖版本号（`src-tauri/tauri.version.json`，
+  打完删、已 gitignore），不再手改 `tauri.conf.json`；测试版产物复制成 `安装包/橡果 桌面版 测试版.exe`（固定名、每次覆盖），
+  计数只在真出包后落盘。`build-android.sh` 改用 `ACORN_BUILD_VERSION` / `versions.json` 安卓格 + `--config`；
+  `publish-web.sh` 改读 `versions.json` 网页格，且拒绝发带 `-` 的号。`publish-exe/apk.sh` 的文件名正则本来就认不出 `-beta`，测试版推不上服务器。
+- **更新日志分端**：`ChangelogEntry.version` → `versions: {desktop?, android?, web?}`，`changelogFor(platform)` 取某一端的列表；
+  历史条目按内容标端（1.14.2 只给安卓，1.15.0 三端，其余桌面 + 安卓）。弹窗只摊开本端的；网页版只看得到 1.15.0。
+- 显示版本的六处改用带端名的写法：侧栏小标签、更新日志顶上、升级弹窗、设置「版本更新」摘要与面板、设置「关于」、云端设备名。
+- 顺手修：`tests/web-build.test.ts` 还在找 9-17 之前那颗直链下载按钮（10 改成「一个按钮 + 平台弹窗」后就红了），对齐到新结构。
+- 测试：新增 `tests/version.test.ts`（号码来源、测试版号、比大小、装着测试版时的更新提示）；`changelog.test.ts` 改为按端校验
+  （每端最新一条 = versions.json 公开号、文件内按端有序且不重号、电脑看不到 1.14.2、网页只有 1.15.0）；`changelog-jump.test.ts` 加从测试版升正式版。64 文件 2092 测全绿。
 
 ## v1.15.0 · 2026-09-15
 

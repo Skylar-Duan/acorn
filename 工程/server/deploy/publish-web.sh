@@ -39,14 +39,17 @@ NGINX_CONF="$ROOT/server/deploy/nginx-acorn.conf"
 SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$HOST")
 SCP=(scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new)
 
-VER="$(python -c "import io,json,sys; print(json.load(io.open(sys.argv[1],encoding='utf-8'))['version'])" "$ROOT/package.json")"
-[ -n "$VER" ] || { echo "从 package.json 里读不出版本号"; exit 1; }
+# 号码真源是 versions.json 里网页版那一格（2026-09-18 起三端各排各的号，见 src/core/version.ts）。
+# 网页版没有测试版这回事：发出去就是公开的，所以只认 public
+VER="$(python -c "import io,json,sys; print(json.load(io.open(sys.argv[1],encoding='utf-8'))['public']['web'])" "$ROOT/versions.json")"
+[ -n "$VER" ] || { echo "从 versions.json 里读不出网页版的版本号"; exit 1; }
+case "$VER" in *-*) echo "网页版不发测试版号：$VER"; exit 1 ;; esac
 
 echo "=== 构建"
 if [ "$SKIP_BUILD" = "1" ]; then
   echo "  （跳过，直接用现成的 dist-web）"
 else
-  (cd "$ROOT" && npx vite build --mode web)
+  (cd "$ROOT" && ACORN_BUILD_PLATFORM=web ACORN_BUILD_VERSION="$VER" npx vite build --mode web)
 fi
 
 echo "=== 自检产物"

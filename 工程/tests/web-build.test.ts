@@ -278,8 +278,11 @@ describe("介绍页入口", () => {
   it("下载按钮旁边并排一颗「打开网页版」，指向 /app/", () => {
     expect(siteHtml).toContain(">打开网页版</a>");
     expect(siteHtml).toContain('href="https://acorn.cdpandas.com/app/"');
-    // 原来那颗下载按钮还在，而且仍是主按钮
-    expect(siteHtml).toMatch(/class="btn" href="https:\/\/acorn\.cdpandas\.com\/download\/windows\//);
+    // 下载仍是主按钮（9-17 起改成「一个按钮 + 平台弹窗」，用户要的：平台只会越来越多），
+    // 弹窗里 Windows 和安卓两行都在，各指向固定下载名
+    expect(siteHtml).toContain('<button class="btn" type="button" data-download-open>');
+    expect(siteHtml).toContain('data-href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe"');
+    expect(siteHtml).toContain('data-href="https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"');
   });
 
   it("手机那段写清了 iPhone 怎么加到主屏幕", () => {

@@ -11,8 +11,8 @@
 //   · 顶上一个「检查新版本」：今天查过且是最新就换成绿勾（用户点名），没查过给按钮
 
 import { useEffect, useState } from "react";
-import { CHANGELOG, type ChangelogEntry } from "../core/changelog";
-import { APP_VERSION } from "../core/model";
+import { changelogFor, type PlatformEntry } from "../core/changelog";
+import { APP_PLATFORM, APP_VERSION, shortVersion, versionLabel } from "../core/version";
 import { setChangelogOpen } from "../core/store";
 import {
   CHECK_FAILED_MSG, checkUpdateNow, checkedToday, entriesSince, useUpdate, type ManualCheck,
@@ -76,7 +76,7 @@ function CheckControl() {
   );
 }
 
-function Latest({ e }: { e: ChangelogEntry }) {
+function Latest({ e }: { e: PlatformEntry }) {
   return (
     <section className="cl-hero">
       <div className="cl-hero-top">
@@ -119,7 +119,7 @@ export function nextOpenOlder(cur: string | null, version: string): string | nul
  * 收法跟设置页那一节一样：grid 0fr↔1fr 压高度，内容一直在树上，收着时连同 visibility
  * 一起关掉（看不见的按钮不能还能被 Tab 摸到、被读屏念到）。
  */
-function Older({ e, open, onToggle }: { e: ChangelogEntry; open: boolean; onToggle: () => void }) {
+function Older({ e, open, onToggle }: { e: PlatformEntry; open: boolean; onToggle: () => void }) {
   return (
     <div className={`cl-old${open ? " open" : ""}`}>
       <button type="button" className="cl-old-btn" aria-expanded={open} onClick={onToggle}>
@@ -163,9 +163,11 @@ export default function ChangelogDialog() {
    *  他电脑停在 v1.14.0 一次升到 v1.14.2，弹窗却只讲最新那版、讲的还是手机上的事，
    *  中间那版给他做的改动全折叠着看不见）。头一次装或没跨版本时，就是原来的「最新一条」 */
   const prevVersion = useUpdate((st) => st.prevVersion);
-  const fresh = entriesSince(CHANGELOG, prevVersion);
+  /** 只看这一端的：三端各排各的号，电脑上不该读到讲手机安装的那条 */
+  const log = changelogFor(APP_PLATFORM);
+  const fresh = entriesSince(log, prevVersion);
   const freshVers = new Set(fresh.map((e) => e.version));
-  const older = CHANGELOG.filter((e) => !freshVers.has(e.version));
+  const older = log.filter((e) => !freshVers.has(e.version));
   const jumped = fresh.length > 1;
   /** 更早的版本一次只摊开一条：这里记的就是「现在摊开的是哪一版」，null = 全收着。
    *  故意不落 localStorage：这是个看完就关的弹窗，每次打开都从「全收着」开始，
@@ -183,7 +185,7 @@ export default function ChangelogDialog() {
         <header className="cl-head">
           <div className="cl-title">
             <h2 id="cl-title">更新日志</h2>
-            <span className="cl-cur">这台设备上是 v{APP_VERSION}</span>
+            <span className="cl-cur">这台设备上是 {versionLabel()}</span>
           </div>
           <CheckControl />
           <button className="cl-x" aria-label="关闭" title="关闭" onClick={() => setChangelogOpen(false)}>
@@ -194,7 +196,7 @@ export default function ChangelogDialog() {
           {/* 跨了好几版才更新的，先说一句这次一共带来了哪几版，免得他以为只改了最新那条 */}
           {jumped && prevVersion && (
             <p className="cl-jump">
-              你上次用的是 v{prevVersion}，这次一起装上了 {fresh.length} 版的改动：
+              你上次用的是 {shortVersion(prevVersion)}，这次一起装上了 {fresh.length} 版的改动：
             </p>
           )}
           {fresh.map((e) => (

@@ -9,6 +9,13 @@
 //   · 语气是产品在跟人说话，不是工程在汇报；不带文件名、函数名、CSS 词
 // 两份都要写：改了功能先来这儿加一条人话，再去 CHANGELOG.md 记细节。
 // tests/changelog.test.ts 会拦住「发了版忘了写这份」和「混进了工程词」。
+//
+// **分端（2026-09-18 起）**：网页版 / 安卓版 / 桌面版各排各的号（见 core/version.ts），
+// 所以每一条写的是「这次更新在哪几端、各是几号」，每一端只看得到跟自己有关的条目：
+// 电脑用户不会再读到一整条讲手机安装的说明，跨版本升级也只摊开本端那几版。
+// 1.15.0 以前全局只有一条号，那时的条目各端写同一个号，只列内容跟它有关的端。
+
+import { compareVersions, type Platform } from "./version";
 
 export type Highlight = {
   /** 三到八个字，像一个小标题 */
@@ -18,7 +25,8 @@ export type Highlight = {
 };
 
 export type ChangelogEntry = {
-  version: string;
+  /** 这次更新发到了哪几端、各是几号。没发给（或跟它无关的）端就不写 */
+  versions: Partial<Record<Platform, string>>;
   /** YYYY-MM-DD */
   date: string;
   /** 这一版最值得知道的一句话 */
@@ -31,7 +39,7 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "1.15.0",
+    versions: { desktop: "1.15.0", android: "1.15.0", web: "1.15.0" },
     date: "2026-09-15",
     headline: "橡果有网页版了；写时间从这一版起要打个 ~",
     highlights: [
@@ -60,7 +68,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "手机日历的周视图每天能就地摊开；更多页里拖清单换位置跟着手指走、别的行自己让开；电脑上点任务卡里别处，小浮层自己就收了。",
   },
   {
-    version: "1.14.3",
+    versions: { desktop: "1.14.3", android: "1.14.3" },
     date: "2026-09-09",
     headline: "隔了几版才更新，也不会漏看",
     highlights: [
@@ -72,7 +80,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     minor: "另有一些细节调整。",
   },
   {
-    version: "1.14.2",
+    versions: { android: "1.14.2" },
     date: "2026-09-09",
     headline: "手机上装新版，这次装得上了",
     highlights: [
@@ -89,7 +97,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "手机上那批改动（日历周视图竖排、底部四象限、清单需求方拖动排序）也随这一版一起到手机上；另有一些细节调整。",
   },
   {
-    version: "1.14.1",
+    versions: { desktop: "1.14.1", android: "1.14.1" },
     date: "2026-09-09",
     headline: "一批小修：卡片、设置、排序、日历",
     highlights: [
@@ -118,7 +126,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "手机上的更新日志弹窗不再顶到屏幕最上面，高度也收了收；另有一些细节调整。",
   },
   {
-    version: "1.14.0",
+    versions: { desktop: "1.14.0", android: "1.14.0" },
     date: "2026-09-04",
     headline: "某一步也能自己重复了",
     highlights: [
@@ -135,7 +143,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "每天、每周一三五、每月5号、每个工作日在某一步里同样认得；重复的那一步在列表和详情里都带一个循环标记。",
   },
   {
-    version: "1.13.0",
+    versions: { desktop: "1.13.0", android: "1.13.0" },
     date: "2026-09-03",
     headline: "打一句话就认得的词更多了，回收站也收子任务",
     highlights: [
@@ -164,7 +172,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "手机桌面图标比例修正；登录时云端和本设备是同一份就不再问；另有一些细节调整。",
   },
   {
-    version: "1.12.0",
+    versions: { desktop: "1.12.0", android: "1.12.0" },
     date: "2026-09-03",
     headline: "手机版换了新样子，「随手记」改叫「记一条」",
     highlights: [
@@ -193,7 +201,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "子任务按日期自动排；登录页换上橡果图标；更新日志里的「检查更新」挪到了前面；另有一些细节调整。",
   },
   {
-    version: "1.11.0",
+    versions: { desktop: "1.11.0", android: "1.11.0" },
     date: "2026-09-02",
     headline: "手机版从头做了一遍",
     highlights: [
@@ -220,7 +228,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     // 1.10.0 打好发到服务器后，第一次真跑更新就撞上两处：下载被跨源拦住、备用的浏览器下载按钮没反应。
     // 修完直接以 1.10.1 发（1.10.0 可能已经有人装上了，同号重发不会被当成新版本），内容就是这一版的内容。
-    version: "1.10.1",
+    versions: { desktop: "1.10.1", android: "1.10.1" },
     date: "2026-09-02",
     headline: "手机版跟上来了，更新也不用再去网页找",
     highlights: [
@@ -240,7 +248,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     minor: "设置页去掉了重复的回收站入口；更新日志换成了现在这个样子；更新下载和「改用浏览器下载」这条备用路都修通了；另有一些细节调整。",
   },
   {
-    version: "1.9.1",
+    versions: { desktop: "1.9.1", android: "1.9.1" },
     date: "2026-09-01",
     headline: "计划页能搜了，日历有了周视图",
     highlights: [
@@ -261,7 +269,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "「橡果」旁边多了版本号，点开就是这份日志；已完成页右侧只保留完成日期；长标题不再挤到日期，点开可以多行看全；另一台设备先升级了也不要紧，这台照常打开、照常用。",
   },
   {
-    version: "1.9.0",
+    versions: { desktop: "1.9.0", android: "1.9.0" },
     date: "2026-09-01",
     headline: "一件事可以放弃了，安排日期也更快",
     highlights: [
@@ -289,3 +297,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     minor: "电脑版也会自动检查更新；界面切换、展开收起都有了过渡；其余细节做了优化。",
   },
 ];
+
+/** 某一端看到的一条：号码换成这一端自己的 */
+export type PlatformEntry = Omit<ChangelogEntry, "versions"> & { version: string };
+
+/** 某一端的更新日志：只留跟它有关的条目，按这一端的号从新到旧排 */
+export function changelogFor(platform: Platform, list: ChangelogEntry[] = CHANGELOG): PlatformEntry[] {
+  const out: PlatformEntry[] = [];
+  for (const { versions, ...rest } of list) {
+    const version = versions[platform];
+    if (version) out.push({ ...rest, version });
+  }
+  return out.sort((a, b) => compareVersions(b.version, a.version));
+}

@@ -4,8 +4,16 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 
-// 版本号只有 package.json 一个真源；关于页与导出文件的版本都从这儿来，不会写歪
-const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")).version;
+// 版本号的真源是 versions.json（2026-09-18 起三端各排各的号，见 src/core/version.ts）。
+// 三端公开的号整张表写进产物，跑起来再按「我是哪一端」挑自己那个；
+// 打包脚本给某一端单独打包（尤其测试版）时，再用环境变量盖一个「这一包是谁、几号」的戳
+const versionTable = JSON.parse(readFileSync(resolve(__dirname, "versions.json"), "utf8")) as {
+  public: Record<string, string>;
+};
+const buildStamp = {
+  platform: process.env.ACORN_BUILD_PLATFORM ?? "",
+  version: process.env.ACORN_BUILD_VERSION ?? "",
+};
 
 /** 网页版挂在 acorn.cdpandas.com 的这个子路径下。介绍页占着根路径，两边不打架。
  *  manifest.webmanifest 里的 start_url / scope / 图标路径都写死成这个前缀，改这儿要一起改。 */
@@ -59,7 +67,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), ...(isWeb ? [webFontPreload()] : [])],
     define: {
-      __APP_VERSION__: JSON.stringify(pkgVersion),
+      __APP_VERSIONS__: JSON.stringify(versionTable.public),
+      __APP_BUILD__: JSON.stringify(buildStamp),
       // 代码里判断「我是不是网页版」认这个。用 define 写死进产物，
       // 不依赖 .env 文件在不在、shell 有没有导出，换台机器打包结果一样
       "import.meta.env.VITE_ACORN_WEB": JSON.stringify(isWeb ? "1" : ""),

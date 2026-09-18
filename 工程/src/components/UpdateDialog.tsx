@@ -10,7 +10,7 @@
 // 连接一挂住就只能去任务管理器杀进程。
 
 import { useState } from "react";
-import { APP_VERSION } from "../core/model";
+import { versionLabel } from "../core/version";
 import { isAndroid } from "../core/platform";
 import { useApp } from "../core/store";
 import {
@@ -54,7 +54,7 @@ export default function UpdateDialog() {
         <div className="update-head">
           <h2 className="serif">有新版本 {info.version}</h2>
           <p>
-            这台设备上是 v{APP_VERSION}
+            这台设备上是 {versionLabel()}
             {info.size > 0 && ` · 安装包 ${mb(info.size)}`}
           </p>
         </div>

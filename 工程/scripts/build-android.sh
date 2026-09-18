@@ -124,8 +124,16 @@ rm -f "$MIRROR/src-tauri/gen/android/tauri.settings.gradle" "$MIRROR/src-tauri/g
 
 echo "=== 打包（$( [ ${#TARGET_ARGS[@]} -eq 0 ] && echo 四架构 || echo arm64 )${PROFILE_ARGS:+ · debug}）"
 cd "$MIRROR"
+# 号码：scripts/build-app.mjs 会把这一包的号放进 ACORN_BUILD_VERSION（测试版就是 1.15.1-beta.N），
+# 直接跑本脚本时退回 versions.json 里安卓公开的号。用 --config 盖掉 tauri.conf.json 里那个，
+# 安卓的 versionName / versionCode 都跟着它走；前端那份也从同一个环境变量拿（见 vite.config.ts）
+AVER="${ACORN_BUILD_VERSION:-$(python -c "import io,json,sys; print(json.load(io.open(sys.argv[1],encoding='utf-8'))['public']['android'])" "$(cygpath -w "$HERE/versions.json")")}"
+[ -n "$AVER" ] || { echo "读不出安卓版的版本号（versions.json）"; exit 1; }
+export ACORN_BUILD_PLATFORM=android ACORN_BUILD_VERSION="$AVER"
+printf '{"version": "%s"}' "$AVER" > "$MIRROR/src-tauri/tauri.version.json"
+echo "  安卓版号：$AVER"
 set +e
-npx tauri android build --apk "${TARGET_ARGS[@]}" "${PROFILE_ARGS[@]}"
+npx tauri android build --apk --config src-tauri/tauri.version.json "${TARGET_ARGS[@]}" "${PROFILE_ARGS[@]}"
 tauri_rc=$?
 set -e
 
@@ -171,8 +179,8 @@ if [ ! -f "$KS" ]; then
   echo "  新建了 debug keystore"
 fi
 BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-# 直接抠 package.json 的版本号：不能用 node -p require()，MSYS 的 /c/... 路径 node 认不出来
-VER="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$HERE/package.json" | head -1)"
+# 产物名里的号跟打包时 --config 盖进去的是同一个（见上面 AVER）
+VER="$AVER"
 
 echo "=== 收产物"
 mkdir -p "$OUT"

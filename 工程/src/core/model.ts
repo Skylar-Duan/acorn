@@ -147,9 +147,9 @@ export interface Settings {
   profileAvatar?: string;
 }
 
-/** 应用版本号（构建时由 package.json 注入；测试环境没有这个宏时退到 dev） */
-export const APP_VERSION: string =
-  typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+/** 应用版本号：三端各排各的，真源和规则都在 core/version.ts。
+ *  这里转手再导出一次，原来从 model 引它的地方不用改 */
+export { APP_VERSION } from "./version";
 
 /** 当前数据模型版本。导入导出、服务器同步都以它为准（见 transfer.ts / cloud.ts） */
 export const DATA_VERSION = 8;

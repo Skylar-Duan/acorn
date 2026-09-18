@@ -37,6 +37,13 @@ describe("entriesSince：这次一起装上的是哪几版", () => {
     expect(entriesSince(list, "1.99.0").map((e) => e.version)).toEqual(["1.14.2"]);
   });
 
+  it("从测试版升到正式版：只摊开这一个正式版，不把测试版之前那版再念一遍", () => {
+    const list = [V("1.15.1"), V("1.15.0"), V("1.14.3")];
+    expect(entriesSince(list, "1.15.1-beta.2").map((e) => e.version)).toEqual(["1.15.1"]);
+    // 测试版之后正式号跳成了 1.16.0 也一样
+    expect(entriesSince([V("1.16.0"), V("1.15.0")], "1.15.1-beta.4").map((e) => e.version)).toEqual(["1.16.0"]);
+  });
+
   it("版本号按数字比大小，不是按字符串（1.14.2 > 1.9.1）", () => {
     const list = [V("1.14.2"), V("1.9.1")];
     expect(entriesSince(list, "1.9.1").map((e) => e.version)).toEqual(["1.14.2"]);
@@ -52,14 +59,17 @@ describe("界面真的用上了", () => {
   });
 
   it("更新日志把这几版都做成主卡，不是只做最新一条", () => {
-    expect(dialogSource).toContain("entriesSince(CHANGELOG, prevVersion)");
+    // 只摊开这一端的（2026-09-18 起三端各排各的号）
+    expect(dialogSource).toContain("const log = changelogFor(APP_PLATFORM)");
+    expect(dialogSource).toContain("entriesSince(log, prevVersion)");
     expect(dialogSource).toContain("fresh.map((e) => (");
     // 剩下的才进「之前的版本」，别把已经摊开的那几条又折叠一遍
-    expect(dialogSource).toContain("CHANGELOG.filter((e) => !freshVers.has(e.version))");
+    expect(dialogSource).toContain("log.filter((e) => !freshVers.has(e.version))");
   });
 
   it("跨版本时顶上有一句交代，说清这次一共带来几版", () => {
-    expect(dialogSource).toContain("你上次用的是 v");
+    // 上一版可能是测试版：念成「测试版 2」，不把 1.15.1-beta.2 这串占位号露出来
+    expect(dialogSource).toContain("你上次用的是 {shortVersion(prevVersion)}");
     expect(dialogSource).toContain("这次一起装上了");
     expect(dialogSource).toContain("jumped");
   });

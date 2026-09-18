@@ -24,20 +24,10 @@ export interface UpdateInfo {
   pageUrl: string;
 }
 
-/**
- * 比版本号。`1.10.0 > 1.9.0`（不能按字符串比，那样 1.10 会小于 1.9）。
- * 段数不一样时缺的位当 0：`1.7` 和 `1.7.0` 是同一个版本。
- */
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split(".").map((x) => parseInt(x, 10) || 0);
-  const pb = b.split(".").map((x) => parseInt(x, 10) || 0);
-  const n = Math.max(pa.length, pb.length);
-  for (let i = 0; i < n; i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return d > 0 ? 1 : -1;
-  }
-  return 0;
-}
+/** 比版本号（认得测试版的 `-beta.N`）。实现挪到了 core/version.ts，这里转手导出，
+ *  原来从 updater 引它的地方不用改 */
+export { compareVersions } from "./version";
+import { compareVersions } from "./version";
 
 export function isNewer(remote: string, local: string = APP_VERSION): boolean {
   return compareVersions(remote, local) > 0;

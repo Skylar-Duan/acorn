@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
 import { APP_VERSION, DATA_VERSION } from "../core/model";
+import { versionLabel } from "../core/version";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
 import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
@@ -658,7 +659,7 @@ export default function Settings() {
           <SetSection
             id="update"
             title="版本更新"
-            summary={`当前 v${APP_VERSION}`}
+            summary={`当前 ${versionLabel()}`}
           >
             <div className="set-desc">
               每次启动会自动检查一次，有新版本会提示；这里也可以手动检查。新版本在应用内下载安装。
@@ -676,7 +677,7 @@ export default function Settings() {
           {/* 「保存在你自己的磁盘上」这句在网页版是假的：那儿的账本在浏览器里。
               这一页别处都已经如实说了，这一行也得跟上 */}
           <span className="set-about-line">
-            v{APP_VERSION} · 本地优先的待办工具 ·{" "}
+            {versionLabel()} · 本地优先的待办工具 ·{" "}
             {isWeb ? "数据存在这台设备的浏览器里，登录之后才有云端那一份。" : "数据保存在你自己的磁盘上。"}
           </span>
           {/* 跟侧栏版本号点开的是同一个弹窗，别三处各讲一遍 */}
