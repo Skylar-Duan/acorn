@@ -1,96 +1,117 @@
-// 给使用者看的那份更新日志（core/changelog.ts）。
+// 给使用者看的那份更新日志（core/changelog.ts + changelog-data.json）。
 // 它跟 CHANGELOG.md 是两份：那份是工程记录，这份打进包里、侧栏版本号点开就是它。
-// 2026-09-18 起三端各排各的号：每条写「发到哪几端、各几号」，每端只看得到跟自己有关的条目。
+// 每一端一份；怎么写的规矩在 _work/约定.md 第五节，这里把能机械拦的都拦上。
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { CHANGELOG, changelogFor } from "../src/core/changelog";
-import { APP_VERSION } from "../src/core/model";
-import { APP_PLATFORM, PLATFORMS, compareVersions } from "../src/core/version";
+import { BETA_NOTES, CHANGELOG, changelogFor, type ChangelogEntry } from "../src/core/changelog";
+import { APP_PLATFORM, APP_VERSION, PLATFORMS, compareVersions } from "../src/core/version";
 
-const table = JSON.parse(readFileSync("versions.json", "utf8")) as {
-  public: Record<string, string>;
-};
+const table = JSON.parse(readFileSync("versions.json", "utf8")) as { public: Record<string, string> };
 
-describe("产品向更新日志", () => {
-  it("每一端最新一条的号 = versions.json 里这一端公开的号（发了版忘了写日志会红）", () => {
-    for (const p of PLATFORMS) {
-      expect(changelogFor(p)[0]?.version, p).toBe(table.public[p]);
-    }
-  });
+const allEntries = (): ChangelogEntry[] => [
+  ...PLATFORMS.flatMap((p) => CHANGELOG[p]),
+  ...PLATFORMS.flatMap((p) => (BETA_NOTES[p] ? [{ ...BETA_NOTES[p]!, version: "0.0.0" }] : [])),
+];
 
-  it("这一端最新一条的号 = 应用里显示的 APP_VERSION", () => {
-    // vite 的 define 在 vitest 里同样生效；测试环境没有安卓 UA、不是网页版构建，算桌面版
-    expect(APP_PLATFORM).toBe("desktop");
-    expect(APP_VERSION).not.toBe("dev");
-    expect(changelogFor(APP_PLATFORM)[0].version).toBe(APP_VERSION);
-  });
-
-  it("每条至少发到一端，号都是正经版本号 + YYYY-MM-DD（不再有「更早」那种历史回顾）", () => {
-    // 用户 2026-09-02：「把历史建立和隐藏的部分都去掉，不再谈」
-    for (const e of CHANGELOG) {
-      const vs = Object.values(e.versions);
-      expect(vs.length, e.headline).toBeGreaterThan(0);
-      for (const v of vs) expect(v).toMatch(/^\d+\.\d+\.\d+$/);
-      expect(e.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(e.headline.length).toBeGreaterThan(4);
-      expect(e.highlights.length).toBeGreaterThan(0);
-      // 主卡最多五张：再多就又成了一列文本
-      expect(e.highlights.length).toBeLessThanOrEqual(5);
-    }
-  });
-
-  it("写在文件里的顺序，放到每一端去看也是从新到旧（新条目要加在最上面）", () => {
-    for (const p of PLATFORMS) {
-      const inFile = CHANGELOG.map((e) => e.versions[p]).filter((v): v is string => !!v);
-      const sorted = [...inFile].sort((a, b) => compareVersions(b, a));
-      expect(inFile, p).toEqual(sorted);
-      // 同一端里不许有两条同号：更新日志弹窗拿号码当 key，重了会串
-      expect(new Set(inFile).size, p).toBe(inFile.length);
-    }
-  });
-
-  it("各端只看到跟自己有关的：电脑上没有「手机上装新版」那条，网页版只从 1.15.0 起", () => {
-    const desktop = changelogFor("desktop").map((e) => e.version);
-    const android = changelogFor("android").map((e) => e.version);
-    const web = changelogFor("web").map((e) => e.version);
-    expect(android).toContain("1.14.2");
-    expect(desktop).not.toContain("1.14.2");
-    expect(web).toEqual(["1.15.0"]);
-  });
-
-  /** 这份日志里所有会显示出来的字 */
-  function allText(): string[] {
-    const out: string[] = [];
-    for (const e of CHANGELOG) {
-      out.push(e.headline);
-      for (const h of e.highlights) out.push(h.title, h.body);
-      if (e.minor) out.push(e.minor);
-    }
-    return out;
+/** 这份日志里所有会显示出来的字 */
+function allText(): string[] {
+  const out: string[] = [];
+  for (const e of allEntries()) {
+    out.push(e.headline);
+    for (const h of e.highlights) out.push(h.title, h.body);
+    if (e.minor) out.push(e.minor);
   }
+  return out;
+}
 
-  it("每一句都是给人看的话：不带文件名、CSS 变量、函数调用这类工程词", () => {
-    // 用户 2026-09-01 定的：这里不是工程项，是产品向
-    const engineering = /\.(tsx?|css|md|json|rs|py)\b|--[a-z][a-z0-9-]*|\w+\(\)|src\/|store\.|useState|grid-template|schema|DATA_VERSION|localStorage/i;
-    for (const line of allText()) {
-      expect(line, `「${line.slice(0, 40)}…」像工程项`).not.toMatch(engineering);
+describe("号码对得上", () => {
+  it("每一端最新一条的号 = versions.json 里这一端公开的号（发了版忘了写日志会红）", () => {
+    for (const p of PLATFORMS) expect(CHANGELOG[p][0]?.version, p).toBe(table.public[p]);
+  });
+
+  it("这一端最新一条的号 = 应用里的 APP_VERSION（测试环境算桌面版）", () => {
+    expect(APP_PLATFORM).toBe("desktop");
+    expect(changelogFor("desktop", { beta: false })[0].version).toBe(APP_VERSION);
+  });
+
+  it("每一端从新到旧、不重号（弹窗拿号码当 key）", () => {
+    for (const p of PLATFORMS) {
+      const vs = CHANGELOG[p].map((e) => e.version);
+      expect(vs, p).toEqual([...vs].sort((a, b) => compareVersions(b, a)));
+      expect(new Set(vs).size, p).toBe(vs.length);
+    }
+  });
+});
+
+describe("分端：每一端只列它真拿到、且看得见变化的版本", () => {
+  const vs = (p: "desktop" | "android" | "web") => CHANGELOG[p].map((e) => e.version);
+
+  it("电脑上没有只改了手机的 1.14.2，也没有跟使用者无关的 1.14.3", () => {
+    expect(vs("desktop")).not.toContain("1.14.2");
+    expect(vs("desktop")).not.toContain("1.14.3");
+  });
+
+  it("手机上没有安卓没发过的 1.9.x / 1.14.1，也没有 1.14.3", () => {
+    for (const v of ["1.9.0", "1.9.1", "1.14.1", "1.14.3"]) expect(vs("android")).not.toContain(v);
+    expect(vs("android")).toContain("1.14.2");
+  });
+
+  it("网页版是 1.15.0 才有的，只有这一版", () => {
+    expect(vs("web")).toEqual(["1.15.0"]);
+  });
+
+  it("电脑那份里不写手机才有的东西", () => {
+    const text = CHANGELOG.desktop.flatMap((e) => [e.headline, e.minor ?? "", ...e.highlights.flatMap((h) => [h.title, h.body])]);
+    for (const line of text) expect(line, line).not.toMatch(/右滑|左滑|长按|底部导航|手机版|安装应用/);
+  });
+});
+
+describe("测试版：第一块是比上一个正式版多了什么", () => {
+  it("装着测试版时，第一块是这个测试版，上一个正式版挪进后面", () => {
+    const list = changelogFor("desktop", { beta: true, betaVersion: "1.15.1-beta.3" });
+    expect(list[0].version).toBe("1.15.1-beta.3");
+    expect(list[0].headline).toBe(BETA_NOTES.desktop!.headline);
+    expect(list[1].version).toBe(table.public.desktop);
+  });
+
+  it("正式版里没有那一块", () => {
+    expect(changelogFor("desktop", { beta: false })[0].version).toBe(table.public.desktop);
+  });
+});
+
+describe("写法", () => {
+  it("每一版都是正经日期、有标题；有新功能才画小卡，没有就得有「还有」那一行", () => {
+    for (const e of allEntries()) {
+      expect(e.date, e.headline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(e.headline.length).toBeGreaterThan(3);
+      expect(e.highlights.length).toBeLessThanOrEqual(5);
+      expect(e.highlights.length > 0 || !!e.minor, e.headline).toBe(true);
     }
   });
 
-  it("不提已经删掉或藏起来的功能，也不回顾历史", () => {
-    // 用户 2026-09-02：「已经删除或者隐藏的功能，就不要在更新日志里面提醒了」
-    const banned = /专注|番茄|收起了|去掉了「用法」|用法页|v1\.0 到|从「能记一句话」/;
-    for (const line of allText()) {
-      expect(line, `「${line.slice(0, 40)}…」在提已删/已藏的东西`).not.toMatch(banned);
-    }
-  });
-
-  it("小标题短、正文不啰嗦：title ≤ 12 字，body ≤ 90 字", () => {
-    for (const e of CHANGELOG) {
+  it("小标题是功能名：≤ 12 字；正文一两句：≤ 90 字", () => {
+    for (const e of allEntries()) {
       for (const h of e.highlights) {
         expect(h.title.length, h.title).toBeLessThanOrEqual(12);
         expect(h.body.length, h.title).toBeLessThanOrEqual(90);
       }
     }
+  });
+
+  it("每一句都是给人看的话：不带文件名、CSS 变量、函数调用这类工程词", () => {
+    const engineering = /\.(tsx?|css|md|json|rs|py)\b|--[a-z][a-z0-9-]*|\w+\(\)|src\/|store\.|useState|grid-template|schema|DATA_VERSION|localStorage/i;
+    for (const line of allText()) expect(line, `「${line.slice(0, 40)}…」像工程项`).not.toMatch(engineering);
+  });
+
+  it("不提已经删掉或藏起来的功能，也不回顾历史", () => {
+    const banned = /专注|番茄|收起了|去掉了「用法」|用法页|v1\.0 到|从「能记一句话」|随手记/;
+    for (const line of allText()) expect(line, `「${line.slice(0, 40)}…」在提已删/已藏的东西`).not.toMatch(banned);
+  });
+
+  it("不写回被用户骂过的说法：自造的比喻、界面小调整的机制解释、跟使用者无关的事", () => {
+    // 用户 2026-09-18：「某一步也能自己重复了？极差」「什么叫点开一个、另一个自己收起？」
+    // 「1.14.3 跟使用者有什么关系？」「日历上的点，我都懒得喷」
+    const bad = /某一步|点开一个|自己收起|手风琴|隔了几版|漏看|圆点|同一个绿|淡一些|一张纸上|摊开/;
+    for (const line of allText()) expect(line, `「${line.slice(0, 40)}…」`).not.toMatch(bad);
   });
 });

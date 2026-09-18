@@ -11,8 +11,8 @@
 //   · 顶上一个「检查新版本」：今天查过且是最新就换成绿勾（用户点名），没查过给按钮
 
 import { useEffect, useState } from "react";
-import { changelogFor, type PlatformEntry } from "../core/changelog";
-import { APP_PLATFORM, APP_VERSION, shortVersion } from "../core/version";
+import { changelogFor, type ChangelogEntry } from "../core/changelog";
+import { APP_PLATFORM, APP_VERSION, IS_BETA, shortVersion } from "../core/version";
 import { setChangelogOpen } from "../core/store";
 import {
   CHECK_FAILED_MSG, checkUpdateNow, checkedToday, entriesSince, useUpdate, type ManualCheck,
@@ -76,23 +76,26 @@ function CheckControl() {
   );
 }
 
-function Latest({ e }: { e: PlatformEntry }) {
+function Latest({ e }: { e: ChangelogEntry }) {
   return (
     <section className="cl-hero">
       <div className="cl-hero-top">
-        <span className="cl-hero-ver">v{e.version}</span>
+        <span className="cl-hero-ver">{shortVersion(e.version)}</span>
         <span className="cl-hero-date">{fmtDate(e.date)}</span>
         {e.version === APP_VERSION && <span className="cl-hero-now">这台设备上的版本</span>}
       </div>
       <p className="cl-hero-head">{e.headline}</p>
-      <div className="cl-cards">
-        {e.highlights.map((h) => (
-          <article className="cl-card" key={h.title}>
-            <h4>{h.title}</h4>
-            <p>{h.body}</p>
-          </article>
-        ))}
-      </div>
+      {/* 没有新功能的版本不画小卡，只有下面「还有」那一行 */}
+      {e.highlights.length > 0 && (
+        <div className="cl-cards">
+          {e.highlights.map((h) => (
+            <article className="cl-card" key={h.title}>
+              <h4>{h.title}</h4>
+              <p>{h.body}</p>
+            </article>
+          ))}
+        </div>
+      )}
       {e.minor && (
         <p className="cl-minor">
           <span className="cl-minor-tag">还有</span>
@@ -119,25 +122,25 @@ export function nextOpenOlder(cur: string | null, version: string): string | nul
  * 收法跟设置页那一节一样：grid 0fr↔1fr 压高度，内容一直在树上，收着时连同 visibility
  * 一起关掉（看不见的按钮不能还能被 Tab 摸到、被读屏念到）。
  */
-function Older({ e, open, onToggle }: { e: PlatformEntry; open: boolean; onToggle: () => void }) {
+function Older({ e, open, onToggle }: { e: ChangelogEntry; open: boolean; onToggle: () => void }) {
   return (
     <div className={`cl-old${open ? " open" : ""}`}>
       <button type="button" className="cl-old-btn" aria-expanded={open} onClick={onToggle}>
-        <span className="cl-old-ver">v{e.version}</span>
+        <span className="cl-old-ver">{shortVersion(e.version)}</span>
         <span className="cl-old-head">{e.headline}</span>
         <span className="cl-old-date">{fmtDate(e.date)}</span>
         <span className="cl-old-caret" aria-hidden>▾</span>
       </button>
       <div className={`cl-old-fold${open ? "" : " shut"}`}>
         <div className="cl-old-fold-inner">
-          <ul className="cl-old-list">
+          {e.highlights.length > 0 && <ul className="cl-old-list">
             {e.highlights.map((h) => (
               <li key={h.title}>
                 <b>{h.title}</b>
                 <span>{h.body}</span>
               </li>
             ))}
-          </ul>
+          </ul>}
           {e.minor && (
             <p className="cl-minor">
               <span className="cl-minor-tag">还有</span>
@@ -185,7 +188,8 @@ export default function ChangelogDialog() {
         <header className="cl-head">
           <div className="cl-title">
             <h2 id="cl-title">更新日志</h2>
-            <span className="cl-cur">这台设备上是 {shortVersion()}</span>
+            {/* 测试版不写这一句：下面第一块就是这个测试版，版本号那里写着 beta，再说一遍是重复 */}
+            {!IS_BETA && <span className="cl-cur">这台设备上是 {shortVersion()}</span>}
           </div>
           <CheckControl />
           <button className="cl-x" aria-label="关闭" title="关闭" onClick={() => setChangelogOpen(false)}>
