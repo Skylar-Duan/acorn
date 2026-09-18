@@ -19,7 +19,6 @@ function allText(): string[] {
   for (const e of allEntries()) {
     out.push(e.headline);
     for (const h of e.highlights) out.push(h.title, h.body);
-    if (e.minor) out.push(e.minor);
   }
   return out;
 }
@@ -61,7 +60,7 @@ describe("分端：每一端只列它真拿到、且看得见变化的版本", (
   });
 
   it("电脑那份里不写手机才有的东西", () => {
-    const text = CHANGELOG.desktop.flatMap((e) => [e.headline, e.minor ?? "", ...e.highlights.flatMap((h) => [h.title, h.body])]);
+    const text = CHANGELOG.desktop.flatMap((e) => [e.headline, ...e.highlights.flatMap((h) => [h.title, h.body])]);
     for (const line of text) expect(line, line).not.toMatch(/右滑|左滑|长按|底部导航|手机版|安装应用/);
   });
 });
@@ -80,12 +79,29 @@ describe("测试版：第一块是比上一个正式版多了什么", () => {
 });
 
 describe("写法", () => {
-  it("每一版都是正经日期、有标题；有新功能才画小卡，没有就得有「还有」那一行", () => {
+  it("每一版都是正经日期、有标题、至少一张小卡；正式版最多 6 张（新功能 + 一张「体验优化」）", () => {
     for (const e of allEntries()) {
       expect(e.date, e.headline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(e.headline.length).toBeGreaterThan(3);
-      expect(e.highlights.length).toBeLessThanOrEqual(5);
-      expect(e.highlights.length > 0 || !!e.minor, e.headline).toBe(true);
+      expect(e.highlights.length, e.headline).toBeGreaterThan(0);
+    }
+    for (const p of PLATFORMS) for (const e of CHANGELOG[p]) expect(e.highlights.length, e.version).toBeLessThanOrEqual(6);
+  });
+
+  it("「还有」那一行不要了：细节合成一张「体验优化」小卡（用户 2026-09-18）", () => {
+    const dialog = readFileSync("src/components/ChangelogDialog.tsx", "utf8");
+    // 只看画出来的东西：不再有「还有」那颗小标签和那一行（注释里提到它不算）
+    expect(dialog).not.toMatch(/>还有</);
+    expect(dialog).not.toContain("cl-minor");
+    expect(dialog).not.toContain("e.minor");
+    for (const e of allEntries()) expect(Object.keys(e)).not.toContain("minor");
+  });
+
+  it("测试版那段是给开发者看的：每处改动单独一张，不止一句带过", () => {
+    // 用户 2026-09-18：「beta 版本的软件内更新日志一定要详细说明该 beta 累计的每处的改动」
+    for (const p of PLATFORMS) {
+      const notes = BETA_NOTES[p];
+      if (notes) expect(notes.highlights.length, p).toBeGreaterThan(1);
     }
   });
 

@@ -78,7 +78,7 @@ export default function UpdatePanel() {
       {stage === "found" && info && (
         <>
           <p className="hint">
-            <b style={{ color: "var(--accent)" }}>有新版本 {info.version}</b>
+            <b style={{ color: "var(--accent)" }}>有新版本 {displayVersion(info.version)}</b>
             {info.size > 0 && ` · ${mb(info.size)}`}
             {required && (
               <>

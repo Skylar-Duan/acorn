@@ -438,6 +438,44 @@ def test_channels_do_not_leak_into_each_other():
     drop_manifest("windows")
 
 
+# ---------- 测试版通道：只给管理员 ----------
+
+
+def test_beta_needs_login():
+    assert client.get("/api/desktop/beta").status_code == 401
+    assert client.get("/api/android/beta").status_code == 401
+
+
+def test_beta_hidden_from_normal_accounts():
+    """不是管理员：跟「还没发过」一模一样，不露口风。"""
+    write_manifest("windows/beta", manifest_json("Acorn_1.15.1-beta.3_x64-setup.exe", "1.15.1-beta.3"))
+    token = signup("someone-else@example.com")
+    assert client.get("/api/desktop/beta", headers=auth(token)).json() == {"available": False}
+    drop_manifest("windows/beta")
+
+
+def test_beta_for_admin():
+    """管理员（大小写不同也认）拿得到，下载地址落在 /download/windows/beta/ 下。"""
+    write_manifest("windows/beta", manifest_json("Acorn_1.15.1-beta.3_x64-setup.exe", "1.15.1-beta.3"))
+    token = signup("Skylar@CDPandas.com")
+    body = client.get("/api/desktop/beta", headers=auth(token)).json()
+    assert body["available"] is True
+    assert body["version"] == "1.15.1-beta.3"
+    assert body["url"].endswith("/download/windows/beta/Acorn_1.15.1-beta.3_x64-setup.exe")
+    # 安卓那条没发过测试版：照样是没有
+    assert client.get("/api/android/beta", headers=auth(token)).json() == {"available": False}
+    drop_manifest("windows/beta")
+
+
+def test_beta_does_not_touch_public_channel():
+    """测试版清单跟正式版是两份：发了测试版，正式版接口还是原来那个。"""
+    write_manifest("windows", manifest_json("Acorn_1.15.0_x64-setup.exe", "1.15.0"))
+    write_manifest("windows/beta", manifest_json("Acorn_1.15.1-beta.3_x64-setup.exe", "1.15.1-beta.3"))
+    assert client.get("/api/desktop/latest").json()["version"] == "1.15.0"
+    drop_manifest("windows/beta")
+    drop_manifest("windows")
+
+
 # ---------- 跑起来 ----------
 
 

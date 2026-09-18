@@ -9,7 +9,7 @@ import {
 import {
   compareVersions, downloadPackage, DOWNLOAD_CANCELLED, DOWNLOAD_STALL_MS, EXIT_GRACE_MS,
   fetchUpdate, installPackage, isCancelled, isNewer, isRequiredForSync, lastInstallError,
-  packageName, parseManifest, shouldOffer, UPDATE_CHANNEL,
+  packageName, parseManifest, pickNewest, shouldOffer, UPDATE_CHANNEL,
 } from "../src/core/updater";
 import { DATA_VERSION } from "../src/core/model";
 
@@ -466,5 +466,56 @@ describe("手动查一次", () => {
     vi.stubGlobal("fetch", () => Promise.resolve(okResponse(manifest({ version: "99.0.0" }))));
     expect(await checkUpdateNow()).toBe("found");
     expect(updateStore.getState().pending?.version).toBe("99.0.0");
+  });
+});
+
+
+describe("管理员测试版通道（用户 2026-09-18 定）", () => {
+  const pub = (v: string) => okResponse(manifest({ version: v, url: `${BASE}/download/windows/Acorn_${v}_x64-setup.exe` }));
+  const beta = (v: string) => okResponse(manifest({ version: v, url: `${BASE}/download/windows/beta/Acorn_${v}_x64-setup.exe` }));
+
+  it("两份清单挑号大的：1.15.0 < beta3；正式 1.15.1 出来后，它比这一轮所有 beta 都新", () => {
+    const a = parseManifest(manifest({ version: "1.15.0" }));
+    const b = parseManifest(manifest({ version: "1.15.1-beta.3" }));
+    const c = parseManifest(manifest({ version: "1.15.1" }));
+    expect(pickNewest(a, b)?.version).toBe("1.15.1-beta.3");
+    expect(pickNewest(c, b)?.version).toBe("1.15.1");
+    expect(pickNewest(null, b)?.version).toBe("1.15.1-beta.3");
+    expect(pickNewest(a, null)?.version).toBe("1.15.0");
+  });
+
+  it("登录着（管理员）：正式版 1.15.0、测试版 beta3 → 交出 beta3，而且测试版那一路带着登录凭证", async () => {
+    const seen: { url: string; auth?: string }[] = [];
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      seen.push({ url, auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
+      return Promise.resolve(url.endsWith("/beta") ? beta("1.15.1-beta.3") : pub("1.15.0"));
+    });
+    const res = await fetchUpdate({ token: "t0ken" });
+    expect(res).toEqual({ ok: true, info: expect.objectContaining({ version: "1.15.1-beta.3" }) });
+    expect(seen.map((s) => s.url)).toEqual([`${BASE}/api/desktop/latest`, `${BASE}/api/desktop/beta`]);
+    expect(seen[1].auth).toBe("Bearer t0ken");
+    // 装着 1.15.0 的管理员会被推荐；装着 beta1 的也会
+    expect(shouldOffer(res.ok ? res.info : null, "1.15.0")).toBe(true);
+    expect(shouldOffer(res.ok ? res.info : null, "1.15.1-beta.1")).toBe(true);
+    expect(shouldOffer(res.ok ? res.info : null, "1.15.1-beta.3")).toBe(false);
+  });
+
+  it("没登录：根本不问测试版", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      seen.push(url);
+      return Promise.resolve(pub("1.15.0"));
+    });
+    await fetchUpdate({ token: null });
+    expect(seen).toEqual([`${BASE}/api/desktop/latest`]);
+  });
+
+  it("不是管理员（服务器回没有）/ 令牌过期（401）：照正式版那一路走，不算查更新失败", async () => {
+    vi.stubGlobal("fetch", (url: string) =>
+      Promise.resolve(url.endsWith("/beta") ? okResponse({ available: false }) : pub("1.15.0")));
+    expect(await fetchUpdate({ token: "t" })).toEqual({ ok: true, info: expect.objectContaining({ version: "1.15.0" }) });
+    vi.stubGlobal("fetch", (url: string) =>
+      Promise.resolve(url.endsWith("/beta") ? ({ ok: false, status: 401 } as unknown as Response) : pub("1.15.0")));
+    expect(await fetchUpdate({ token: "t" })).toEqual({ ok: true, info: expect.objectContaining({ version: "1.15.0" }) });
   });
 });

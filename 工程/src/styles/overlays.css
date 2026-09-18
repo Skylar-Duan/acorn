@@ -175,8 +175,6 @@
 .cl-card p { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.65; margin: 0; }
 /* 五张卡时最后一张独占一行，别留一个空洞 */
 .cl-cards > .cl-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.cl-minor { margin: 14px 0 0; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
-.cl-minor-tag { display: inline-block; margin-right: 8px; padding: 0 7px; border-radius: 999px; font-size: var(--fs-xs); color: var(--ink-3); border: 1px solid var(--hair); vertical-align: 1px; }
 
 /* 之前的版本：一行一版，点开才展开。
    v1.14.1 起是手风琴（同时只摊开一条），标记也从 <details>/<summary> 换成了按钮 + 折叠壳：
@@ -213,7 +211,6 @@
 .cl-old-list { list-style: none; margin: 0; padding: 10px 14px 4px; display: flex; flex-direction: column; gap: 8px; }
 .cl-old-list li { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.65; }
 .cl-old-list li b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 1px; }
-.cl-old .cl-minor { padding: 0 14px 12px; margin-top: 8px; }
 
 @media (max-width: 760px) {
   /* 命令面板 / 全局搜索 / 找回数据这三个原来一条窄屏豁免都没有：

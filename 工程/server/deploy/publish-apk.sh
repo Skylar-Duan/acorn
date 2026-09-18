@@ -8,18 +8,30 @@
 #   3. 把老包留着但只留最近 3 个（有人正在下旧包的路上，别当场抽走）
 #
 # 用法：
-#   bash server/deploy/publish-apk.sh <apk 路径> [更新说明文件]
+#   bash server/deploy/publish-apk.sh <apk 路径> [更新说明文件] [--beta]
 #
 # 客户端那头：GET /api/android/latest 拿到这份清单 → 比版本号 → 自己下 → 拉起安装。
+#
+# --beta：发到测试版通道（只有管理员账号看得到）。包和清单放 android/beta/，文件名必须是测试版号
+#   （Acorn_1.15.1-beta.3_arm64.apk）；不动正式版的清单和固定下载名。跟 publish-exe.sh 同一套。
 set -euo pipefail
 
-APK="${1:?用法: publish-apk.sh <apk 路径> [更新说明文件]}"
-NOTES_FILE="${2:-}"
+BETA=0
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --beta) BETA=1 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+APK="${ARGS[0]:?用法: publish-apk.sh <apk 路径> [更新说明文件] [--beta]}"
+NOTES_FILE="${ARGS[1]:-}"
 [ -f "$APK" ] || { echo "找不到 $APK"; exit 1; }
 
 HOST="${ACORN_DEPLOY_HOST:-root@47.85.52.202}"
 SSH_KEY="${ACORN_SSH_KEY:-/s/AI/Claude Code/claude-home/resources/ssh/id_ed25519}"
 REMOTE_DIR="/var/www/acorn-public/android"
+if [ "$BETA" = 1 ]; then REMOTE_DIR="$REMOTE_DIR/beta"; fi
 KEEP=3
 
 SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$HOST")
@@ -27,8 +39,14 @@ SCP=(scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new)
 
 NAME="$(basename "$APK")"
 # 版本号从文件名里取：Acorn_1.7.0_arm64.apk -> 1.7.0
-VER="$(printf '%s' "$NAME" | sed -n 's/^[Aa]corn_\([0-9][0-9.]*\)_.*/\1/p')"
-[ -n "$VER" ] || { echo "文件名里读不出版本号（要形如 Acorn_1.7.0_arm64.apk）"; exit 1; }
+if [ "$BETA" = 1 ]; then
+  VER="$(printf '%s' "$NAME" | sed -n 's/^[Aa]corn_\([0-9][0-9.]*-beta\.[0-9][0-9]*\)_.*/\1/p')"
+  [ -n "$VER" ] || { echo "测试版的文件名要形如 Acorn_1.15.1-beta.3_arm64.apk"; exit 1; }
+else
+  # 正式版这条认不出带 -beta 的包：测试版不会被手滑发成正式版
+  VER="$(printf '%s' "$NAME" | sed -n 's/^[Aa]corn_\([0-9][0-9.]*\)_.*/\1/p')"
+  [ -n "$VER" ] || { echo "文件名里读不出版本号（要形如 Acorn_1.7.0_arm64.apk）"; exit 1; }
+fi
 SIZE="$(stat -c %s "$APK")"
 SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
 NOTES=""
@@ -79,13 +97,20 @@ ls -1t *.apk 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
   rm -f -- "\$old"
 done
 # 固定文件名永远指向最新的包：网站上的下载链接写这个名字就不用每版改（2026-09-02 用户要求网站随发版同步）
-ln -sfn "$NAME" Acorn-latest-arm64.apk
+# 测试版不碰固定下载名
+if [ "$BETA" = 0 ]; then ln -sfn "$NAME" Acorn-latest-arm64.apk; fi
 chmod -R a+rX /var/www/acorn-public
 ls -1 *.apk
 REMOTE
 
 echo
 echo "=== 外网自测"
+if [ "$BETA" = 1 ]; then
+  curl -s -m 15 -o /dev/null -w "测试版 APK 直链 HTTP %{http_code}（%{size_download} 字节头）\n" -r 0-1023 \
+    "https://acorn.cdpandas.com/download/android/beta/$NAME"
+  curl -s -m 15 -o /dev/null -w "测试版接口不登录应是 401：HTTP %{http_code}\n" "https://acorn.cdpandas.com/api/android/beta"
+  exit 0
+fi
 curl -s -m 15 "https://acorn.cdpandas.com/api/android/latest"; echo
 curl -s -m 15 -o /dev/null -w "APK 直链 HTTP %{http_code}（%{size_download} 字节头）\n" -r 0-1023 \
   "https://acorn.cdpandas.com/download/android/$NAME"

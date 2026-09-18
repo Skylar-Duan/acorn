@@ -9,19 +9,32 @@
 #   3. 把老包留着但只留最近 3 个（有人正在下旧包的路上，别当场抽走）
 #
 # 用法：
-#   bash server/deploy/publish-exe.sh <exe 路径> [更新说明文件]
+#   bash server/deploy/publish-exe.sh <exe 路径> [更新说明文件] [--beta]
 #
 # 包在 npm run build 之后躺在 src-tauri/target/release/bundle/nsis/Acorn_1.9.0_x64-setup.exe。
 # 客户端那头：GET /api/desktop/latest 拿到这份清单 → 比版本号 → 自己下 → 拉起安装 → 自己退出。
+#
+# --beta：发到测试版通道（用户 2026-09-18 定，只有管理员账号看得到，见 server/app/main.py 的 _beta_for）。
+#   包和清单放 windows/beta/，文件名必须是测试版号（Acorn_1.15.1-beta.3_x64-setup.exe）；
+#   不动正式版的清单、不动固定下载名——测试版推上去，普通用户什么都看不到。
 set -euo pipefail
 
-EXE="${1:?用法: publish-exe.sh <exe 路径> [更新说明文件]}"
-NOTES_FILE="${2:-}"
+BETA=0
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --beta) BETA=1 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+EXE="${ARGS[0]:?用法: publish-exe.sh <exe 路径> [更新说明文件] [--beta]}"
+NOTES_FILE="${ARGS[1]:-}"
 [ -f "$EXE" ] || { echo "找不到 $EXE"; exit 1; }
 
 HOST="${ACORN_DEPLOY_HOST:-root@47.85.52.202}"
 SSH_KEY="${ACORN_SSH_KEY:-/s/AI/Claude Code/claude-home/resources/ssh/id_ed25519}"
 REMOTE_DIR="/var/www/acorn-public/windows"
+if [ "$BETA" = 1 ]; then REMOTE_DIR="$REMOTE_DIR/beta"; fi
 KEEP=3
 
 SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$HOST")
@@ -29,8 +42,14 @@ SCP=(scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new)
 
 NAME="$(basename "$EXE")"
 # 版本号从文件名里取：Acorn_1.9.0_x64-setup.exe -> 1.9.0
-VER="$(printf '%s' "$NAME" | sed -n 's/^[Aa]corn_\([0-9][0-9.]*\)_.*\.exe$/\1/p')"
-[ -n "$VER" ] || { echo "文件名里读不出版本号（要形如 Acorn_1.9.0_x64-setup.exe）"; exit 1; }
+if [ "$BETA" = 1 ]; then
+  VER="$(printf '%s' "$NAME" | sed -n 's/^[Aa]corn_\([0-9][0-9.]*-beta\.[0-9][0-9]*\)_.*\.exe$/\1/p')"
+  [ -n "$VER" ] || { echo "测试版的文件名要形如 Acorn_1.15.1-beta.3_x64-setup.exe"; exit 1; }
+else
+  # 正式版这条认不出带 -beta 的包：测试版不会被手滑发成正式版
+  VER="$(printf '%s' "$NAME" | sed -n 's/^[Aa]corn_\([0-9][0-9.]*\)_.*\.exe$/\1/p')"
+  [ -n "$VER" ] || { echo "文件名里读不出版本号（要形如 Acorn_1.9.0_x64-setup.exe）"; exit 1; }
+fi
 SIZE="$(stat -c %s "$EXE")"
 SHA="$(sha256sum "$EXE" | cut -d' ' -f1)"
 NOTES=""
@@ -80,14 +99,22 @@ ls -1t *.exe 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
   echo "  删掉 \$old"
   rm -f -- "\$old"
 done
-# 固定文件名永远指向最新的包：网站上的下载链接写这个名字就不用每版改（2026-09-02 用户要求网站随发版同步）
-ln -sfn "$NAME" Acorn-latest-x64-setup.exe
+# 固定文件名永远指向最新的**正式**包：网站上的下载链接写这个名字就不用每版改（2026-09-02 用户要求网站随发版同步）。
+# 测试版不碰它
+if [ "$BETA" = 0 ]; then ln -sfn "$NAME" Acorn-latest-x64-setup.exe; fi
 chmod -R a+rX /var/www/acorn-public
 ls -1 *.exe
 REMOTE
 
 echo
 echo "=== 外网自测"
+if [ "$BETA" = 1 ]; then
+  # 测试版清单要管理员登录才问得到，这里只验包本身下得下来
+  curl -s -m 15 -o /dev/null -w "测试版 exe 直链 HTTP %{http_code}（%{size_download} 字节头）\n" -r 0-1023 \
+    "https://acorn.cdpandas.com/download/windows/beta/$NAME"
+  curl -s -m 15 -o /dev/null -w "测试版接口不登录应是 401：HTTP %{http_code}\n" "https://acorn.cdpandas.com/api/desktop/beta"
+  exit 0
+fi
 curl -s -m 15 "https://acorn.cdpandas.com/api/desktop/latest"; echo
 curl -s -m 15 -o /dev/null -w "exe 直链 HTTP %{http_code}（%{size_download} 字节头）\n" -r 0-1023 \
   "https://acorn.cdpandas.com/download/windows/$NAME"

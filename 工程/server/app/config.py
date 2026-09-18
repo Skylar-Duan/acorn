@@ -50,6 +50,16 @@ class Settings:
         "ACORN_DOWNLOAD_BASE", "https://acorn.cdpandas.com/download"
     )
 
+    # 管理员账号：只有它们能从 /api/<端>/beta 拿到测试版（用户 2026-09-18 定）。
+    # 逗号隔开，一律按小写比。换人改环境变量 ACORN_ADMIN_EMAILS，不用改代码
+    admin_emails: frozenset = frozenset(
+        e.strip().lower()
+        for e in os.environ.get(
+            "ACORN_ADMIN_EMAILS", "bower.6868@gmail.com,skylar@cdpandas.com,1254823795@qq.com"
+        ).split(",")
+        if e.strip()
+    )
+
     # 验证码有效期与重发间隔
     code_ttl_seconds: int = _int("ACORN_CODE_TTL", 15 * 60)
     code_resend_seconds: int = _int("ACORN_CODE_RESEND", 60)

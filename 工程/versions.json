@@ -1,5 +1,5 @@
 {
-  "_说明": "三端各排各的号（2026-09-18 起，第一位三端共用）。public = 这一端已经公开发出去的正式版；beta = 这一端从那次正式版以来打过几次测试版。发布时改 public、把那一端的 beta 归零。细则见 ../_work/约定.md 第二、三节。打包走 scripts/build-app.mjs，别手改 tauri.conf.json 的 version。",
+  "_说明": "三端各排各的号（2026-09-18 起，第一位三端共用）。public = 这一端已经公开发出去的正式版；beta = 这一端接在 betaAfter 那个正式版后面打过几次测试版——public 一变，下一次测试版自动从 1 重新数。发布时只改 public。细则见 ../_work/约定.md 第二、三节。打包走 scripts/build-app.mjs，别手改 tauri.conf.json 的 version。",
   "public": {
     "desktop": "1.15.0",
     "android": "1.15.0",
@@ -9,5 +9,10 @@
     "desktop": 3,
     "android": 0,
     "web": 0
+  },
+  "betaAfter": {
+    "desktop": "1.15.0",
+    "android": "1.15.0",
+    "web": "1.15.0"
   }
 }

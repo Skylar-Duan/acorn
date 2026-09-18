@@ -12,6 +12,7 @@ import { useStore } from "zustand";
 import { showToast } from "./store";
 import { todayYMD } from "./dates";
 import { APP_VERSION } from "./model";
+import { shortVersion } from "./version";
 import { isAndroid } from "./platform";
 import {
   compareVersions, downloadPackage, fetchUpdate, installFailureSay, installPackage, installStatusText, installWhy,
@@ -231,7 +232,7 @@ export function updateFootState(
   if (!supported || last === null) return null;
   if (last.kind === "failed") return { bad: true, text: "版本检查失败", openable: false };
   if (last.kind === "found") {
-    return { bad: false, text: `有新版本 v${last.version}`, openable: true };
+    return { bad: false, text: `有新版本 ${shortVersion(last.version)}`, openable: true };
   }
   return { bad: false, text: "已是最新", openable: false };
 }

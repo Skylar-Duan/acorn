@@ -7,7 +7,7 @@
 // 装的时候要不要先把自己退掉（桌面要，见 installPackage）。
 
 import { APP_VERSION, DATA_VERSION } from "./model";
-import { API_BASE } from "./cloud";
+import { API_BASE, loadSession } from "./cloud";
 import { hasDesktopFeatures, isAndroid } from "./platform";
 import { inTauri } from "./persist";
 
@@ -89,7 +89,39 @@ export type UpdateCheck =
 
 const CHECK_TIMEOUT_MS = 12000;
 
-export async function fetchUpdate(): Promise<UpdateCheck> {
+/** 两份清单里挑号更大的那份（测试版号按 semver 比，见 core/version.ts） */
+export function pickNewest(a: UpdateInfo | null, b: UpdateInfo | null): UpdateInfo | null {
+  if (!a) return b;
+  if (!b) return a;
+  return compareVersions(b.version, a.version) > 0 ? b : a;
+}
+
+/**
+ * 管理员才有的测试版通道（用户 2026-09-18 定）：登录着的时候顺便问一句这一端最新的 beta。
+ * **是不是管理员由服务器说了算**，App 不自己判——别的账号问过去拿到的是 available:false。
+ * 这一路出任何问题（没登录、令牌过期、服务器还没这个接口）都当没有测试版，不影响正式版那一路。
+ */
+async function fetchBeta(token: string | null | undefined, signal: AbortSignal): Promise<UpdateInfo | null> {
+  if (!token) return null;
+  try {
+    const res = await fetch(`${API_BASE}/api/${UPDATE_CHANNEL}/beta`, {
+      signal,
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return parseManifest(await res.json());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 查一次有没有新版。正式版一路是主干（查不到就报查不到）；登录着的话再问一句测试版，
+ * 两份里号大的那份交出去：装着 1.15.0 的管理员会被推荐最新的 beta；正式版一发出来，
+ * 它比这一轮所有 beta 都新，管理员也会被推荐正式版。
+ * `token` 不传就自己去读登录状态；传 null 表示明确不问测试版。
+ */
+export async function fetchUpdate(opts: { token?: string | null } = {}): Promise<UpdateCheck> {
   const ctrl = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -105,7 +137,9 @@ export async function fetchUpdate(): Promise<UpdateCheck> {
     } catch {
       return { ok: false, reason: "http" }; // 清单读不成 JSON：服务端出的事，别栽给网络
     }
-    return { ok: true, info: parseManifest(raw) };
+    const token = opts.token !== undefined ? opts.token : (await loadSession())?.token;
+    const beta = await fetchBeta(token, ctrl.signal);
+    return { ok: true, info: pickNewest(parseManifest(raw), beta) };
   } catch {
     // 超时和「压根连不上」分开报：前者多半是网慢，后者才是真断网
     return { ok: false, reason: timedOut ? "timeout" : "offline" };

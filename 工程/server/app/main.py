@@ -438,6 +438,30 @@ def desktop_latest() -> dict:
     return _channel_latest("windows")
 
 
+# 测试版通道（用户 2026-09-18 定）：只给管理员账号。测试版包放在 <端目录>/beta/ 下，
+# 清单同样是 latest.json，由 publish-exe.sh / publish-apk.sh 加 --beta 写。
+# 不是管理员的账号问过来，回的跟「还没发过」一样——安静地什么都没有，不报错也不露口风。
+# 要登录才问得到：谁是管理员只有服务器知道，App 不自己判。
+
+
+def _beta_for(user: Any, subdir: str) -> dict:
+    if str(user["email"]).strip().lower() not in settings.admin_emails:
+        return {"available": False}
+    return _channel_latest(f"{subdir}/beta")
+
+
+@app.get("/api/android/beta")
+def android_beta(user: CurrentUser) -> dict:
+    """最新的安卓测试版（只对管理员）。"""
+    return _beta_for(user, "android")
+
+
+@app.get("/api/desktop/beta")
+def desktop_beta(user: CurrentUser) -> dict:
+    """最新的桌面测试版（只对管理员）。"""
+    return _beta_for(user, "windows")
+
+
 # ---------- 收尾 ----------
 
 

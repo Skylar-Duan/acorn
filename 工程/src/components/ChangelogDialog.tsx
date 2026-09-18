@@ -62,7 +62,7 @@ function CheckControl() {
   if (today?.result === "found" && stage !== "failed") {
     return (
       <button className="btn primary cl-check" onClick={() => void go()}>
-        有新版本 v{today.version}，去更新
+        有新版本 {shortVersion(today.version)}，去更新
       </button>
     );
   }
@@ -85,23 +85,15 @@ function Latest({ e }: { e: ChangelogEntry }) {
         {e.version === APP_VERSION && <span className="cl-hero-now">这台设备上的版本</span>}
       </div>
       <p className="cl-hero-head">{e.headline}</p>
-      {/* 没有新功能的版本不画小卡，只有下面「还有」那一行 */}
-      {e.highlights.length > 0 && (
-        <div className="cl-cards">
-          {e.highlights.map((h) => (
-            <article className="cl-card" key={h.title}>
-              <h4>{h.title}</h4>
-              <p>{h.body}</p>
-            </article>
-          ))}
-        </div>
-      )}
-      {e.minor && (
-        <p className="cl-minor">
-          <span className="cl-minor-tag">还有</span>
-          {e.minor}
-        </p>
-      )}
+      {/* 每条一张小卡：新功能各一张；细节合成一张「体验优化」（用户 09-18：「还有」那一行不要了） */}
+      <div className="cl-cards">
+        {e.highlights.map((h) => (
+          <article className="cl-card" key={h.title}>
+            <h4>{h.title}</h4>
+            <p>{h.body}</p>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -133,20 +125,14 @@ function Older({ e, open, onToggle }: { e: ChangelogEntry; open: boolean; onTogg
       </button>
       <div className={`cl-old-fold${open ? "" : " shut"}`}>
         <div className="cl-old-fold-inner">
-          {e.highlights.length > 0 && <ul className="cl-old-list">
+          <ul className="cl-old-list">
             {e.highlights.map((h) => (
               <li key={h.title}>
                 <b>{h.title}</b>
                 <span>{h.body}</span>
               </li>
             ))}
-          </ul>}
-          {e.minor && (
-            <p className="cl-minor">
-              <span className="cl-minor-tag">还有</span>
-              {e.minor}
-            </p>
-          )}
+          </ul>
         </div>
       </div>
     </div>
