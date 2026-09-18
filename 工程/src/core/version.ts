@@ -5,22 +5,19 @@
 // 从 1.15.0 起切，之前的号维持原样——改了更新链会断。
 // 号码真源是 工程/versions.json，构建时由 vite 写进产物（见 vite.config.ts）。
 //
+// **界面上不写端名**（用户 2026-09-18：「从哪个端进去别人自己知道什么端」）：
+// 每一端只显示自己那个号，写法跟以前一模一样（v1.15.0）。
+//
 // **测试版**：发布前装给用户自己试的包，号码写成「下一个小修号 + -beta.N」
 // （公开 1.15.0 → 测试版 1.15.1-beta.3）。按 semver 它比 1.15.0 新、比任何正式的 1.15.1 及以后都旧：
 // 正式版出来时能正常盖掉它，它自己也不会被更新检查当成「落后」、被劝回去装 1.15.0。
-// 正式号到发布时才定，所以界面上**不显示 1.15.1 这个占位号**，只说「测试版 3」。
+// 这串号只给机器比大小用；**界面上原来写版本号的地方一律只写 beta**（用户定的，别再加别的字）。
 
 import { isAndroid, isWebBuild } from "./platform";
 
 export type Platform = "desktop" | "android" | "web";
 
 export const PLATFORMS: readonly Platform[] = ["desktop", "android", "web"];
-
-export const PLATFORM_LABEL: Record<Platform, string> = {
-  desktop: "桌面版",
-  android: "安卓版",
-  web: "网页版",
-};
 
 /** 这份代码此刻算哪一端。网页版认构建（iPhone 上打开网页版也是网页版），
  *  装好的 App 里再用 UA 分安卓和电脑。`npm run dev` 那个浏览器预览算桌面版 */
@@ -36,54 +33,27 @@ export function pickVersion(platform: Platform, published?: Published, build?: B
   return published?.[platform] || "dev";
 }
 
-/** 应用版本号（测试环境没有构建宏时退到 dev） */
+/** 应用版本号（测试环境没有构建宏时退到 dev）。拿来比大小、写进导出文件，不直接给人看 */
 export const APP_VERSION: string = pickVersion(
   APP_PLATFORM,
   typeof __APP_VERSIONS__ === "object" ? __APP_VERSIONS__ : undefined,
   typeof __APP_BUILD__ === "object" ? __APP_BUILD__ : undefined,
 );
 
-const BETA_RE = /^(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
-
 export function isBeta(v: string): boolean {
-  return BETA_RE.test(v);
+  return /^\d+\.\d+\.\d+-beta\.\d+$/.test(v);
 }
 
 export const IS_BETA: boolean = isBeta(APP_VERSION);
 
-/** 测试版的序号：1.15.1-beta.3 → 3；不是测试版 → null */
-export function betaNumber(v: string): number | null {
-  const m = BETA_RE.exec(v);
-  return m ? Number(m[4]) : null;
+/** 给人看的号，不带 v：「1.15.0」/ 测试版就是「beta」 */
+export function displayVersion(v: string = APP_VERSION): string {
+  return isBeta(v) ? "beta" : v;
 }
 
-/** 测试版是接在哪个正式版后面打的：1.15.1-beta.3 → 1.15.0。
- *  打包脚本永远拿「公开号的下一个小修号」当测试版的底，所以往回退一格就是它 */
-export function betaBase(v: string): string | null {
-  const m = BETA_RE.exec(v);
-  if (!m) return null;
-  const patch = Number(m[3]);
-  return patch > 0 ? `${m[1]}.${m[2]}.${patch - 1}` : null;
-}
-
-/** 下一个测试版号：公开 1.15.0、第 3 次 → 1.15.1-beta.3 */
-export function nextBetaVersion(publicVersion: string, n: number): string {
-  const [a = 0, b = 0, c = 0] = publicVersion.split(".").map((x) => parseInt(x, 10) || 0);
-  return `${a}.${b}.${c + 1}-beta.${n}`;
-}
-
-/** 短的，放侧栏那种小地方：「v1.15.0」/「测试版 3」 */
+/** 给人看的号，带 v（侧栏那个小标签的写法）：「v1.15.0」/ 测试版就是「beta」 */
 export function shortVersion(v: string = APP_VERSION): string {
-  const n = betaNumber(v);
-  return n === null ? `v${v}` : `测试版 ${n}`;
-}
-
-/** 带端名的，放「这台设备上是…」那种句子里：「桌面版 v1.15.0」/「桌面版 测试版 3（v1.15.0 之后）」 */
-export function versionLabel(v: string = APP_VERSION, p: Platform = APP_PLATFORM): string {
-  const n = betaNumber(v);
-  if (n === null) return `${PLATFORM_LABEL[p]} v${v}`;
-  const base = betaBase(v);
-  return `${PLATFORM_LABEL[p]} 测试版 ${n}${base ? `（v${base} 之后）` : ""}`;
+  return isBeta(v) ? "beta" : `v${v}`;
 }
 
 function splitPre(v: string): [string, string] {

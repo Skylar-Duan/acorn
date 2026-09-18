@@ -14,15 +14,16 @@
   来自 `ACORN_BUILD_PLATFORM` / `ACORN_BUILD_VERSION`）。运行时 `core/version.ts` 按 `APP_PLATFORM`
   （网页构建 → web；安卓 UA → android；其余 desktop）挑自己那格。`model.APP_VERSION`、`updater.compareVersions` 改为转手导出。
 - **测试版**：号 = 公开号下一个小修号 + `-beta.N`（1.15.0 → 1.15.1-beta.1）。`compareVersions` 认 semver 预发布段：
-  同号测试版 < 正式版、beta 序号按数字比。界面显示 `shortVersion`（「测试版 1」）/ `versionLabel`（「桌面版 测试版 1（v1.15.0 之后）」），
-  不露占位号。测试版开机不弹更新日志（`App.tsx` 的 `!IS_BETA`）。
+  同号测试版 < 正式版、beta 序号按数字比。界面上原来写号的地方测试版只写 `beta`（`shortVersion` / `displayVersion`），
+  不露占位号、不加别的字（用户 09-18 改口，撤掉了一版「测试版 1（v1.15.0 之后）」的写法）。测试版开机不弹更新日志（`App.tsx` 的 `!IS_BETA`）。
 - **打包入口** `scripts/build-app.mjs <desktop|android> [--beta]`：用 tauri `--config` 临时盖版本号（`src-tauri/tauri.version.json`，
-  打完删、已 gitignore），不再手改 `tauri.conf.json`；测试版产物复制成 `安装包/橡果 桌面版 测试版.exe`（固定名、每次覆盖），
+  打完删、已 gitignore），不再手改 `tauri.conf.json`；测试版产物复制成 `安装包/橡果 beta 安装包.exe`（固定名、每次覆盖），
   计数只在真出包后落盘。`build-android.sh` 改用 `ACORN_BUILD_VERSION` / `versions.json` 安卓格 + `--config`；
   `publish-web.sh` 改读 `versions.json` 网页格，且拒绝发带 `-` 的号。`publish-exe/apk.sh` 的文件名正则本来就认不出 `-beta`，测试版推不上服务器。
 - **更新日志分端**：`ChangelogEntry.version` → `versions: {desktop?, android?, web?}`，`changelogFor(platform)` 取某一端的列表；
   历史条目按内容标端（1.14.2 只给安卓，1.15.0 三端，其余桌面 + 安卓）。弹窗只摊开本端的；网页版只看得到 1.15.0。
-- 显示版本的六处改用带端名的写法：侧栏小标签、更新日志顶上、升级弹窗、设置「版本更新」摘要与面板、设置「关于」、云端设备名。
+- 显示版本的六处（侧栏小标签、更新日志顶上、升级弹窗、设置「版本更新」摘要与面板、设置「关于」、云端设备名）**不带端名**，
+  写法跟以前一样，只是测试版换成 `beta`（用户 09-18：「从哪个端进去别人自己知道什么端」）。
 - 顺手修：`tests/web-build.test.ts` 还在找 9-17 之前那颗直链下载按钮（10 改成「一个按钮 + 平台弹窗」后就红了），对齐到新结构。
 - 测试：新增 `tests/version.test.ts`（号码来源、测试版号、比大小、装着测试版时的更新提示）；`changelog.test.ts` 改为按端校验
   （每端最新一条 = versions.json 公开号、文件内按端有序且不重号、电脑看不到 1.14.2、网页只有 1.15.0）；`changelog-jump.test.ts` 加从测试版升正式版。64 文件 2092 测全绿。

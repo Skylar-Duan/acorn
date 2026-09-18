@@ -4,7 +4,7 @@
 // 是最容易半路走丢的做法，只在 App 内这条路真走不通时才给出来当备用。
 
 import { useEffect, useState } from "react";
-import { versionLabel } from "../core/version";
+import { displayVersion } from "../core/version";
 import { isAndroid } from "../core/platform";
 import { CHECK_FAILED_MSG, HANDOFF_MSG, useUpdateRun } from "../core/updateCtl";
 import {
@@ -65,7 +65,7 @@ export default function UpdatePanel() {
   return (
     <div className="set-row col">
       <div className="acct-line">
-        <b>当前版本 {versionLabel()}</b>
+        <b>当前版本 {displayVersion()}</b>
         <span className="spacer" />
         <button className="btn" disabled={busy} onClick={() => void check()}>
           {stage === "checking" ? "检查中…" : "检查更新"}

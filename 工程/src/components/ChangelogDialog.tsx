@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { changelogFor, type PlatformEntry } from "../core/changelog";
-import { APP_PLATFORM, APP_VERSION, shortVersion, versionLabel } from "../core/version";
+import { APP_PLATFORM, APP_VERSION, shortVersion } from "../core/version";
 import { setChangelogOpen } from "../core/store";
 import {
   CHECK_FAILED_MSG, checkUpdateNow, checkedToday, entriesSince, useUpdate, type ManualCheck,
@@ -185,7 +185,7 @@ export default function ChangelogDialog() {
         <header className="cl-head">
           <div className="cl-title">
             <h2 id="cl-title">更新日志</h2>
-            <span className="cl-cur">这台设备上是 {versionLabel()}</span>
+            <span className="cl-cur">这台设备上是 {shortVersion()}</span>
           </div>
           <CheckControl />
           <button className="cl-x" aria-label="关闭" title="关闭" onClick={() => setChangelogOpen(false)}>

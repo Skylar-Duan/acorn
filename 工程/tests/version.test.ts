@@ -2,8 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  APP_PLATFORM, APP_VERSION, IS_BETA, betaBase, betaNumber, compareVersions, isBeta,
-  nextBetaVersion, pickVersion, shortVersion, versionLabel,
+  APP_PLATFORM, APP_VERSION, IS_BETA, compareVersions, displayVersion, isBeta, pickVersion, shortVersion,
 } from "../src/core/version";
 import { isNewer, shouldOffer, parseManifest } from "../src/core/updater";
 
@@ -41,28 +40,29 @@ describe("号码从哪来", () => {
   });
 });
 
-describe("测试版号", () => {
-  it("公开号的下一个小修号 + -beta.N", () => {
-    expect(nextBetaVersion("1.15.0", 1)).toBe("1.15.1-beta.1");
-    expect(nextBetaVersion("1.15.9", 12)).toBe("1.15.10-beta.12");
+describe("界面上怎么写", () => {
+  it("跟以前一样，不带端名：各端只写自己的号", () => {
+    // 用户 2026-09-18：「从哪个端进去别人自己知道什么端」
+    expect(shortVersion("1.15.0")).toBe("v1.15.0");
+    expect(displayVersion("1.15.8")).toBe("1.15.8");
   });
 
-  it("认得出来、拆得开", () => {
+  it("测试版原来写号的地方只写 beta，不加别的字，也不露 1.15.1 这个占位号", () => {
     expect(isBeta("1.15.1-beta.3")).toBe(true);
     expect(isBeta("1.15.1")).toBe(false);
-    expect(betaNumber("1.15.1-beta.3")).toBe(3);
-    expect(betaNumber("1.15.1")).toBeNull();
-    expect(betaBase("1.15.1-beta.3")).toBe("1.15.0");
-    expect(betaBase("1.15.0")).toBeNull();
+    expect(shortVersion("1.15.1-beta.3")).toBe("beta");
+    expect(displayVersion("1.15.1-beta.3")).toBe("beta");
   });
 
-  it("给人看的写法：不把 1.15.1 这个占位号露出来（正式号发布时才定）", () => {
-    expect(shortVersion("1.15.0")).toBe("v1.15.0");
-    expect(shortVersion("1.15.1-beta.3")).toBe("测试版 3");
-    expect(versionLabel("1.15.0", "desktop")).toBe("桌面版 v1.15.0");
-    expect(versionLabel("1.15.8", "android")).toBe("安卓版 v1.15.8");
-    expect(versionLabel("1.15.1-beta.3", "desktop")).toBe("桌面版 测试版 3（v1.15.0 之后）");
-    expect(versionLabel("1.15.1-beta.3", "desktop")).not.toContain("1.15.1");
+  it("显示版本的几处都走这两个函数，没有哪里还在直接写 APP_VERSION 或端名", () => {
+    const files = [
+      "src/components/Sidebar.tsx", "src/components/ChangelogDialog.tsx", "src/components/UpdateDialog.tsx",
+      "src/components/UpdatePanel.tsx", "src/views/Settings.tsx", "src/core/cloud.ts",
+    ];
+    for (const f of files) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).not.toMatch(/v\{APP_VERSION\}|v\$\{APP_VERSION\}|桌面版|安卓版|网页版 v/);
+    }
   });
 });
 

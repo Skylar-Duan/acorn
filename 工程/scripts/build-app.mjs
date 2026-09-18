@@ -6,7 +6,8 @@
 //   node scripts/build-app.mjs desktop          # 正式包：用 versions.json 里这一端 public 的号
 //
 // 测试版：只装给用户自己试，**不推更新服务器**——publish-exe.sh / publish-apk.sh 的文件名规则也认不出
-// 带 -beta 的包，推不上去。打完复制到 ../安装包/，名字固定（每次覆盖），用户只需要最新那一个。
+// 带 -beta 的包，推不上去。打完复制到 ../安装包/，名字里版本号那格写 beta（「橡果 beta 安装包.exe」），
+// 每次覆盖，用户只需要最新那一个。
 // 正式包：发布前先把 versions.json 里那一端的 public 改成要发的号、beta 归零，再跑本脚本。
 // 网页版没有测试版，也不在这儿打：server/deploy/publish-web.sh 自己构建、自己发。
 //
@@ -93,6 +94,8 @@ if (beta) {
 
 mkdirSync(PKG_DIR, { recursive: true });
 const ext = platform === "desktop" ? "exe" : "apk";
-const dest = join(PKG_DIR, beta ? `橡果 ${label} 测试版.${ext}` : `橡果 ${label} v${version}.${ext}`);
+// 跟以前的命名一样：「橡果 v1.15.0 安装包.exe」「橡果 v1.15.0 安卓版.apk」，测试版把号换成 beta
+const kind = platform === "desktop" ? "安装包" : "安卓版";
+const dest = join(PKG_DIR, `橡果 ${beta ? "beta" : `v${version}`} ${kind}.${ext}`);
 copyFileSync(artifact, dest);
 console.log(`\n✓ 产物：${artifact}\n✓ 复制到：${dest}`);

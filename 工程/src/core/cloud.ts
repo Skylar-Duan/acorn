@@ -9,7 +9,7 @@
 
 import type { AppData } from "./model";
 import { APP_VERSION, DATA_VERSION } from "./model";
-import { shortVersion } from "./version";
+import { displayVersion } from "./version";
 import { mergeData } from "./merge";
 import { pack, unpack } from "./transfer";
 import { inTauri } from "./persist";
@@ -212,7 +212,7 @@ export function deviceName(): string {
         : /Linux/i.test(ua)
           ? "Linux"
           : "其他";
-  return `${os} · 橡果 ${shortVersion()}`;
+  return `${os} · 橡果 ${displayVersion()}`;
 }
 
 /** 把服务器上那份解开成 AppData。

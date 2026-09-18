@@ -6,7 +6,7 @@
     "web": "1.15.0"
   },
   "beta": {
-    "desktop": 1,
+    "desktop": 2,
     "android": 0,
     "web": 0
   }
