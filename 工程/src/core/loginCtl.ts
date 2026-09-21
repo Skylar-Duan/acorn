@@ -29,7 +29,7 @@ import { applyRemoteData, appStore } from "./store";
 import * as cloud from "./cloud";
 import type { Session } from "./cloud";
 import type { AppData } from "./model";
-import { adoptSession, syncNow, syncStore } from "./syncCtl";
+import { adoptSession, holdAutoSync, syncNow, syncStore } from "./syncCtl";
 import { restoreFromCloud } from "./wipe";
 import type { CloudRestore } from "./wipe";
 import { dedupeListsByName, dedupeSameTasks, keepLocalOverCloud, mergeData, sameContent } from "./merge";
@@ -178,6 +178,29 @@ export async function signInWithLocalData(
     }
   }
 
+  // 从登录态落下来到三条路走完，挡住后台同步（9-21 复核）：adoptSession 会挂上自动取，
+  // 这段网络往返里切一下窗口，它就先拿本机这份跟云端合并推上去了——正是 sync:false 想避开的那一下。
+  // 流程自己显式调的 syncNow 照走
+  const release = await holdAutoSync();
+  try {
+    return await finishSignIn(session, { action, remote, asked, plan, same });
+  } finally {
+    release();
+  }
+}
+
+async function finishSignIn(
+  session: Session,
+  st: {
+    action: LoginChoice;
+    remote: AppData | null;
+    asked: boolean;
+    plan: LoginDataAction;
+    same: boolean;
+  },
+): Promise<SignInOutcome> {
+  const { asked, plan, same } = st;
+  let { action, remote } = st;
   // 登录态先落下来（「用云端的」那条要它才能拉云端、三条路都要它才能推），
   // 但**先别同步**：默认那一下 syncNow 正是「合并」，而用户可能选的是另外两条
   await adoptSession(session, { sync: false });

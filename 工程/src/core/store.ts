@@ -50,7 +50,7 @@ export interface UIState {
   quickAddOpen: boolean;
   toast: { msg: string; undoable: boolean; key: number } | null;
   /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义。
-   *  whole = 右键的是**代表整件事的那一行**（收起的链头 / 一件事只露出一行时的那一行）：
+   *  whole = 右键的是**代表整件事的那一行**（收起的链头，显示 +N 的那种）：
    *  菜单作用于母任务，标题写「整件事 · 名字」，免得以为改的是露出来的那一条子任务 */
   ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null; whole?: boolean } | null;
   /** 子任务链默认收起还是摊开（今天 / 计划两个视图）。收起 = 一件事只占一行「下一步」，
@@ -969,9 +969,22 @@ export function postponeTasks(ids: string[], days = 1) {
  *   · **顺延次数只在日期真的往后挪了才 +1**（原来没日期 = 从无到有，不算；改早了也不算），
  *     一次调用只数一次。子任务没有顺延计数这回事；
  *   · 一次调用 = 一张撤销快照，弹「已顺延 N 项」可撤销。
- *  同一件事的母任务行和子任务行同时传进来也照样只写一遍、只数一次 */
+ *  同一件事的母任务行和子任务行同时传进来也照样只写一遍、只数一次。
+ *   · **不往前拉母任务的日子**（9-21 复核）：母任务原来有日期、选的这天比它早，这件事不动——
+ *     「顺延」不该把截止日提前。提示里的 N 只数真正改了的行；一行都没改就只提示一句、不写库 */
 export function postponeRowsTo(rows: DateRow[], ymd: string) {
   if (rows.length === 0) return;
+  const cur = new Map(appStore.getState().data.tasks.map((t) => [t.id, t]));
+  const wouldPullEarlier = (id: string) => {
+    const due = cur.get(id)?.due;
+    return !!due && cmpYMD(ymd, due) < 0;
+  };
+  rows = rows.filter((r) => r.sub || !wouldPullEarlier(r.task.id));
+  if (rows.length === 0) {
+    showToast("选的这天比原来的日期还早，没有顺延", false);
+    clearSelection();
+    return;
+  }
   const taskIds = new Set(rows.filter((r) => !r.sub).map((r) => r.task.id));
   const subIds = new Map<string, Set<string>>();
   for (const r of rows) {
@@ -1022,6 +1035,16 @@ export function overdueSubRows(task: Task, today = todayYMD()): DateRow[] {
       return !!due && cmpYMD(due, today) < 0;
     })
     .map((s) => ({ task, sub: s }));
+}
+
+/** 多选浮条「顺延 ▾」要推的行（9-21 复核）。多选按「件」记，但推的得是**看得见的那几行**：
+ *  这件事有过期没做完的子任务，就推这几条（跟收起的链头同一口径，overdueSubRows）；
+ *  没有子任务、或者一条过期的都没有，才推母任务本身 */
+export function postponeRowsForTasks(tasks: Task[], today = todayYMD()): DateRow[] {
+  return tasks.flatMap((t): DateRow[] => {
+    const od = overdueSubRows(t, today);
+    return od.length ? od : [{ task: t, sub: null }];
+  });
 }
 
 /** 整组换需求方（右键批量改用这个：给几个人就是几个人，原来的清掉） */

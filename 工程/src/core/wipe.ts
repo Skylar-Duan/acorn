@@ -9,7 +9,7 @@
 import { appStore, clearUndo, flushSave, haltPersistence } from "./store";
 import * as persist from "./persist";
 import * as cloud from "./cloud";
-import { signOut, syncNowChecked, syncStore } from "./syncCtl";
+import { holdAutoSync, signOut, syncNowChecked, syncStore } from "./syncCtl";
 import type { SyncGate } from "./syncCtl";
 
 /** 闸门没过。跟一般的报错分开，界面据此显示「先导出再清」那条出口 */
@@ -41,7 +41,7 @@ export function checkWipeGate(): Promise<SyncGate> {
 export async function wipeLocalData(): Promise<{ rev: number }> {
   if (!syncStore.getState().session) {
     // 没登录过账号的人，这条路根本不该可达：他们的数据从来没上过云，删了就是没了
-    throw new WipeBlocked("这台设备没有登录云账号，数据从来没上过云，不能清空");
+    throw new WipeBlocked("这台设备没有登录账号，数据从来没上过云，不能清空");
   }
   const gate = await checkWipeGate();
   if (!gate.ok) throw new WipeBlocked(gate.why);
@@ -105,8 +105,21 @@ export interface CloudRestore {
  * 云端是空的、或者拉取失败时**一个字都不动本机**：先拉到手，再备份，最后才写。
  */
 export async function restoreFromCloud(opts?: RestoreOpts): Promise<CloudRestore> {
+  if (!syncStore.getState().session) throw new Error("先登录账号，才能把云端那份取回来");
+  // 整段挡住后台同步（9-21 复核）：确认框一关窗口拿回焦点就会触发自动取，
+  // 那一轮会把用户要丢的本机内容合并上云，覆盖等于白做。在途的那一轮先等它落地再拉
+  const release = await holdAutoSync();
+  try {
+    return await restoreHeld(opts);
+  } finally {
+    release();
+  }
+}
+
+async function restoreHeld(opts?: RestoreOpts): Promise<CloudRestore> {
+  // 在途那一轮可能刚把 rev 往前推了：session 在等完之后再取
   const session = syncStore.getState().session;
-  if (!session) throw new Error("先登录云账号，才能把云端那份取回来");
+  if (!session) throw new Error("先登录账号，才能把云端那份取回来");
 
   const pulled = await cloud.pullOnly(session);
   if (!pulled.data) {

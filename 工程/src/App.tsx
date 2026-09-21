@@ -29,6 +29,7 @@ import {
   appStore, clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
   hasChain, navigate, postponeTasks, retrySave, setChainFolded, setChangelogOpen, setPaletteOpen,
   setQuickAddOpen, setSearchOpen, setSelection, setTasksList, setWebNewVersion, undo, useApp,
+  postponeRowsForTasks,
 } from "./core/store";
 import { useUpdate } from "./core/updateCtl";
 // 「数据打不开」那一屏上「检查更新」摆不摆得出来，认这一条（网页版没有包可下）
@@ -447,15 +448,16 @@ export default function App() {
         <div className={`bulk-bar${bulkLeaving ? " leaving" : ""}`}>
           <span className="cnt">{bulkShown.length}</span> 项已选
           {/* 原来是「推到明天」，只能推一天；现在点开选哪天。多选是按「件」选的，
-              所以顺延的是这几件事本身（母任务），还在继承日期的子任务跟着动。Ctrl+→ 照旧是原日期加一天 */}
+              推的是看得见的那几行：有过期子任务的推那几条子任务，其余推母任务（store.postponeRowsForTasks）。
+              Ctrl+→ 照旧是原日期加一天 */}
           <PostponeButton
             className="btn ghost"
             label="顺延"
             getRows={() => {
               const ids = appStore.getState().ui.selectedIds;
-              return appStore.getState().data.tasks
-                .filter((t) => ids.includes(t.id) && !t.deletedAt)
-                .map((t) => ({ task: t, sub: null }));
+              return postponeRowsForTasks(
+                appStore.getState().data.tasks.filter((t) => ids.includes(t.id) && !t.deletedAt),
+              );
             }}
           />
           <span style={{ position: "relative" }}>

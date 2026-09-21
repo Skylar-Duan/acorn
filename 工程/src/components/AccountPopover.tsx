@@ -19,6 +19,7 @@ import { applyAutoLogin, autoLoginOn, signOut, syncNow, useSync } from "../core/
 import { avatarInitial, getProfile, setProfileAvatar, setProfileName, shrinkToAvatar } from "../core/profile";
 import { forceFoldOpen } from "../core/useFold";
 import { CommitMark, useCommitFlash } from "./commitFlash";
+import { useNameDraft } from "./nameDraft";
 import { openLogin } from "../mobile/sheetStore";
 import { IcoWho } from "../mobile/icons";
 import "../styles/account-pop.css";
@@ -50,14 +51,22 @@ export default function AccountCorner() {
     const onDown = (e: MouseEvent) => {
       if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
     };
+    // 捕获阶段接、接到就截住（9-21 复核）：挂在 window 冒泡阶段时，这一下 Esc 还会传到
+    // App 的全局快捷键和展开的任务卡，面板关了、卡片也收了、多选也清了，一下关两层。
+    // 例外：名字框里改了一半（data-dirty）的那下 Esc 放过去，交给框自己退字、不关面板——
+    // 框的 onKeyDown 会 stopPropagation，同样传不到 App 和任务卡
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-dirty]")) return;
+      e.stopPropagation();
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -104,17 +113,16 @@ function Panel({
   const phase = useSync((s) => s.phase);
   const message = useSync((s) => s.message);
   const settings = useApp((s) => s.data.settings);
-  const [draft, setDraft] = useState(name);
+  // 草稿跟着同步来的新名字走、没改过就不写（9-21 复核，见 nameDraft.ts）
+  const nd = useNameDraft(name, (v) => setProfileName(email, v));
+  const { draft, setDraft } = nd;
   const [err, setErr] = useState<string | null>(null);
   const nameFlash = useCommitFlash();
   const picker = useRef<HTMLInputElement | null>(null);
   const autoOn = autoLoginOn(settings);
 
   function commitName() {
-    const v = draft.trim();
-    if (v === name) return;
-    setProfileName(email, v);
-    nameFlash.flash();
+    if (nd.commit()) nameFlash.flash();
   }
 
   // 面板收起时（点外面、Esc、点圆钮）名字框还攥着没存的字，就在这一刻存下。
@@ -155,16 +163,18 @@ function Panel({
               value={draft}
               aria-label="名字"
               placeholder="给自己起个名字"
+              // 改了一半的标记：面板那条 Esc 监听见到它就把这一下让给框自己退字
+              data-dirty={nd.edited() ? "" : undefined}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   (e.target as HTMLInputElement).blur();
                 }
-                // 改了一半按 Esc：先把字退回去，这一下不关面板；没改过的时候 Esc 照常关
-                if (e.key === "Escape" && draft !== name) {
+                // 改了一半按 Esc：先把字退回去，这一下不关面板；没改过的时候 Esc 照常关（面板那条监听管）
+                if (e.key === "Escape" && nd.edited()) {
                   e.stopPropagation();
-                  setDraft(name);
+                  nd.revert();
                 }
               }}
               // 点走就存下。**窗口失焦不算点走**：切出去回来，打了一半的名字还在框里

@@ -502,7 +502,7 @@ fn snapshot_backup(state: State<DataDir>, prefix: String) -> Result<Option<Strin
 fn purge_local_data(app: AppHandle, state: State<DataDir>) -> Result<Vec<String>, String> {
     let auth = auth_path(&app).ok_or("找不到配置目录")?;
     if !auth.exists() {
-        return Err("这台设备没有登录过云账号，不清空本地数据".into());
+        return Err("这台设备没有登录过账号，不清空本地数据".into());
     }
     let dir = state.0.lock().unwrap().clone();
 

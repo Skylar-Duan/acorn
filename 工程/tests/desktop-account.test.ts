@@ -184,7 +184,8 @@ describe("③ 真渲染一遍", () => {
     expect(host.querySelector(".acct-pop")).toBeNull();
 
     act(() => fab.click());
-    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    // 真按键是从焦点那儿（这里是 body）冒上来的，面板那条监听挂在 document 捕获阶段
+    act(() => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(host.querySelector(".acct-pop")).toBeNull();
   });
 

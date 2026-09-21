@@ -83,9 +83,32 @@ function comparable(p: unknown): p is Profile {
   return !!p && typeof p === "object" && !Array.isArray(p) && typeof (p as Profile).updatedAt === "string";
 }
 
+/** 旧字段（settings.profileName / profileAvatar）迁进来的那一条盖的戳：1970 年，比任何一次真实修改都早。
+ *  定义在这儿（profile.ts 转出去），合并时要认它 */
+export const LEGACY_PROFILE_AT = new Date(0).toISOString();
+
+/** 赢家空着的名字 / 头像，拿旧字段迁来的那条补上（9-21 复核）。
+ *
+ *  空串不等于用户删掉了：电脑新版先改了名字，写出去的是 {名字, 头像:''}——那台电脑从来没设过头像；
+ *  手机升级后从旧字段迁出来的那条（1970 戳）整条输给它，手机上设好的头像就在所有设备上没了。
+ *  所以**只有输家是 1970 那条**时，赢家空着的字段用输家的补；其余字段以赢家为准。
+ *  真补了东西时戳往后挪 1 毫秒：两端算法一样、算出同一条，而且比还揣着「空头像那条」的设备新，
+ *  它们下一轮直接收下，不会跟它打成平手。没东西可补就原样返回赢家那个对象 */
+export function fillFromLegacy(winner: Profile, loser: Profile): Profile {
+  if (loser.updatedAt !== LEGACY_PROFILE_AT || winner.updatedAt === LEGACY_PROFILE_AT) return winner;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const name = str(winner.name) || str(loser.name);
+  const avatar = str(winner.avatar) || str(loser.avatar);
+  if (name === str(winner.name) && avatar === str(winner.avatar)) return winner;
+  const t = Date.parse(winner.updatedAt);
+  const updatedAt = Number.isFinite(t) ? new Date(t + 1).toISOString() : winner.updatedAt;
+  return { ...winner, name, avatar, updatedAt };
+}
+
 /** 同一个账号的那一条，两边各一份时留哪份。
  *
  *  · 谁改得晚听谁的（整条走，条目里不认识的字段跟着赢家一起走）；
+ *    例外：输家是旧字段迁来的 1970 那条时，赢家空着的名字 / 头像用它补（fillFromLegacy）；
  *  · 一边没有、或者那一份拿不来比 → 留另一边能比的那份（缺失不覆盖）；
  *  · 两边都拿不来比 → 本机那份原样留着（跟顶层「同名听本机」一个口径）；
  *  · **一样晚就比内容**，不是听本机：两台设备各自从旧字段迁进来的那一条都盖着 1970 年，
@@ -98,7 +121,8 @@ function pickProfile(local: unknown, remote: unknown): unknown {
   if (!l) return remote;
   const a = local as Profile;
   const b = remote as Profile;
-  if (a.updatedAt !== b.updatedAt) return b.updatedAt > a.updatedAt ? b : a;
+  // 输给的是旧字段迁来的那条时，赢家空着的名字 / 头像用它补（见 fillFromLegacy）
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt > a.updatedAt ? fillFromLegacy(b, a) : fillFromLegacy(a, b);
   return JSON.stringify(b) > JSON.stringify(a) ? b : a;
 }
 
@@ -175,6 +199,27 @@ export function mergeData(local: AppData, remote: AppData, now = Date.now()): Me
     },
     summary: { added, updated, removed },
   };
+}
+
+/**
+ * 合并结果里「事」以外的那几样（清单、墓碑、专注记录）跟本机那份比，有没有变。
+ *
+ * summary 只数「事」（那是给用户看的「收到几条」），同步那边光看它的话，
+ * 手机上只改了清单名 / 颜色 / 顺序、删了张空清单，电脑这边合并结果只推上云、从不装回本机——
+ * 本机那条旧清单下次一改就盖上新戳赢回去，别的设备的改动被撤销（9-21 复核）。
+ * mergeStamped 每次都新建数组，所以按内容比（清单比 id + updatedAt，墓碑比 id + at，专注记录比身份 + 分钟数），
+ * 不比对象身份。
+ */
+export function sideDataChanged(merged: AppData, local: AppData): boolean {
+  const sig = <T>(xs: T[] | undefined, f: (x: T) => string) => (xs ?? []).map(f).sort().join("\n");
+  const listSig = (l: List) => `${l.id}|${l.updatedAt}`;
+  const graveSig = (g: Tombstone) => `${g.id}|${g.at}`;
+  const sessSig = (x: FocusSession) => `${sessionKey(x)}|${x.minutes}`;
+  return (
+    sig(merged.lists, listSig) !== sig(local.lists, listSig)
+    || sig(merged.graveyard, graveSig) !== sig(local.graveyard, graveSig)
+    || sig(merged.sessions, sessSig) !== sig(local.sessions, sessSig)
+  );
 }
 
 // ---------- 同名清单去重 ----------

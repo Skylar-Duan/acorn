@@ -8,4 +8,6 @@ declare module "node:fs" {
   // 递归收 .tsx 时用来分辨「这一项是目录还是文件」（commit-guards 那条全仓扫描）
   // size 是字体那组测试要的（每个 woff2 别悄悄胀回去）
   export function statSync(path: string): { isDirectory(): boolean; size: number };
+  // 读不进 git 的那几份（_work/ 下的验收单）之前先看在不在，不在就跳过
+  export function existsSync(path: string): boolean;
 }

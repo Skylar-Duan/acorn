@@ -576,6 +576,9 @@ function SubRow({ task, sub, today }: { task: Task; sub: Subtask; today: string 
     const v = draft;
     setDraft(null);
     if (v == null) return;
+    // 点开没改就离开：什么都不写。原标题要是带换行（桌面 Shift+Enter 写的），压平后必然跟原来不同，
+    // 不先拦这一下，光是点开再离开就会把分行抹掉并同步出去
+    if (v === sub.title) return;
     const t = oneLine(v).trim();
     if (t && t !== sub.title) updateSubtask(task.id, sub.id, { title: t });
   }

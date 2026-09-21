@@ -6,8 +6,8 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { AppData, Settings } from "./model";
-import { appStore, applyRemoteData, flushSave, setProfiles } from "./store";
-import { mergeData } from "./merge";
+import { appStore, applyRemoteData, flushSave, setProfiles, updateSettings } from "./store";
+import { mergeData, sideDataChanged } from "./merge";
 import * as cloud from "./cloud";
 import type { Session, SyncPhase } from "./cloud";
 import { todayYMD, toYMD } from "./dates";
@@ -80,6 +80,36 @@ export function upgradeBlocked(
 const QUIET_MS = 4000;
 
 let debounce: ReturnType<typeof setTimeout> | null = null;
+
+/** 独占闸门（9-21 复核）：「从云端覆盖本机」、登录时挑档案那一段里，**后台自己发的同步一律不发**。
+ *  原生确认框一关、窗口重新拿到焦点就会触发自动取；那一轮拿「本机这份」跟云端合并推上去，
+ *  用户明确要丢的本机内容就混进了云端，覆盖白做。这段时间里只有流程自己显式调的 syncNow 照走。
+ *  计数而不是布尔：覆盖可能套在登录流程里面 */
+let exclusive = 0;
+
+/** 挡住后台同步（自动取、每天补一轮、改动防抖），并等在途的那一轮落地。返回放行函数（多调只算一次）。
+ *  放行时这段里攒下的改动（dirty）照常排一次防抖同步 */
+export async function holdAutoSync(): Promise<() => void> {
+  exclusive++;
+  if (debounce) {
+    clearTimeout(debounce);
+    debounce = null;
+  }
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    exclusive = Math.max(0, exclusive - 1);
+    if (exclusive === 0 && syncStore.getState().dirty) requestSync();
+  };
+  if (running) await running.catch(() => {});
+  return release;
+}
+
+/** 闸门关着没有（测试和调用方自查用） */
+export function autoSyncHeld(): boolean {
+  return exclusive > 0;
+}
 let running: Promise<void> | null = null;
 let unsubscribe: (() => void) | null = null;
 let lastSeenData: AppData | null = null;
@@ -292,7 +322,12 @@ function adoptLegacyProfileNow(session: Session): void {
   const a = appStore.getState();
   if (!a.loaded || a.loadError || a.rescue) return;
   const next = adoptLegacyProfile(a.data, session.email);
-  if (next !== a.data && next.profiles) setProfiles(next.profiles);
+  if (next === a.data) return;
+  if (next.profiles && next.profiles !== a.data.profiles) setProfiles(next.profiles);
+  // 「这个账号迁过了」记在设置里（设置不同步），下次打开不再迁
+  if (next.settings.legacyProfileDone !== a.data.settings.legacyProfileDone) {
+    updateSettings({ legacyProfileDone: next.settings.legacyProfileDone });
+  }
 }
 
 /** 登录 / 注册验证成功后调：存下登录态，立刻把两边并起来。
@@ -340,7 +375,7 @@ export type SyncGate = { ok: true; rev: number } | { ok: false; why: string };
 
 export async function syncNowChecked(): Promise<SyncGate> {
   const before = syncStore.getState();
-  if (!before.session) return { ok: false, why: "这台设备没有登录云账号，数据从来没上过云" };
+  if (!before.session) return { ok: false, why: "这台设备没有登录账号，数据从来没上过云" };
   if (upgradeBlocked(before)) return { ok: false, why: before.message };
   const a = appStore.getState();
   // **dataFromNewer 不在这里**：那份数据是真读进来的账本，推得上去也判得了
@@ -377,7 +412,7 @@ export async function syncNowChecked(): Promise<SyncGate> {
  *  **调用方一律 void 不 await**：这是后台行为，挡不得启动；没网就静默跳过，不打扰。 */
 export async function dailySyncIfNeeded(today = todayYMD()): Promise<boolean> {
   const st = syncStore.getState();
-  if (!st.session || upgradeBlocked(st) || st.phase === "syncing") return false;
+  if (!st.session || upgradeBlocked(st) || st.phase === "syncing" || exclusive > 0) return false;
   const last = st.session.syncedAt;
   if (last && toYMD(new Date(last)) === today) return false;
   // **失败也算「今天试过了」**：syncedAt 只在成功时前进，只看它的话，
@@ -417,7 +452,7 @@ let autoPullOff: (() => void) | null = null;
  */
 export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
   const st = syncStore.getState();
-  if (!st.session || upgradeBlocked(st, now) || st.phase === "syncing" || running) return false;
+  if (!st.session || upgradeBlocked(st, now) || st.phase === "syncing" || running || exclusive > 0) return false;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
   const last = st.session.syncedAt ? Date.parse(st.session.syncedAt) : NaN;
   if (Number.isFinite(last) && now - last < AUTO_PULL_GAP_MS) return false;
@@ -501,7 +536,10 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
       // changed 只数「事」的增改删（那是给用户看的那句「收到几条」）。名字头像从云端带回新的，
       // 事一条没变也得装回来，否则手机刚换的头像电脑这边永远只推不收。
       // mergeProfiles 在「跟本机一模一样」时原样返回本机那个对象，所以这里比身份就够
-      const adopt = outcome.changed || outcome.data.profiles !== snap.profiles;
+      // 清单（改名 / 换色 / 排顺序 / 删掉）、墓碑、专注记录同理（9-21 复核）：
+      // 只推不装的话本机旧那条下次一改就盖新戳赢回去，别处的改动在所有设备上被撤销
+      const adopt = outcome.changed || outcome.data.profiles !== snap.profiles
+        || sideDataChanged(outcome.data, snap);
       if (adopt) {
         // outcome.data 是拿**起飞那一刻**那份算出来的合并结果。漂移了还直接 apply，
         // 等于把这几秒里记的东西当场抹掉（小窗随手记的一条、勾掉的一件事都算）——
@@ -586,6 +624,8 @@ export function requestSync(): void {
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(() => {
     debounce = null;
+    // 闸门关着：dirty 留着，放行时再排（见 holdAutoSync）
+    if (exclusive > 0) return;
     void syncNow();
   }, QUIET_MS);
 }

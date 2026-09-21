@@ -179,9 +179,11 @@ describe("postponeRowsTo：顺延到选定的那一天", () => {
     // 从无到有不算顺延
     expect(get(none.id).due).toBe(to);
     expect(get(none.id).postponeCount).toBe(0);
-    // 改早了也不算
-    expect(get(far.id).due).toBe(to);
+    // 选的这天比原来早：不往前拉（9-21 复核），这件事原样不动，提示只数真改了的两项
+    expect(get(far.id).due).toBe(addDays(today, 30));
     expect(get(far.id).postponeCount).toBe(0);
+    expect(get(far.id)).toBe(far);
+    expect(appStore.getState().ui.toast!.msg).toBe("已顺延 2 项");
   });
 
   it("一次只数一次、只压一张撤销快照；弹「已顺延 N 项」可撤销", () => {
@@ -294,26 +296,29 @@ describe("整件事的菜单改母任务：继承的跟着变，子任务字段�
   });
 });
 
-describe("planFold.solo：一件事整页只露出一行时，那一行代表整件事", () => {
+describe("右键「整件事」只给收起的链头（9-21 复核去掉了 solo）", () => {
   const ui = (foldAll: boolean) => ({ foldAll, foldExcept: [] }) as unknown as UIState;
 
-  it("只有一条子任务行 → solo；有链的不进 solo", () => {
-    const one = newTask({ title: "买牛奶", subtasks: [sub("x")] });
+  it("整页只露出一条子任务行，不代表整件事；收起的链头才代表", () => {
+    const one = newTask({ title: "搬家", subtasks: [sub("打包"), sub("找车", { due: "2099-01-01" }), sub("退租", { due: "2099-02-01" })] });
     const many = newTask({ title: "装修", subtasks: [sub("a"), sub("b")] });
+    // 「搬家」三条没做完，今天页只露出「打包」这一行
     const rows: DateRow[] = [
       { task: one, sub: one.subtasks[0] },
       ...many.subtasks.map((s) => ({ task: many, sub: s })),
     ];
     const fold = planFold(rows, ui(true));
-    expect([...fold.solo]).toEqual([rowKey(rows[0])]);
-    // 收起的链头在 more 里（右键同样出整件事的菜单）
+    expect("solo" in fold).toBe(false);
+    expect(fold.more.has(rowKey(rows[0]))).toBe(false);
+    // 收起的链头在 more 里（右键出整件事的菜单）
     expect(fold.more.has(rowKey(rows[1]))).toBe(true);
     // 摊开以后链头不再代表整件事
     expect(planFold(rows, ui(false)).more.size).toBe(0);
   });
 
-  it("RowList 把「收起的链头 或 solo」交给 TaskRow 的 whole", () => {
-    expect(rowListSource).toContain("whole={fold.more.has(key) || fold.solo.has(key)}");
+  it("RowList 只把「收起的链头」交给 TaskRow 的 whole", () => {
+    expect(stripComments(rowListSource)).toContain("whole={fold.more.has(key)}");
+    expect(stripComments(rowListSource)).not.toContain("solo");
   });
 });
 

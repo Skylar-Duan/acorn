@@ -21,6 +21,7 @@ import { showToast, updateSettings, useApp } from "../core/store";
 import { applyAutoLogin, autoLoginOn, signOut, syncNow, useSync } from "../core/syncCtl";
 import { avatarInitial, getProfile, setProfileAvatar, setProfileName, shrinkToAvatar } from "../core/profile";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
+import { useNameDraft } from "../components/nameDraft";
 import Sheet from "./Sheet";
 import { closeSheet, openLogin, topSheet, useSheet } from "./sheetStore";
 import { IcoWho } from "./icons";
@@ -46,7 +47,9 @@ function Body() {
   const profileName = useApp((s) => getProfile(s.data, email).name);
   const profileAvatar = useApp((s) => getProfile(s.data, email).avatar);
   const [err, setErr] = useState<string | null>(null);
-  const [draft, setDraft] = useState(profileName);
+  // 草稿跟着同步来的新名字走、没改过就不写（9-21 复核，跟桌面账号面板同一份，见 components/nameDraft.ts）
+  const nd = useNameDraft(profileName, (v) => setProfileName(email, v));
+  const { draft, setDraft } = nd;
   const nameFlash = useCommitFlash();
   const picker = useRef<HTMLInputElement | null>(null);
 
@@ -54,10 +57,7 @@ function Body() {
   const initial = avatarInitial(profileName, email);
 
   function commitName() {
-    const v = draft.trim();
-    if (v === profileName) return;
-    setProfileName(email, v);
-    nameFlash.flash();
+    if (nd.commit()) nameFlash.flash();
   }
 
   async function pickAvatar(file: File | undefined) {
@@ -133,7 +133,7 @@ function Body() {
                 }
                 if (e.key === "Escape") {
                   e.stopPropagation();
-                  setDraft(profileName);
+                  nd.revert();
                 }
               }}
               // 点走就存下（跟清单改名、快捷键那两处同一道闸）。

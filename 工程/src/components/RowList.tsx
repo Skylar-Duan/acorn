@@ -46,10 +46,10 @@ export interface FoldPlan {
   /** 链头行 → 这条链除了它自己还有几条，收着摊着都算。
    *  摊开态那个「−N（点了收起）」要用它——more 只在收起时才有值，摊开时是空的 */
   total: Map<string, number>;
-  /** 一件事在整个视图里只露出这一行子任务行（只剩一条没做完的、或者别的几条都不在这个视图里）。
-   *  这一行跟收起的链头一样**代表整件事**：右键出的是整件事的菜单（见 TaskRow 的 whole） */
-  solo: Set<string>;
 }
+// 9-21 复核：原先还有个 solo（「这件事在当前视图只露出一行」也算代表整件事）。视图只数今天页 / 计划页露出来的行，
+// 不管这件事还剩几条——「搬家」三条子任务只有「打包」落在今天，右键「完成 / 删除」就把整件事做掉了。
+// 需求原话是「收起那行右键改整件事」，所以只有收起的链头（more 里有条目的）代表整件事
 
 /** 整个视图算一次折叠。传进来的必须是**全部**行（跨组），不是某一组 */
 export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
@@ -65,12 +65,8 @@ export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
   const more = new Map<string, number>();
   const head = new Set<string>();
   const total = new Map<string, number>();
-  const solo = new Set<string>();
   for (const [id, n] of count) {
-    if (n <= 1) {
-      solo.add(first.get(id)!);
-      continue; // 就一行，谈不上链
-    }
+    if (n <= 1) continue; // 就一行，谈不上链
     const headKey = first.get(id)!;
     head.add(headKey);
     total.set(headKey, n - 1);
@@ -82,7 +78,7 @@ export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
       if (k !== headKey) hidden.add(k);
     }
   }
-  return { hidden, more, head, total, solo };
+  return { hidden, more, head, total };
 }
 
 export interface RowListProps {
@@ -156,9 +152,9 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hi
         fadeOnDone={fadeOnDone}
         // 摊成卡片了、或者被「只看下一步」收起来了，都只是收成 0 高，不下树
         collapsed={expanded || fold.hidden.has(key)}
-        // 代表整件事的那一行：收起的链头，或者这件事在整页只露出这一行。
-        // 摊开后的各条子任务行不算——那时每一行说的就是它自己那一步
-        whole={fold.more.has(key) || fold.solo.has(key)}
+        // 代表整件事的那一行：只有收起的链头。摊开后的各条子任务行、整页只露出一行的子任务行都不算——
+        // 那一行说的就是它自己那一步（见上面 FoldPlan 后的说明）
+        whole={fold.more.has(key)}
         chain={
           fold.head.has(key)
             ? {

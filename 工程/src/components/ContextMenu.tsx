@@ -156,7 +156,7 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
   );
 }
 
-/** 任务的菜单。whole = 右键的是**代表整件事的那一行子任务行**（收起的链头 / 只露出一行的那件事）：
+/** 任务的菜单。whole = 右键的是**代表整件事的那一行子任务行**（收起的链头）：
  *  内容一点不变，全都作用在母任务上，只是标题写明「整件事 · 名字」——
  *  删除 / 完成 / 放弃在这儿动的是整件事，得让人一眼看清作用对象 */
 function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids: string[]; whole?: boolean; leaving?: boolean }) {

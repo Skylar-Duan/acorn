@@ -271,7 +271,8 @@ describe("设置页「账号」未登录时只剩一个入口", () => {
     // v1.15.0 网页版把开关拆开后，这一行里的 hasDesktopFeatures 换成了 canSaveFile
     // （电脑上的浏览器也能把文件交到用户手上，只是走下载；给不了的只剩安卓 App）。
     // 这条断言钉的一直是同一件事：平台判断从 platform.ts 来，不在这一页自己写一套
-    expect(accountPanelSource).toContain('import { canSaveFile } from "../core/platform";');
+    // 9-21 复核：那句「右上角那颗头像」按平台说位置，isMobile 也从 platform.ts 来
+    expect(accountPanelSource).toContain('import { canSaveFile, isMobile } from "../core/platform";');
   });
 
   it("设置页那节收起来时的一句话分登录没登录说", () => {

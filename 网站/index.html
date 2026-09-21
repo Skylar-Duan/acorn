@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 页面和网页版同源，localStorage 里有登录令牌：只许本站脚本跑、只许连本站和留言板接口。
+     style 留 'unsafe-inline'：正文有 style= 属性，feedback-admin.js 也注入 <style>。
+     防嵌套（frame-ancestors）meta 里不生效，要在服务器加头；脚本侧已在 iframe 里自动不启用。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://acorn.cdpandas.com https://sbg.cdpandas.com; object-src 'none'; base-uri 'none'">
 <title>橡果 Acorn · 记得每件事是谁交办的待办工具 · cdpandas</title>
 <meta name="description" content="待办工具，Windows / 安卓 / 网页三端。打一句「周五下午3点 提交周报 /工作 @李哥 !高」，日期、时间、清单、需求方、重要性五样一次到位；侧栏按人分栏，一眼看清欠了哪位同事几件事。习惯单独打卡，电脑和手机同一份事，数据在你自己的机器上。">
 <link rel="icon" href="assets/icon.svg">
@@ -49,6 +53,8 @@
         <!-- 根路径 / 是橡果 App 本体（网页版，v1.15.0 起；2026-09-21 从 /app/ 挪到根，旧址 301 过来），
              不是另一张介绍页；它由橡果自己的 publish-web.sh 发到 /var/www/acorn-web/，不走 publish_utility.py -->
         <a class="btn btn-ghost" href="https://acorn.cdpandas.com/">打开网页版</a>
+        <!-- 「反馈」按钮只给管理员：feedback-admin.js 问过服务端、认得是管理员才把它换成按钮，别人看不到 -->
+        <span data-feedback-mount hidden></span>
         <span class="cta-note">电脑版和手机版都不要管理员权限，装完会自己检查更新。网页版不用装，浏览器打开就是同一个橡果，登录同一个邮箱看到的是同一份事。</span>
       </div>
 
@@ -557,5 +563,7 @@
 <script src="/utilities/_shared/tool-download.js" defer></script>
 <script src="/utilities/_shared/tool-release.js" defer></script>
 <script src="/utilities/_shared/tool-board.js" defer></script>
+<!-- 必须放在 assets/ 下：线上 /intro/ 只有 index.html 和 /intro/assets/* 会被映射到页面目录，放根上会 404 -->
+<script src="assets/feedback-admin.js" defer></script>
 </body>
 </html>

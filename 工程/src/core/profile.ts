@@ -20,9 +20,10 @@
 
 import type { AppData, Profile } from "./model";
 import { appStore, setProfiles } from "./store";
+import { LEGACY_PROFILE_AT, fillFromLegacy } from "./merge";
 
-/** 旧字段迁进来的那一条盖的戳。比任何一次真实修改都早 */
-export const LEGACY_PROFILE_AT = new Date(0).toISOString();
+/** 旧字段迁进来的那一条盖的戳。比任何一次真实修改都早（定义在 merge.ts，合并时要认它） */
+export { LEGACY_PROFILE_AT };
 
 /** 头像存多大。128 见方的 JPEG 大约 6～10KB：屏幕上最大也才 64 逻辑像素，
  *  再大一档除了让每次同步多传几十 KB 之外看不出任何区别 */
@@ -106,22 +107,41 @@ export function setProfileAvatar(email: string | null | undefined, avatar: strin
 /**
  * 旧字段迁进来（纯函数，不碰 store）。返回新的一份，不用迁就原样返回同一个对象。
  *
- * 只在「这台设备上一个账号的名字头像都还没有」时迁：一旦有过任何一条，
- * 旧字段就不再代表谁了——它是这台设备从前的事，那时登着的是谁，就算谁的。
- * 迁给的是**此刻登录着的这个账号**；没登录不迁（没有主人可认）。
+ * 迁给的是**此刻登录着的这个账号**；没登录不迁（没有主人可认）。**每个账号只迁一次**：
+ * 迁过（或者判过不用迁）就把这个账号记进 settings.legacyProfileDone（设置不同步，只是这台设备的事），
+ * 以后不再看——不然用户自己清掉头像，下次打开又被旧字段补回来。
+ *
+ *  · 这台设备上一个账号的名字头像都还没有 → 迁出一条 1970 戳的（合并时谁的真实修改都盖得过它，
+ *    赢家空着的字段又会拿它补，见 merge.fillFromLegacy）；
+ *  · 这个账号已经有一条、但名字或头像空着（9-21 复核：老版本同步时把云端的 profiles 原样存回了本机，
+ *    那条是电脑新版先改名写出去的，头像是空串）→ 逐字段补上，补法跟合并时同一个；
+ *  · 只有别的账号的条目 → 不迁：旧字段是这台设备从前的事，那时登着的是谁说不清。
  */
 export function adoptLegacyProfile(data: AppData, email: string | null | undefined): AppData {
   const key = profileKey(email);
   if (!key) return data;
-  const existing = data.profiles;
-  if (existing && typeof existing === "object" && Object.keys(existing).length > 0) return data;
+  const done = Array.isArray(data.settings?.legacyProfileDone) ? data.settings.legacyProfileDone : [];
+  if (done.includes(key)) return data;
+  const markDone = (d: AppData): AppData => ({ ...d, settings: { ...d.settings, legacyProfileDone: [...done, key] } });
   const name = typeof data.settings?.profileName === "string" ? data.settings.profileName.trim() : "";
   const avatar = typeof data.settings?.profileAvatar === "string" ? data.settings.profileAvatar : "";
-  if (!name && !avatar) return data;
-  return {
-    ...data,
-    profiles: { ...(existing ?? {}), [key]: { name, avatar, updatedAt: LEGACY_PROFILE_AT } },
-  };
+  if (!name && !avatar) return data; // 旧字段空着：没东西可迁，也不必记
+  const legacy: Profile = { name, avatar, updatedAt: LEGACY_PROFILE_AT };
+  const existing = data.profiles && typeof data.profiles === "object" && !Array.isArray(data.profiles)
+    ? (data.profiles as Record<string, unknown>)
+    : undefined;
+  if (!existing || Object.keys(existing).length === 0) {
+    return markDone({ ...data, profiles: { ...(existing ?? {}), [key]: legacy } as AppData["profiles"] });
+  }
+  const cur = existing[key];
+  // 只有别的账号的条目：不迁，也先不记——这个账号的条目以后被同步带回来、头像空着时还能补
+  if (cur === undefined) return data;
+  if (!cur || typeof cur !== "object" || Array.isArray(cur) || typeof (cur as Profile).updatedAt !== "string") {
+    return markDone(data);
+  }
+  const filled = fillFromLegacy(cur as Profile, legacy);
+  if (filled === cur) return markDone(data);
+  return markDone({ ...data, profiles: { ...existing, [key]: filled } as AppData["profiles"] });
 }
 
 /**

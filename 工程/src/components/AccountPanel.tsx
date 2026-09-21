@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from "react";
 import * as cloud from "../core/cloud";
-import { signOut, syncNow, useSync } from "../core/syncCtl";
+import { holdAutoSync, signOut, syncNow, useSync } from "../core/syncCtl";
 import { errText } from "../core/useAuthFlow";
 import { openLogin } from "../mobile/sheetStore";
 import { appStore, showToast } from "../core/store";
@@ -24,7 +24,7 @@ import { APP_VERSION } from "../core/model";
 import { todayYMD } from "../core/dates";
 // canSaveFile 而不是 hasDesktopFeatures（v1.15.0）：电脑上的浏览器也能把文件交到用户手上，
 // 只是走的是下载不是系统对话框。真正给不了的只有安卓 App
-import { canSaveFile } from "../core/platform";
+import { canSaveFile, isMobile } from "../core/platform";
 
 /** 两屏而已。留着这个 step 是因为下面每一处「已登录」的判断都跟它成对写着，
  *  换成裸 session 判断会让那一大段的分支条件各写各的 */
@@ -146,23 +146,34 @@ export default function AccountPanel() {
   /** 从云端拉一份整份覆盖本机 */
   const doRestoreFromCloud = () =>
     run(async () => {
-      const dir = await getDataDir().catch(() => "");
-      const ok = await ask(
-        "取回云端数据，整份覆盖这台设备上的数据。\n\n" +
-          "这是单向覆盖，不是合并：本机有、云端没有的内容会消失，且无法撤销。\n" +
-          (dir ? `覆盖前会先把当前这份存进数据文件夹的 backups（pre-restore-*.json）：\n${dir}\n` : "") +
-          "\n确定覆盖吗？",
-        "从云端覆盖本机",
-      );
-      if (!ok) return;
-      const out = await restoreFromCloud();
-      showToast(
-        `已用云端第 ${out.rev} 版覆盖本机（${out.tasks} 条任务）` +
-          (out.backup ? `；覆盖前那份存进了 backups/${out.backup}` : ""),
-        false,
-      );
-      location.reload();
+      // 从弹确认框起就挡住后台同步（9-21 复核）：原生确认框一关窗口拿回焦点就会触发自动取，
+      // 那一轮会把要丢的本机内容合并上云。restoreFromCloud 里面自己还会再挡一层
+      const release = await holdAutoSync();
+      try {
+        await confirmAndRestore();
+      } finally {
+        release();
+      }
     });
+
+  const confirmAndRestore = async () => {
+    const dir = await getDataDir().catch(() => "");
+    const ok = await ask(
+      "取回云端数据，整份覆盖这台设备上的数据。\n\n" +
+        "这是单向覆盖，不是合并：本机有、云端没有的内容会消失，且无法撤销。\n" +
+        (dir ? `覆盖前会先把当前这份存进数据文件夹的 backups（pre-restore-*.json）：\n${dir}\n` : "") +
+        "\n确定覆盖吗？",
+      "从云端覆盖本机",
+    );
+    if (!ok) return;
+    const out = await restoreFromCloud();
+    showToast(
+      `已用云端第 ${out.rev} 版覆盖本机（${out.tasks} 条任务）` +
+        (out.backup ? `；覆盖前那份存进了 backups/${out.backup}` : ""),
+      false,
+    );
+    location.reload();
+  };
 
   // ---------- 已登录 ----------
 
@@ -234,9 +245,10 @@ export default function AccountPanel() {
             （手机是账号纸 mobile/AccountSheet，桌面是小面板 components/AccountPopover）
             接的就是这儿的「只退出登录，保留本机」。**清空本机那条路只在这一页有**，
             它得先当场同步成功才放行，不该出现在一点就中的地方。
-            v1.15.1 起两端都有这颗头像，这句不再只给手机看；措辞也不点端名 */}
+            v1.15.1 起两端都有这颗头像，这句不再只给手机看；措辞也不点端名。
+            位置按平台说（9-21 复核）：手机上设置页顶上没有头像，只有「今天」页有 */}
         <p className="hint">
-          右上角那颗头像点开也能退出登录，做的是「保留本机」这一条；
+          {isMobile ? "「今天」页" : ""}右上角那颗头像点开也能退出登录，做的是「保留本机」这一条；
           换头像、改名字、下次打开要不要自动登录，也都在那儿。
         </p>
         {wipeBlock && (

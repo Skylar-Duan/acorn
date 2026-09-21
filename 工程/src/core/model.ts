@@ -146,6 +146,9 @@ export interface Settings {
   profileName?: string;
   /** 旧字段，同上。原来是压到 128×128 的 JPEG dataURL */
   profileAvatar?: string;
+  /** 旧字段已经迁过（或判过不用迁）的账号键（profile.profileKey）。每个账号只迁一次，
+   *  免得用户自己清掉的头像下次打开又被旧字段补回来（9-21 复核，见 profile.adoptLegacyProfile） */
+  legacyProfileDone?: string[];
 }
 
 /** 一个账号的名字和头像（v1.15.1 起跟着账号走，两台设备看到的是同一张脸）。

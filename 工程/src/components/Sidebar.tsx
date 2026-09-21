@@ -745,7 +745,7 @@ export default function Sidebar(
             {/* 点得动：同步出问题时，用户看见这行字之后要有地方可去 */}
             <button
               className={sync.bad ? "foot-sync warn" : "foot-sync"}
-              title="云账号与同步状态"
+              title="账号与同步状态"
               onClick={() => {
                 navigate("settings");
                 onNavigate?.();
