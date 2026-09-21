@@ -9,7 +9,7 @@ const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "
 
 /** 网页版挂在 acorn.cdpandas.com 的这个子路径下。介绍页占着根路径，两边不打架。
  *  manifest.webmanifest 里的 start_url / scope / 图标路径都写死成这个前缀，改这儿要一起改。 */
-const WEB_BASE = "/app/";
+const WEB_BASE = "/"; // 2026-09-21：网页版搬到根路径（此分支 = 1.15.0 原样 + 只换地址）
 
 /**
  * 网页版：把正文字体提前排进下载队列。
