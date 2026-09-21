@@ -15,9 +15,11 @@ const buildStamp = {
   version: process.env.ACORN_BUILD_VERSION ?? "",
 };
 
-/** 网页版挂在 acorn.cdpandas.com 的这个子路径下。介绍页占着根路径，两边不打架。
- *  manifest.webmanifest 里的 start_url / scope / 图标路径都写死成这个前缀，改这儿要一起改。 */
-const WEB_BASE = "/app/";
+/** 网页版挂在 acorn.cdpandas.com 的这个路径下。2026-09-21 起是根路径 /（原来是 /app/，
+ *  nginx 里 /app/* 301 到根）；介绍页挪到 /intro/，归 10-Platform 管，两边不打架。
+ *  manifest.webmanifest 里的 start_url / scope / 图标路径都写死成这个前缀，改这儿要一起改
+ *  （"id" 例外，故意留 "/app/"，已装到主屏幕的安卓才不会变成另一个 App）。 */
+const WEB_BASE = "/";
 
 /**
  * 网页版：把正文字体提前排进下载队列。
@@ -82,7 +84,7 @@ export default defineConfig(({ mode }) => {
         : [],
     },
     // 桌面 / 安卓走相对路径（打包后是 file:// 式的本地加载）；
-    // 网页版写死成 /app/：加到主屏幕后深链接也能回到同一份 index.html，相对路径那时会算歪
+    // 网页版写死成绝对路径（WEB_BASE，现在是根 /）：加到主屏幕后深链接也能回到同一份 index.html，相对路径那时会算歪
     base: isWeb ? WEB_BASE : "./",
     clearScreen: false,
     server: { port: 5173, strictPort: true },

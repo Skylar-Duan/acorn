@@ -4,14 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>橡果 Acorn · 记得每件事是谁交办的待办工具 · cdpandas</title>
-<meta name="description" content="待办工具，Windows / 安卓 / 网页三端，免费开源。打一句「周五下午3点 提交周报 /工作 @李哥 !高」，日期、时间、清单、需求方、重要性五样一次到位；侧栏按人分栏，一眼看清欠了哪位同事几件事。习惯单独打卡，电脑和手机同一份事，数据在你自己的机器上。">
+<meta name="description" content="待办工具，Windows / 安卓 / 网页三端。打一句「周五下午3点 提交周报 /工作 @李哥 !高」，日期、时间、清单、需求方、重要性五样一次到位；侧栏按人分栏，一眼看清欠了哪位同事几件事。习惯单独打卡，电脑和手机同一份事，数据在你自己的机器上。">
 <link rel="icon" href="assets/icon.svg">
-<link rel="canonical" href="https://acorn.cdpandas.com/">
+<link rel="canonical" href="https://acorn.cdpandas.com/intro/">
 
 <!-- 统一模板：结构与样式见 /utilities/_shared/TEMPLATE.md
-     文案真源：02-Gadgets/acorn/工程/网站文案.md（页面上每一句中文以它为准，这里只做排版）
+     文案真源：16-Acorn/工程/网站文案.md（页面上每一句中文以它为准，这里只做排版）
      发布通道：finance/UTILITIES.md（publish_utility.py --tool acorn）
-     线上地址：https://acorn.cdpandas.com/（2026-09-02 起独立域名；旧址 cdpandas.com/utilities/acorn/ 自动跳过来） -->
+     线上地址：https://acorn.cdpandas.com/intro/（2026-09-02 起独立域名；2026-09-21 从根路径挪到 /intro/，
+       根路径 / 让给网页版本体；旧址 cdpandas.com/utilities/acorn/ 自动跳过来）。
+       尾斜杠不能省：图片是相对路径 assets/...，只有在 /intro/ 下才解析到 /intro/assets/。 -->
 <link rel="stylesheet" href="/utilities/_shared/tool-page.css">
 </head>
 <body>
@@ -19,7 +21,6 @@
 <div class="topbar">
   <div class="wrap">
     <a href="https://cdpandas.com/" class="home">← cdpandas</a>
-    <a href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">GitHub ↗</a>
   </div>
 </div>
 
@@ -27,7 +28,7 @@
   <div class="wrap with-icon">
     <img class="app-icon" src="assets/icon.svg" alt="橡果 Acorn 应用图标">
     <div>
-      <div class="kicker">Windows · 安卓 · 网页版 · 免费开源</div>
+      <div class="kicker">工作效率 · 记事清单 · Windows / 安卓 / 网页 三端同步</div>
       <h1>橡果 Acorn</h1>
       <p class="lede">多数待办工具都假设事情是你自己给自己安排的。橡果不是——它记得每件事是<b>谁交办的</b>，侧栏按人分栏，一眼看清欠了哪位同事几件事。</p>
 
@@ -45,9 +46,9 @@
              弹窗的内容源是下面那个 [data-download-dialog]，逻辑在
              /utilities/_shared/tool-download.js。 -->
         <button class="btn" type="button" data-download-open>↓ 下载</button>
-        <!-- /app/ 是橡果 App 本体（网页版，v1.15.0 起），不是另一张介绍页；
-             它由橡果自己的 publish-web.sh 发到 /var/www/acorn-web/，不走 publish_utility.py -->
-        <a class="btn btn-ghost" href="https://acorn.cdpandas.com/app/">打开网页版</a>
+        <!-- 根路径 / 是橡果 App 本体（网页版，v1.15.0 起；2026-09-21 从 /app/ 挪到根，旧址 301 过来），
+             不是另一张介绍页；它由橡果自己的 publish-web.sh 发到 /var/www/acorn-web/，不走 publish_utility.py -->
+        <a class="btn btn-ghost" href="https://acorn.cdpandas.com/">打开网页版</a>
         <span class="cta-note">电脑版和手机版都不要管理员权限，装完会自己检查更新。网页版不用装，浏览器打开就是同一个橡果，登录同一个邮箱看到的是同一份事。</span>
       </div>
 
@@ -128,7 +129,7 @@
 
       <div class="card">
         <h3>电脑和手机同一份事 <span class="tag">可选</span></h3>
-        <p>手机上不用装：用 Safari 打开 <a href="https://acorn.cdpandas.com/app/">acorn.cdpandas.com/app/</a>，点底下的「分享」，再选「添加到主屏幕」，它就跟一个 App 一样待在手机桌面上，打开就是橡果。安卓的 Chrome 在右上角菜单里，也是「添加到主屏幕」。</p>
+        <p>手机上不用装：用 Safari 打开 <a href="https://acorn.cdpandas.com/">acorn.cdpandas.com</a>，点底下的「分享」，再选「添加到主屏幕」，它就跟一个 App 一样待在手机桌面上，打开就是橡果。安卓的 Chrome 在右上角菜单里，也是「添加到主屏幕」。</p>
         <p style="margin-top:8px">一个邮箱就能跨设备。新装的设备登录后直接拿到云端那份；这台设备上已经记了事的话，登录时会问你是把两边合起来还是用云端那份。同一件事两边都改过，以改得晚的那次为准。</p>
         <p style="margin-top:8px">断网、服务器出问题都不影响你继续用，本机那份照常读写。不注册的话跟以前完全一样，一个字都不会往外传。</p>
         <p style="margin-top:8px">登录之后，退出登录会把这台设备上的数据一起清掉，只留云端那一份——清之前橡果会先跟服务器对一次账，没对上就一条都不清。</p>
@@ -548,7 +549,7 @@
 
 <footer>
   <div class="wrap">
-    <div>橡果 Acorn · 开源 · <a href="https://github.com/Skylar-Duan/acorn" target="_blank" rel="noopener">GitHub</a></div>
+    <div>橡果 Acorn</div>
     <div><a href="https://cdpandas.com/">← 回到 cdpandas.com</a></div>
   </div>
 </footer>

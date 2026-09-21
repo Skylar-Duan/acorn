@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 #
-# 把网页版发到服务器，让 https://acorn.cdpandas.com/app/ 变成最新那一版。
+# 把网页版发到服务器，让 https://acorn.cdpandas.com/ 变成最新那一版。
+# （2026-09-21 起网页版挂根路径 /，原来的 /app/ 在 nginx 里 301 到根；介绍页挪到 /intro/，归 10 管。）
 # publish-exe.sh / publish-apk.sh 的网页版：那两个发的是「一个包」，这个发的是「一整个目录」。
 #
 # 做四件事：
 #   1. 本地构建（npx vite build --mode web → dist-web/）
-#   2. 自检产物：index.html / manifest / 图标 / 字体都在，路径前缀是 /app/
+#   2. 自检产物：index.html / manifest / 图标 / 字体都在，路径前缀是根路径 /
 #   3. 写 version.json（网页版靠它发现「服务器上换新版了」，见 src/core/webUpdate.ts）
 #   4. 传上去，整目录原子替换，装上 nginx 配置，再从外网 curl 自测一遍（不是 200 就当场失败）
 #
@@ -59,11 +60,14 @@ for ico in icons/acorn-192.png icons/acorn-512.png icons/apple-touch-icon-180.pn
   [ -f "$DIST/$ico" ] || { echo "少了 $ico（重跑 node scripts/make-icons.mjs）"; exit 1; }
 done
 # base 写歪过一次就满盘皆错：所有资源都会 404，页面是白的。这里直接看产物里的路径前缀。
-grep -q 'src="/app/assets/' "$DIST/index.html" || { echo "index.html 里的资源路径不是 /app/ 开头，base 配错了"; exit 1; }
-grep -q '/app/manifest.webmanifest' "$DIST/index.html" || { echo "index.html 里没有指向 /app/ 的 manifest"; exit 1; }
-# 光传产物不够：/app/ 那两段只写在仓库这份 nginx 配置里，不一起推上去，发完照样是 404
+grep -q 'src="/assets/' "$DIST/index.html" || { echo "index.html 里的资源路径不是 /assets/ 开头（根路径），base 配错了"; exit 1; }
+grep -q '"/manifest.webmanifest"' "$DIST/index.html" || { echo "index.html 里没有指向根路径的 /manifest.webmanifest"; exit 1; }
+# 还残留 /app/ 前缀就是 base 没改干净（/app/ 在 nginx 里只剩 301，资源会多绕一跳甚至丢 hash 缓存）
+if grep -q '"/app/' "$DIST/index.html"; then echo "index.html 里还有 /app/ 开头的路径，base 没改干净"; exit 1; fi
+# 光传产物不够：根路径那几段只写在仓库这份 nginx 配置里，不一起推上去，发完照样是 404
 [ -f "$NGINX_CONF" ] || { echo "找不到 $NGINX_CONF，没有它发上去就是 404"; exit 1; }
-grep -q 'location /app/ {' "$NGINX_CONF" || { echo "nginx-acorn.conf 里没有 location /app/ 那一段"; exit 1; }
+grep -q 'root /var/www/acorn-web;' "$NGINX_CONF" || { echo "nginx-acorn.conf 里没有根路径网页版那一段（root /var/www/acorn-web）"; exit 1; }
+grep -q 'try_files $uri $uri/ /index.html;' "$NGINX_CONF" || { echo "nginx-acorn.conf 里的 location / 不是网页版（没有 try_files … /index.html）"; exit 1; }
 # 字体是网页版最大的一笔流量，顺手把数目和体积念出来，胀回去了人能看见
 FONT_BYTES="$(find "$DIST/assets" -name '*.woff2' -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "  产物 $(du -sh "$DIST" | cut -f1)，其中字体 $((FONT_BYTES / 1024)) KB"
@@ -120,9 +124,8 @@ echo "  现在 \$(ls -1 "$REMOTE_DIR" | wc -l) 个条目，\$(du -sh "$REMOTE_DI
 REMOTE
 
 echo "=== 装 nginx 配置"
-# 只传产物是不够的：认得 /app/ 的那两段 location 只写在仓库这份 conf 里。
-# 线上那份还停在「/app/ 将来的网页版，现在不占」的年代，不推这份配置，
-# 浏览器打开 /app/ 会掉进 server 块末尾的 `location / { return 404; }`。
+# 只传产物是不够的：根路径的网页版那几段 location（/ /assets/ /icons/ /manifest.webmanifest）
+# 和 /app/ 的 301 只写在仓库这份 conf 里。不推这份配置，线上还是旧的地址规划。
 # 回滚写法照抄 deploy.sh 第 5 节：坏配置绝不让 nginx 重载，这台机器上还有别人的站。
 "${SCP[@]}" "$NGINX_CONF" "$HOST:/tmp/acorn.conf"
 "${SSH[@]}" bash -s <<'REMOTE'
@@ -156,16 +159,21 @@ check() { # check 路径 这条是干嘛的
   printf '  %-26s HTTP %s  %s\n' "$1" "$code" "$2"
   [ "$code" = "200" ] || FAILED="$FAILED $1"
 }
-check /app/ "网页版本体"
-check /app/manifest.webmanifest "加到主屏幕靠它"
-check /app/version.json "网页版靠它发现有新版"
-check / "介绍页——我没把别人的站弄坏"
+check / "网页版本体"
+check /manifest.webmanifest "加到主屏幕靠它"
+check /version.json "网页版靠它发现有新版"
+check /intro/ "介绍页——我没把别人的站弄坏"
+# 旧地址 /app/ 必须是 301（不跟跳转，-L 不能加：加了看到的是落地页的 200，跳转坏了也发现不了）
+APP_CODE="$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$SITE/app/" || true)"
+[ -n "$APP_CODE" ] || APP_CODE="000"
+printf '  %-26s HTTP %s  %s\n' "/app/" "$APP_CODE" "旧地址跳根路径（要 301）"
+[ "$APP_CODE" = "301" ] || FAILED="$FAILED /app/(要301)"
 if [ -n "$FAILED" ]; then
   echo >&2
-  echo "!! 这几条没回 200：$FAILED" >&2
-  echo "   别当成发完了。先上服务器看 /etc/nginx/conf.d/acorn.conf 里有没有 location /app/。" >&2
+  echo "!! 这几条不对：$FAILED" >&2
+  echo "   别当成发完了。先上服务器看 /etc/nginx/conf.d/acorn.conf 里的 location / 是不是网页版、/app/ 是不是 301。" >&2
   exit 1
 fi
-echo "  /app/version.json 里是：$(curl -s -m 15 "$SITE/app/version.json" | tr -d '\n')"
+echo "  /version.json 里是：$(curl -s -m 15 "$SITE/version.json" | tr -d '\n')"
 echo
-echo "发完了。手机上打开 $SITE/app/ ，分享 → 添加到主屏幕。"
+echo "发完了。手机上打开 $SITE/ ，分享 → 添加到主屏幕。"

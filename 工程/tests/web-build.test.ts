@@ -45,8 +45,8 @@ describe("网页版构建（vite.config.ts）", () => {
     expect(viteConfig).toMatch(/outDir: isWeb \? "dist-web" : "dist"/);
   });
 
-  it("网页版挂在 /app/ 下：介绍页占着根路径，两边不打架", () => {
-    expect(viteConfig).toMatch(/const WEB_BASE = "\/app\/"/);
+  it("网页版挂在根路径 /（2026-09-21 起；介绍页挪到 /intro/，/app/ 在 nginx 里 301 到根）", () => {
+    expect(viteConfig).toMatch(/const WEB_BASE = "\/"/);
     // 桌面 / 安卓仍是相对路径（打包后本地加载），这条不许被网页版顺手改掉
     expect(viteConfig).toMatch(/base: isWeb \? WEB_BASE : "\.\/"/);
   });
@@ -113,18 +113,20 @@ describe("PWA 外壳（index.html + manifest）", () => {
     expect(manifest.theme_color).toBe(light![1]);
   });
 
-  it("manifest 指的是 /app/，display 是 standalone", () => {
+  it("manifest 指的是根路径 /，display 是 standalone", () => {
     expect(manifest.name).toBe("橡果 Acorn");
     expect(manifest.short_name).toBe("橡果");
     // start_url / scope 跟 vite 的 base 是同一个前缀，对不上的话加到主屏幕点开会跳回浏览器
-    expect(manifest.start_url).toBe("/app/");
-    expect(manifest.scope).toBe("/app/");
+    expect(manifest.start_url).toBe("/");
+    expect(manifest.scope).toBe("/");
+    // id 故意还是搬家前的 "/app/"：安卓按 id 认 App，改了它已装的那个就会变成两个
+    expect(manifest.id).toBe("/app/");
     expect(manifest.display).toBe("standalone");
   });
 
   it("192 / 512 两档图标真的在，尺寸也真的对得上", () => {
     for (const icon of manifest.icons as Array<{ src: string; sizes: string }>) {
-      const file = icon.src.replace(/^\/app\//, "public/");
+      const file = icon.src.replace(/^\//, "public/");
       const [w, h] = icon.sizes.split("x").map(Number);
       expect(pngSize(file), icon.src).toEqual({ w, h });
     }
@@ -163,12 +165,21 @@ describe("字体：网页版这端的取舍", () => {
 });
 
 describe("服务器落位（nginx-acorn.conf）", () => {
-  it("/app/ 这一段在，找不到的路径回 index.html", () => {
-    expect(nginx).toMatch(/location \/app\/ \{/);
-    expect(nginx).toMatch(/alias \/var\/www\/acorn-web\//);
+  it("根路径 / 是网页版，找不到的路径回 index.html", () => {
+    expect(nginx).toMatch(/location \/ \{[\s\S]*?root \/var\/www\/acorn-web;/);
     // 加到主屏幕后系统可能从某个子路径重新打开它，那时候不能给人一个 404
-    expect(nginx).toMatch(/try_files \$uri \$uri\/ \/app\/index\.html;/);
-    expect(nginx).toMatch(/location = \/app \{/); // 少一条斜杠也得能进去
+    expect(nginx).toMatch(/try_files \$uri \$uri\/ \/index\.html;/);
+    expect(nginx).not.toMatch(/location \/ \{\s*return 404;/);
+  });
+
+  it("旧地址 /app/ 永久跳到根路径（书签、旧的主屏幕图标都还指着它）", () => {
+    expect(nginx).toMatch(/location = \/app \{\s*return 301 \/;/); // 少一条斜杠也得能进去
+    expect(nginx).toMatch(/location \^~ \/app\/ \{\s*rewrite \^\/app\/\(\.\*\)\$ \/\$1 permanent;/);
+  });
+
+  it("介绍页那几段（/intro、/utilities）只在 10 的 acorn-site.inc 里，本文件不许重复定义", () => {
+    // 重复定义同一个 location，nginx -t 不过，整台机器其它站的 reload 一起卡住
+    expect(nginx).not.toMatch(/location[^{\n]*\/(intro|utilities)/);
   });
 
   it("webmanifest 的 MIME 自己补上：nginx 自带的 mime.types 里没有", () => {
@@ -177,15 +188,16 @@ describe("服务器落位（nginx-acorn.conf）", () => {
   });
 
   it("带指纹的资源永久缓存，index.html 绝不缓存", () => {
-    expect(nginx).toMatch(/location \^~ \/app\/assets\/[\s\S]*?max-age=31536000, immutable/);
-    expect(nginx).toMatch(/location \/app\/ \{[\s\S]*?Cache-Control "no-cache"/);
+    expect(nginx).toMatch(/location \^~ \/assets\/[\s\S]*?max-age=31536000, immutable/);
+    expect(nginx).toMatch(/location \/ \{[\s\S]*?Cache-Control "no-cache"/);
   });
 
   it("每个写了 add_header 的 location 都把两条安全头重新写了一遍", () => {
     // add_header 在 location 里是整组覆盖父级的，不是追加——漏写就等于没有
-    const appBlocks = nginx.match(/location (\^~ )?\/app[\/ ][\s\S]*?\n    \}/g) ?? [];
+    // 网页版那四段：/assets/ /icons/ /manifest.webmanifest 和收尾的 location /
+    const appBlocks = nginx.match(/location (?:\^~ |= )?\/(?:assets\/|icons\/|manifest\.webmanifest)? \{[\s\S]*?\n    \}/g) ?? [];
     const withHeaders = appBlocks.filter((b) => b.includes("add_header Cache-Control"));
-    expect(withHeaders.length).toBeGreaterThanOrEqual(2);
+    expect(withHeaders.length).toBeGreaterThanOrEqual(4);
     for (const b of withHeaders) {
       expect(b).toContain("Strict-Transport-Security");
       expect(b).toContain("X-Content-Type-Options");
@@ -209,7 +221,7 @@ describe("发布脚本（publish-web.sh）", () => {
 
   it("传上去之前先自检产物，base 写歪当场停", () => {
     // base 错了所有资源都 404，页面是白的，而且发出去才发现
-    expect(publishWeb).toContain('grep -q \'src="/app/assets/\'');
+    expect(publishWeb).toContain('grep -q \'src="/assets/\'');
     expect(publishWeb).toMatch(/manifest\.webmanifest.*不在|少了 manifest\.webmanifest/);
     // 字体胀回去（文楷被打进来）也当场停
     expect(publishWeb).toMatch(/FONT_BYTES.*-gt 3000000/);
@@ -244,21 +256,23 @@ describe("发布脚本（publish-web.sh）", () => {
     // 装配置这一步必须在 --dry-run 那道 exit 0 之后：--dry-run 一个字节都不许往服务器传
     expect(sh.indexOf("NGINX_CONF\" \"$HOST")).toBeGreaterThan(sh.indexOf('DRY_RUN" = "1"'));
     // 本地自检就该发现 conf 丢了，不用等发到一半
-    expect(publishWeb).toContain('grep -q \'location /app/ {\' "$NGINX_CONF"');
+    expect(publishWeb).toContain('grep -q \'root /var/www/acorn-web;\' "$NGINX_CONF"');
   });
 
   it("发完从外网自测一遍，任何一条不是 200 就当场失败", () => {
     // 以前只打印 %{http_code} 不判返回码，HTTP 404 照样打印「发完了」
     const sh = withoutShellComments(publishWeb);
-    expect(publishWeb).toMatch(/curl[\s\S]*?\$SITE\/app\//);
+    expect(publishWeb).toMatch(/curl[\s\S]*?"\$SITE\$1"/);
     expect(sh).toContain("%{http_code}");
     expect(sh).toMatch(/\[ "\$code" = "200" \] \|\| FAILED=/);
     expect(sh).toMatch(/if \[ -n "\$FAILED" \]; then[\s\S]*?exit 1/);
     // 四条都得查：三条网页版的，加一条介绍页——「我没把别人的站弄坏」的证据
-    for (const path of ["check /app/ ", "check /app/manifest.webmanifest ", "check /app/version.json ", "check / "]) {
+    for (const path of ["check / ", "check /manifest.webmanifest ", "check /version.json ", "check /intro/ "]) {
       expect(sh, path).toContain(path);
     }
-    expect(sh).toMatch(/check \/ "介绍页/);
+    expect(sh).toMatch(/check \/intro\/ "介绍页/);
+    // 旧地址 /app/ 要的是 301，不是 200（不加 -L：跟了跳转就看不出跳转坏没坏）
+    expect(sh).toMatch(/\[ "\$APP_CODE" = "301" \] \|\| FAILED=/);
   });
 
   it("版本清单的字段跟 webUpdate.ts 对得上", () => {
@@ -275,9 +289,10 @@ describe("介绍页入口", () => {
     expect(siteCopy).toContain("添加到主屏幕");
   });
 
-  it("下载按钮旁边并排一颗「打开网页版」，指向 /app/", () => {
+  it("下载按钮旁边并排一颗「打开网页版」，指向根路径（网页版 2026-09-21 起挂根上）", () => {
     expect(siteHtml).toContain(">打开网页版</a>");
-    expect(siteHtml).toContain('href="https://acorn.cdpandas.com/app/"');
+    expect(siteHtml).toContain('href="https://acorn.cdpandas.com/"');
+    expect(siteHtml).not.toContain("acorn.cdpandas.com/app/");
     // 下载仍是主按钮（9-17 起改成「一个按钮 + 平台弹窗」，用户要的：平台只会越来越多），
     // 弹窗里 Windows 和安卓两行都在，各指向固定下载名
     expect(siteHtml).toContain('<button class="btn" type="button" data-download-open>');
