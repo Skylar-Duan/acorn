@@ -1,4 +1,4 @@
-// 设置页的「云账号」一节。
+// 设置页的「账号」一节（v1.15.1 前叫「云账号」）。
 //
 // v1.11.0 起这里**只剩两屏**：
 //   · 没登录 → 一句说明 + 一颗「登录 / 注册」，按了把登录页顶出来
@@ -24,7 +24,7 @@ import { APP_VERSION } from "../core/model";
 import { todayYMD } from "../core/dates";
 // canSaveFile 而不是 hasDesktopFeatures（v1.15.0）：电脑上的浏览器也能把文件交到用户手上，
 // 只是走的是下载不是系统对话框。真正给不了的只有安卓 App
-import { canSaveFile, isMobile } from "../core/platform";
+import { canSaveFile } from "../core/platform";
 
 /** 两屏而已。留着这个 step 是因为下面每一处「已登录」的判断都跟它成对写着，
  *  换成裸 session 判断会让那一大段的分支条件各写各的 */
@@ -230,15 +230,15 @@ export default function AccountPanel() {
           清空前会先同步一次，没有上传成功的内容不会被清空。
           只想停掉同步、或者换个账号登，用「只退出登录，保留本机」——那条不动这台设备上的任何东西。
         </p>
-        {/* 手机上还有一条更近的路，两处说的必须是同一件事：那颗头像里的「退出登录」
+        {/* 还有一条更近的路，两处说的必须是同一件事：右上角那颗头像点开的「退出登录」
+            （手机是账号纸 mobile/AccountSheet，桌面是小面板 components/AccountPopover）
             接的就是这儿的「只退出登录，保留本机」。**清空本机那条路只在这一页有**，
-            它得先当场同步成功才放行，不该出现在一点就中的地方 */}
-        {isMobile && (
-          <p className="hint">
-            手机上「今天」右上角那颗头像点开也能退出登录，做的是「保留本机」这一条；
-            头像、名字和「下次打开还认这台手机」也在那张纸上。
-          </p>
-        )}
+            它得先当场同步成功才放行，不该出现在一点就中的地方。
+            v1.15.1 起两端都有这颗头像，这句不再只给手机看；措辞也不点端名 */}
+        <p className="hint">
+          右上角那颗头像点开也能退出登录，做的是「保留本机」这一条；
+          换头像、改名字、下次打开要不要自动登录，也都在那儿。
+        </p>
         {wipeBlock && (
           <div className="set-row col" style={{ padding: 0 }}>
             <p className="acct-err">未能确认本机数据都已上传云端，因此一条都没有清空：{wipeBlock}</p>

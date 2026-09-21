@@ -64,12 +64,20 @@ describe("循环怎么写", () => {
     expect(repeatToSyntax({ kind: "workday" })).toBe("每个工作日");
   });
 
+  it("每月 31 号写成「每月最后一天」，跟界面显示同一个说法", () => {
+    expect(repeatToSyntax({ kind: "monthly", day: 31 })).toBe("每月最后一天");
+    const t = newTask({ title: "交房租", due: "2026-09-30", repeat: { kind: "monthly", day: 31 } });
+    expect(say(t).text).toBe("~2026-09-30 ~每月最后一天 交房租");
+  });
+
   it("四种循环都能原样读回来", () => {
     const rules: RepeatRule[] = [
       { kind: "daily", every: 1 },
       { kind: "daily", every: 3 },
       { kind: "weekly", days: [1, 3, 5] },
+      { kind: "weekly", days: [0, 6] },
       { kind: "monthly", day: 15 },
+      { kind: "monthly", day: 31 },
       { kind: "workday" },
     ];
     for (const repeat of rules) {

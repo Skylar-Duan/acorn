@@ -205,6 +205,9 @@ export function useFold(
   //  · 刚才在 claim 里被邻居挤下来了（我收着、本机却记着「开」）：记忆跟着改口，
   //    下次进来不会又是两块都想摊开。
   useEffect(() => {
+    // 凭占位条开的（forceFoldOpen / preferFoldOpen），记忆跟着写成「开」。
+    // forceFoldOpen 喊的时候已经写过了，这一下是给 preferFoldOpen 补的：它在渲染里喊，不许碰 localStorage
+    if (pending(lsKey) && openRef.current) remember(lsKey, true);
     pendingOpen.delete(lsKey);
     if (!group) return;
     if (openRef.current) {
@@ -226,6 +229,28 @@ export function useFold(
       else if (owner.get(group)?.lsKey === lsKey) owner.delete(group);
     },
   ];
+}
+
+/**
+ * 「这一页每次进来都先摊开这一块」——但**别处已经点名要开同一家的别的块时让位**（v1.15.1）。
+ *
+ * 用户原话「设置中，账号卡片默认张开，并且移到最上面」。光改 defaultOpen 不够：
+ * 老用户本机早就记着上次开的那一节，defaultOpen 只在「从没记过」时才说了算，装上新版什么变化都看不到。
+ * 而直接 forceFoldOpen 又会跟侧栏「数据异常 → 设置 → 数据」那条路抢：那边刚点名要开「数据」，
+ * 这边一进页面又把位子抢回账号，人就落在一节收着的标题上。
+ *
+ * 所以这里只做一件事：同一个 prefix 下没有别人的占位条，就替这一块留一张（跟 forceFoldOpen 同一张表）；
+ * 有，就什么都不做、返回 false。**要在同组那几块挂载之前调**（父组件渲染时就调，例如 useState 初始化器），
+ * 它们在 claim 里凭这张条当场分胜负，第一帧就是对的。
+ *
+ * 只动内存里那张占位表，不写 localStorage、不广播——可以在渲染里调、可以重复调；
+ * 记忆等那一块挂载时在 effect 里补写（见 useFold 里「挂载那一拍」）。
+ */
+export function preferFoldOpen(key: string, prefix = "acorn-side-"): boolean {
+  const lsKey = `${prefix}${key}`;
+  if (forcedNeighbor(prefix, lsKey)) return false;
+  pendingOpen.set(lsKey, Date.now());
+  return true;
 }
 
 /** 让某一块强制打开（同时写进记忆，这样还没挂载的那一页挂载时读到的也是「开」） */

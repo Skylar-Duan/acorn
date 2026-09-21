@@ -17,6 +17,11 @@ import { maybeRunSmoke } from "./core/smoke";
 import { dailySyncIfNeeded, flushSync, initSync } from "./core/syncCtl";
 import { checkUpdateOnBoot, rememberLaunch } from "./core/updateCtl";
 import type { AddTaskInput } from "./core/store";
+import { applySavedSideW } from "./core/sideWidth";
+
+// 侧栏宽度是本机记的（localStorage 同步可读），赶在第一次渲染之前套上，免得先闪默认宽再跳。
+// 手机没有侧栏，不碰
+if (!isMobile) applySavedSideW();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

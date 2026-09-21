@@ -6,11 +6,13 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { AppData, Settings } from "./model";
-import { appStore, applyRemoteData, flushSave } from "./store";
+import { appStore, applyRemoteData, flushSave, setProfiles } from "./store";
 import { mergeData } from "./merge";
 import * as cloud from "./cloud";
 import type { Session, SyncPhase } from "./cloud";
 import { todayYMD, toYMD } from "./dates";
+import { isMobile } from "./platform";
+import { adoptLegacyProfile } from "./profile";
 
 interface SyncStore {
   session: Session | null;
@@ -275,10 +277,22 @@ export async function initSync(): Promise<void> {
   // **排在 watchData 之前**：取回会整份换掉内存那份数据，监听已经挂上的话，
   // 这一下会被当成「用户改了东西」排一轮推送，侧栏那行先亮「有改动没传」再自己消下去
   const restored = await autoRestoreOnBoot(session);
+  // 排在 watchData 之前、syncNow 之前：迁进来的那一条直接搭这一轮一起上云，不另排一轮
+  adoptLegacyProfileNow(session);
   watchData();
+  startAutoPull();
   // 取回那条路自己就把版本号跟云端对齐了，这一轮不用再同步一次
   if (restored) return;
   void syncNow();
+}
+
+/** 旧字段（settings.profileName / profileAvatar）迁进这个账号名下，只迁一次（口径见 profile.adoptLegacyProfile）。
+ *  账本没正常读进来时不动手——那时内存里那份不是用户的账本 */
+function adoptLegacyProfileNow(session: Session): void {
+  const a = appStore.getState();
+  if (!a.loaded || a.loadError || a.rescue) return;
+  const next = adoptLegacyProfile(a.data, session.email);
+  if (next !== a.data && next.profiles) setProfiles(next.profiles);
 }
 
 /** 登录 / 注册验证成功后调：存下登录态，立刻把两边并起来。
@@ -292,7 +306,9 @@ export async function adoptSession(session: Session, opts?: { sync?: boolean }):
     session, phase: "idle", message: idleMessage(session),
     dirty: false, needsUpgrade: false, upgradeRetryAt: null, lastAttemptAt: null,
   });
+  adoptLegacyProfileNow(session);
   watchData();
+  startAutoPull();
   if (opts?.sync === false) return;
   await syncNow();
 }
@@ -308,6 +324,7 @@ export async function signOut(): Promise<void> {
     debounce = null;
   }
   stopWatching();
+  stopAutoPull();
   await cloud.saveSession(null);
   set({
     session: null, phase: "off", message: idleMessage(null),
@@ -375,6 +392,73 @@ export async function dailySyncIfNeeded(today = todayYMD()): Promise<boolean> {
   return !!after.session && after.phase !== "error";
 }
 
+// ---------- 电脑上自动去云端取最新（v1.15.1） ----------
+
+/** 距上次成功同步不到这么久，窗口回到眼前也不再取：alt-tab 一次、关个小窗回主窗一次，
+ *  一分钟里能来十几下，每下都跑一轮是白耗 */
+export const AUTO_PULL_GAP_MS = 60 * 1000;
+/** 登录着、开着橡果，每隔这么久自己取一次 */
+export const AUTO_PULL_EVERY_MS = 5 * 60 * 1000;
+
+/** 上一次「自动取」真发出去的时刻（**成败都记**）。只活在进程内。
+ *  失败时 syncedAt 一动不动，光看它的话服务器挂着的那段时间每次切回窗口都会重撞一次 */
+let lastAutoPullAt = 0;
+let autoPullOff: (() => void) | null = null;
+
+/**
+ * 该取就取一轮：用户 2026-09-21 定的「电脑版自动去云端取最新数据」。
+ *
+ * 原来桌面只在开机和本机有改动时同步，手机上刚记的事，电脑上光看不改就永远等不来。
+ * 走的就是 syncNow（自带 base_rev、409 重试、合并），不另写一套：
+ * 取回来的并进本机，本机没传的顺手推上去。
+ *
+ * 不发的情况：没登录、离线、被服务端挡着等升级、正在同步、距上次成功（或上次自动取）不到一分钟。
+ * **出错安静处理**：不弹窗不打扰，侧栏那行字照实说，下一次到点再试。返回这一轮发没发出去。
+ */
+export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
+  const st = syncStore.getState();
+  if (!st.session || upgradeBlocked(st, now) || st.phase === "syncing" || running) return false;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+  const last = st.session.syncedAt ? Date.parse(st.session.syncedAt) : NaN;
+  if (Number.isFinite(last) && now - last < AUTO_PULL_GAP_MS) return false;
+  if (now - lastAutoPullAt < AUTO_PULL_GAP_MS) return false;
+  lastAutoPullAt = now; // 先记再发：focus 和 visibilitychange 常常前后脚一起来
+  await syncNow();
+  return true;
+}
+
+/**
+ * 挂上「窗口回到眼前就取一次 + 每 5 分钟取一次」。登录态落定时调（initSync / adoptSession），
+ * 重复调只挂一份；登出、令牌过期时 stopAutoPull 摘掉。
+ *
+ * **只在电脑上**（isMobile 为假，电脑浏览器上的网页版也算）：手机进后台就落盘推一把、
+ * 回来有每天补一轮，再加定时拉会在计费流量上一直跑。
+ */
+export function startAutoPull(mobile = isMobile): void {
+  if (mobile || autoPullOff || typeof window === "undefined") return;
+  const onFocus = () => void autoPullIfDue();
+  const onVisible = () => {
+    if (document.visibilityState === "visible") void autoPullIfDue();
+  };
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVisible);
+  const timer = setInterval(() => void autoPullIfDue(), AUTO_PULL_EVERY_MS);
+  autoPullOff = () => {
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVisible);
+    clearInterval(timer);
+  };
+}
+
+/** 摘掉自动取。换个账号登录时间隔从头算 */
+export function stopAutoPull(): void {
+  if (autoPullOff) {
+    autoPullOff();
+    autoPullOff = null;
+  }
+  lastAutoPullAt = 0;
+}
+
 /** 立刻同步一轮。同一时间只会有一轮在跑，重复调用等同一个 promise。
  *
  *  `force`：**不许复用在途的那一轮**，排队等它落地再跑一轮全新的。
@@ -414,7 +498,11 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
       // 必须在 applyRemoteData 之前判：它会拿旧快照的合并结果整份替换内存那份，
       // 把往返期间用户刚记的那条盖掉，判在后面就看不见「又改过」了
       let drifted = appStore.getState().data !== snap;
-      if (outcome.changed) {
+      // changed 只数「事」的增改删（那是给用户看的那句「收到几条」）。名字头像从云端带回新的，
+      // 事一条没变也得装回来，否则手机刚换的头像电脑这边永远只推不收。
+      // mergeProfiles 在「跟本机一模一样」时原样返回本机那个对象，所以这里比身份就够
+      const adopt = outcome.changed || outcome.data.profiles !== snap.profiles;
+      if (adopt) {
         // outcome.data 是拿**起飞那一刻**那份算出来的合并结果。漂移了还直接 apply，
         // 等于把这几秒里记的东西当场抹掉（小窗随手记的一条、勾掉的一件事都算）——
         // 云端没有、内存没了、scheduleSave 一写盘上也没了，用户找都没处找。
@@ -422,7 +510,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
         applyRemoteData(drifted ? mergeData(appStore.getState().data, outcome.data).data : outcome.data);
       }
       // 确知已经在云端的那一份：合并过就是合并结果（那才是 PUT 上去的内容），否则就是快照
-      const settled = outcome.changed ? outcome.data : snap;
+      const settled = adopt ? outcome.data : snap;
       lastSeenData = appStore.getState().data;
       const next: Session = {
         ...session,
@@ -469,6 +557,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
         // 令牌过期或密码改过：断开登录态，但**本机数据一个字都不动**
         await cloud.saveSession(null);
         stopWatching();
+        stopAutoPull();
         set({
           session: null,
           phase: "error",

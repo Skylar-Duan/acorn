@@ -347,6 +347,12 @@ describe("样式：颜色只用 token，版式该钉的钉住", () => {
     expect(sheetCss).toContain(".msh-picks {");
   });
 
+  it("🔴 子任务行左滑要跟手：.msh-sub 自己补 touch-action: pan-y，不借 .msheet 那条 pan-x pan-y", () => {
+    // 光靠 .msheet 的 pan-x pan-y 挡不住系统把横向拖走当成滚动接走（pointercancel），
+    // 子任务行必须自己写死 pan-y：横着的交给我们自己的左滑手势
+    expect(sheetCss).toMatch(/\.msh-sub \{[\s\S]{0,400}touch-action: pan-y;/);
+  });
+
   it("原地改标题的框要把「不许选中」要回来（mobile.css 把 .swipe-body 里的一切都关掉了）", () => {
     expect(mobileCss).toContain(".swipe-body, .swipe-body * {");
     expect(sheetCss).toContain(".msh-sub input, .msh-sub textarea { -webkit-user-select: text; user-select: text; }");

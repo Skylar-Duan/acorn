@@ -4,7 +4,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { LIST_COLORS } from "../core/model";
-import { cmpYMD, duePresets, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
+import { cmpYMD, dayOfWeek, duePresets, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import type { ParseResult } from "../core/parse";
 import { parseQuickAdd, parseSubtaskInput, SUBTASK_SKIP } from "../core/parse";
@@ -17,9 +17,10 @@ import {
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
 import SyntaxInput from "./SyntaxInput";
-import { growArea, oneLine } from "./autogrow";
+import { growArea, keepLines, oneLine } from "./autogrow";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
+import RepeatPicker, { sameRepeat } from "./RepeatPicker";
 import { useLeaving } from "./motion";
 import { CommitMark, FLASH_MS, TYPING_IDLE_MS, useTypingFlash } from "./commitFlash";
 
@@ -58,6 +59,8 @@ export default function TaskCard({ task }: { task: Task }) {
   const whoNames = useMemo(() => allWho({ tasks, settings }).map((w) => w.who), [tasks, settings]);
   const [menu, setMenu] = useState<MenuName>(null);
   const [subMenu, setSubMenu] = useState<{ id: string; kind: "date" | "prio" } | null>(null);
+  /** 循环弹层现在显示的是常用项（false）还是「自定义…」面板（true）。点 ↻ 那颗小签打开时一律回到常用项 */
+  const [repeatCustom, setRepeatCustom] = useState(false);
   /** 弹层退场那一拍（B6）：关掉的时候得让它多活一会儿把动画演完，不然是「啪一下没了」。
    *  真正的开关状态照旧是 menu / subMenu，下面那些判断和收尾一个字都没动 */
   const menuPop = useLeaving(menu);
@@ -306,7 +309,8 @@ export default function TaskCard({ task }: { task: Task }) {
    *  **返回「到底加上没有」**：只打了日期没打标题时一条都没加，回执就不许闪——
    *  A2 那个 ✓ 的全部价值在于它不能说谎 */
   function addSubFromInput(): boolean {
-    const r = parseSubtaskInput(newSub, new Date(), [], settings.weekendDay);
+    // keepNewlines：栏里 Shift+Enter 敲的换行要一路留进标题（记一条那几条路不开，照旧压成空格）
+    const r = parseSubtaskInput(newSub, new Date(), [], settings.weekendDay, { keepNewlines: true });
     const title = r.title.trim();
     if (!title) return false;
     addSubtask(task.id, title, {
@@ -479,9 +483,21 @@ export default function TaskCard({ task }: { task: Task }) {
   }
   closeMenusRef.current = closeMenus;
 
-  // 循环菜单的「每周X/每月X号」按任务自己的日期取形
-  const wd = task.due ? new Date(task.due).getDay() : new Date().getDay();
-  const dom = task.due ? Number(task.due.slice(8, 10)) : new Date().getDate();
+  // 循环菜单的「每周X/每月X号」按任务自己的日期取形（没有日期按今天）。
+  // 星期几走 dayOfWeek（本地日期）：以前是 new Date("2026-09-21").getDay()，那是按 UTC 零点解析的，
+  // 西半球时区会差一天——任务排在周一，菜单里却写「每周日」
+  const repeatAnchor = task.due ?? today;
+  const wd = dayOfWeek(repeatAnchor);
+  const dom = Number(repeatAnchor.slice(8, 10));
+  /** 循环菜单的常用项。现在的规则不在这几个里（比如「每周一三五」「每3天」）就单独挂在最上面，
+   *  用户一眼能看到现在是什么，点它进自定义面板接着改 */
+  const repeatCommon: RepeatRule[] = [
+    { kind: "daily", every: 1 },
+    { kind: "workday" },
+    { kind: "weekly", days: [wd] },
+    { kind: "monthly", day: dom },
+  ];
+  const repeatOffList = !!task.repeat && !repeatCommon.some((r) => sameRepeat(r, task.repeat ?? null));
   // 安排日期的快捷预设（今天 / 本周五 / 本周日 / 本月末）现算：永远向后取最近的一个，
   // 名字跟着算出来的日子走，跟今天撞上的那个不出现。规则和单测都在 core/dates.ts
   const presets = duePresets(today);
@@ -503,15 +519,17 @@ export default function TaskCard({ task }: { task: Task }) {
           value={s.title}
           onChange={(e) => {
             growArea(e.currentTarget);
-            updateSubtask(task.id, s.id, { title: oneLine(e.target.value) });
+            // 子任务标题可以是几行（用户要的）：换行留着，粘进来的也留着，只统一 \r\n
+            updateSubtask(task.id, s.id, { title: keepLines(e.target.value) });
             touchSub(s.id);
           }}
-          // 换成 textarea 之后 Enter 默认是换行，得拦下来：子任务标题是一行字段。
-          // Shift+Enter 收卡，跟母任务标题和备注一个规矩
+          // Enter 拦下来什么都不做（它不是「换行」也不是「收卡」，老规矩）。
+          // **Shift+Enter 在子任务里是换行**，放给 textarea 自己插——跟母任务标题、备注那边
+          // 「Shift+Enter 收卡」不一样；子任务里想收卡按 Esc 或点卡外
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            if (e.shiftKey) return;
             e.preventDefault();
-            if (e.shiftKey) expandTask(null);
           }}
         />
         <CommitMark on={subFlash === s.id} />
@@ -680,7 +698,9 @@ export default function TaskCard({ task }: { task: Task }) {
               setNewSub("");
               return true;
             }}
-            onShiftEnter={() => expandTask(null)}
+            // 长句子折行、框跟着长高（不再单行一直往左推）；Shift+Enter 是换行，写进这条子任务的标题。
+            // 所以这里不接 onShiftEnter：子任务里收卡按 Esc（有字时第二下）或点卡外
+            allowNewline
             placeholder="＋ 子任务，回车添加（可以写「~明天 !高」）"
             lists={[]}
             tags={[]}
@@ -747,21 +767,41 @@ export default function TaskCard({ task }: { task: Task }) {
         )}
 
         {/* 循环 */}
-        <button className={`pill${task.repeat ? " hot" : ""}`} onClick={() => setMenu(menu === "repeat" ? null : "repeat")}>
+        <button
+          className={`pill${task.repeat ? " hot" : ""}`}
+          onClick={() => { setRepeatCustom(false); setMenu(menu === "repeat" ? null : "repeat"); }}
+        >
           ↻ {task.repeat ? describeRepeat(task.repeat) : "循环"}
         </button>
         {menuPop.shown === "repeat" && (
           <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 90 }}>
-            <button className="item" onClick={() => setRepeat({ kind: "daily", every: 1 })}>每天</button>
-            <button className="item" onClick={() => setRepeat({ kind: "workday" })}>每个工作日</button>
-            <button className="item" onClick={() => setRepeat({ kind: "weekly", days: [wd] })}>
-              {describeRepeat({ kind: "weekly", days: [wd] })}
-            </button>
-            <button className="item" onClick={() => setRepeat({ kind: "monthly", day: dom })}>每月{dom}号</button>
-            {task.repeat && (
+            {repeatCustom ? (
+              // 自定义面板就在这块 .popmenu 里换内容，点卡外 / 点别处收起的规矩原样适用
+              <RepeatPicker
+                value={task.repeat ?? null}
+                anchor={repeatAnchor}
+                onDone={(r) => setRepeat(r)}
+                onCancel={() => setRepeatCustom(false)}
+              />
+            ) : (
               <>
+                {repeatOffList && task.repeat && (
+                  <>
+                    <button className="item" onClick={() => setRepeatCustom(true)}>
+                      {describeRepeat(task.repeat)}<span className="k">✓</span>
+                    </button>
+                    <div className="sep" />
+                  </>
+                )}
+                {repeatCommon.map((r) => (
+                  <button key={r.kind} className="item" onClick={() => setRepeat(r)}>
+                    {describeRepeat(r)}
+                    {sameRepeat(r, task.repeat ?? null) && <span className="k">✓</span>}
+                  </button>
+                ))}
                 <div className="sep" />
-                <button className="item" onClick={() => setRepeat(null)}>不再循环</button>
+                <button className="item" onClick={() => setRepeatCustom(true)}>自定义…</button>
+                {task.repeat && <button className="item" onClick={() => setRepeat(null)}>不再循环</button>}
               </>
             )}
           </div>

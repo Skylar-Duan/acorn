@@ -35,7 +35,8 @@ export function repeatToSyntax(r: RepeatRule): string | null {
     case "weekly":
       return r.days.length ? `每周${[...r.days].sort((a, b) => a - b).map((d) => WEEK_CN[d]).join("")}` : null;
     case "monthly":
-      return `每月${r.day}号`;
+      // 跟界面显示同一个说法（describeRepeat）；解析器认「每月最后一天」，读回来还是 day 31
+      return r.day === 31 ? "每月最后一天" : `每月${r.day}号`;
     case "workday":
       return "每个工作日";
   }

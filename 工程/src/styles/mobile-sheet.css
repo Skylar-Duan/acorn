@@ -112,6 +112,10 @@ textarea.msh-title, textarea.msh-notes {
    在两行的时候会让字顶到上下沿——一行的时候还是 46 高，看不出区别 */
 .msh-sub {
   display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 20px;
+  /* 竖着的滚动交给纸（touch-action 是沿祖先链取交集的），横着的留给我们自己的左滑手势，
+     不然一横着拖，系统会把这次按压当成自己的横向滚动接走并发 pointercancel，
+     行就跟着抖几下弹回去，动作条停不住，点不到「删除」。 */
+  touch-action: pan-y;
 }
 .msh-subwrap + .msh-subwrap .msh-sub { border-top: 1px solid var(--hair); }
 /* 做完的那几条淡下去——**淡的是里面的字，不是整行**：整行调 opacity 会把底下的动作条透出来 */

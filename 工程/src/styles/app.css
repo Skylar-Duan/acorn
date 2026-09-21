@@ -46,6 +46,33 @@
   overflow-y: auto;
   /* 换主题不做底色渐变（B7 已撤回）：前景色是瞬切的，只渐底色会在中段把字压糊。见 base.css body 那处 */
 }
+/* 侧栏宽度把手（components/SideGrip）：贴在侧栏右边线上，只盖边线那 1px 再往右 5px，
+   不压侧栏的滚动条（滚动条在边线里侧）。no-drag：别让它变成窗口拖拽区 */
+.side-grip {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--side-w) - 1px);
+  width: 6px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+.shell.web-note-on .side-grip { top: calc(var(--web-note-h) + env(safe-area-inset-top, 0px)); }
+/* 悬停 / 拖动时亮出一条细线，平时看不见 */
+.side-grip::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.side-grip:hover::after, body.side-resizing .side-grip::after { opacity: .55; }
+/* 拖动途中：整页不许选字，鼠标一直是左右箭头（拖出把手范围也不变回去） */
+body.side-resizing { user-select: none; cursor: col-resize; }
 .side .brand {
   font-family: var(--serif);
   font-size: 18px;
@@ -193,6 +220,10 @@
 .view-head .list-name:focus { border-color: var(--accent); background: var(--card); }
 .view-head .sub { color: var(--ink-2); font-size: 13px; }
 .view-head .spacer { flex: 1; }
+/* 右上角那颗头像（AccountPopover，fixed 在 .main 右上角）让出位置：34px 圆 + 10px 空隙。
+   日历、已完成、计划这几页标题行最右边本来就有按钮，不让的话会被它压住。
+   只给桌面那一套：手机的标题行是 MobileHead，头像也是它自己那颗 */
+.shell:not(.mobile) .view-head { padding-right: 44px; }
 /* 换视图时正文淡入 + 上移 6px（B3）。换的是整个视图组件，这条动画自然就重播一遍。
    刻意**不做左右滑页**：那种动效跟橡果的纸感不搭 */
 .view-body {
@@ -736,6 +767,8 @@
 
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
+  /* 抽屉模式不认自定义侧栏宽度（抽屉宽写死在下面），拖宽度的把手也收起来 */
+  .side-grip { display: none; }
 
   /* 侧栏浮在内容之上，默认推到屏幕外；.open 才滑进来 */
   .side {
@@ -794,6 +827,8 @@
   .main { padding: max(10px, env(safe-area-inset-top)) 12px 0; }
   .view-body { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
   .view-head { padding-left: 46px; flex-wrap: wrap; row-gap: 2px; }
+  /* 右边同理，给右上角那颗 38px 的头像让位（跟左边给 ☰ 让的一样宽） */
+  .shell:not(.mobile) .view-head { padding-right: 46px; }
   .view-head h1 { font-size: 21px; }
   .view-head .list-name { font-size: 21px; max-width: 62vw; }
   .theme-scene { left: 0; max-height: 40vh; }

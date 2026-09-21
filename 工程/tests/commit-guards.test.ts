@@ -251,10 +251,12 @@ describe("日期弹层：年份段还在累加的那几拍不许落库", () => {
 
     // 七处调用点：任务卡两个（日期弹层 / 子任务日期小签）、侧栏一个、随手记一个，
     // v1.11.0 起手机端三张抽屉各一个（长按的动作单 / 任务详情的日期段 / 记一条的日期段）。
-    // 数字对不上就是新加了一个日期框——它已经被上面那三件套罩住了，改这个数就行
+    // 数字对不上就是新加了一个日期框——它已经被上面那三件套罩住了，改这个数就行。
+    // 第八处（v1.15.x）：桌面「顺延 ▾」菜单里的「选日期…」（PostponeMenu），停手只记草稿、点确定才落一次库
     const spots = allTsx.flatMap(([name, src]) => dateFieldsIn(src).map(() => name));
-    expect(spots.length).toBe(7);
+    expect(spots.length).toBe(8);
     expect([...new Set(spots)].sort()).toEqual([
+      "src/components/PostponeMenu.tsx",
       "src/components/QuickAddBar.tsx",
       "src/components/Sidebar.tsx",
       "src/components/TaskCard.tsx",

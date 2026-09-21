@@ -157,7 +157,7 @@ describe("「安排日期」只有一套规矩：五个入口同一份预设", (
   const ctx = stripComments(ctxSource);
   const sidebar = stripComments(sidebarSource);
 
-  /** 右键菜单里两个「安排日期 ▸」子菜单（任务的、子任务的） */
+  /** 右键菜单里两个「调整日期 ▸」子菜单（任务的、子任务的；原名「安排日期」，2026-09 改名） */
   const subMenuDate = ctx.slice(ctx.indexOf('{subOpen === "date" && ('), ctx.indexOf('{subOpen === "priority" && ('));
   // 结尾要从起点往后找：子任务菜单里也有个「优先级」，它排在前面，从头找会切出一段空的
   const taskDateAt = ctx.indexOf('{sub === "date" && (');
@@ -165,15 +165,18 @@ describe("「安排日期」只有一套规矩：五个入口同一份预设", (
   /** 拖到侧栏「计划」弹出的「安排到哪天？」 */
   const planPop = sidebar.slice(sidebar.indexOf("side-plan-pop"), sidebar.indexOf("{/* 不常用的收进这里"));
 
-  it("右键「安排日期 ▸」（任务）走 duePresets，不再自己算候选日", () => {
-    expect(taskMenuDate).toContain("duePresets(today).map(");
-    expect(taskMenuDate).not.toContain("明天");
+  // 2026-09 有意改口：用户要「推到明天收进安排日期里，安排日期改名调整日期」。
+  // 右键这两个子菜单在 duePresets 那一套的「今天」后面多一个明天，由 core/dates.adjustDatePresets 一处算好
+  // （它内部就是 duePresets + 明天）。其余安排日期入口照旧不带明天，下面「侧栏」那条还守着
+  it("右键「调整日期 ▸」（任务）走 adjustDatePresets（= duePresets + 明天），不自己算候选日", () => {
+    expect(taskMenuDate).toContain("adjustDatePresets(today).map(");
     expect(taskMenuDate).not.toContain("下周一");
+    expect(taskMenuDate).not.toContain("addDays(");
   });
 
-  it("右键「安排日期 ▸」（子任务）也是同一套", () => {
-    expect(subMenuDate).toContain("duePresets(today).map(");
-    expect(subMenuDate).not.toContain("明天");
+  it("右键「调整日期 ▸」（子任务）也是同一套", () => {
+    expect(subMenuDate).toContain("adjustDatePresets(today).map(");
+    expect(subMenuDate).not.toContain("addDays(");
     // 「继承母任务」是子任务独有的一条，得留着
     expect(subMenuDate).toContain("继承母任务");
   });
@@ -190,8 +193,11 @@ describe("「安排日期」只有一套规矩：五个入口同一份预设", (
     expect(sidebarSource).not.toContain("dayOfWeek");
   });
 
-  it("「推到明天」是顺延不是安排日期，一个字都不该动", () => {
-    expect(ctxSource).toContain("推到明天");
-    expect(ctxSource).toContain("postponeTasks(ids)");
+  // 2026-09 有意改口：右键里单独那一项「推到明天」删了，收进「调整日期 ▸」的「明天」。
+  // Ctrl+→（原日期加一天）没动，还在 App.tsx
+  it("右键不再单列「推到明天」；Ctrl+→ 照旧是 postponeTasks", () => {
+    expect(ctx).not.toContain("推到明天");
+    expect(ctx).not.toContain("postponeTasks(ids)");
+    expect(appSource).toContain("postponeTasks(selectedIds);");
   });
 });

@@ -181,4 +181,33 @@ describe("describeRepeat", () => {
   it("每个工作日", () => {
     expect(describeRepeat({ kind: "workday" })).toBe("每个工作日");
   });
+
+  // 31 号在没有 31 号的月份落到月末，所以它说的就是「每月最后一天」（「~每个月末」存的也是它）
+  it("每月 31 号显示成「每月最后一天」，30 号照旧", () => {
+    expect(describeRepeat({ kind: "monthly", day: 31 })).toBe("每月最后一天");
+    expect(describeRepeat({ kind: "monthly", day: 30 })).toBe("每月30号");
+  });
+});
+
+describe("每月最后一天（day 31）逐月推算", () => {
+  const rule: RepeatRule = { kind: "monthly", day: 31 };
+  it("9-21 起第一次落在 9-30，之后 10-31、11-30", () => {
+    const first = firstOccurrence(rule, "2026-09-21");
+    expect(first).toBe("2026-09-30");
+    const oct = nextOccurrence(rule, first);
+    expect(oct).toBe("2026-10-31");
+    expect(nextOccurrence(rule, oct)).toBe("2026-11-30");
+  });
+
+  it("2 月、4 月落到月末，下个月又回到 31", () => {
+    expect(nextOccurrence(rule, "2027-01-31")).toBe("2027-02-28");
+    expect(nextOccurrence(rule, "2027-02-28")).toBe("2027-03-31");
+    expect(nextOccurrence(rule, "2027-03-31")).toBe("2027-04-30");
+    expect(nextOccurrence(rule, "2027-04-30")).toBe("2027-05-31");
+  });
+
+  it("本身就是月末的那天算落点", () => {
+    expect(firstOccurrence(rule, "2027-04-30")).toBe("2027-04-30");
+    expect(firstOccurrence(rule, "2027-02-28")).toBe("2027-02-28");
+  });
 });

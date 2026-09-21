@@ -2,9 +2,9 @@
 // App.tsx 常驻渲染 <ContextMenu/>；打开/关闭走 store 的 openCtxMenu/closeCtxMenu。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Priority, Task } from "../core/model";
-import { duePresets, todayYMD } from "../core/dates";
+import { adjustDatePresets, todayYMD } from "../core/dates";
 import {
-  closeCtxMenu, completeTasks, deleteTasks, dropSubtask, dropTasks, postponeRows, postponeTasks,
+  closeCtxMenu, completeTasks, deleteTasks, dropSubtask, dropTasks,
   removeSubtask, setTasksDue, setTasksList, setTasksWho, showToast, uncompleteTask,
   updateSubtask, updateTask, useApp,
 } from "../core/store";
@@ -27,7 +27,7 @@ export default function ContextMenu() {
   if (ctx.sub) {
     return <SubRowMenu key={`${ctx.x},${ctx.y},${ctx.sub.subId}`} x={ctx.x} y={ctx.y} taskId={ctx.sub.taskId} subId={ctx.sub.subId} leaving={leaving} />;
   }
-  return <Menu key={`${ctx.x},${ctx.y},${ctx.ids.join("|")}`} x={ctx.x} y={ctx.y} ids={ctx.ids} leaving={leaving} />;
+  return <Menu key={`${ctx.x},${ctx.y},${ctx.ids.join("|")}`} x={ctx.x} y={ctx.y} ids={ctx.ids} whole={!!ctx.whole} leaving={leaving} />;
 }
 
 /** 子任务行的右键菜单：作用对象是子任务本身，绝不打到母任务上 */
@@ -93,20 +93,18 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
         {sub.droppedAt ? "取消放弃" : "放弃这一步"}
       </button>
       <div className="ctx-sep" />
-      <button className="ctx-item" onClick={() => run(() => postponeRows([{ task, sub }]))}>
-        推到明天
-      </button>
+      {/* 原来这儿还有一项单独的「推到明天」，收进下面「调整日期」里了（用户 2026-09） */}
       <div
         className={`ctx-subwrap${subOpen === "date" ? " open" : ""}`}
         onMouseEnter={() => setSubOpen("date")}
         onMouseLeave={() => setSubOpen(null)}
       >
-        <button className="ctx-item">安排日期<span className="ctx-caret">▸</span></button>
+        <button className="ctx-item">调整日期<span className="ctx-caret">▸</span></button>
         {subOpen === "date" && (
           <div className="ctx-submenu">
-            {/* 跟任务卡里子任务那个日期小签同一套（core/dates.duePresets）。
-                这个子菜单字面也叫「安排日期」，不能跟别处给出不一样的候选日 */}
-            {duePresets(today).map((p) => (
+            {/* 安排日期那一套（core/dates.duePresets）在「今天」后面多一个明天——
+                跟任务的「调整日期」同一份（adjustDatePresets），两个菜单不许给出不一样的候选日 */}
+            {adjustDatePresets(today).map((p) => (
               <button
                 key={p.key}
                 className="ctx-item"
@@ -158,7 +156,10 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
   );
 }
 
-function Menu({ x, y, ids: rawIds, leaving }: { x: number; y: number; ids: string[]; leaving?: boolean }) {
+/** 任务的菜单。whole = 右键的是**代表整件事的那一行子任务行**（收起的链头 / 只露出一行的那件事）：
+ *  内容一点不变，全都作用在母任务上，只是标题写明「整件事 · 名字」——
+ *  删除 / 完成 / 放弃在这儿动的是整件事，得让人一眼看清作用对象 */
+function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids: string[]; whole?: boolean; leaving?: boolean }) {
   const data = useApp((s) => s.data);
   const menuRef = useRef<HTMLDivElement>(null);
   const subRef = useRef<HTMLDivElement>(null);
@@ -281,6 +282,9 @@ function Menu({ x, y, ids: rawIds, leaving }: { x: number; y: number; ids: strin
       onContextMenu={(e) => e.preventDefault()}
     >
       {tasks.length > 1 && <div className="ctx-count">{tasks.length} 项</div>}
+      {tasks.length === 1 && whole && (
+        <div className="ctx-count">整件事 · {(tasks[0].title || "（未命名）").slice(0, 12)}</div>
+      )}
 
       <button
         className="ctx-item"
@@ -302,24 +306,21 @@ function Menu({ x, y, ids: rawIds, leaving }: { x: number; y: number; ids: strin
 
       <div className="ctx-sep" />
 
-      <button className="ctx-item" onClick={() => run(() => postponeTasks(ids))}>
-        推到明天
-      </button>
-
-      {/* 安排日期 ▸ */}
+      {/* 调整日期 ▸（原名「安排日期」）。原来它上面还有一项单独的「推到明天」，
+          用户 2026-09 要求收进这个子菜单里：「今天」后面就是「明天」 */}
       <div
         className={`ctx-subwrap${sub === "date" ? " open" : ""}`}
         onMouseEnter={() => subEnter("date")}
         onMouseLeave={subLeave}
       >
         <button className="ctx-item">
-          安排日期<span className="ctx-caret">▸</span>
+          调整日期<span className="ctx-caret">▸</span>
         </button>
         {sub === "date" && (
           <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
-            {/* 预设跟任务卡的日期弹层、侧栏拖到「计划」的那个弹层同一套（core/dates.duePresets）。
-                安排日期只有一套规矩：一处算一处用，别在这儿再写一份「明天 / 下周一」 */}
-            {duePresets(today).map((p) => (
+            {/* 预设 = 安排日期那一套（core/dates.duePresets）+「今天」后面一个明天，由 adjustDatePresets 一处算好。
+                别在这儿再手写一份「明天 / 下周一」。改的是母任务：还在继承的子任务跟着动，自己设过日子的不动 */}
+            {adjustDatePresets(today).map((p) => (
               <button key={p.key} className="ctx-item" onClick={() => run(() => setTasksDue(ids, p.ymd))}>
                 {p.label}
               </button>

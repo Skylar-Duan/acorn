@@ -61,6 +61,35 @@ describe("带 ~ 才认：日期 / 钟点 / 循环三类一视同仁", () => {
     expect(no.title).toBe("每周一 交周报");
   });
 
+  // v1.15 补的循环说法同样过这道闸门：不打 ~ 一个字不动
+  it("循环新说法：~每个月末 / ~每个月15号 / ~每周 / ~每个月 认，不打 ~ 不认", () => {
+    const SEP21 = new Date(2026, 8, 21, 10, 0);
+    const end = p("~每个月末 交房租", SEP21);
+    expect(end.repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(end.due).toBe("2026-09-30"); // 9-21 输入，第一次落在 9-30
+    expect(end.title).toBe("交房租");
+    expect(p("~每个月15号 还款").repeat).toEqual({ kind: "monthly", day: 15 });
+    expect(p("~每周 大扫除").repeat).toEqual({ kind: "weekly", days: [5] });
+    expect(p("~每个月 带猫咪洗澡").repeat).toEqual({ kind: "monthly", day: 21 });
+    // 全角 ～ 一样
+    expect(p("～每月底 对账").repeat).toEqual({ kind: "monthly", day: 31 });
+    for (const s of ["每个月末 交房租", "每月底 对账", "每个月15号 还款", "每周 大扫除", "每个月 带猫咪洗澡"]) {
+      const r = p(s);
+      expect(r.repeat, s).toBeNull();
+      expect(r.due, s).toBeNull();
+      expect(r.title, s).toBe(s);
+    }
+    // 范围号当 ~ 用不算：「1~每月」左边贴着正文
+    expect(p("预算1~每月 结余").repeat).toBeNull();
+  });
+
+  it("子任务走同一个解析器：~每个月末 在子任务里也认", () => {
+    const r = parseSubtaskInput("~每个月末 交房租", new Date(2026, 8, 21, 10, 0));
+    expect(r.repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(r.due).toBe("2026-09-30");
+    expect(r.title).toBe("交房租");
+  });
+
   it("用户那句原话：「下周去体检」现在只是一句话", () => {
     const r = p("下周去体检");
     expect(r.due).toBeNull();

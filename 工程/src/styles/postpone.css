@@ -1,0 +1,28 @@
+/* 「顺延 ▾」按钮与它的小菜单（components/PostponeMenu）。
+   菜单本体借右键菜单那身皮（.ctx-menu / .ctx-item，contextmenu.css），这里只补差的几样 */
+
+.pp-menu { min-width: 200px; }
+
+/* 菜单项右边那行小字：落在哪天 */
+.pp-when { margin-left: auto; padding-left: 14px; color: var(--ink-3); font-size: 11px; }
+.ctx-item:hover .pp-when { color: inherit; }
+
+/* 「选日期…」摊开后：一个日期框 + 确定 */
+.pp-pick { display: flex; align-items: center; gap: 6px; padding: 2px 4px 4px; }
+.pp-pick input { flex: 1; min-width: 0; }
+
+/* 行尾那颗「顺延 ▾」：只长在已经过期的行上，跟红色日期站在一起，
+   颜色跟日期同一个 --warn，但压得比日期淡，不抢标题 */
+.task-row .meta .pp-btn {
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 0 7px;
+  line-height: 1.6;
+  font-size: 11px;
+  color: var(--warn);
+  background: transparent;
+  white-space: nowrap;
+  transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.task-row .meta .pp-btn:hover,
+.task-row .meta .pp-btn[aria-expanded="true"] { border-color: var(--warn); background: var(--accent-soft); }

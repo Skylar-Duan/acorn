@@ -5,6 +5,8 @@
 //   · 只有一边有 → 留着（除非另一边留了「已彻底删除」的墓碑，且删得比这次改动晚）
 //   · 专注记录只增不减 → 两边合并去重
 //   · 设置（主题、快捷键这些）**不同步**，各机器各的
+//   · 名字和头像（profiles）**跟着账号走**：按账号分键，每个账号那一条谁改得晚听谁的，
+//     一边没有 = 没有信息，另一边那条原样留着（v1.15.1，见 mergeProfiles）
 //
 // 文件末尾还住着三件相关但**不在每轮同步里跑**的事，全都只在登录那一刻用一次（见 loginCtl.ts）：
 //   · dedupeListsByName —— 同名清单并一条。合并只认 id 不认名字，
@@ -21,7 +23,7 @@
 // 返回值先铺 remote 再铺 local 再覆盖已知键，两边任何一边的顶层未知集合都留得住
 // （同名时听本机的，跟「设置不同步」一个口径）。
 
-import type { AppData, FocusSession, List, Task, Tombstone } from "./model";
+import type { AppData, FocusSession, List, Profile, Task, Tombstone } from "./model";
 import { DATA_VERSION, pruneGraveyard } from "./model";
 
 /** 有 id 和 updatedAt 的东西（任务和清单都算） */
@@ -73,6 +75,58 @@ function mergeSessions(local: FocusSession[], remote: FocusSession[]): FocusSess
   return [...byKey.values()].sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1));
 }
 
+// ---------- 名字和头像 ----------
+
+/** 这一条能不能拿来比先后：得是个对象、带一个字符串的 updatedAt。
+ *  拿不来比的（别的版本写坏的、更新版本换了形状的）**不判输赢、也不扔**，见 pickProfile */
+function comparable(p: unknown): p is Profile {
+  return !!p && typeof p === "object" && !Array.isArray(p) && typeof (p as Profile).updatedAt === "string";
+}
+
+/** 同一个账号的那一条，两边各一份时留哪份。
+ *
+ *  · 谁改得晚听谁的（整条走，条目里不认识的字段跟着赢家一起走）；
+ *  · 一边没有、或者那一份拿不来比 → 留另一边能比的那份（缺失不覆盖）；
+ *  · 两边都拿不来比 → 本机那份原样留着（跟顶层「同名听本机」一个口径）；
+ *  · **一样晚就比内容**，不是听本机：两台设备各自从旧字段迁进来的那一条都盖着 1970 年，
+ *    听本机的话两边各留各的、每同步一次云端就翻一次面，永远收敛不了 */
+function pickProfile(local: unknown, remote: unknown): unknown {
+  const l = comparable(local);
+  const r = comparable(remote);
+  if (!l && !r) return local !== undefined ? local : remote;
+  if (!r) return local;
+  if (!l) return remote;
+  const a = local as Profile;
+  const b = remote as Profile;
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt > a.updatedAt ? b : a;
+  return JSON.stringify(b) > JSON.stringify(a) ? b : a;
+}
+
+/**
+ * 两边的 profiles 并起来：键取并集，每个键各比各的。
+ *
+ * **结果跟本机那份一模一样时原样返回本机那个对象**：同步那边（syncCtl.syncNow）靠对象身份
+ * 判断「名字头像这一轮有没有从云端带回新的」，每次都新建一个会让它每轮都白写一次盘。
+ * 两边都没有返回 undefined，调用方据此不往结果里加这个键。
+ */
+export function mergeProfiles(
+  local: AppData["profiles"] | undefined,
+  remote: AppData["profiles"] | undefined,
+): AppData["profiles"] | undefined {
+  const lo = local && typeof local === "object" && !Array.isArray(local) ? local : undefined;
+  const ro = remote && typeof remote === "object" && !Array.isArray(remote) ? remote : undefined;
+  if (!ro) return local ?? remote;
+  if (!lo) return ro;
+  const out: Record<string, unknown> = {};
+  let same = true;
+  for (const k of new Set([...Object.keys(lo), ...Object.keys(ro)])) {
+    const v = pickProfile(lo[k], ro[k]);
+    if (v !== lo[k]) same = false;
+    if (v !== undefined) out[k] = v;
+  }
+  return same ? lo : (out as AppData["profiles"]);
+}
+
 export interface MergeResult {
   data: AppData;
   /** 给用户看的一句话：这次同步实际发生了什么 */
@@ -84,6 +138,7 @@ export interface MergeResult {
  * 返回的是新的一整份数据 —— 设置永远取本机的，云端的设置不覆盖你这台机器。
  */
 export function mergeData(local: AppData, remote: AppData, now = Date.now()): MergeResult {
+  const profiles = mergeProfiles(local.profiles, remote.profiles);
   const graveList = pruneGraveyard([...(local.graveyard ?? []), ...(remote.graveyard ?? [])], now);
   const graves = new Map(graveList.map((g) => [g.id, g.at]));
 
@@ -114,6 +169,9 @@ export function mergeData(local: AppData, remote: AppData, now = Date.now()): Me
       sessions: mergeSessions(local.sessions ?? [], remote.sessions ?? []),
       settings: local.settings, // 设置不同步：主题/快捷键是这台机器的事
       graveyard: graveList,
+      // 名字和头像跟着账号走（上面的铺开只会「同名听本机」，那样手机改了电脑永远看不见）。
+      // 两边都没有就不加这个键，老数据合一遍长相一个字不变
+      ...(profiles !== undefined ? { profiles } : {}),
     },
     summary: { added, updated, removed },
   };

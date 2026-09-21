@@ -55,7 +55,7 @@
 }
 .update-foot {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  padding: 12px 20px; border-top: 1px solid var(--hair);
+  padding: 12px 22px; border-top: 1px solid var(--hair);
 }
 .update-foot .spacer { flex: 1; }
 .update-tail {

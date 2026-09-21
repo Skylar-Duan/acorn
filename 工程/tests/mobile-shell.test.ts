@@ -213,6 +213,10 @@ describe("② RowList：手机上走 MobileRow，不画内嵌展开卡", () => {
     );
     expect(sep.slice(0, sep.indexOf("}"))).toContain("left: 56px;");
     expect(sep.slice(0, sep.indexOf("}"))).toContain("background: var(--m-sep);");
+    // v1.15.x 周视图展开区把圆圈从 26 缩到 22（字号跟展开前的预览行对齐），
+    // 同一个选择器后面又补了一条覆写，把这根线的起点从 56px 重算成 52px（16 内距 + 22 圆圈 + 留白）
+    const override = calCss.slice(calCss.lastIndexOf(".mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap + .swipe-wrap::before {"));
+    expect(override.slice(0, override.indexOf("}"))).toContain("left: 52px;");
   });
 
   it("按下去有回应：行底色微微变深（老 WebView 退成 --bg）", () => {
@@ -704,10 +708,13 @@ describe("⑧ 动作单：每个动作都对得上桌面右键菜单里那一条
 
   it("完成 / 放弃 / 推到明天 / 复制标题 / 删除，跟右键菜单一一对应", () => {
     const ctx = read("src/components/ContextMenu.tsx");
-    for (const fn of ["completeTasks", "dropTasks", "postponeTasks", "deleteTasks", "setTasksList", "setTasksDue"]) {
+    for (const fn of ["completeTasks", "dropTasks", "deleteTasks", "setTasksList", "setTasksDue"]) {
       expect(actionSheetSource, fn).toContain(fn);
       expect(ctx, fn).toContain(fn);
     }
+    // 2026-09 有意分家：桌面右键里单独那一项「推到明天」收进了「调整日期 ▸」的「明天」（走 setTasksDue），
+    // 手机动作单这次没动（手机界面改动要先出稿），还是 postponeTasks
+    expect(actionSheetSource).toContain("postponeTasks");
     expect(actionSheetSource).toContain("navigator.clipboard.writeText");
   });
 

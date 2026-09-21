@@ -10,75 +10,21 @@
 // ① 这张纸上那颗「退出登录」接的**只是** syncCtl.signOut（断登录态，本机数据一条不动）。
 //    「退出并清空本机」那条路必须先过 wipe.checkWipeGate 那道闸（当场同步成功才敢清），
 //    它继续留在设置 → 云账号里，绝不许搬到一颗一点就中的按钮上来。
-// ② 头像、名字、自动登录都存在 data.settings 里，而**设置不参与云同步**
-//    （merge.ts 的 `settings: local.settings`，「从云端覆盖本机」也保留本机设置）——
-//    所以它们天然是「这台设备的事」，手机上换个名字不会把电脑上的也改了。
-// ③ 头像**必须压过再存**：整份数据每次同步都会连它一起传，服务端单账号只给 5MB。
+// ② 名字和头像**跟着账号走**（v1.15.1）：读写都经 core/profile.ts，存在账本顶层的 profiles 里、
+//    按账号分键参与云同步——手机上换的头像，电脑上登同一个账号也看得到。
+//    自动登录仍在 data.settings 里，**设置不参与云同步**，所以它照旧是「这台设备的事」。
+// ③ 头像**必须压过再存**：整份数据每次同步都会连它一起传，服务端单账号只给 5MB
+//    （压图那一步 shrinkToAvatar 也挪去了 core/profile.ts，桌面以后跟它共用一份）。
 
 import { useRef, useState } from "react";
 import { showToast, updateSettings, useApp } from "../core/store";
 import { applyAutoLogin, autoLoginOn, signOut, syncNow, useSync } from "../core/syncCtl";
+import { avatarInitial, getProfile, setProfileAvatar, setProfileName, shrinkToAvatar } from "../core/profile";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import Sheet from "./Sheet";
 import { closeSheet, openLogin, topSheet, useSheet } from "./sheetStore";
 import { IcoWho } from "./icons";
 import "../styles/mobile-sheet.css";
-
-/** 头像存多大。128 见方的 JPEG 大约 6～10KB：屏幕上最大也才 64 逻辑像素，
- *  再大一档除了让每次同步多传几十 KB 之外看不出任何区别 */
-export const AVATAR_PX = 128;
-/** JPEG 画质。.82 是「放大看不出压缩痕迹」和「别太大」之间的常用一档 */
-export const AVATAR_QUALITY = 0.82;
-
-/** 头像上显示哪个字（跟顶栏那颗圆钮同一份口径，见 MobileHead.avatarInitial） */
-export function accountInitial(name: string | undefined, email: string | undefined): string {
-  const src = (name ?? "").trim() || (email ?? "").trim();
-  return src ? [...src][0].toUpperCase() : "";
-}
-
-/**
- * 选中的那张图 → 128×128 的 JPEG dataURL。
- *
- * 走的是 WebView 自带的 `input type=file` + FileReader + canvas，一个插件都不用：
- * 安卓端目前全应用一处文件读写都没有（导入导出在手机上整节是关掉的），
- * 现成的原生选择器是这条路上唯一不用动 Rust 那一侧的办法。
- *
- * **居中裁成正方形再缩**：直接缩到 128×128 会把竖着拍的人像压扁，
- * 而头像框本来就是个圆，裁掉的正是圆外面看不见的那两条。
- */
-export function shrinkToAvatar(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("这张图读不出来，换一张试试"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("这张图打不开，换一张试试"));
-      img.onload = () => {
-        const side = Math.min(img.width, img.height);
-        if (!side) {
-          reject(new Error("这张图打不开，换一张试试"));
-          return;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = AVATAR_PX;
-        canvas.height = AVATAR_PX;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("这台设备处理不了这张图"));
-          return;
-        }
-        ctx.drawImage(
-          img,
-          (img.width - side) / 2, (img.height - side) / 2, side, side,
-          0, 0, AVATAR_PX, AVATAR_PX,
-        );
-        resolve(canvas.toDataURL("image/jpeg", AVATAR_QUALITY));
-      };
-      img.src = String(reader.result);
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 export function AccountSheetHost() {
   const top = useSheet((s) => topSheet(s.stack));
@@ -95,18 +41,22 @@ function Body() {
   const phase = useSync((s) => s.phase);
   const message = useSync((s) => s.message);
   const settings = useApp((s) => s.data.settings);
+  const email = session?.email;
+  // 选的是两个字符串而不是一个对象：选择器每次返回新对象，zustand 会当成一直在变
+  const profileName = useApp((s) => getProfile(s.data, email).name);
+  const profileAvatar = useApp((s) => getProfile(s.data, email).avatar);
   const [err, setErr] = useState<string | null>(null);
-  const [draft, setDraft] = useState(settings.profileName ?? "");
+  const [draft, setDraft] = useState(profileName);
   const nameFlash = useCommitFlash();
   const picker = useRef<HTMLInputElement | null>(null);
 
   const autoOn = autoLoginOn(settings);
-  const initial = accountInitial(settings.profileName, session?.email);
+  const initial = avatarInitial(profileName, email);
 
   function commitName() {
     const v = draft.trim();
-    if (v === (settings.profileName ?? "")) return;
-    updateSettings({ profileName: v });
+    if (v === profileName) return;
+    setProfileName(email, v);
     nameFlash.flash();
   }
 
@@ -114,7 +64,7 @@ function Body() {
     if (!file) return;
     setErr(null);
     try {
-      updateSettings({ profileAvatar: await shrinkToAvatar(file) });
+      setProfileAvatar(email, await shrinkToAvatar(file));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "这张图没能用上，换一张试试");
     }
@@ -159,8 +109,8 @@ function Body() {
       <div className="msh-acct-top">
         {/* 头像本身就是那颗「换一张」的按钮：手机上没有右键，也没有别的地方能放这个动作 */}
         <button className="msh-acct-pic" onClick={() => picker.current?.click()} aria-label="换张头像">
-          {settings.profileAvatar ? (
-            <img src={settings.profileAvatar} alt="" />
+          {profileAvatar ? (
+            <img src={profileAvatar} alt="" />
           ) : initial ? (
             <span>{initial}</span>
           ) : (
@@ -183,7 +133,7 @@ function Body() {
                 }
                 if (e.key === "Escape") {
                   e.stopPropagation();
-                  setDraft(settings.profileName ?? "");
+                  setDraft(profileName);
                 }
               }}
               // 点走就存下（跟清单改名、快捷键那两处同一道闸）。
@@ -248,7 +198,7 @@ function Body() {
       {err && <p className="msh-acct-err">{err}</p>}
 
       {/* 一键退出：接的是「只退出登录，保留本机」那条路——这台设备上的东西一条都不动。
-          「退出并清空本机」得先过那道「当场同步成功了吗」的闸，继续留在设置 → 云账号里 */}
+          「退出并清空本机」得先过那道「当场同步成功了吗」的闸，继续留在设置 → 账号里 */}
       <button
         className="msh-acct-out"
         onClick={() => {
@@ -259,7 +209,7 @@ function Body() {
         }}
       >
         退出登录
-        <span className="why">这台设备上的事一条都不动，想清空要去设置 → 云账号</span>
+        <span className="why">这台设备上的事一条都不动，想清空要去设置 → 账号</span>
       </button>
     </div>
   );

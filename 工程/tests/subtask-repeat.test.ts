@@ -107,6 +107,29 @@ describe("解析：子任务里所有循环词都认", () => {
     expect(p("~每个工作日 站会").title).toBe("站会");
   });
 
+  it("v1.15 补的说法子任务里也认：每个月末 / 每月底 / 每个月15号 / 每个星期三 / 光写的每周、每个月", () => {
+    // MON = 2026-08-17 周一
+    expect(p("~每个月末 交房租").repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(p("~每个月末 交房租").due).toBe("2026-08-31");
+    expect(p("~每个月末 交房租").title).toBe("交房租");
+    expect(p("~每月底 对账").repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(p("~每月最后一天 结账").repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(p("~每个月15号 还款").repeat).toEqual({ kind: "monthly", day: 15 });
+    expect(p("~每个星期三 例会").repeat).toEqual({ kind: "weekly", days: [3] });
+    // 光写的每周/每个月：按今天（周一 / 17 号），标题里不留「每个月」
+    const w = p("~每周 大扫除");
+    expect(w.repeat).toEqual({ kind: "weekly", days: [1] });
+    expect(w.title).toBe("大扫除");
+    const m = p("~每个月 带猫咪洗澡");
+    expect(m.repeat).toEqual({ kind: "monthly", day: 17 });
+    expect(m.due).toBe("2026-08-17");
+    expect(m.title).toBe("带猫咪洗澡");
+    // 写了日期就按那个日期
+    const d = p("~每个月 ~8-20 交水费");
+    expect(d.repeat).toEqual({ kind: "monthly", day: 20 });
+    expect(d.title).toBe("交水费");
+  });
+
   it("循环词没带日期：due 落在第一个落点，跟整件事同一条路（firstOccurrence）", () => {
     // 8-17 本身是周一，「每周一」的第一个落点含今天
     expect(p("~每周一 交周报").due).toBe("2026-08-17");
@@ -155,6 +178,12 @@ describe("解析：那句「每月?」清理正则**保留**，只剩一种触�
 
   it("光杆「每月」同理", () => {
     const r = p("每月 交房租 ~明天");
+    expect(r.repeat).toBeNull();
+    expect(r.title).toBe("交房租");
+  });
+
+  it("光杆「每个月」同理（说法放宽之后它也要扫得掉）", () => {
+    const r = p("每个月 交房租 ~明天");
     expect(r.repeat).toBeNull();
     expect(r.title).toBe("交房租");
   });

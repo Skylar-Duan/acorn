@@ -283,14 +283,15 @@ describe("安排日期：五个入口同一套预设，一处都不许自己现�
   const ENTRIES = [
     ["任务卡 · 日期弹层", taskCardSource],
     ["任务卡 · 子任务日期小签", taskCardSource],
-    ["右键菜单 · 任务的与子任务的「安排日期▸」", ctxMenuSource],
+    // 2026-09 起右键这两个叫「调整日期 ▸」，走 adjustDatePresets——它里头就是 duePresets + 明天
+    ["右键菜单 · 任务的与子任务的「调整日期▸」", ctxMenuSource],
     ["侧栏 · 拖到「计划」的「安排到哪天？」", sidebarSource],
     ["随手记 · 点选那排的 📅 日期", quickAddSource],
   ] as const;
 
-  it("五处都从 core/dates.duePresets 现取", () => {
+  it("五处都从 core/dates.duePresets 现取（右键那处经 adjustDatePresets 转一手）", () => {
     for (const [name, src] of ENTRIES) {
-      expect(src, name).toContain("duePresets(");
+      expect(src.includes("duePresets(") || src.includes("adjustDatePresets("), name).toBe(true);
     }
   });
 
@@ -308,15 +309,13 @@ describe("安排日期：五个入口同一套预设，一处都不许自己现�
   });
 
   it("全仓再没有第六处：这五个之外没有别的地方现算安排日期的候选", () => {
-    // 「顺延」不走这套（Ctrl+→ 推明天、逾期区「全部推到明天」），它们用的是 postpone*，
-    // 名字里也带着「推」不带「安排」——这两处仍然允许出现「明天」
-    for (const [name, src] of [
-      ["右键菜单 · 推到明天", ctxMenuSource],
-      ["今天页 · 全部推到明天", todaySource],
-    ] as const) {
-      expect(src, name).toContain("推到明天");
-    }
-    // 反过来：安排日期的那五个入口里一个「明天」都不许剩
+    // 「顺延」不走这套：Ctrl+→ 推明天，逾期区 / 多选浮条 / 过期行的「顺延 ▾」走 postponePresets。
+    // 2026-09 有意改口：右键里单独那一项「推到明天」删了，收进「调整日期 ▸」的「明天」（adjustDatePresets），
+    // 今天页那句「全部推到明天」换成了「全部顺延 ▾」
+    expect(stripComments(ctxMenuSource)).not.toContain("推到明天");
+    expect(ctxMenuSource).toContain("adjustDatePresets(today)");
+    expect(todaySource).toContain('label="全部顺延"');
+    // 反过来：其余安排日期的入口里一个「明天」都不许剩
     const dueMenus = [
       taskCardSource.slice(taskCardSource.indexOf('{menuPop.shown === "date" && ('), taskCardSource.indexOf("{/* 循环 */}")),
       subDateMenu,

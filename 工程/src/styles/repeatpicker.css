@@ -1,0 +1,60 @@
+/* 循环「自定义…」面板 .rp-：放在任务卡 / 快速添加条自己的 .popmenu 里，跟它同一副质感 */
+.rp { width: 252px; padding: 4px; }
+
+.rp-tabs {
+  display: flex; gap: 2px; padding: 2px; margin-bottom: 10px;
+  background: var(--bg); border: 1px solid var(--hair); border-radius: var(--r-sm);
+}
+.rp-tab {
+  flex: 1; padding: 4px 0; border-radius: var(--r-sm);
+  font-size: 13px; color: var(--ink-2);
+}
+.rp-tab:hover { color: var(--accent); }
+.rp-tab.on { background: var(--card); color: var(--accent); font-weight: 600; box-shadow: var(--shadow-sm); }
+
+/* 天：每 [−] N [＋] 天 */
+.rp-every {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 0 12px; font-size: 13px; color: var(--ink);
+}
+.rp-step {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid var(--hair); background: var(--bg); color: var(--ink-2); font-size: 14px;
+}
+.rp-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.rp-step:disabled { opacity: .4; cursor: default; }
+.rp-num {
+  width: 52px; text-align: center; font-size: 14px;
+  border: 1px solid var(--hair); background: var(--bg); color: var(--ink);
+  border-radius: var(--r-sm); padding: 4px 2px; outline: none;
+}
+.rp-num:focus { border-color: var(--accent); }
+
+/* 周 / 月的格子 */
+.rp-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 4px 0 10px; }
+.rp-month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; padding: 0 0 8px; }
+.rp-cell {
+  height: 30px; border-radius: var(--r-sm);
+  font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.rp-cell:hover { background: var(--accent-soft); color: var(--accent); }
+.rp-cell.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+/* 「最后一天」跟在 31 号后面，占满这一行剩下的格 */
+.rp-last { grid-column: span 4; font-size: 12px; }
+
+.rp-foot {
+  display: flex; align-items: center; gap: 6px;
+  border-top: 1px solid var(--hair); padding-top: 8px;
+}
+.rp-preview {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+}
+.rp-note { font-size: 11px; font-weight: 400; color: var(--ink-3); }
+.rp-btn {
+  padding: 4px 12px; border-radius: 999px; font-size: 12.5px; color: var(--ink-2);
+}
+.rp-btn:hover { color: var(--accent); }
+.rp-btn.primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.rp-btn.primary:hover { filter: brightness(1.06); color: var(--on-accent); }
+.rp-btn:disabled { opacity: .45; cursor: default; filter: none; }

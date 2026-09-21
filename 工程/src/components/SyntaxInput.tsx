@@ -11,7 +11,7 @@ import type {
 import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
 import { CommitMark, useCommitFlash } from "./commitFlash";
-import { growArea } from "./autogrow";
+import { growArea, keepLines, oneLine } from "./autogrow";
 import "../styles/syntaxinput.css";
 
 export interface SyntaxInputProps {
@@ -51,6 +51,11 @@ export interface SyntaxInputProps {
    *  开着的时候语义一点不变：回车照旧是提交（在 textarea 里得自己拦掉默认的换行），
    *  粘进来的换行符照旧当空格吃掉（一句话就是一句话，不能是两行）。 */
   multiline?: boolean;
+  /** 允许真的换行（任务卡里加子任务那一栏用）。开了它就一定是 textarea（等于顺带开了 multiline）：
+   *  Shift+Enter 不再交给 onShiftEnter，而是照 textarea 的默认插一个换行；粘进来的换行也留着
+   *  （\r\n 统一成 \n）。Enter 仍是提交，补全下拉开着时 Enter 仍是选候选——那两条一点不变。
+   *  换行要一路留到标题里，调用方解析时还得给 parse 开 keepNewlines */
+  allowNewline?: boolean;
 }
 
 /** 这个框底下那个真实元素。开了 multiline 是 textarea，否则还是 input——
@@ -98,8 +103,9 @@ interface DropMatch {
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
   placeholder, autoFocus, showChips = true, skip, weekendDay, inputStyle,
-  onBlurCommit, onEscape, onShiftEnter, multiline = false,
+  onBlurCommit, onEscape, onShiftEnter, multiline: multilineProp = false, allowNewline = false,
 }: SyntaxInputProps) {
+  const multiline = multilineProp || allowNewline;
   const inputRef = useRef<SyntaxInputEl | null>(null);
   const { on: flashOn, flash } = useCommitFlash();
   const [caret, setCaret] = useState(0);
@@ -192,6 +198,8 @@ export default function SyntaxInput({
       }
       return;
     }
+    // 允许换行的框（子任务栏）：Shift+Enter 就是换行，放给 textarea 自己插，别拦
+    if (e.key === "Enter" && e.shiftKey && allowNewline) return;
     if (e.key === "Enter") {
       // multiline 那条路底下是 textarea，Enter 默认是插一个换行。
       // 这个框写的是**一句话**，回车的意思从头到尾都是「就这样，存」，不是换行
@@ -234,8 +242,10 @@ export default function SyntaxInput({
   function handleChange(e: ChangeEvent<SyntaxInputEl>) {
     setCaret(e.target.selectionStart ?? e.target.value.length);
     setDismissedKey(null);
-    // 一句话就是一句话：粘进来的换行符当空格吃掉（input 那边本来是浏览器替我们吃的）
-    onChange(multiline ? e.target.value.replace(/[\r\n]+/g, " ") : e.target.value);
+    // 一句话就是一句话：粘进来的换行符当空格吃掉（input 那边本来是浏览器替我们吃的）。
+    // 允许换行的框例外：换行留着，只把 \r\n / \r 统一成 \n
+    const v = e.target.value;
+    onChange(allowNewline ? keepLines(v) : multiline ? oneLine(v) : v);
   }
 
   // 两条路共用同一份属性：分开写两遍迟早有一处漏改（少个 onSelect，光标一挪补全就错位）

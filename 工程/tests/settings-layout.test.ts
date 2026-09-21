@@ -10,6 +10,7 @@
 //   ① 「行为」这个叫法退场，改叫「通用」，并且是第一节
 //   ② 「一句话记事」不再单独一节，它并进「通用」，在里面叫「快捷用语指南」
 //   ③ 其余顺序按主流 App 的习惯：通用 → 外观 → 云账号 → 数据 → 导出与导入 → 版本更新 → 关于
+//      （v1.15.1 改成 账号 → 通用 → 外观 → 数据 → …：账号挪到最上面，「云账号」改叫「账号」）
 //   ④ 一次只摊开一节（手风琴），靠 core/useFold 的同组互斥，不是自己另起一套
 //   ⑤ 打开用法那个入口一条没少，而且那张纸还留在折叠容器外面（容器 overflow:hidden 会裁掉它）
 import { describe, expect, it } from "vitest";
@@ -48,21 +49,34 @@ function sectionBody(id: string): string {
   return code.slice(at, end);
 }
 
-describe("① 「行为」改叫「通用」，并且排在第一位", () => {
+// v1.15.1 用户又点了一次名：「三端：设置中，账号卡片默认张开，并且移到最上面」。
+// 所以「通用」让出第一位、排第二；一进来摊开的也换成了账号那一节（① ③ 按新口径改写）。
+describe("① 「行为」改叫「通用」，紧跟在账号后面", () => {
   it("没有一节还叫「行为」了", () => {
     expect(code).not.toContain('title="行为"');
     expect(code).not.toContain('id="behavior"');
   });
 
-  it("第一节就是「通用」", () => {
-    const first = sections()[0];
-    expect(first.id).toBe("general");
-    expect(first.title).toBe("通用");
+  it("第一节是「账号」，「通用」排第二", () => {
+    const [first, second] = sections();
+    expect(first).toEqual({ id: "cloud", title: "账号" });
+    expect(second).toEqual({ id: "general", title: "通用" });
   });
 
-  it("只有「通用」是一进来就摊开的那一节", () => {
+  it("只有账号那一节带 defaultOpen（新用户第一次进来摊开的就是它）", () => {
     const withDefault = sections().filter((s) => sectionBody(s.id).includes("defaultOpen"));
-    expect(withDefault.map((s) => s.id)).toEqual(["general"]);
+    expect(withDefault.map((s) => s.id)).toEqual(["cloud"]);
+  });
+
+  it("老用户每次进来也摊开账号：Settings 挂载时喊一次 preferFoldOpen，而且是在各节挂载之前", () => {
+    // 光有 defaultOpen 不够——本机记着上次开的那一节，defaultOpen 只在从没记过时说了算
+    expect(code).toContain('import { preferFoldOpen, useFold } from "../core/useFold";');
+    expect(code).toContain('useState(() => preferFoldOpen("cloud", SET_FOLD_PREFIX));');
+    // 喊在 Settings 函数体里、return 之前：父组件先渲染，这句赶在各节 claim 之前
+    const body = code.slice(code.indexOf("export default function Settings()"));
+    expect(body.indexOf("preferFoldOpen(")).toBeLessThan(body.indexOf("<SetSection"));
+    // 不是 forceFoldOpen：那个会跟「数据异常 → 数据」那条路抢位子
+    expect(body).not.toContain("forceFoldOpen(");
   });
 
   it("页眉那句副标题跟着改口，不再提「行为」", () => {
@@ -105,13 +119,17 @@ describe("② 「一句话记事」并进「通用」，在里面叫「快捷用
 });
 
 describe("③ 顺序按主流 App 的习惯来", () => {
-  it("通用 → 外观 → 云账号 → 数据 → 导出与导入 → 版本更新", () => {
+  it("账号 → 通用 → 外观 → 数据 → 导出与导入 → 版本更新", () => {
     expect(sections().map((s) => s.id)).toEqual([
-      "general", "look", "cloud", "data", "io", "update",
+      "cloud", "general", "look", "data", "io", "update",
     ]);
     expect(sections().map((s) => s.title)).toEqual([
-      "通用", "外观", "云账号", "数据", "导出与导入", "版本更新",
+      "账号", "通用", "外观", "数据", "导出与导入", "版本更新",
     ]);
+  });
+
+  it("「云账号」这个叫法在设置页界面上一个字都不剩（跟头像点开的面板统一叫「账号」）", () => {
+    expect(code).not.toContain("云账号");
   });
 
   it("「关于」压在最底下（它不折叠，是一张单独的卡）", () => {
@@ -220,10 +238,10 @@ describe("⑥ 网页上该显示什么：按了不管用的，一律不显示", 
     expect(guideRow).toContain('{hasDesktopFeatures ? "也可以点侧栏的「＋ 记一条」，"');
   });
 
-  it("🔴 导出与导入认 canSaveFile：网页上要有，只有安卓 App 那一档说「请用云账号迁移」", () => {
+  it("🔴 导出与导入认 canSaveFile：网页上要有，只有安卓 App 那一档说「请登录账号迁移」", () => {
     const io_ = sectionBody("io");
     expect(io_).toContain("{canSaveFile ? (");
-    expect(io_).toContain('summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}');
+    expect(io_).toContain('summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请登录账号迁移"}');
     expect(io_).toContain("手机上不提供文件导出");
   });
 

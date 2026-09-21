@@ -17,8 +17,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { DATA_VERSION, defaultSettings, migrate } from "../src/core/model";
 import { applyAutoLogin, autoLoginOn, syncStore } from "../src/core/syncCtl";
-import { avatarInitial } from "../src/mobile/MobileHead";
-import { AVATAR_PX, AVATAR_QUALITY, accountInitial } from "../src/mobile/AccountSheet";
+import { AVATAR_PX, AVATAR_QUALITY, avatarInitial } from "../src/core/profile";
 
 const read = (p: string) => readFileSync(p, "utf8");
 const shellCss = read("src/styles/mobile-shell.css");
@@ -28,6 +27,7 @@ const headSource = read("src/mobile/MobileHead.tsx");
 const sheetStoreSource = read("src/mobile/sheetStore.ts");
 const appSource = read("src/App.tsx");
 const syncCtlSource = read("src/core/syncCtl.ts");
+const profileSource = read("src/core/profile.ts");
 const accountPanelSource = read("src/components/AccountPanel.tsx");
 
 /** 本机令牌存在 localStorage 的哪个键（cloud.ts 里那个不对外的 AUTH_LS_KEY）。
@@ -72,10 +72,17 @@ describe("三个新设置：可选字段，版本号一个字不动", () => {
     expect(d.settings.profileAvatar).toBe("data:image/jpeg;base64,xx");
   });
 
-  it("这三样都只是这台设备的事：设置本来就不参与云同步", () => {
-    // merge.ts 那句 `settings: local.settings` 是这条约定的真源。手机上换个名字、
-    // 关掉自动登录，都不该跟着同步跑到电脑上去
-    expect(read("src/core/merge.ts")).toContain("settings: local.settings");
+  it("自动登录仍只是这台设备的事；名字和头像改成跟着账号走（v1.15.1 有意推翻原口径）", () => {
+    // merge.ts 那句 `settings: local.settings` 仍是「设置不同步」的真源：手机关掉自动登录不连累电脑。
+    // 名字和头像原来也住在 settings 里、各设备各一份——用户说手机设的电脑看不到，
+    // 现在挪到顶层 profiles 按账号同步（行为钉在 tests/profile-sync.test.ts）
+    const merge = read("src/core/merge.ts");
+    expect(merge).toContain("settings: local.settings");
+    expect(merge).toContain("mergeProfiles(local.profiles, remote.profiles)");
+    expect(accountSheetSource).not.toContain("profileName:");
+    expect(accountSheetSource).not.toContain("profileAvatar:");
+    expect(accountSheetSource).not.toContain("settings.profile");
+    expect(headSource).not.toContain("settings.profile");
   });
 });
 
@@ -137,9 +144,13 @@ describe("头像上显示哪个字", () => {
     expect(avatarInitial("", "")).toBe("");
   });
 
-  it("账号纸和顶栏那颗圆钮用的是同一份口径", () => {
-    for (const [name, mail] of [["阿杜", "b@c.co"], ["", "zoe@x.cn"], ["", ""]] as const) {
-      expect(accountInitial(name, mail)).toBe(avatarInitial(name, mail));
+  it("账号纸和顶栏那颗圆钮用的是同一份口径：只有 core/profile 里一份，两边都从那儿引", () => {
+    // 原来两个文件各写了一份一模一样的（avatarInitial / accountInitial），现在抽到一处
+    expect(profileSource).toContain("export function avatarInitial(");
+    for (const src of [accountSheetSource, headSource]) {
+      expect(src).toContain('from "../core/profile"');
+      expect(src).not.toContain("function avatarInitial(");
+      expect(src).not.toContain("function accountInitial(");
     }
   });
 });
@@ -180,18 +191,21 @@ describe("头像：必须压过再存", () => {
     expect(AVATAR_PX).toBe(128);
     expect(AVATAR_QUALITY).toBeGreaterThan(0.5);
     expect(AVATAR_QUALITY).toBeLessThan(1);
-    expect(accountSheetSource).toContain('canvas.toDataURL("image/jpeg", AVATAR_QUALITY)');
+    expect(profileSource).toContain('canvas.toDataURL("image/jpeg", AVATAR_QUALITY)');
+    expect(accountSheetSource).toContain("shrinkToAvatar(file)");
   });
 
   it("走的是 WebView 自带的选择器，不引任何插件（安卓端至今一处文件读写都没有）", () => {
     expect(accountSheetSource).toContain('type="file"');
-    expect(accountSheetSource).toContain("new FileReader()");
-    expect(accountSheetSource).not.toContain("plugin-dialog");
-    expect(accountSheetSource).not.toContain("plugin-fs");
+    expect(profileSource).toContain("new FileReader()");
+    for (const src of [accountSheetSource, profileSource]) {
+      expect(src).not.toContain("plugin-dialog");
+      expect(src).not.toContain("plugin-fs");
+    }
   });
 
   it("居中裁成正方形再缩（直接缩会把竖着拍的人像压扁）", () => {
-    expect(accountSheetSource).toContain("Math.min(img.width, img.height)");
+    expect(profileSource).toContain("Math.min(img.width, img.height)");
   });
 });
 

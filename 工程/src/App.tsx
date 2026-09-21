@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Sidebar from "./components/Sidebar";
+import { SideGrip } from "./components/SideGrip";
 import Today from "./views/Today";
 import ListView from "./views/ListView";
 import Habits from "./views/Habits";
@@ -21,6 +22,8 @@ import UpdateDialog, { UpdateNudge } from "./components/UpdateDialog";
 import NewerDataDialog from "./components/NewerDataDialog";
 import ChangelogDialog from "./components/ChangelogDialog";
 import QuickAddDialog from "./components/QuickAddDialog";
+import AccountCorner from "./components/AccountPopover";
+import PostponeButton from "./components/PostponeMenu";
 import { useLeaving } from "./components/motion";
 import {
   appStore, clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
@@ -196,9 +199,11 @@ export default function App() {
         setQuickAddOpen(true);
         return;
       }
+      // Ctrl+2~5 = 侧栏常驻四项从上往下数（2026-09 跟着侧栏重排）：计划 / 日历 / 今日任务 / 习惯。
+      // 这组键的意思就是「第几个」，顺序变了还按老对应，手指记的就跟眼睛看到的对不上
       if (mod && /^[2-5]$/.test(e.key)) {
         e.preventDefault();
-        navigate((["today", "habits", "plan", "done"] as const)[Number(e.key) - 2]);
+        navigate((["plan", "calendar", "today", "habits"] as const)[Number(e.key) - 2]);
         return;
       }
       if (inEditable()) return;
@@ -383,10 +388,14 @@ export default function App() {
           {/* 窄屏才出现：点开左边的抽屉。宽屏由 CSS 藏起来 */}
           <button className="drawer-btn" title="菜单" onClick={() => setDrawer(true)}>☰</button>
           <Sidebar drawerOpen={drawer} onNavigate={() => setDrawer(false)} />
+          {/* 侧栏右边缘的宽度把手（拖动改宽、双击恢复）。窄屏抽屉模式由 CSS 藏掉 */}
+          <SideGrip />
           {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
         </>
       )}
       {isMobile ? <MobileShell>{body}</MobileShell> : body}
+      {/* 主区右上角那颗头像 + 账号小面板，桌面各页共用这一颗（手机的在「今天」顶栏里） */}
+      {!isMobile && <AccountCorner />}
 
       {/* 手机端那四张纸：任务详情 / 记一条 / 长按的动作单 / 清单设置。
           都读同一个抽屉栈（mobile/sheetStore），谁在栈顶谁开 */}
@@ -437,7 +446,18 @@ export default function App() {
       {bulkShown && (
         <div className={`bulk-bar${bulkLeaving ? " leaving" : ""}`}>
           <span className="cnt">{bulkShown.length}</span> 项已选
-          <button className="btn ghost" onClick={() => postponeTasks(selectedIds)}>推到明天</button>
+          {/* 原来是「推到明天」，只能推一天；现在点开选哪天。多选是按「件」选的，
+              所以顺延的是这几件事本身（母任务），还在继承日期的子任务跟着动。Ctrl+→ 照旧是原日期加一天 */}
+          <PostponeButton
+            className="btn ghost"
+            label="顺延"
+            getRows={() => {
+              const ids = appStore.getState().ui.selectedIds;
+              return appStore.getState().data.tasks
+                .filter((t) => ids.includes(t.id) && !t.deletedAt)
+                .map((t) => ({ task: t, sub: null }));
+            }}
+          />
           <span style={{ position: "relative" }}>
             <button className="btn ghost" onClick={() => setBulkListMenu(!bulkListMenu)}>移到清单</button>
             {bulkListMenu && (

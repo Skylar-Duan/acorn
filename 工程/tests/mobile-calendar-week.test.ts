@@ -392,6 +392,28 @@ describe("⑤ 每一天是一张能摊开的卡", () => {
     const mc = weekCss.slice(weekCss.indexOf(".mshell .view-body.cal-body .cal-wfold .mcard {"));
     expect(mc.slice(0, mc.indexOf("}"))).toContain("box-shadow: none;");
   });
+
+  it("🔴 展开区里的字号跟展开前的预览行（13px）对齐，只限定在 .cal-wfold 范围里", () => {
+    // 选择器要写得跟旁边几条一样长，才压得过 mobile-shell.css 里更短的通用规则
+    expect(weekCss).toContain(".mshell .view-body.cal-body .cal-wfold .mrow-title {");
+    const title = weekCss.slice(weekCss.indexOf(".mshell .view-body.cal-body .cal-wfold .mrow-title {"));
+    expect(title.slice(0, title.indexOf("}"))).toContain("font-size: 13px;");
+
+    expect(weekCss).toContain(".mshell .view-body.cal-body .cal-wfold .mrow {");
+    const row = weekCss.slice(weekCss.indexOf(".mshell .view-body.cal-body .cal-wfold .mrow {"));
+    const rowBody = row.slice(0, row.indexOf("}"));
+    expect(rowBody).toContain("min-height: 44px;");
+
+    expect(weekCss).toContain(".mshell .view-body.cal-body .cal-wfold .mrow-cb {");
+    const cb = weekCss.slice(weekCss.indexOf(".mshell .view-body.cal-body .cal-wfold .mrow-cb {"));
+    expect(cb.slice(0, cb.indexOf("}"))).toContain("width: 22px;");
+  });
+
+  it("今天页 / 清单页 / 月视图共用的 .mrow-title 通用规则一个像素不动，还是 16px", () => {
+    const shellCss = readFileSync("src/styles/mobile-shell.css", "utf8");
+    const title = shellCss.slice(shellCss.indexOf(".mrow-title {"), shellCss.indexOf(".mrow-meta {"));
+    expect(title).toContain("font-size: 16px;");
+  });
 });
 
 describe("⑥ 底下那块完整清单：只留给月视图，周视图的清单在各自的卡里", () => {

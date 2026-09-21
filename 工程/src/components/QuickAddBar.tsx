@@ -11,8 +11,10 @@ import { dayOfWeek, duePresets, formatShort, todayYMD } from "../core/dates";
 import { addList, addTask, allTags, allWho, useApp } from "../core/store";
 import SyntaxInput from "./SyntaxInput";
 import type { SyntaxInputEl } from "./SyntaxInput";
+import { describeRepeat } from "../core/recur";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
+import RepeatPicker, { sameRepeat } from "./RepeatPicker";
 import { useLeaving } from "./motion";
 import { useGuideEntry } from "./GuideSheet";
 
@@ -39,24 +41,15 @@ const EMPTY: Picks = { due: null, listId: null, who: [], priority: 0, repeat: nu
 
 const PRIO_NAME = ["无", "低", "中", "高"] as const;
 
-/** 「每周/每月」按当天算，所以每次打开菜单现算——常驻托盘跨过零点也不会用昨天的星期几 */
-function repeatChoices(today: string): { label: string; rule: RepeatRule | null }[] {
+/** 「每周/每月」按这条事选的日期算（没选按今天），所以每次打开菜单现算——常驻托盘跨过零点也不会用昨天的星期几。
+ *  名字直接写成「每周一」「每月21号」，不再写「按今天是周几」这种绕一道的说法——用户要看的是到底哪天 */
+function repeatChoices(anchor: string): RepeatRule[] {
   return [
-    { label: "不重复", rule: null },
-    { label: "每天", rule: { kind: "daily", every: 1 } },
-    { label: "每个工作日", rule: { kind: "workday" } },
-    { label: "每周（按今天是周几）", rule: { kind: "weekly", days: [dayOfWeek(today)] } },
-    { label: "每月（按今天几号）", rule: { kind: "monthly", day: Number(today.slice(8)) } },
+    { kind: "daily", every: 1 },
+    { kind: "workday" },
+    { kind: "weekly", days: [dayOfWeek(anchor)] },
+    { kind: "monthly", day: Number(anchor.slice(8, 10)) },
   ];
-}
-
-function repeatLabel(r: RepeatRule): string {
-  switch (r.kind) {
-    case "daily": return r.every === 1 ? "每天" : `每 ${r.every} 天`;
-    case "workday": return "每工作日";
-    case "weekly": return "每周";
-    case "monthly": return `每月 ${r.day} 号`;
-  }
 }
 
 type MenuId = "due" | "list" | "who" | "prio" | "repeat";
@@ -95,6 +88,8 @@ export default function QuickAddBar({
   const [text, setText] = useState("");
   const [pick, setPick] = useState<Picks>(EMPTY);
   const [menu, setMenu] = useState<MenuId | null>(null);
+  /** 🔁 那个菜单现在是常用项（false）还是「自定义…」面板（true） */
+  const [repeatCustom, setRepeatCustom] = useState(false);
   /** 📅 那个日期框（DateField）的三个手：flush 提前落、cancel 作废、pending 看还欠着什么。
    *  草稿 / 闸门 / 去抖三件套都封在组件里，这儿不再各写一份 */
   const dueFieldRef = useRef<DateFieldHandle | null>(null);
@@ -311,12 +306,42 @@ export default function QuickAddBar({
             ))}
           </Pick>
 
-          <Pick menu={menu} setMenu={setMenu} id="repeat" on={!!pick.repeat} label={<>🔁 {pick.repeat ? repeatLabel(pick.repeat) : "重复"}</>}>
-            {repeatChoices(today).map((r) => (
-              <button key={r.label} className="item" onClick={() => { setPick({ ...pick, repeat: r.rule }); setMenu(null); }}>
-                {r.label}
-              </button>
-            ))}
+          <Pick
+            menu={menu}
+            // 每次点开都先回到常用项那一页，不停在上回的自定义面板上
+            setMenu={(m) => { if (m === "repeat") setRepeatCustom(false); setMenu(m); }}
+            id="repeat"
+            on={!!pick.repeat}
+            label={<>🔁 {pick.repeat ? describeRepeat(pick.repeat) : "重复"}</>}
+          >
+            {repeatCustom ? (
+              <RepeatPicker
+                value={pick.repeat}
+                anchor={pick.due ?? today}
+                onDone={(r) => { setPick({ ...pick, repeat: r }); setMenu(null); }}
+                onCancel={() => setRepeatCustom(false)}
+              />
+            ) : (
+              <>
+                <button className="item" onClick={() => { setPick({ ...pick, repeat: null }); setMenu(null); }}>
+                  不重复{!pick.repeat && <span className="k">✓</span>}
+                </button>
+                {/* 现在选的不在常用项里（自定义出来的「每周一三五」这类）：挂在这儿，一眼看得到现在是什么 */}
+                {pick.repeat && !repeatChoices(pick.due ?? today).some((r) => sameRepeat(r, pick.repeat)) && (
+                  <button className="item" onClick={() => setRepeatCustom(true)}>
+                    {describeRepeat(pick.repeat)}<span className="k">✓</span>
+                  </button>
+                )}
+                {repeatChoices(pick.due ?? today).map((r) => (
+                  <button key={r.kind} className="item" onClick={() => { setPick({ ...pick, repeat: r }); setMenu(null); }}>
+                    {describeRepeat(r)}
+                    {sameRepeat(r, pick.repeat) && <span className="k">✓</span>}
+                  </button>
+                ))}
+                <div className="sep" />
+                <button className="item" onClick={() => setRepeatCustom(true)}>自定义…</button>
+              </>
+            )}
           </Pick>
 
           {picked && (

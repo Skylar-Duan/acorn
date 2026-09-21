@@ -1,5 +1,9 @@
-// 侧栏：一颗「＋ 记一条」+ 常驻四项（今天/习惯/计划/已完成）+ 可展开的「更多」+ 清单/需求方/标签。
-// 同时是拖拽落点：任务拖到「今天」改今天、「计划」弹日期选择、清单/需求方即归属。
+// 侧栏：一颗「＋ 记一条」+ 常驻四项（计划/日历/今日任务/习惯）+ 可展开的「更多」+ 清单/需求方/标签。
+// 同时是拖拽落点：任务拖到「今日任务」改今天、「计划」弹日期选择、清单/需求方即归属。
+//
+// 常驻四项的顺序是用户定的（2026-09）：「计划移到最前面……日历挪到计划下面（第二个）」，
+// 原来的「今天」改叫「今日任务」排第三、习惯第四；已完成收进「更多」排第一个。
+// 只动桌面：手机的底部导航另有一套（mobile/MobileShell.tsx），按约定先出稿再改。
 //
 // v1.11.2：「随手记」这一项撤了。它原来一半是记录入口、一半是「没日期也没归清单那堆事」
 // 的列表，两件事挤在一个导航项里；现在记录那半边变成顶上那颗按钮（点开是居中的
@@ -405,7 +409,7 @@ export default function Sidebar(
 
   const lists = useMemo(() => [...rawLists].sort((a, b) => a.order - b.order), [rawLists]);
   // 正看着的东西如果被折在下面，就得露出来——否则界面上没有任何地方显示「你在哪」
-  const MORE_VIEWS: ViewId[] = ["calendar", "focus", "stats", "trash"];
+  const MORE_VIEWS: ViewId[] = ["done", "focus", "stats", "trash"];
   const showMore = moreOpen || MORE_VIEWS.includes(view);
   const curListHidden =
     view === "list" && lists.findIndex((l) => l.id === curList) >= PEEK;
@@ -518,15 +522,16 @@ export default function Sidebar(
       </button>
       <nav>
         <ul>
-          {item("today", "今天", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
-          {item("habits", "习惯", "habits", counts.habits, true)}
           {/* 计划 = 所有没做完的事（原来的「全部」）。拖任务过来仍然是弹日期选择 */}
           {item("plan", "计划", "plan", counts.plan, false, (ids, e) =>
             setPendingPlan({ ids, sub: draggedSub(e), x: e.clientX, y: e.clientY }),
           )}
-          {/* 不挂角标：其它角标的意思都是「还欠着多少」，已完成是历史累计，
-              摆一起口径相反，而且这个数只会越来越大，看久了变成噪音 */}
-          {item("done", "已完成", "done")}
+          {/* 日历不挂角标、也不是拖拽落点：它是按月翻着看的，「欠多少」在这儿没意思 */}
+          {item("calendar", "日历", "calendar")}
+          {/* 今日任务 = 原来的「今天」，只是改了叫法（ViewId 还是 today，老设置照样认得）。
+              角标和「拖上来就改今天做」都跟着搬过来了 */}
+          {item("today", "今日任务", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
+          {item("habits", "习惯", "habits", counts.habits, true)}
         </ul>
         {planPop.shown && (
           <div
@@ -571,7 +576,9 @@ export default function Sidebar(
             开和收才都是「长出来 / 收回去」，而不是几行凭空增删 */}
         <div className={`side-fold${showMore ? "" : " shut"}`}>
           <ul>
-            {item("calendar", "日历", "calendar")}
+            {/* 已完成不挂角标：其它角标的意思都是「还欠着多少」，已完成是历史累计，
+                摆一起口径相反，而且这个数只会越来越大，看久了变成噪音 */}
+            {item("done", "已完成", "done")}
             {/* 专注暂时收起，见 core/features.ts */}
             {FOCUS_ENABLED && item("focus", "专注", "focus")}
             {item("stats", "统计", "stats")}

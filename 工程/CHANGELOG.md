@@ -40,6 +40,61 @@
 - 测试：新增 `tests/version.test.ts`（号码来源、测试版号、比大小、装着测试版时的更新提示）；`changelog.test.ts` 改为按端校验
   （每端最新一条 = versions.json 公开号、文件内按端有序且不重号、电脑看不到 1.14.2、网页只有 1.15.0）；`changelog-jump.test.ts` 加从测试版升正式版。64 文件 2092 测全绿。
 
+**2026-09-21 这一批（账本「橡木开发」七组，只动桌面为主；手机要跟的记进 README「手机跟随清单」）**
+
+- **顺延可选哪天 + 右键「调整日期」**（只动桌面）：
+  `core/dates.ts` 新增 `weekendOf(today, weekendDay, shift)`（跟 `parse.ts` 内部 `resolveWeekend` 同一套算法，测试逐天对照）、
+  `postponePresets(today, weekendDay)`（明天 / 本周末 / 下周末 / 本月末，只留今天之后、撞同一天的去掉；本周末已到或已过只留下周末）、
+  `adjustDatePresets(today)`（`duePresets` 在「今天」后插一个绝对的明天，后面跟明天撞日的去掉，如周四的「本周五」）。`duePresets` 本身没改。
+  `store.ts` 新增 `postponeRowsTo(rows, ymd)`：按行落日期，母任务行只有旧日期存在且新日期更晚才 `postponeCount +1` 并重算提醒；
+  子任务行只改这一条，继承来的日期和钟点先落成自己的（走 `subTime`）；一次调用一次写库、一张撤销快照，toast「已顺延 N 项」可撤销。另有 `overdueSubRows(task, today)`。
+  新组件 `PostponeMenu.tsx` + `postpone.css`：弹层 `createPortal` 到 body、fixed 定位、放不下反向弹（`.row-slot` 会裁切）；
+  根节点吞掉 click / contextmenu / pointerdown / mousedown / dragstart（portal 事件会沿组件树冒泡回行）；点外、Esc、滚动、改窗口尺寸关闭。
+  「选日期…」用 DateField，`onCommit` 只记草稿，点「确定」/回车才调一次 `postponeRowsTo`；「确定」故意不设 disabled（日期框停手 350ms 才落定，禁用的按钮收不到 mousedown）。
+  挂三处：今天页逾期组「全部顺延 ▾」（手机保留「全部推到明天 →」）、多选浮条「顺延 ▾」（按件取母任务行）、`TaskRow` 行尾常驻「顺延 ▾」
+  （`!isMobile && !dateOnlyTail && !doneDate`，且本行过期或它是收起的链头、这件事里有过期子任务；链头推 `overdueSubRows`；Ctrl/Shift 点仍走多选）。`Ctrl+→` 没动。
+- **右键「整件事」菜单**：`TaskRow` 加 `whole` prop，`RowList` 的 FoldPlan 加 `solo`（整页只露一行的子任务行），`whole = fold.more.has(key) || fold.solo.has(key)`；
+  `sub && !whole` 仍出子任务菜单，否则出任务菜单并带 whole，标题「整件事 · 名字」，日期和优先级改母任务、子任务字段一个不写。
+  `UIState.ctxMenu` 加可选 `whole`，`openCtxMenu` 第 5 参 `opts.whole`。`ContextMenu.tsx` 两个菜单都删「推到明天」，「安排日期」改名「调整日期」、改走 `adjustDatePresets`。
+- **循环：「~每个月末」+ 自定义面板**：`parse.ts` 的 `repWeekly` / `repWeekend` / `repMonthly` 放宽成可带「个」；新增 `repMonthEnd`（`每个?月(最后一天|末|底)` → `{monthly, day:31}`，排在日期规则之前扫，免得「月末」被当成一次性日期）；
+  新增 `repWeekBare` / `repMonthBare`（只写「每周」「每个月」，否定前瞻排除带下文的写法；「每月初」「每月中」这次不认），先按今天占位，state 的 `repeatBare` 记住占位，
+  汇总时若句中写了日期就按 `st.due` 重算周几 / 几号并改芯片。都走 `~` 闸门。子任务残留清理正则 `每月?` → `每(?:个?月)?`。
+  `recur.describeRepeat` 在 day≥31 时写「每月最后一天」，`syntax.repeatToSyntax` 同步输出「每月最后一天」，整句改能往返。数据模型、DATA_VERSION 不动（仍存 31 号，老版本小月本来就落月末，只是显示成「每月31号」）。
+  新组件 `RepeatPicker.tsx` + `repeatpicker.css`（天 / 周 / 月三页，月页 1–31 加「最后一天」同为 day 31，`describeRepeat` 实时预览、周一天不选「好」按不动，同文件导出 `sameRepeat`），
+  渲染在调用方原有的 `.popmenu` / `.qa-picks` 里，外部点击判断不用改。`TaskCard` 的「↻ 循环」与 `QuickAddBar` 的「🔁 重复」：常用项统一用 `describeRepeat` 命名、当前项打勾、
+  不在常用项里的当前值挂最上面、末尾「自定义…」；`QuickAddBar` 删掉手写 `repeatLabel`，`repeatChoices` 按 `pick.due ?? today` 取值。
+  顺手修 `TaskCard` `new Date(task.due).getDay()` 按 UTC 零点解析、西半球差一天，改 `dayOfWeek(task.due ?? today)`。
+  `mobile/QuickAddSheet.tsx` 只把「重复」那颗显示换成 `describeRepeat`。`GuideContent` 补卡片「~每个月末 交房租」。
+- **侧栏宽度可拖**（桌面 + 电脑浏览器网页版）：新 `core/sideWidth.ts`（键 `acorn-sidew`，带 `acorn-` 前缀被 `clearLocalPrefs` 扫掉、避开 useFold 的 `acorn-side-` 前缀；默认 232 / 180~360；存默认值时删键），
+  新 `SideGrip.tsx`（role=separator，pointer 事件 + setPointerCapture，拖动中只改 `--side-w`，pointerup / cancel / lostpointercapture 写一次存储，只认左键，双击恢复默认，拖动时 body 加 `.side-resizing`）。
+  `main.tsx` 在 createRoot 前 `applySavedSideW()`，第一帧就是记住的宽度。存 localStorage 不进 settings（settings 会同步到手机，各电脑屏宽也不同）。`.side-grip` fixed、宽 6px、`-webkit-app-region:no-drag`，≤760px 隐藏。
+- **子任务可以写几行**（桌面）：`parse.ts` 的 ParseOpts 加 `keepNewlines`，内部 `tidyTitle` 不开时逐字等价旧代码，开时逐行清理、丢空行再用 `\n` 拼回；`parseSubtaskInput` 加可选第 5 参 `{keepNewlines}`（手机 4 参调用不变）。
+  `SyntaxInput` 加 `allowNewline`（Shift+Enter 交给 textarea 换行、不调 onShiftEnter，补全下拉开着时 Enter/Tab 仍优先），`autogrow.ts` 新增 `keepLines`。
+  `TaskCard` 新加子任务栏开 `allowNewline`、去掉 `onShiftEnter`；已有子任务标题改用 `keepLines`、Shift+Enter 放行。母任务标题、备注、整句改、记一条、快捷记浮窗都没动。其他显示多行标题的地方逐个查过（列表 / 日历 / 手机行换行显示成空格，导出与搜索不受影响）。
+- **桌面导航重排**（用户 2026-09 定：计划 / 日历 / 今日任务 / 习惯，已完成进「更多」）：`Sidebar.tsx` 常驻组改顺序，「今天」改名「今日任务」（角标、拖上来改今天做照旧，日历不挂角标不接拖放），
+  「更多」改为 已完成 / 专注 / 统计 / 回收站，`MORE_VIEWS` 用 done 换掉 calendar。`store.ts` 新增 `startView(mobile)`：桌面进 plan、手机仍进 today。
+  `App.tsx` 的 `Ctrl+2~5` 改成 计划 / 日历 / 今日任务 / 习惯；`CommandPalette` 跳转项同序、「今天」改「今日任务」；`Today.tsx` 只改桌面大标题。日期意思上的「今天」一处没动；手机导航没动。
+- **桌面右上角头像 + 账号小面板**：新 `AccountPopover.tsx`（`AccountCorner`，App 里 `!isMobile` 挂一次）。没登录画人形、点了 `openLogin("manual")`；登录后面板里改头像 / 改名字（只经 `core/profile.ts`）、立即同步、下次自动登录、
+  「更多账号设置」（`forceFoldOpen("cloud")` + 去设置页）、退出登录（只接 `signOut`，保留本机）。清空本机、注销账号只在设置页（测试钉住）。
+  点外 / Esc 关，改名半途 Esc 先退回原字；卸载时 cleanup 补存名字；session 变空自动收起。样式单独 `account-pop.css`，fixed、z-index 50（低于抽屉遮罩 89、弹层与网页提示条 100、写盘停手红条 300），
+  `web-note-on` 时下让；`.shell:not(.mobile) .view-head` 右侧让出 44/46px。
+- **设置页账号卡置顶、每次展开、改叫「账号」**（三端）：`Settings.tsx` cloud 节挪到第一、title「账号」、defaultOpen 从 general 挪来；节 id 仍是 cloud。
+  `useFold.ts` 新增 `preferFoldOpen(key, prefix)`：同前缀已有别人的占位条就让位，否则只往内存 `pendingOpen` 写占位（不写 localStorage、不广播），Settings 用 `useState(() => preferFoldOpen(...))` 赶在各节 claim 之前；
+  挂载那拍对凭占位条打开的那块补写记忆「1」。侧栏「数据异常」先 `forceFoldOpen("data")`，账号卡让位。文案里「云账号」都改「账号」（含手机 `AccountSheet` 一句）；`AccountPanel` 那句说明两端通用、不再包 isMobile。
+- **名字和头像跟账号走**：`model.ts` 新增 `Profile {name, avatar, updatedAt}`，AppData 顶层可选 `profiles?: Record<规范化邮箱, Profile>`（不进 defaultData，DATA_VERSION 仍 8）；`settings.profileName/profileAvatar` 标为旧字段。
+  按账号分键而不是单条，免得换账号合并时上一个账号更新的那条盖掉新账号的。`merge.ts` 新增 `mergeProfiles()`：键取并集逐个比，`updatedAt` 晚的整条赢，一边缺 / 形状坏不覆盖另一边，时间相等比 JSON 保证两端算得一样。
+  `syncNow` 的采纳条件改为 `changed || profiles 变了`（否则只有头像变时落不到本地）。新 `core/profile.ts`：`getProfile` / `setProfileName` / `setProfileAvatar`（只收 `data:image/`、上限 200K 字符、新戳总比上次晚）/ `avatarInitial`（唯一定义）/ `shrinkToAvatar`，
+  `adoptLegacyProfile` 只在这台还没有任何账号的条目、旧字段非空、已登录时搬一次（戳 1970）。`store.setProfiles`（skipUndo），撤销时保留当前 profiles。
+  老客户端 1.15.0 会原样保留未知的 `profiles` 键；它的撞名规则是本地赢，可能把云端推回旧的一条，下一轮新版比 `updatedAt` 再推回来，不会丢，老设备升级后消失。
+- **桌面自动取回云端**（桌面 App + 电脑浏览器网页版）：`syncCtl.ts` 新增 `autoPullIfDue` / `startAutoPull` / `stopAutoPull`，窗口回到前台取一次（距上次同步不足 60 秒跳过）、登录期间每 5 分钟一次；
+  没登录、离线、被服务端挡着等升级、正在同步都跳过；`lastAutoPullAt` 在发送前就记，focus 与 visibilitychange 连着来只跑一轮。只调 `syncNow`，出错不弹窗。`initSync` / `adoptSession` 里启动，`signOut` 与登录过期时停；手机不启动。`main.tsx` 原有的每日补一轮照旧并存。
+- **三处样式修复**：手机子任务 `.msh-sub` 补 `touch-action: pan-y`（详情纸是 pan-x pan-y，横向拖动在 setPointerCapture 生效前就被系统当滚动收走、pointercancel），订正 `mobile.css` 那句错误注释；
+  手机日历周视图展开区 `.cal-wfold` 内标题 / 小字 / 圆圈按比例缩到跟预览行一致，手指可点仍 44px（分隔线覆写要写在原 56px 规则之后，靠源码顺序生效）；
+  更新弹窗 `.up-skipped` 没有样式导致贴边，换成现成的 `.update-note`，`.update-foot` 内边距 20→22px。
+- 有意按新口径改写的旧测试：`polish-fixes` / `date-presets` / `mobile-shell` / `commit-guards`（顺延与调整日期）、`mobile-quickadd-syntax`（repeatLabel → describeRepeat）、`row-tail`（子任务标题 keepLines、SyntaxInput 解构改名）、
+  `quickadd-dialog`（Ctrl+2~5 新顺序）、`mobile-account`（名字头像经 mergeProfiles、avatarInitial 只一份）、`settings-layout` / `login-page`（账号卡置顶、说明两端通用）。
+  新增：`postpone-presets`、`repeat-picker`、`sidebar-resize`、`subtask-multiline`、`desktop-nav-order`、`desktop-account`、`profile-sync`、`auto-pull`、`update-dialog-align`。
+
 ## v1.15.0 · 2026-09-15
 
 > 账本「橡木开发」里 9/20 及以前未打勾的 9 条，一次做完。第二位是因为**网页版是新的一端**（新入口新机制），

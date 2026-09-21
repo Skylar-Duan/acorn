@@ -114,7 +114,8 @@ describe("① 记一条那张纸：真的在解析，认出来的有胶囊、胶
     expect(picks).toContain("eff.due ? `${formatShort(eff.due)}");
     expect(picks).toContain("eff.who.length ? eff.who.join");
     expect(picks).toContain("eff.priority ? PRIO_NAME[eff.priority]");
-    expect(picks).toContain("eff.repeat ? repeatLabel(eff.repeat)");
+    // v1.15 起显示文字走 describeRepeat，跟任务卡同一个说法（「每周一」「每月最后一天」）
+    expect(picks).toContain("eff.repeat ? describeRepeat(eff.repeat)");
     expect(picks).not.toContain("pick.due");
   });
 

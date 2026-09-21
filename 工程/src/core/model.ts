@@ -137,14 +137,30 @@ export interface Settings {
    *  升上来不能突然把人踢出去。
    *
    *  关掉的那一刻本机那份令牌就删了（syncCtl.applyAutoLogin）——这次照常用，
-   *  下次打开要重新输密码。**这三个字段都只是这台设备的事**：设置不参与云同步
+   *  下次打开要重新输密码。**它只是这台设备的事**：设置不参与云同步
    *  （merge.ts 的 `settings: local.settings`），所以手机关掉自动登录不会连累电脑。 */
   autoLogin?: boolean;
-  /** 自己给自己起的名字，显示在账号纸和右上角那颗头像上。空着就用邮箱顶上 */
+  /** **旧字段**（v1.15.0 那一版的名字，只在这台设备上）。现在名字和头像跟着账号走，
+   *  住在 AppData.profiles 里（见 core/profile.ts）；这两个键只在第一次登录着打开新版时
+   *  被迁进去一次，之后不再读也不再写。**不删**：还没升级的那台设备照旧靠它显示 */
   profileName?: string;
-  /** 头像：压到 128×128 的 JPEG dataURL（AccountSheet 选完图当场压）。
-   *  必须压过再存——整份数据每次同步都会连它一起传，服务端单账号只给 5MB */
+  /** 旧字段，同上。原来是压到 128×128 的 JPEG dataURL */
   profileAvatar?: string;
+}
+
+/** 一个账号的名字和头像（v1.15.1 起跟着账号走，两台设备看到的是同一张脸）。
+ *
+ *  跟任务一样**谁改得晚听谁的**，判据是 updatedAt；整条替换，不逐字段拼。
+ *  **缺失 = 没有信息**，不是「删掉了」：一边没有这一条，另一边那条原样留着。 */
+export interface Profile {
+  /** 自己给自己起的名字，显示在账号纸和右上角那颗头像上。空着就用邮箱顶上 */
+  name: string;
+  /** 头像：压到 128×128 的 JPEG dataURL（profile.shrinkToAvatar 选完图当场压）。
+   *  必须压过再存——整份数据每次同步都会连它一起传，服务端单账号只给 5MB */
+  avatar: string;
+  /** 最后一次改动的时刻 ISO。旧字段迁进来的那一条盖的是 1970 年（profile.LEGACY_PROFILE_AT），
+   *  让任何一端的真实修改都盖得过它 */
+  updatedAt: string;
 }
 
 /** 应用版本号：三端各排各的，真源和规则都在 core/version.ts。
@@ -165,6 +181,13 @@ export interface AppData {
   settings: Settings;
   /** 彻底删掉的东西的墓碑（见 Tombstone）。不参与界面，只为云同步不把死人拉回来 */
   graveyard: Tombstone[];
+  /** 各账号的名字和头像，键是账号邮箱（小写、去空白，见 profile.profileKey）。
+   *
+   *  **可选字段，DATA_VERSION 不动**：老客户端（v1.15.0）读到只是一个不认识的顶层键，
+   *  migrate 和 mergeData 都把它原样带着走。按账号分键而不是只存一份：
+   *  这台设备退出 A 登上 B，合并时 A 的那张脸不会盖掉 B 的，也不会被当成 B 的显示出来。
+   *  不在 defaultData 里——一个键都没有才是「这台设备上还没有谁设过」 */
+  profiles?: Record<string, Profile>;
 }
 
 /** 墓碑保留多久。比回收站的 30 天长得多——只要还有设备可能揣着旧副本，就不能忘 */

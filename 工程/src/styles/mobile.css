@@ -98,8 +98,10 @@
   /* 纸**自己**只许上下走（把手那条另有 touch-action: none）。
      pan-x 也得留着：touch-action 是**沿祖先链取交集**的，在这儿写死 pan-y 会连带把纸里
      所有横向滚动区一起钉死——「记一条」那排点选 chips 就是横着滚的（画板 ③）。
-     纸本身没有横向溢出，放开 pan-x 不会让纸自己左右动；而子任务行的左滑走的是
-     pointer events + setPointerCapture，本来就不吃 touch-action 这一套。 */
+     纸本身没有横向溢出，放开 pan-x 不会让纸自己左右动；子任务行的左滑走的也是
+     pointer events + setPointerCapture，但这套手势**照样吃 touch-action**——系统会在
+     setPointerCapture 生效前就把横向拖走当成自己的滚动接走，所以子任务行自己另外
+     补了 touch-action: pan-y（见 mobile-sheet.css 的 .msh-sub）。 */
   touch-action: pan-x pan-y;
 }
 .msheet.in { transform: translateY(0); }

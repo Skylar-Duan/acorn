@@ -231,14 +231,17 @@ describe("点开后多行：卡里的三个框都换成了自动撑高的 textar
     expect(taskCardSource).toContain("oneLine(e.target.value)");
   });
 
+  // v1.15 起子任务标题**允许真换行**（用户要 Shift+Enter 换行），不再过 oneLine；
+  // 新口径钉在 tests/subtask-multiline.test.ts
   it("子任务标题一起做了多行", () => {
     expect(taskCardSource).toContain("ref={growArea}");
-    expect(taskCardSource).toContain("updateSubtask(task.id, s.id, { title: oneLine(e.target.value) });");
+    expect(taskCardSource).toContain("updateSubtask(task.id, s.id, { title: keepLines(e.target.value) });");
   });
 
   it("「整句改」也一起做了，而且**只有它**开 multiline", () => {
     expect(taskCardSource).toContain("multiline");
-    expect(syntaxInputSource).toContain("multiline = false");
+    // 解构那儿改名成 multilineProp（allowNewline 开了也算 multiline），默认值照旧是关
+    expect(syntaxInputSource).toContain("multiline: multilineProp = false");
     // 随手记那条横条、快捷记那个固定大小的浮窗都没开：那两处长高了会把宿主的版式顶变形。
     // 认的是「单独一行的 multiline 这个 prop」，注释里提到这个词不算
     expect(readFileSync("src/components/QuickAddBar.tsx", "utf8")).not.toMatch(/^\s*multiline\s*$/m);

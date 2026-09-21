@@ -10,6 +10,7 @@ import { RowCard } from "../components/motion";
 import RowList, { ROW_PIN, cardAnchor, useFoldPlan, visibleRows } from "../components/RowList";
 import TaskRow from "../components/TaskRow";
 import TaskCard from "../components/TaskCard";
+import PostponeButton from "../components/PostponeMenu";
 import MobileHead from "../mobile/MobileHead";
 import MobileRow, { useSwipeHint } from "../mobile/MobileRow";
 
@@ -68,8 +69,9 @@ export default function Today() {
           account
         />
       ) : (
+        // 桌面侧栏里这一项改叫「今日任务」（2026-09），大标题跟着叫；手机页头还是「今天」，等手机那批
         <div className="view-head">
-          <h1>今天</h1>
+          <h1>今日任务</h1>
           <span className="sub">{formatCN(today)}</span>
         </div>
       )}
@@ -80,9 +82,16 @@ export default function Today() {
                 桌面上这两个类名都没有样式，一个像素不变 */}
             <div className="group-head warn split">
               <span className="group-label">逾期 {overdue.length}</span>
-              <button className="act" onClick={() => postponeRows(overdue)}>
-                全部推到明天 →
-              </button>
+              {/* 桌面：原来是「全部推到明天 →」，只能推一天；现在点开选 明天 / 本周末 / 下周末 / 本月末 / 选日期…
+                  顺延的是逾期组**全部**行（折起来看不见的也算），跟原来口径一样。
+                  手机这次不动（手机界面改动要先出稿），照旧是那句链接 */}
+              {isMobile ? (
+                <button className="act" onClick={() => postponeRows(overdue)}>
+                  全部推到明天 →
+                </button>
+              ) : (
+                <PostponeButton className="act" label="全部顺延" getRows={() => overdue} />
+              )}
             </div>
             {/* 手机端：整页最上面那一行演一次「往右滑」的示意（hintFirstRow） */}
             <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} />

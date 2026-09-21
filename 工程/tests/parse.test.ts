@@ -404,6 +404,120 @@ describe("循环", () => {
   });
 });
 
+// v1.15 用户原话:「循环~每个月末识别不了」。月末存成 day 31(当月没有 31 号就落在月末),
+// 芯片和任务卡都写「每月最后一天」;带「个」的、光写「每周」「每个月」的也一并认
+describe("循环 · 月末和自然一点的说法", () => {
+  const SEP21 = new Date(2026, 8, 21, 10, 0); // 2026-09-21 周一
+
+  it("9-21 输入 ~每个月末:存 day 31,第一次落在 9-30,芯片写「每月最后一天」", () => {
+    const r = p("~每个月末 交房租", SEP21);
+    expect(r.repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(r.due).toBe("2026-09-30");
+    expect(r.title).toBe("交房租");
+    expect(r.chips).toEqual([{ kind: "repeat", text: "每月最后一天" }]);
+  });
+
+  it("~每月底 / ~每月末 / ~每月最后一天 / ~每个月底 同一个意思", () => {
+    for (const w of ["每月底", "每月末", "每月最后一天", "每个月底", "每个月最后一天"]) {
+      const r = p(`~${w} 对账`, SEP21);
+      expect(r.repeat, w).toEqual({ kind: "monthly", day: 31 });
+      expect(r.due, w).toBe("2026-09-30");
+      expect(r.title, w).toBe("对账");
+    }
+  });
+
+  it("月末在 2 月照样落在月末:1-31 那天说,第一次就是 1-31", () => {
+    const r = p("~每个月末 交房租", new Date(2027, 0, 31, 10, 0));
+    expect(r.due).toBe("2027-01-31");
+  });
+
+  it("不打 ~ 一个字不动:「每个月末」不会被当成一次性的月底", () => {
+    const r = p("每个月末 交房租", SEP21);
+    expect(r.repeat).toBeNull();
+    expect(r.due).toBeNull();
+    expect(r.title).toBe("每个月末 交房租");
+  });
+
+  it("~每个月15号:带「个」也认", () => {
+    const r = p("~每个月15号 还款", SEP21);
+    expect(r.repeat).toEqual({ kind: "monthly", day: 15 });
+    expect(r.due).toBe("2026-10-15");
+    expect(r.title).toBe("还款");
+    expect(r.chips).toEqual([{ kind: "repeat", text: "每月15号" }]);
+  });
+
+  it("~每月31号 跟月末同一回事,芯片也写「每月最后一天」", () => {
+    const r = p("~每月31号 结账", SEP21);
+    expect(r.repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(r.chips[0]).toEqual({ kind: "repeat", text: "每月最后一天" });
+  });
+
+  it("~每个星期三 / ~每星期一三五 / ~每个周一 都认", () => {
+    expect(p("~每个星期三 例会").repeat).toEqual({ kind: "weekly", days: [3] });
+    expect(p("~每个星期三 例会").title).toBe("例会");
+    expect(p("~每星期一三五 跑步").repeat).toEqual({ kind: "weekly", days: [1, 3, 5] });
+    expect(p("~每个周一 交周报").repeat).toEqual({ kind: "weekly", days: [1] });
+    expect(p("~每个周末 大扫除").repeat).toEqual({ kind: "weekly", days: [0] });
+  });
+
+  it("光写 ~每周:按今天是周几(今天周五 → 每周五,落点今天)", () => {
+    const r = p("~每周 大扫除");
+    expect(r.repeat).toEqual({ kind: "weekly", days: [5] });
+    expect(r.due).toBe("2026-08-21");
+    expect(r.title).toBe("大扫除");
+    expect(r.chips).toEqual([{ kind: "repeat", text: "每周五" }]);
+    expect(p("~每个星期 复盘").repeat).toEqual({ kind: "weekly", days: [5] });
+  });
+
+  it("光写 ~每个月:按今天几号(21 号 → 每月21号)", () => {
+    const r = p("~每个月 带猫咪洗澡");
+    expect(r.repeat).toEqual({ kind: "monthly", day: 21 });
+    expect(r.due).toBe("2026-08-21");
+    expect(r.title).toBe("带猫咪洗澡");
+    expect(p("~每月 交水费").repeat).toEqual({ kind: "monthly", day: 21 });
+  });
+
+  it("光写的每周/每个月,句子里另写了日期就按那个日期推", () => {
+    const w = p("~明天 ~每周 倒垃圾"); // 明天周六
+    expect(w.repeat).toEqual({ kind: "weekly", days: [6] });
+    expect(w.due).toBe("2026-08-22");
+    expect(w.chips.find((c) => c.kind === "repeat")).toEqual({ kind: "repeat", text: "每周六" });
+    // 日期写在后面也一样
+    const m = p("~每个月 ~9-5 交房租");
+    expect(m.repeat).toEqual({ kind: "monthly", day: 5 });
+    expect(m.due).toBe("2026-09-05");
+    expect(m.chips.find((c) => c.kind === "repeat")).toEqual({ kind: "repeat", text: "每月5号" });
+    expect(m.title).toBe("交房租");
+  });
+
+  it("光写的「每周」抢不走「每周末」「每周一」,光写的「每月」抢不走「每月15号」「每月底」", () => {
+    expect(p("~每周末 大扫除").repeat).toEqual({ kind: "weekly", days: [0] });
+    expect(p("~每周一 交周报").repeat).toEqual({ kind: "weekly", days: [1] });
+    expect(p("~每月15号 还款").repeat).toEqual({ kind: "monthly", day: 15 });
+    expect(p("~每月底 对账").repeat).toEqual({ kind: "monthly", day: 31 });
+  });
+
+  it("这次不认的「每月初」「每月中」整串原样留给标题,不被截成「每月」+「初」", () => {
+    const r = p("~每月初 盘点");
+    expect(r.repeat).toBeNull();
+    expect(r.title).toBe("~每月初 盘点");
+  });
+
+  it("不打 ~ 的正文一个字不动", () => {
+    for (const s of ["每周 大扫除", "每个月 带猫咪洗澡", "每个月15号 还款", "每月最后一天 结账", "每个星期三 例会", "每月计划", "每周复盘会"]) {
+      const r = p(s);
+      expect(r.repeat, s).toBeNull();
+      expect(r.due, s).toBeNull();
+      expect(r.title, s).toBe(s);
+    }
+  });
+
+  it("两个循环写在一起,后写的那个生效(光写的每周也一样)", () => {
+    expect(p("~每周 ~每月底 对账").repeat).toEqual({ kind: "monthly", day: 31 });
+    expect(p("~每月底 ~每周 对账").repeat).toEqual({ kind: "weekly", days: [5] });
+  });
+});
+
 describe("标签(#只管标签)", () => {
   it("#与清单同名也进 tags,不再产生 listName", () => {
     const r = p("#工作 写方案");

@@ -21,6 +21,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Priority, RepeatRule } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { parseQuickAdd } from "../core/parse";
+// 显示文字跟任务卡同一个说法（「每周一」「每月最后一天」），不再各写一份
+import { describeRepeat } from "../core/recur";
 import type { ParseChip } from "../core/parse";
 import { dayOfWeek, duePresets, formatShort, todayYMD } from "../core/dates";
 import { addList, addTask, allTags, allWho, useApp } from "../core/store";
@@ -324,7 +326,7 @@ function QuickAddBody({ listId }: { listId: string | null }) {
         </button>
         <button className={`msh-pick${eff.repeat ? " on" : ""}`} onClick={() => toggleSeg("repeat")}>
           <span aria-hidden>↻</span>
-          {eff.repeat ? repeatLabel(eff.repeat) : "重复"}
+          {eff.repeat ? describeRepeat(eff.repeat) : "重复"}
         </button>
       </div>
 
@@ -470,19 +472,6 @@ function repeatChoices(today: string): { label: string; rule: RepeatRule | null 
     { label: "每周（按今天是周几）", rule: { kind: "weekly", days: [dayOfWeek(today)] } },
     { label: "每月（按今天几号）", rule: { kind: "monthly", day: Number(today.slice(8)) } },
   ];
-}
-
-function repeatLabel(r: RepeatRule): string {
-  switch (r.kind) {
-    case "daily":
-      return r.every === 1 ? "每天" : `每 ${r.every} 天`;
-    case "workday":
-      return "每工作日";
-    case "weekly":
-      return "每周";
-    case "monthly":
-      return `每月 ${r.day} 号`;
-  }
 }
 
 function sameRule(a: RepeatRule | null, b: RepeatRule | null): boolean {

@@ -24,6 +24,7 @@ import {
   weekStart,
 } from "./dates";
 import { HOLIDAY_WORDS, holidayDate } from "./holidays";
+import { describeRepeat } from "./recur";
 
 export interface ParseChip {
   kind: "date" | "time" | "repeat" | "list" | "tag" | "who" | "priority";
@@ -126,10 +127,19 @@ const RE = {
   prioWord: /[!！](高|中|低)/g,
   prioBang: /[!！]+/g,
   repWorkday: /每个?工作日/g,
-  repWeekly: /每周([一二三四五六日天]+)/g,
+  // 「个」可写可不写,「周」「星期」都认:每周一 / 每个星期三 / 每星期一三五
+  repWeekly: /每个?(?:周|星期)([一二三四五六日天]+)/g,
   // 每周末:按设置里的周末日循环(循环先于日期扫,所以不会被「周末」截成「每」+「周末」)
-  repWeekend: /每周末/g,
-  repMonthly: new RegExp(`每月(${NUM})[号日]`, "g"),
+  repWeekend: /每个?周末/g,
+  // 每月最后一天 / 每个月末 / 每月底:存成 day 31(当月没有 31 号就落在月末,三端老版本都这么算)。
+  // 必须在日期之前扫——不然「月末」两个字会被当成一次性的「这个月底」抢走
+  repMonthEnd: /每个?月(?:最后一天|末|底)/g,
+  repMonthly: new RegExp(`每个?月(${NUM})[号日]`, "g"),
+  // 光写「每周」「每个月」、没说哪天:按这件事写了的日期推(没写就按今天)。
+  // 否定前瞻把带了下文的留给上面那几条——「每周末」「每周一」「每月15号」「每月底」不能被它截走;
+  // 「每月初」「每月中」这次不认,也不许被截成「每月」+「初」,整串原样留给标题
+  repWeekBare: /每个?(?:周|星期)(?![一二三四五六日天末])/g,
+  repMonthBare: new RegExp(`每个?月(?!${NUM}|[末底初中]|最后)`, "g"),
   repEveryN: new RegExp(`每(${NUM})天`, "g"),
   repDaily: /每天/g,
   ymd: /(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])/g,
@@ -215,6 +225,21 @@ export interface ParseOpts {
   skip?: ParseChip["kind"][];
   /** 「周末」指周六还是周日,跟设置里那一项走;不给就当周日 */
   weekendDay?: "sat" | "sun";
+  /** 标题里的换行留着(每行各自压空白、去首尾空格,空行扔掉)。**只有子任务那条路开**:
+   *  任务卡里加子任务、改子任务可以 Shift+Enter 写成几行。记一条 / 整句改 / 快捷记浮窗都不开,
+   *  那几处一句话就是一句话,换行照旧压成一个空格 */
+  keepNewlines?: boolean;
+}
+
+/** 压空白。不留换行:所有空白(含换行)压成一个空格;留换行:按行各自做一遍 fix,空行扔掉。
+ *  fix 只管「一行之内」怎么清理,两种口径共用它,免得同一套清理写两遍 */
+function tidyTitle(s: string, keepNewlines: boolean | undefined, fix: (line: string) => string): string {
+  if (!keepNewlines) return fix(s);
+  return s
+    .split(/\r\n|\r|\n/)
+    .map(fix)
+    .filter((l) => l !== "")
+    .join("\n");
 }
 
 export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
@@ -235,6 +260,9 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     /** 明确钟点那枚芯片——换算之后芯片文字要跟着改,不然「明晚」旁边挂着「08:00」自相矛盾 */
     timeChip: null as ParseChip | null,
     repeat: null as RepeatRule | null,
+    /** 光写「每周」「每个月」时那条循环还没定哪天,等日期那边汇总完再按日期补(见汇总那一段);
+     *  chip 是它那枚芯片,补完之后文字要跟着改 */
+    repeatBare: null as { unit: "week" | "month"; rule: RepeatRule; chip: ParseChip } | null,
     priority: 0 as Priority,
     who: [] as string[],
     listName: null as string | null,
@@ -492,16 +520,43 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     },
   }));
 
+  // 每月最后一天:芯片写「每月最后一天」,跟任务卡上显示的一个说法
+  scan(RE.repMonthEnd, () => ({
+    chip: { kind: "repeat", text: describeRepeat({ kind: "monthly", day: 31 }) },
+    apply: (s) => {
+      s.repeat = { kind: "monthly", day: 31 };
+    },
+  }));
+
   scan(RE.repMonthly, (m) => {
     const d = num(m[1]);
     if (d === null || d < 1 || d > 31) return null;
     return {
-      chip: { kind: "repeat", text: `每月${d}号` },
+      chip: { kind: "repeat", text: describeRepeat({ kind: "monthly", day: d }) },
       apply: (s) => {
         s.repeat = { kind: "monthly", day: d };
       },
     };
   });
+
+  // 光写「每周」「每个月」:先按今天占个位,汇总时这句话里写了日期就改按那个日期(见汇总那一段)。
+  // 按今天这个口径跟快速添加菜单里原来的「每周(按今天是周几)」是同一个
+  const bareRepeat = (unit: "week" | "month") => {
+    const rule: RepeatRule =
+      unit === "week"
+        ? { kind: "weekly", days: [dayOfWeek(today)] }
+        : { kind: "monthly", day: Number(today.slice(8, 10)) };
+    const chip: ParseChip = { kind: "repeat", text: describeRepeat(rule) };
+    return {
+      chip,
+      apply: (s: State) => {
+        s.repeat = rule;
+        s.repeatBare = { unit, rule, chip };
+      },
+    };
+  };
+  scan(RE.repWeekBare, () => bareRepeat("week"));
+  scan(RE.repMonthBare, () => bareRepeat("month"));
 
   scan(RE.repEveryN, (m) => {
     const n = num(m[1]);
@@ -875,6 +930,17 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   tokens.sort((x, y) => x.start - y.start);
   for (const t of tokens) t.apply(st);
 
+  // 光写「每周」「每个月」的那条循环最后生效(没被后面写的别的循环盖掉),而且这句话里写了日期:
+  // 改按那个日期是周几 / 几号。「~明天 ~每周 倒垃圾」是每周X(明天那个星期几),不是每周(今天)
+  if (st.repeatBare !== null && st.repeat === st.repeatBare.rule && st.dateSet && st.due !== null) {
+    const rule: RepeatRule =
+      st.repeatBare.unit === "week"
+        ? { kind: "weekly", days: [dayOfWeek(st.due)] }
+        : { kind: "monthly", day: Number(st.due.slice(8, 10)) };
+    st.repeat = rule;
+    st.repeatBare.chip.text = describeRepeat(rule);
+  }
+
   // 明确钟点优先,没有才用时段词的默认钟点(今晚 20:00、明天下午 15:00)。
   // 钟点自己没带时段词、句子里却有「今晚/明晚/晚上/中午」这类词时,按那个时段换算:
   // 「明晚8点」是 20 点不是早上 8 点;「明早8点」「明晚 21:30」不受影响。芯片文字跟着改
@@ -896,15 +962,18 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
 
   let title = "";
   for (let i = 0; i < input.length; i++) if (!consumed[i]) title += input[i];
-  title = title.replace(/\s+/g, " ").trim();
+  title = tidyTitle(title, opts.keepNewlines, (l) => l.replace(/\s+/g, " ").trim());
   // 识别出时间/日期后，「20点提醒我」这类说法残留的"提醒(我)"是指令词不是内容，去掉。
   // 只删两种安全形态：独立成词的"提醒/提醒我"、句首的"提醒我"——"写提醒事项"这类内容词不动
   if (dueTime !== null || st.dateSet) {
-    title = title
-      .replace(/(?:^|\s)提醒我?(?=\s|$)/g, " ")
-      .replace(/^提醒我/, "")
-      .replace(/\s+/g, " ")
-      .trim();
+    // 留换行时按行各做一遍(「句首」就成了每行行首),换行本身不会被当成词边界吃掉
+    title = tidyTitle(title, opts.keepNewlines, (l) =>
+      l
+        .replace(/(?:^|\s)提醒我?(?=\s|$)/g, " ")
+        .replace(/^提醒我/, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    );
   }
 
   return {
@@ -925,7 +994,8 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
  *
  *  **循环 v8 起认了**(PM 原话:「每周末」在子任务里认循环)。以前它也在这张表里,
  *  于是「每周末 大扫除」既没循环、「每」还被下面那句清理正则吃掉,只剩一个一次性的周末。
- *  现在所有循环词在子任务里一视同仁:每天 / 每周一三五 / 每周末 / 每月5号 / 每个工作日 / 每2天。
+ *  现在所有循环词在子任务里一视同仁:每天 / 每周一三五 / 每周末 / 每月5号 / 每个工作日 / 每2天,
+ *  以及 v1.15 补上的 每个月末 / 每月底 / 每月最后一天 / 每个月15号 / 每个星期三 / 光写的每周、每个月。
  *  没写日期时 due 落在哪跟整件事同一条路——parseQuickAdd 里那句 firstOccurrence(rule, today),
  *  两边共用,不在这儿另算一遍;不然一条有循环、没日期的子任务永远不会推进。 */
 export const SUBTASK_SKIP: ParseChip["kind"][] = ["tag", "list", "who"];
@@ -935,12 +1005,18 @@ export function parseSubtaskInput(
   now: Date,
   listNames: string[] = [],
   weekendDay?: ParseOpts["weekendDay"],
+  /** keepNewlines:任务卡子任务栏 Shift+Enter 写的换行留着(见 ParseOpts)。手机那条路不传,照旧压成空格 */
+  more: { keepNewlines?: boolean } = {},
 ): ParseResult {
-  const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP, weekendDay });
+  const keepNewlines = more.keepNewlines;
+  const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP, weekendDay, keepNewlines });
   if (r.due === null && r.dueTime === null) return r;
   // 光杆「每」/「每月」的清理**留着**。循环认了之后它只剩一种触发场景:用户打了个孤零零的「每」、
   // 日期另写在别处(「每 交周报 明天」)——那个「每」是半句没说完的话,不是标题的一部分。
-  // 仍然只在识别出日期/时间时才扫,所以「每日一记」「每人一份」这类正文一个字都不动
-  const title = r.title.replace(/(?:^|\s)每月?(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  // 仍然只在识别出日期/时间时才扫,所以「每日一记」「每人一份」这类正文一个字都不动。
+  // 「每个月」跟「每月」同一个待遇(说法放宽之后,光杆的「每个月」也得扫得掉)
+  const title = tidyTitle(r.title, keepNewlines, (l) =>
+    l.replace(/(?:^|\s)每(?:个?月)?(?=\s|$)/g, " ").replace(/\s+/g, " ").trim(),
+  );
   return { ...r, title };
 }

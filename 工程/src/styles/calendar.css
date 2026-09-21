@@ -337,6 +337,32 @@
 .mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap {
   margin-top: 0; background: none; box-shadow: none; border-radius: 0;
 }
+/* 展开区里的行字号跟没展开时的预览行（13px）对齐：MobileRow 是今天页等列表共用的组件，
+   直接复用会一下跳到 16px。这里只在 .cal-wfold 范围内把字、行高、圆圈一起按比例缩小，
+   今天页 / 清单页 / 月视图一个像素不动。手指能点的范围（.mrow-cb::before 撑出的 44px）保持不变。
+   选择器要写得跟旁边几条一样长，不然会被 mobile-shell.css 里更短的通用规则盖过去 */
+.mshell .view-body.cal-body .cal-wfold .mrow {
+  min-height: 44px;
+  padding: 8px 16px;
+}
+.mshell .view-body.cal-body .cal-wfold .mrow-title {
+  font-size: 13px;
+  line-height: 18px;
+}
+.mshell .view-body.cal-body .cal-wfold .mrow-parent,
+.mshell .view-body.cal-body .cal-wfold .mrow-when {
+  font-size: 11px;
+}
+.mshell .view-body.cal-body .cal-wfold .mrow-cb {
+  width: 22px;
+  height: 22px;
+}
+.mshell .view-body.cal-body .cal-wfold .mrow-cb.done::after {
+  left: 7px;
+  top: 4px;
+  width: 4px;
+  height: 8px;
+}
 /* 卡里没有卡了，行与行之间就得有根线才分得开。这根线原先长在 mobile-shell.css 里、
    所有列表共用；v1.15.0 那边的行各自成卡、线撤了，只剩这儿还需要，就搬到这儿来。
    56px = 16 左内距 + 26 圆圈 + 留白，跟「更多」页那几张表同一条竖线。
@@ -351,6 +377,11 @@
   background: var(--m-sep);
   z-index: 2;
   pointer-events: none;
+}
+/* 圆圈从 26 缩到 22，分隔线的起点跟着重算：16 左内距 + 22 圆圈 + 留白。
+   同一个选择器，靠写在后面覆盖上面那条的 left（层叠顺序，权重一样） */
+.mshell .view-body.cal-body .cal-wfold .mcard > .swipe-wrap + .swipe-wrap::before {
+  left: 52px;
 }
 /* 空的那天：卡里就一句话，不再垫一张纸（底下那块常驻列表才需要垫，它是独立的一块） */
 .mshell .cal-wfold .cal-daylist-empty {

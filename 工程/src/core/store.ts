@@ -12,6 +12,7 @@ import { firstOccurrence, nextOccurrence } from "./recur";
 import * as persist from "./persist";
 // 只用它一个 loadSession（读令牌在不在，不发网络请求）。cloud 不回头依赖 store，没有环
 import * as cloud from "./cloud";
+import { isMobile } from "./platform";
 
 // 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
 // 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换。
@@ -22,6 +23,13 @@ export type ViewId =
   | "inbox" | "today" | "plan" | "quadrant" | "done" | "habits"
   | "calendar" | "focus" | "stats" | "settings"
   | "list" | "who" | "tag" | "trash";
+
+/** 打开橡果先落在哪一页。**两端分开**（2026-09）：桌面侧栏第一项改成了「计划」，
+ *  打开就该是它；手机的定位是「口袋里的今天」，底部导航也还没重排，仍然先进今天。
+ *  ViewId 一直是 "today"，界面上改叫「今日任务」，这里不用跟着改 */
+export function startView(mobile: boolean): ViewId {
+  return mobile ? "today" : "plan";
+}
 
 export interface UIState {
   view: ViewId;
@@ -41,8 +49,10 @@ export interface UIState {
    *  侧栏那颗「＋ 记一条」、Ctrl+1、命令面板都开的是它 */
   quickAddOpen: boolean;
   toast: { msg: string; undoable: boolean; key: number } | null;
-  /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义 */
-  ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null } | null;
+  /** 自定义右键菜单：null = 关闭。sub 非空 = 右键落在子任务行上，菜单应收窄为子任务语义。
+   *  whole = 右键的是**代表整件事的那一行**（收起的链头 / 一件事只露出一行时的那一行）：
+   *  菜单作用于母任务，标题写「整件事 · 名字」，免得以为改的是露出来的那一条子任务 */
+  ctxMenu: { x: number; y: number; ids: string[]; sub?: { taskId: string; subId: string } | null; whole?: boolean } | null;
   /** 子任务链默认收起还是摊开（今天 / 计划两个视图）。收起 = 一件事只占一行「下一步」，
    *  行尾标 +N 表示后面还有几条 */
   foldAll: boolean;
@@ -153,7 +163,7 @@ export const appStore = createStore<AppState>(() => ({
   saveError: null,
   webNewVersion: null,
   ui: {
-    view: "today", listId: null, who: null, tag: null, ...loadFold(),
+    view: startView(isMobile), listId: null, who: null, tag: null, ...loadFold(),
     expandedId: null, selectedIds: [], searchOpen: false, paletteOpen: false, changelogOpen: false,
     quickAddOpen: false, toast: null,
     ctxMenu: null,
@@ -351,6 +361,8 @@ export function undo() {
     sessions: cur.sessions,
     settings: cur.settings,
     graveyard: cur.graveyard,
+    // 名字和头像同 settings：不属于可撤销数据，撤一件事不许把刚换的头像也撤回去
+    ...(cur.profiles !== undefined ? { profiles: cur.profiles } : {}),
   });
   appStore.setState({
     data: restored,
@@ -948,6 +960,70 @@ export function postponeTasks(ids: string[], days = 1) {
   clearSelection();
 }
 
+/** 按行顺延到**选定的那一天**（桌面「顺延 ▾」菜单：明天 / 本周末 / 下周末 / 本月末 / 选日期…）。
+ *
+ *  跟 postponeRows 是同一套「按行」口径，差别只在落点：那边是「今天之后再加 N 天」，这边直接落到 ymd。
+ *   · 母任务行改母任务：日期落到 ymd，钟点照旧，提醒按新日子重算；
+ *   · 子任务行只改这一条：继承来的日期先落成它自己的（钟点也一样走 subTime），再落到 ymd——
+ *     同一件事别的子任务原地不动；
+ *   · **顺延次数只在日期真的往后挪了才 +1**（原来没日期 = 从无到有，不算；改早了也不算），
+ *     一次调用只数一次。子任务没有顺延计数这回事；
+ *   · 一次调用 = 一张撤销快照，弹「已顺延 N 项」可撤销。
+ *  同一件事的母任务行和子任务行同时传进来也照样只写一遍、只数一次 */
+export function postponeRowsTo(rows: DateRow[], ymd: string) {
+  if (rows.length === 0) return;
+  const taskIds = new Set(rows.filter((r) => !r.sub).map((r) => r.task.id));
+  const subIds = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!r.sub) continue;
+    const set = subIds.get(r.task.id) ?? new Set<string>();
+    set.add(r.sub.id);
+    subIds.set(r.task.id, set);
+  }
+  mutate(
+    (d) => ({
+      ...d,
+      tasks: d.tasks.map((t) => {
+        const hitSubs = subIds.get(t.id);
+        if (!taskIds.has(t.id) && !hitSubs) return t;
+        let next = t;
+        if (taskIds.has(t.id)) {
+          const later = !!t.due && cmpYMD(ymd, t.due) > 0;
+          next = {
+            ...next,
+            due: ymd,
+            postponeCount: t.postponeCount + (later ? 1 : 0),
+            reminder: regenReminder(t, ymd),
+          };
+        }
+        if (hitSubs) {
+          next = {
+            ...next,
+            subtasks: next.subtasks.map((s) =>
+              hitSubs.has(s.id) ? { ...s, due: ymd, dueTime: subTime(s, t) } : s,
+            ),
+          };
+        }
+        return next;
+      }),
+    }),
+    { toast: `已顺延 ${rows.length} 项` },
+  );
+  clearSelection();
+}
+
+/** 一件事里**已经过期、没做完、没放弃**的那几条子任务行（按今天算）。
+ *  收起状态下代表整件事的那一行点「顺延」，顺延的就是这一串——没过期的原地不动 */
+export function overdueSubRows(task: Task, today = todayYMD()): DateRow[] {
+  return aliveSubtasks(task)
+    .filter((s) => !s.done && !s.droppedAt)
+    .filter((s) => {
+      const due = subDue(s, task);
+      return !!due && cmpYMD(due, today) < 0;
+    })
+    .map((s) => ({ task, sub: s }));
+}
+
 /** 整组换需求方（右键批量改用这个：给几个人就是几个人，原来的清掉） */
 export function setTasksWho(ids: string[], who: string[]) {
   const next = normalizeWho(who);
@@ -1383,6 +1459,12 @@ export function updateSettings(patch: Partial<Settings>) {
   mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }), { skipUndo: true });
 }
 
+/** 名字和头像（跟着账号走，读写口径都在 core/profile.ts，界面别直接调这个）。
+ *  跟设置一样**不进撤销栈**：Ctrl+Z 撤的是事，不该把刚换的头像也撤回去（undo 里也嫁接了这一样） */
+export function setProfiles(profiles: NonNullable<AppData["profiles"]>) {
+  mutate((d) => ({ ...d, profiles }), { skipUndo: true });
+}
+
 // ---------- UI 动作 ----------
 
 export function navigate(view: ViewId, extra?: { listId?: string | null; who?: string | null; tag?: string | null }) {
@@ -1478,9 +1560,12 @@ export function setFocusState(patch: Partial<FocusState>) {
   appStore.setState({ focus: { ...appStore.getState().focus, ...patch } });
 }
 
-export function openCtxMenu(x: number, y: number, ids: string[], sub?: { taskId: string; subId: string } | null) {
+export function openCtxMenu(
+  x: number, y: number, ids: string[], sub?: { taskId: string; subId: string } | null,
+  opts: { whole?: boolean } = {},
+) {
   const ui = appStore.getState().ui;
-  appStore.setState({ ui: { ...ui, ctxMenu: { x, y, ids, sub: sub ?? null } } });
+  appStore.setState({ ui: { ...ui, ctxMenu: { x, y, ids, sub: sub ?? null, whole: !!opts.whole } } });
 }
 
 export function closeCtxMenu() {

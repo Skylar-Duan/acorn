@@ -7,12 +7,15 @@ import type { Subtask, Task } from "../core/model";
 import { doneRowMs } from "../core/motion";
 import { formatShort, formatDoneShort, doneShortIsWide, todayYMD, cmpYMD } from "../core/dates";
 import { describeRepeat } from "../core/recur";
+import { isMobile } from "../core/platform";
 // 长按的两个数跟侧栏拖动排序共用一份：手机上「按住多久算长按」只该有一个口径
 import { LONG_PRESS_MS, SLOP_PX } from "../core/touchSort";
 import {
   completeTask, uncompleteTask, expandTask, useApp, setSelection,
   updateSubtask, openCtxMenu, rowDue, rowTime, rowPriority, dropTasks, dropSubtask, aliveSubtasks,
+  overdueSubRows,
 } from "../core/store";
+import PostponeButton from "./PostponeMenu";
 
 export function WhoBadge({ who }: { who: string }) {
   return (
@@ -72,9 +75,15 @@ export interface TaskRowProps {
    *   · "full" —— v1.9.0 以前的老样子，全画。**留着不是摆设**：这是一条退路，
    *     哪天觉得清单色点还是得有，改回来只要在调用处传一个词，不用把代码再抄一遍。 */
   tail?: "full" | "lean" | "date";
+  /** 这一行**代表整件事**（只对子任务行有意义，RowList 按整页折叠方案给）：
+   *  收起的链头（显示 +N 的那种），或者这件事在整页只露出这一行。
+   *  右键这种行出的是**整件事的菜单**——日期 / 优先级改的是母任务，还在继承的子任务自然跟着变，
+   *  子任务自己的字段一个都不写（用户 2026-09 报：右键「母任务」改的却是第一个子任务）。
+   *  摊开后的各条子任务行不带它：那时右键哪一条就是哪一步 */
+  whole?: boolean;
 }
 
-export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed, tail = "lean" }: TaskRowProps) {
+export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed, tail = "lean", whole = false }: TaskRowProps) {
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -200,14 +209,15 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
 
   /** 在 (x, y) 打开这一行的菜单。右键和长按共用一份，菜单内容永远一致 */
   function openMenuAt(x: number, y: number) {
-    if (sub) {
-      // 子任务行：菜单作用于子任务本身，不能打到整个母任务上
+    if (sub && !whole) {
+      // 摊开后的某一条子任务行：菜单作用于这一步本身，不能打到整个母任务上
       openCtxMenu(x, y, [task.id], { taskId: task.id, subId: sub.id });
       return;
     }
     // 右键落在多选集合上时保留多选，否则只对当前行
     const ids = selected && selectedIds.length > 1 ? selectedIds : [task.id];
-    openCtxMenu(x, y, ids);
+    // 代表整件事的子任务行：出整件事的菜单，标题写明「整件事 · 名字」（多选时标题照旧是「N 项」）
+    openCtxMenu(x, y, ids, null, { whole: !!sub && ids.length === 1 });
   }
 
   function onCtx(e: React.MouseEvent) {
@@ -216,7 +226,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
     openMenuAt(e.clientX, e.clientY);
   }
 
-  // 手机上没有右键。「放弃 / 移到清单 / 需求方 / 复制标题 / 推到明天」这些动作
+  // 手机上没有右键。「放弃 / 移到清单 / 需求方 / 复制标题 / 调整日期」这些动作
   // 原来只有右键菜单一条路，安卓 WebView 的原生长按到底发不发 contextmenu 靠不住
   // （body 上还有一条 user-select: none 会影响它），所以自己接一份长按。
   // 时长与「按下就滑算滚动」的阈值跟侧栏排序共用 touchSort 那套常量，不另定一个数
@@ -258,6 +268,14 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   }
 
   const willDone = isDone || leaving;
+
+  // 行尾「顺延 ▾」（桌面）：只长在**已经过期、没做完、没放弃**的行上；已完成那一类只留日期的行尾不出。
+  // 收起的链头代表整件事：顺延的是这件事**所有过期的子任务**（被折起来看不见的那几条也算），
+  // 没过期的原地不动——只推露出来的那一条的话，收着看还会接着冒出下一条过期的。
+  // 手机不画：手机上这一路是左滑「推到明天」，改手机界面得先出稿
+  const foldedHead = !!chain && chain.folded && chain.more > 0;
+  const headOverdue = foldedHead ? overdueSubRows(task, today) : [];
+  const showPostpone = !isMobile && !dateOnlyTail && !doneDate && (overdue || headOverdue.length > 0);
 
   return (
     // 外面这层只管高度（见 app.css 的 .row-slot）：行让位、行收走都在它身上做，
@@ -385,6 +403,21 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           <span className="warn" title={`已顺延 ${task.postponeCount} 次`}>
             顺延×{task.postponeCount}
           </span>
+        )}
+        {showPostpone && (
+          <PostponeButton
+            className="pp-btn"
+            label="顺延"
+            title={
+              foldedHead && headOverdue.length > 1
+                ? `这件事有 ${headOverdue.length} 条已经过期，一起顺延`
+                : "顺延到哪天"
+            }
+            // 现点现取：菜单开着时数据变了，以点下去那一刻为准
+            getRows={() => (foldedHead ? overdueSubRows(task) : [row])}
+            // Ctrl / Shift 点它照旧是连选，跟行上别的热区同一个规矩
+            intercept={multiSelect}
+          />
         )}
         {doneDate ? (
           // 「已完成」视图里同一个位置写两种事：做完的写完成日，放弃的写放弃日。

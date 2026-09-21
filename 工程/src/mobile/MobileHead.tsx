@@ -13,6 +13,7 @@
 import type { ReactNode } from "react";
 import { setSearchOpen, useApp } from "../core/store";
 import { useSync } from "../core/syncCtl";
+import { avatarInitial, getProfile } from "../core/profile";
 import ThemeScene from "../components/ThemeScene";
 import { IcoBack, IcoSearch, IcoWho } from "./icons";
 import { openSheet } from "./sheetStore";
@@ -103,22 +104,12 @@ export function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-/**
- * 头像上显示哪个字。名字优先于邮箱——用户自己起的名字才是他认得的自己。
- * 两边都空着（还没登录）返回空串，由调用处画一个人形轮廓。
- *
- * 取「第一个字」而不是首字母缩写：中文名取一个字正好，邮箱取一个字母也够认。
- */
-export function avatarInitial(name: string | undefined, email: string | undefined): string {
-  const src = (name ?? "").trim() || (email ?? "").trim();
-  return src ? [...src][0].toUpperCase() : "";
-}
-
-/** 右上角那颗头像圆钮。有图用图，没图用名字/邮箱的头一个字，没登录画个人形 */
+/** 右上角那颗头像圆钮。有图用图，没图用名字/邮箱的头一个字，没登录画个人形。
+ *  名字和头像跟着账号走（core/profile.ts），首字的口径也在那儿，全仓库只有一份 */
 function AccountButton() {
-  const avatar = useApp((s) => s.data.settings.profileAvatar);
-  const name = useApp((s) => s.data.settings.profileName);
   const session = useSync((s) => s.session);
+  const avatar = useApp((s) => getProfile(s.data, session?.email).avatar);
+  const name = useApp((s) => getProfile(s.data, session?.email).name);
   const initial = avatarInitial(name, session?.email);
   return (
     <button

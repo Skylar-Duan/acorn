@@ -186,9 +186,10 @@ describe("快捷键：Ctrl+1 记一条，Ctrl+2~5 还是切视图", () => {
     expect(appSource).toMatch(/mod && e\.key === "1"[\s\S]{0,120}setQuickAddOpen\(true\)/);
   });
 
-  it("Ctrl+2~5 一格不错位：今天 / 习惯 / 计划 / 已完成", () => {
+  // 2026-09 侧栏重排后改口：Ctrl+2~5 跟常驻四项从上往下数（见 tests/desktop-nav-order.test.ts）
+  it("Ctrl+2~5 一格不错位：计划 / 日历 / 今日任务 / 习惯", () => {
     expect(appSource).toContain('/^[2-5]$/.test(e.key)');
-    expect(appSource).toContain('navigate((["today", "habits", "plan", "done"] as const)[Number(e.key) - 2]);');
+    expect(appSource).toContain('navigate((["plan", "calendar", "today", "habits"] as const)[Number(e.key) - 2]);');
   });
 
   it("设置页里那句提示跟着改了口（全局小窗叫「记一条」）", () => {

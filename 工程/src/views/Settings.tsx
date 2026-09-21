@@ -1,4 +1,8 @@
-// 设置：通用 / 外观 / 云账号 / 数据 / 导出与导入 / 版本更新 / 关于。分节卡片，一次只摊开一节。
+// 设置：账号 / 通用 / 外观 / 数据 / 导出与导入 / 版本更新 / 关于。分节卡片，一次只摊开一节。
+//
+// v1.15.1（用户原话「三端：设置中，账号卡片默认张开，并且移到最上面」）：账号挪到第一节，
+// 标题从「云账号」改叫「账号」（跟头像点开的那张面板一个叫法），每次进来都摊开它——
+// 除非别处刚点名要开别的节（侧栏「数据异常」跳「数据」），那时让位，见 useFold.preferFoldOpen。
 //
 // v1.14.1 重排（PM 原话「行为改名为通用，并且顺序上放在最前面，其他顺序也整理一下，
 // 按照其他 app 的一般习惯」）：常用开关在最前，主题外观次之，账号与数据居中，
@@ -11,7 +15,7 @@ import { shortVersion } from "../core/version";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
 import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
-import { useFold } from "../core/useFold";
+import { preferFoldOpen, useFold } from "../core/useFold";
 import {
   dataStatus, downloadTextFile, getDataDir, inTauri, listBackups, pickTextFile, readTextFile,
   restoreBackup, saveData, setDataDir, writeTextFile,
@@ -34,7 +38,7 @@ import MobileHead from "../mobile/MobileHead";
 import "../styles/settings.css";
 
 /** 设置页那些节在本机记忆里的键前缀（侧栏是 `acorn-side-`）。
- *  侧栏那行同步指示要滚到「云账号」，喊的就是 forceFoldOpen("cloud", SET_FOLD_PREFIX) */
+ *  侧栏那行同步指示要滚到「账号」，喊的就是 forceFoldOpen("cloud", SET_FOLD_PREFIX) */
 const SET_FOLD_PREFIX = "acorn-set-";
 /** 设置页所有节共用这一个 group：useFold 凭它保证「一次只摊开一节」 */
 const SET_GROUP = "settings";
@@ -59,6 +63,8 @@ const SET_GROUP = "settings";
  * （那时「外观」「云账号」各自 defaultOpen，可能好几条都写着开），升上来第一次进设置页，
  * 摊开的是他上次留着的那一节而不是「通用」——这是记忆该有的样子，不是错。
  * 真机量过：从头到尾没有哪一帧是两节同时摊着的，useFold 在首帧之前就分完了胜负。
+ * v1.15.1 起账号那一节例外：用户要「每次进来都张开」，所以 Settings 挂载时额外喊一次
+ * preferFoldOpen("cloud")，盖过本机记忆；别的节照旧按记忆 + defaultOpen 走。
  */
 function SetSection({
   id,
@@ -73,7 +79,7 @@ function SetSection({
   defaultOpen?: boolean;
   /** 收起时显示在标题右边的一句话 */
   summary?: string;
-  /** 给别处 scrollIntoView 用的 DOM id（侧栏同步指示滚到「云账号」靠它） */
+  /** 给别处 scrollIntoView 用的 DOM id（侧栏同步指示滚到「账号」靠它） */
   anchorId?: string;
   children: React.ReactNode;
 }) {
@@ -182,8 +188,12 @@ function buildMarkdown(d: AppData): string {
 export default function Settings() {
   const data = useApp((s) => s.data);
   const settings = data.settings;
-  /** 「云账号」那一节收起来时右边那句话要分登录没登录说，所以这里要知道登录态 */
+  /** 「账号」那一节收起来时右边那句话要分登录没登录说，所以这里要知道登录态 */
   const session = useSync((s) => s.session);
+  // 每次进设置页都先摊开账号那一节（v1.15.1）。**必须在下面那几节挂载之前喊**——
+  // 父组件先渲染，useState 的初始化器正好赶在它们 claim 之前；只喊这一次，之后用户点开哪节算哪节。
+  // 别处刚点名要开别的节（侧栏「数据异常」跳「数据」）时它自己让位，不抢
+  useState(() => preferFoldOpen("cloud", SET_FOLD_PREFIX));
 
   const [status, setStatus] = useState<DataStatus | null>(null);
   /** null = 备份列表收起 */
@@ -389,15 +399,32 @@ export default function Settings() {
         </div>
       )}
       <div className="view-body set-body">
-        {/* ---------- 通用（v1.14.1 前叫「行为」，PM 点名改名并挪到第一位） ---------- */}
+        {/* ---------- 账号（v1.15.1 挪到第一节，原来叫「云账号」、排第三） ---------- */}
+        {/* 用户原话「设置中，账号卡片默认张开，并且移到最上面」。
+            defaultOpen 只管从没记过的新用户；老用户每次进来也摊开它，靠的是上面那句 preferFoldOpen。
+            anchorId 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找。
+            id 还叫 cloud：侧栏、「更多」、右上角头像喊的都是 acorn-set-cloud，本机记忆也认这个键 */}
+        <SetSection
+          id="cloud"
+          title="账号"
+          defaultOpen
+          anchorId="set-cloud"
+          summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}
+        >
+          <div className="set-desc">
+            登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
+          </div>
+          <AccountPanel />
+        </SetSection>
+
+        {/* ---------- 通用（v1.14.1 前叫「行为」，PM 点名改名并挪到第一位；v1.15.1 起让给账号，排第二） ---------- */}
         {/* 原来单独一节的「一句话记事」也并进这儿，在这里叫「快捷用语指南」。
             这一节两端都有：指南和「周末指的是」手机电脑一样要有，所以不整节判空
             （以前手机上前两行被 hasDesktopFeatures 挡掉、专注那行再收起来就只剩空壳）。
-            defaultOpen：一进设置页摊开的就是它——第一节，也是最常动的那几个开关 */}
+            v1.15.1 起不再 defaultOpen：一进设置页摊开的是账号那一节 */}
         <SetSection
           id="general"
           title="通用"
-          defaultOpen
           summary={
             // 网页上没有全局快捷键这回事（那是系统级热键，浏览器给不了），
             // 所以这句摘要认 isDesktopShell 而不是「长得像不像桌面」
@@ -562,21 +589,6 @@ export default function Settings() {
           </div>
         </SetSection>
 
-        {/* ---------- 云账号 ---------- */}
-        {/* anchorId 是侧栏那行同步指示的落点：点一下直接滚到这儿，别让人在设置页里自己找。
-            那边滚之前会先 forceFoldOpen("cloud", "acorn-set-") 把这一节打开 */}
-        <SetSection
-          id="cloud"
-          title="云账号"
-          anchorId="set-cloud"
-          summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}
-        >
-          <div className="set-desc">
-            登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
-          </div>
-          <AccountPanel />
-        </SetSection>
-
         {/* ---------- 数据 ---------- */}
         <SetSection
           id="data"
@@ -627,7 +639,7 @@ export default function Settings() {
         <SetSection
           id="io"
           title="导出与导入"
-          summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请用云账号迁移"}
+          summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请登录账号迁移"}
         >
           {/* canSaveFile：电脑上的橡果走系统对话框，浏览器（含 iPhone 上的网页版）走下载，
               只有安卓 App 两条路都没有（save() 给回 content:// URI，Rust 侧写不了） */}
@@ -647,7 +659,7 @@ export default function Settings() {
             </>
           ) : (
             <div className="set-desc">
-              手机上不提供文件导出。迁移数据请用上面的「云账号」：两端登录同一个账号，
+              手机上不提供文件导出。迁移数据请用上面的「账号」：两端登录同一个账号，
               使用的就是同一份数据。
             </div>
           )}

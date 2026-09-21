@@ -121,6 +121,63 @@ export function duePresets(today: string): DuePreset[] {
   return all.filter((p) => p.key === "today" || p.ymd !== today);
 }
 
+/** 右键菜单「调整日期 ▸」的候选日：安排日期那一套（duePresets）在「今天」后面插一个**绝对的**明天。
+ *
+ *  只有右键这两个子菜单（任务的、子任务的）用它：用户要的是「推到明天收进调整日期里」，
+ *  原来单独那一项「推到明天」删了。任务卡日期按钮、侧栏「安排到哪天？」、随手记、手机那几处
+ *  照旧走 duePresets，不带明天（v1.9 那次「安排日期去掉明天」的决定在那几处不变）。
+ *  这里的明天就是明天这一天——跟旁边几项一样是个具体的日子，不是 Ctrl+→ 那种「原日期加一天」。
+ *  后面的预设跟明天撞上同一天的（周四点开：本周五 = 明天）不再重复出现 */
+export function adjustDatePresets(today: string): { key: DuePreset["key"] | "tomorrow"; label: string; ymd: string }[] {
+  const [first, ...rest] = duePresets(today);
+  const tomorrow = addDays(today, 1);
+  return [first, { key: "tomorrow", label: "明天", ymd: tomorrow }, ...rest.filter((p) => p.ymd !== tomorrow)];
+}
+
+/** 周末 / 下周末 / 下下周末：本周（shift=0）或往后第 shift 周的周末日（周起始按周一）。
+ *  周末日是周六还是周日跟设置走（settings.weekendDay），默认周日。
+ *  今天已经是周日而周末日设成周六 → 本周的周六已经过了，「周末」就算今天（不往下周跳）。
+ *
+ *  **跟记事语法「~周末 / ~下周末」逐字同一套算法**（core/parse.ts 里那个 resolveWeekend），
+ *  tests/postpone-presets.test.ts 拿两边的结果逐天对过。改这里之前先去看那边 */
+export function weekendOf(today: string, weekendDay: "sat" | "sun" | undefined, shift = 0): string {
+  const dow = weekendDay === "sat" ? 6 : 0;
+  const d = addDays(weekStart(today), shift * 7 + (dow === 0 ? 6 : 5));
+  return shift === 0 && cmpYMD(d, today) < 0 ? today : d;
+}
+
+/** 顺延菜单的一项 */
+export interface PostponePreset {
+  /** 稳定标识，UI 拿它做 key */
+  key: "tomorrow" | "weekend" | "nextWeekend" | "monthEnd";
+  label: string;
+  ymd: string;
+}
+
+/** 「顺延 ▾」那个小菜单的预设：明天 / 本周末 / 下周末 / 本月末（后面再跟一个「选日期…」，由界面自己画）。
+ *
+ *  跟 duePresets 分家是有意的：那一套是「安排日期」，第一项是今天；顺延是往后推，今天不在候选里。
+ *  规矩：
+ *  ① 一律**落在今天之后**——顺延不该落回今天，更不该落回过去；
+ *  ② 本周末落在今天或以前（今天就是周末日 / 周末日已经过了）→ 不出「本周末」，只留「下周末」；
+ *  ③ **跟前面某项撞上同一天的不出现**（周六点开、周末日是周日：本周末 = 明天；
+ *     月底倒数第二天：本月末 = 明天）。两个按钮干同一件事，只会让人多犹豫一下 */
+export function postponePresets(today: string, weekendDay?: "sat" | "sun"): PostponePreset[] {
+  const all: PostponePreset[] = [
+    { key: "tomorrow", label: "明天", ymd: addDays(today, 1) },
+    { key: "weekend", label: "本周末", ymd: weekendOf(today, weekendDay, 0) },
+    { key: "nextWeekend", label: "下周末", ymd: weekendOf(today, weekendDay, 1) },
+    { key: "monthEnd", label: "本月末", ymd: monthEnd(today) },
+  ];
+  const out: PostponePreset[] = [];
+  for (const p of all) {
+    if (cmpYMD(p.ymd, today) <= 0) continue;
+    if (out.some((q) => q.ymd === p.ymd)) continue;
+    out.push(p);
+  }
+  return out;
+}
+
 const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
 
 /** '8月17日 · 星期一' */

@@ -74,7 +74,9 @@ export function describeRepeat(rule: RepeatRule): string {
     case "weekly":
       return `每周${rule.days.map((d) => WEEK_CN[d]).join("、")}`;
     case "monthly":
-      return `每月${rule.day}号`;
+      // 31 号在没有 31 号的月份落到月末（见 nextOccurrence），所以它说的就是「每月最后一天」。
+      // 快捷语「~每个月末」「~每月底」存的也是它，数据模型不另加字段——三端老版本照样算对
+      return rule.day >= 31 ? "每月最后一天" : `每月${rule.day}号`;
     case "workday":
       return "每个工作日";
   }
