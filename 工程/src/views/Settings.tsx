@@ -1,4 +1,4 @@
-// 设置：账号 / 通用 / 外观 / 数据 / 导出与导入 / 版本更新 / 关于。分节卡片，一次只摊开一节。
+// 设置：账号 / 反馈 / 通用 / 外观 / 数据 / 导出与导入 / 版本更新 / 关于。分节卡片，一次只摊开一节。
 //
 // v1.15.1（用户原话「三端：设置中，账号卡片默认张开，并且移到最上面」）：账号挪到第一节，
 // 标题从「云账号」改叫「账号」（跟头像点开的那张面板一个叫法），每次进来都摊开它——
@@ -30,6 +30,7 @@ import { canSaveFile, hasDesktopFeatures, isDesktopShell, isMobile, isWeb } from
 import { FOCUS_ENABLED } from "../core/features";
 import ThemeScene from "../components/ThemeScene";
 import AccountPanel from "../components/AccountPanel";
+import FeedbackPanel from "../components/FeedbackPanel";
 import { useGuideEntry } from "../components/GuideSheet";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import UpdatePanel from "../components/UpdatePanel";
@@ -415,6 +416,18 @@ export default function Settings() {
             登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
           <AccountPanel />
+        </SetSection>
+
+        {/* ---------- 反馈（2026-09-21，用户：「三端：反馈入口做出来（放到设置里面）」） ---------- */}
+        {/* 紧跟账号：发反馈要登录，没登录时这一节只有一句「登录后就能发反馈」，
+            往上一格就是登录入口。三端同一节，端、版本、设备自动带上，见 components/FeedbackPanel */}
+        <SetSection
+          id="feedback"
+          title="反馈"
+          summary={session ? "哪里不好用、想要什么，写给我们" : "登录后就能发反馈"}
+        >
+          <div className="set-desc">每一条都会有人看。</div>
+          <FeedbackPanel />
         </SetSection>
 
         {/* ---------- 通用（v1.14.1 前叫「行为」，PM 点名改名并挪到第一位；v1.15.1 起让给账号，排第二） ---------- */}

@@ -192,8 +192,10 @@ describe("接线", () => {
     expect(adopt).toContain("startAutoPull();");
     const out = src.slice(src.indexOf("export async function signOut"), src.indexOf("export type SyncGate"));
     expect(out).toContain("stopAutoPull();");
-    const expired = src.slice(src.indexOf("if (err?.needsLogin)"));
-    expect(expired.slice(0, 300)).toContain("stopAutoPull();");
+    // 令牌过期（同步和发反馈撞上 401）统一走 expireSession
+    const expired = src.slice(src.indexOf("export async function expireSession"), src.indexOf("export type SyncGate"));
+    expect(expired).toContain("stopAutoPull();");
+    expect(src.slice(src.indexOf("if (err?.needsLogin)")).slice(0, 80)).toContain("await expireSession();");
   });
 
   it("默认按 isMobile 判端：电脑浏览器上的网页版也算电脑", () => {

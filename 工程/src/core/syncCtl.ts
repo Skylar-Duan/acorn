@@ -367,6 +367,20 @@ export async function signOut(): Promise<void> {
   });
 }
 
+/** 令牌不认了（服务端回 401：过期，或别处改过密码）：断开登录态，但**本机数据一个字都不动**。
+ *  同步和设置页发反馈撞上 401 都走这一条，两处的样子得一致——
+ *  不然反馈那边红字说「登录已经过期」，账号卡却还显示登录着 */
+export async function expireSession(): Promise<void> {
+  await cloud.saveSession(null);
+  stopWatching();
+  stopAutoPull();
+  set({
+    session: null,
+    phase: "error",
+    message: "登录状态已过期，重新登录后继续同步",
+  });
+}
+
 /** 「本地已经全部在云端」的唯一可靠证据：当场同步一轮并且成功。
  *
  *  **绝不许拿 syncStore.dirty 当证据**——它只活在进程内，重启就归零，
@@ -592,15 +606,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
         return;
       }
       if (err?.needsLogin) {
-        // 令牌过期或密码改过：断开登录态，但**本机数据一个字都不动**
-        await cloud.saveSession(null);
-        stopWatching();
-        stopAutoPull();
-        set({
-          session: null,
-          phase: "error",
-          message: "登录状态已过期，重新登录后继续同步",
-        });
+        await expireSession();
         return;
       }
       set({

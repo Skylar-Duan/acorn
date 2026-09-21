@@ -51,6 +51,15 @@ const GO_LABEL: Record<AuthStep, [string, string]> = {
   forgot: ["重设密码并登录", "处理中…"],
 };
 
+/** 橡果和 cdpandas 是同一个账号（2026-09-21 服务端并进 cdpandas）。每一屏用一句话说清这件事，
+ *  挂在提示那一格（没有红字、没有别的灰字时才显示），不另占位置。验证码那一屏已经有「邮件来自 cdpandas」，不再重复 */
+export const ACCOUNT_LINE: Record<AuthStep, string | null> = {
+  login: "橡果和 cdpandas 用同一个账号，有就直接登录。",
+  register: "注册好的账号，橡果和 cdpandas 两边通用。",
+  forgot: "改的是 cdpandas 账号的密码，两边一起生效。",
+  code: null,
+};
+
 const mailIcon = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -243,8 +252,18 @@ function LoginPage() {
       </button>
       {flow.err && <p className="login-err">{flow.err}</p>}
       {flow.note && !flow.err && <p className="login-note">{flow.note}</p>}
+      {!flow.note && !flow.err && ACCOUNT_LINE[flow.step] && (
+        <p className="login-note">{ACCOUNT_LINE[flow.step]}</p>
+      )}
       <div className="login-links">
-        {onEntry ? (
+        {flow.offer === "registered" ? (
+          // 注册时这个邮箱已经有账号了：红字底下直接给两条路，不让人自己找
+          // （邮箱、密码都留着，点「去登录」就能直接按登录）
+          <>
+            <button onClick={() => flow.go("login")}>去登录</button>
+            <button className="muted" onClick={() => flow.go("forgot")}>忘记密码</button>
+          </>
+        ) : onEntry ? (
           <button onClick={() => flow.go("register")}>还没有账号？注册</button>
         ) : (
           <button onClick={() => flow.go("login")}>返回</button>

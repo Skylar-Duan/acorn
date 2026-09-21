@@ -95,6 +95,41 @@
   `quickadd-dialog`（Ctrl+2~5 新顺序）、`mobile-account`（名字头像经 mergeProfiles、avatarInitial 只一份）、`settings-layout` / `login-page`（账号卡置顶、说明两端通用）。
   新增：`postpone-presets`、`repeat-picker`、`sidebar-resize`、`subtask-multiline`、`desktop-nav-order`、`desktop-account`、`profile-sync`、`auto-pull`、`update-dialog-align`。
 
+**2026-09-21 第二批：账号并进 cdpandas + 反馈（服务端已上线；App 三端未打包；介绍页未发布）**
+
+- **服务端 · 账号转接 cdpandas**（`server/app/main.py` + `app/account.py`）：`/api/auth/*` 路径与请求体一个字没改（老客户端照用），
+  里面转给 cdpandas 账号后端，橡果只做三件事：翻译回话成 `{error, message}` + 状态码、按邮箱找或建橡果自己的 users 行（vault 仍挂橡果 user_id，不迁移）、
+  签**橡果自己的**令牌（60 天、token_epoch 照旧；已发的令牌继续有效，cdpandas 令牌用完即弃）。原始客户端 IP 经 X-Real-IP 转给 cdpandas 做失败计数和 IP 黑名单。
+  新错误码：注册 `409 already_registered`（以前回 202 装作发了信，现在 cdpandas 本来就回 409）、验证 `409 already_verified`、登录 `403 unverified`、
+  cdpandas 连不上 / 超时 / 5xx → `503 account_unavailable`（不是密码错）。过渡兜底：cdpandas 说密码不对但橡果库里旧密码对得上仍放行、响应带 `legacy:true`，
+  `ACORN_LEGACY_LOGIN=0` 关掉。`/api/health` 带 `account:"cdpandas"`。
+- **服务端 · 管理员口径**：`is_admin(user, fresh=False)` = 邮箱在 `ACORN_ADMIN_EMAILS`，或最近一次经 cdpandas 登录时它说是管理员（`cdp_admin`，登录时刷新 `cdp_admin_at`）。
+  测试版通道 `/api/{desktop,android}/beta` 用不看新鲜度的那一档，所以 cdpandas 管理员登录过一次就能收到测试版；
+  反馈后台用 `fresh=True`（`ACORN_CDP_ADMIN_FRESH_HOURS`，默认 24 小时），免得 cdpandas 撤了管理员后拿着 60 天的旧令牌还能看所有人的邮箱和原文。
+  `/api/me` 加 `isAdmin`、`feedbackAdmin`（= fresh 那一档）、`displayName`、`account:"cdpandas"`。
+  `DELETE /api/account` 只删橡果云端数据、橡果那一行和他的反馈，绝不动 cdpandas 账号，返回 `cdpandasAccountKept:true` + `message`。
+- **服务端 · 反馈**：`POST /api/feedback {text, platform, version, device}` → 201；text 去控制字符后 1–2000 字，platform 白名单 desktop/android/web，
+  version ≤32、device ≤64；每人每小时 `ACORN_FEEDBACK_PER_HOUR`（默认 20）条，超了 429。错误：400 `empty_feedback` / `feedback_too_long` / `bad_platform`，429 `too_many`，401。
+  管理员接口 `GET /api/feedback?status=open|all&limit=&before=`（时间倒序、按 id 翻页，带 `open` 未处理总数）与 `PATCH /api/feedback/{id} {done}`（记 `done_at` / `done_by`）。
+  认管理员两条路：橡果 Bearer 令牌且已验证、`is_admin(fresh=True)`；或浏览器带来的 cdpandas 登录 cookie（`sbg_session`）原样转给 cdpandas `/api/auth/me`，
+  按 cookie 哈希内存缓 60 秒、不落盘不打印，cdpandas 连不上后 10 秒内这条路直接当非管理员（防乱编 cookie 占满线程池）。不是管理员一律 404，跟没有这个接口一样。
+- **App · 登录改口径**（三端同一份）：`useAuthFlow.ts` 新增 `UNAVAILABLE_TEXT` / `isApiErr` / `offer` 状态；`errText` 在 503 且 slug 是 `"error"`（网关回 HTML 页时 `cloud.call` 给的）
+  或说明里没有中文时换成「账号服务暂时连不上，过一会儿再试」，服务端自带中文的 503（如改完密码那句）原样显示。注册 409 already_registered → 红字 + 「去登录」「忘记密码」（邮箱密码保留）；
+  验证 409 already_verified → 回登录那步并提示；登录 403 unverified → 跳到填验证码、借现有重发自动再发一封；注册成功提示加「邮件来自 cdpandas」。
+  `LoginPage.tsx` 新增 `ACCOUNT_LINE`，每步一句写在原灰字位置，布局不动。`cloud.ts`：`RemoteInfo` 加可选 `isAdmin` / `feedbackAdmin` / `displayName` / `account`（老服务器不回也不报错），
+  `deleteAccount` 带回服务器回复，`needsLogin` 仍只认 401（503 不算要重新登录）。`AccountPanel.tsx` 注销确认框写明只删橡果云端数据、反馈一并删、cdpandas 账号还在；有 `cdpandasAccountKept` 时结果提示换新说法。
+- **App · 设置里的反馈**（三端）：`Settings.tsx` 在「账号」后加「反馈」一节（现有可折叠卡片），新 `components/FeedbackPanel.tsx` + `core/feedback.ts`
+  （`FEEDBACK_MAX` 2000 与服务端对齐、剩不到 200 字才显示字数、`feedbackPayload` 自动带 `APP_PLATFORM` / `APP_VERSION`（测试版是完整 beta 号）/ `deviceName`、`feedbackErr` 出错说法、
+  `openExternal`：Tauri 走 `plugin-opener` 用系统浏览器、网页版 `window.open` 新标签页）。`cloud.submitFeedback`。
+  401 时调新抽出来的 `syncCtl.expireSession()`（清会话、停监听、停自动拉取、状态改「登录状态已过期…」，本机数据不动；`syncNow` 也改用它），这一节变成没登录的样子，框里的字留着；
+  503 / 429 不断开。管理员入口只认 `feedbackAdmin`（与服务端放行条件一致）；`feedbackAdminStale`（isAdmin 但不 fresh）只显示「要看大家的反馈，先退出再登录一次」。样式追加在 `settings.css`。
+- **介绍页 · 管理员看反馈**（`网站/`，未发布）：`网站/assets/feedback-admin.js`，挂在 `index.html` 的 `<span data-feedback-mount hidden>`（「打开网页版」右边）。
+  加载后先带同源 `acorn-auth` 令牌问 `/api/feedback`，不认再不带 Authorization 让浏览器带 cdpandas cookie；200 才换成「反馈」按钮 + 未处理数角标，普通访客什么也不出（控制台有浏览器自己打的 404，不是脚本错）。
+  面板是 `<dialog>`：未处理 / 全部两页、每页 50 条「再看更早的」、每条原文 / 邮箱 / 端与版本 / 设备 / 时间、「标记已处理」「改回未处理」。
+  字段一律 textContent 渲染不拼 innerHTML，被套 iframe 时整段不启用。线上 `/intro/` 只映射 index.html 和 `/intro/assets/*`，所以脚本必须在 `网站/assets/`。本地截图在 `../界面截图/介绍页反馈/`。
+- 测试：新增 `tests/feedback-entry.test.ts`（21）、`tests/login-cdpandas.test.ts`（17，含真 `cloud.call` + nginx 503 HTML 页）；`settings-layout` 加「反馈」一节顺序，`auto-pull` 改查 `expireSession`。
+  全量 77 文件 2378 测全绿，`tsc --noEmit` 无错。
+
 ## v1.15.0 · 2026-09-15
 
 > 账本「橡木开发」里 9/20 及以前未打勾的 9 条，一次做完。第二位是因为**网页版是新的一端**（新入口新机制），

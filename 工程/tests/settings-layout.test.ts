@@ -57,10 +57,11 @@ describe("① 「行为」改叫「通用」，紧跟在账号后面", () => {
     expect(code).not.toContain('id="behavior"');
   });
 
-  it("第一节是「账号」，「通用」排第二", () => {
-    const [first, second] = sections();
+  it("第一节是「账号」，紧跟着「反馈」（2026-09-21 加），「通用」排第三", () => {
+    const [first, second, third] = sections();
     expect(first).toEqual({ id: "cloud", title: "账号" });
-    expect(second).toEqual({ id: "general", title: "通用" });
+    expect(second).toEqual({ id: "feedback", title: "反馈" });
+    expect(third).toEqual({ id: "general", title: "通用" });
   });
 
   it("只有账号那一节带 defaultOpen（新用户第一次进来摊开的就是它）", () => {
@@ -119,12 +120,12 @@ describe("② 「一句话记事」并进「通用」，在里面叫「快捷用
 });
 
 describe("③ 顺序按主流 App 的习惯来", () => {
-  it("账号 → 通用 → 外观 → 数据 → 导出与导入 → 版本更新", () => {
+  it("账号 → 反馈 → 通用 → 外观 → 数据 → 导出与导入 → 版本更新", () => {
     expect(sections().map((s) => s.id)).toEqual([
-      "cloud", "general", "look", "data", "io", "update",
+      "cloud", "feedback", "general", "look", "data", "io", "update",
     ]);
     expect(sections().map((s) => s.title)).toEqual([
-      "账号", "通用", "外观", "数据", "导出与导入", "版本更新",
+      "账号", "反馈", "通用", "外观", "数据", "导出与导入", "版本更新",
     ]);
   });
 

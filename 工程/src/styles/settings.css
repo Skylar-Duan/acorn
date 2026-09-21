@@ -246,3 +246,12 @@
   /* 「浅色 / 深色 / 跟随系统」这排分段键只有 24px 高，手指按不准 */
   .set-seg button { padding-top: 7px; padding-bottom: 7px; }
 }
+
+
+/* ---------- 反馈 ---------- */
+/* 框子自己长高（components/autogrow.growArea），不给拖角；上限高一点再滚，别把整页顶没了 */
+.fb-input { resize: none; min-height: 76px; max-height: 320px; line-height: 1.7; font-size: var(--fs-md); }
+.fb-count { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.fb-count.over { color: #C0564A; }
+.fb-admin { align-self: flex-start; color: var(--accent); font-size: var(--fs-sm); }
+.fb-admin:hover { text-decoration: underline; }

@@ -218,18 +218,26 @@ export default function AccountPanel() {
             disabled={busy}
             onClick={() =>
               void run(async () => {
+                // 账号并进 cdpandas 之后（2026-09-21）注销只删橡果这边：cdpandas 账号还在，
+                // 这一点和「反馈也一并删掉」都得在按下确定之前说清
                 const ok = await ask(
-                  "注销账号会删除云端数据及其备份，无法恢复。\n\n" +
+                  "注销只删除橡果云端的数据及其备份，无法恢复；提交过的反馈也会一并删掉。\n\n" +
+                    "cdpandas 账号还在，之后仍能用它登录（橡果云端会是空的）。\n\n" +
                     "这台设备上的数据不会改动。注销之后本机这一份就是唯一的副本，" +
                     "如需另存一份，先到「数据」一节导出。\n\n确定注销吗？",
                   "注销账号",
                 );
                 if (!ok) return;
-                await cloud.deleteAccount(session.token);
+                const out = await cloud.deleteAccount(session.token);
                 // 注销这条路**钉死不清本地**：先删云端再断登录态，
                 // 顺手清了本地的话用户点一下就两边都没了、找都没处找
                 await signOut();
-                showToast("账号已注销。云端数据已删除，本机这一份是唯一副本", false);
+                showToast(
+                  out.cdpandasAccountKept
+                    ? "已注销。橡果云端的数据已删除，cdpandas 账号还在；本机这一份是唯一副本"
+                    : "账号已注销。云端数据已删除，本机这一份是唯一副本",
+                  false,
+                );
               })
             }
           >

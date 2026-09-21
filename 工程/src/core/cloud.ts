@@ -85,7 +85,9 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
-  /** 令牌不认了：要用户重新登录 */
+  /** 令牌不认了：要用户重新登录。**只认 401**——
+   *  503 account_unavailable 是 cdpandas 账号服务连不上（2026-09-21 账号合并后才有），
+   *  不是令牌的问题，当成要重新登录就会把好好的登录态白白断掉 */
   get needsLogin(): boolean {
     return this.status === 401;
   }
@@ -166,8 +168,16 @@ export async function resetPassword(email: string, code: string, password: strin
   );
 }
 
-export async function deleteAccount(token: string): Promise<void> {
-  await call("/api/account", { method: "DELETE", token });
+/** 注销的回话。账号并进 cdpandas 之后（2026-09-21）服务端会说清「只删了橡果这边」：
+ *  cdpandasAccountKept = true 表示 cdpandas 账号还在。老服务器回的是空的，两项都没有 */
+export interface DeleteOut {
+  deleted?: boolean;
+  cdpandasAccountKept?: boolean;
+  message?: string;
+}
+
+export async function deleteAccount(token: string): Promise<DeleteOut> {
+  return (await call<DeleteOut | null>("/api/account", { method: "DELETE", token })) ?? {};
 }
 
 export interface RemoteInfo {
@@ -176,10 +186,34 @@ export interface RemoteInfo {
   updatedAt: string | null;
   device: string;
   hasData: boolean;
+  /** 下面几项是账号并进 cdpandas 之后才有的（2026-09-21）。老服务器不给，一律当没有 */
+  /** 管理员（橡果自己名单里的，或 cdpandas 说是管理员的） */
+  isAdmin?: boolean;
+  /** 能不能看大家的反馈（比 isAdmin 严：cdpandas 给的管理员身份要是近期登录时确认过的） */
+  feedbackAdmin?: boolean;
+  /** cdpandas 账号上的名字，没设过是 null */
+  displayName?: string | null;
+  /** 账号在哪边管：「cdpandas」= 改密码走忘记密码，注销只删橡果这边 */
+  account?: string;
 }
 
 export async function whoAmI(token: string): Promise<RemoteInfo> {
   return call<RemoteInfo>("/api/me", { token });
+}
+
+// ---------- 反馈 ----------
+
+/** 反馈发出去时带的几样：写了什么、从哪一端、哪个版本、哪台设备。
+ *  端只认 desktop / android / web 三个字（服务端白名单） */
+export interface FeedbackIn {
+  text: string;
+  platform: "desktop" | "android" | "web";
+  version: string;
+  device: string;
+}
+
+export async function submitFeedback(token: string, body: FeedbackIn): Promise<{ id?: number; message?: string }> {
+  return (await call<{ id?: number; message?: string } | null>("/api/feedback", { method: "POST", token, body })) ?? {};
 }
 
 // ---------- 同步 ----------

@@ -49,8 +49,23 @@ export function looksLikeEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
+/** 账号服务（cdpandas）连不上时那句话。**不是密码错、也不是要重新登录**——
+ *  2026-09-21 账号并进 cdpandas 之后才有这种情况（服务端回 503 account_unavailable） */
+export const UNAVAILABLE_TEXT = "账号服务暂时连不上，过一会儿再试";
+
+/** 是不是服务端回的某一种错（看状态码 + slug，两样都对上才算） */
+export function isApiErr(e: unknown, status: number, slug: string): boolean {
+  return e instanceof cloud.ApiError && e.status === status && e.slug === slug;
+}
+
 export function errText(e: unknown): string {
-  if (e instanceof cloud.ApiError) return e.message;
+  if (e instanceof cloud.ApiError) {
+    // 503 一律当「账号服务一时连不上」。服务端自己回的 account_unavailable 带着中文说法
+    // （改密码那条还会说「密码已经改好了」），就用它；前面挡着的网关只回个 503 页面时，
+    // cloud.call 解析不出 JSON，slug 是 "error"、说法是「服务器出错（503）」——这种用这边的默认说法
+    if (e.status === 503 && (e.slug === "error" || !/[一-鿿]/.test(e.message))) return UNAVAILABLE_TEXT;
+    return e.message;
+  }
   // 这一块里抛出来的 Error 都是写给人看的中文，原样显示比「出了点问题」有用
   if (e instanceof Error && e.message) return e.message;
   return "操作失败，请稍后重试";
@@ -115,6 +130,9 @@ export interface AuthFlow extends AuthFields {
   err: string | null;
   /** 灰字（「验证码发到 xxx 了」这类） */
   note: string | null;
+  /** 红字底下要不要顺手摆两颗直接的动作。
+   *  registered = 注册时邮箱已经有账号了（多半是 cdpandas 上注册过）：摆「去登录」「忘记密码」 */
+  offer: "registered" | null;
   /** 还有几秒才能再发一次验证码，0 = 现在就能发 */
   cooldown: number;
   /** canSubmit 的结果 */
@@ -136,6 +154,7 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [offer, setOffer] = useState<"registered" | null>(null);
   const [cooldown, setCooldown] = useState(0);
 
   // 两个回调在界面那边基本都写成内联箭头，每次渲染都是新的。存进 ref：
@@ -160,12 +179,14 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
     setStep(next);
     setErr(null);
     setNote(null);
+    setOffer(null);
     setCodeRaw(""); // 上一屏的验证码不许带到下一屏：两条路的验证码用途不同（verify / reset）
   }
 
   async function run(fn: () => Promise<void>): Promise<void> {
     setBusy(true);
     setErr(null);
+    setOffer(null);
     try {
       await fn();
     } catch (e) {
@@ -200,8 +221,19 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
       // 两遍不一样就在本地拦下：这一条服务端不管（它只看到一个密码），
       // 打错了却注册成功的话，人下次用记忆里那个密码登录会一直失败
       if (password !== password2) throw new Error("两次输入的密码不一样");
-      await cloud.register(email.trim(), password);
-      setNote(`验证码发到 ${email.trim()} 了，去邮箱找一下（可能在垃圾箱）`);
+      try {
+        await cloud.register(email.trim(), password);
+      } catch (e) {
+        // 这个邮箱已经有账号了（橡果和 cdpandas 用同一个账号，多半是在 cdpandas 注册过）。
+        // 光一行红字等于让人自己找路：直接把「去登录」「忘记密码」两颗摆出来
+        if (isApiErr(e, 409, "already_registered")) {
+          setErr("这个邮箱已经有账号了，直接登录就行");
+          setOffer("registered");
+          return;
+        }
+        throw e;
+      }
+      setNote(`验证码发到 ${email.trim()} 了，邮件来自 cdpandas，去邮箱找一下（可能在垃圾箱）`);
       setCodeRaw("");
       setStep("code");
       setCooldown(RESEND_SECONDS);
@@ -209,13 +241,48 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
 
   const doVerify = () =>
     run(async () => {
-      const s = await cloud.verify(email.trim(), code.trim());
+      let s: cloud.Session;
+      try {
+        s = await cloud.verify(email.trim(), code.trim());
+      } catch (e) {
+        // 早就验证过了（比如在 cdpandas 那边点过）：不必再填码，回登录那一屏，邮箱密码都还在
+        if (isApiErr(e, 409, "already_verified")) {
+          go("login");
+          setNote("邮箱已经验证过，直接登录吧");
+          return;
+        }
+        throw e;
+      }
       await settleSignIn(s, "账号开好了，正在把这台机器上的事传上去");
     });
 
+  /** 登录时服务端说「邮箱还没验证」：带他去填验证码那一屏，顺手替他要一封新的
+   *  （上次那封多半早过期了）。重发失败（比如刚发过、要等几十秒）就把原因写成红字，人照样停在这一屏 */
+  async function toVerifyStep(): Promise<void> {
+    const to = email.trim();
+    setCodeRaw("");
+    setStep("code");
+    setNote(`这个邮箱还没验证。验证码发到 ${to} 了，邮件来自 cdpandas`);
+    try {
+      await cloud.resendCode(to);
+      setCooldown(RESEND_SECONDS);
+    } catch (e) {
+      setErr(errText(e));
+    }
+  }
+
   const doLogin = () =>
     run(async () => {
-      const s = await cloud.login(email.trim(), password);
+      let s: cloud.Session;
+      try {
+        s = await cloud.login(email.trim(), password);
+      } catch (e) {
+        if (isApiErr(e, 403, "unverified")) {
+          await toVerifyStep();
+          return;
+        }
+        throw e;
+      }
       await settleSignIn(s, "登录成功，正在合并两端数据");
     });
 
@@ -259,7 +326,7 @@ export function useAuthFlow({ ask, onSignedIn }: AuthFlowOptions): AuthFlow {
     password, setPassword,
     password2, setPassword2,
     code, setCode,
-    busy, err, note, cooldown,
+    busy, err, note, offer, cooldown,
     ready: canSubmit(step, { email, password, password2, code }),
     submit, resend, sendResetCode,
   };
