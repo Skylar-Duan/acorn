@@ -203,8 +203,10 @@ describe.skipIf(!existsSync(PENDING))("验收单（最新改动.json）", () => 
   it("网页没有「更新弹窗」那一项", () => {
     expect(items("web").map((x) => x.id)).not.toContain("w-2609d-dialog");
   });
-  it("桌面说明写明 9-21 这一批还没装", () => {
-    expect(pend.desktop.note).toContain("还没打测试版、没装到这台电脑");
+  it("桌面说明写明对应哪个测试版、已经装了", () => {
+    // 不钉死整句——每打一次新测试版这句话就会改一次，只钉「写明版本号 + 已装」这层意思
+    expect(pend.desktop.note).toMatch(/beta\.\d+/);
+    expect(pend.desktop.note).toContain("已装到这台电脑");
   });
   it("网页那几项没有浏览器做不到的操作", () => {
     for (const w of ["托盘", "拖窗口", "快捷记浮窗", "关掉橡果"]) {
