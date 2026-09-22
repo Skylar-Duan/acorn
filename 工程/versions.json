@@ -6,8 +6,8 @@
     "web": "1.15.0"
   },
   "beta": {
-    "desktop": 5,
-    "android": 1,
+    "desktop": 6,
+    "android": 2,
     "web": 0
   },
   "betaAfter": {
