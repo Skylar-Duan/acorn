@@ -2,7 +2,9 @@
 //   · 今天页逾期组标题栏的「全部顺延 ▾」
 //   · 多选浮条上的「顺延 ▾」
 //   · 每一行已经过期的事，行尾常驻的「顺延 ▾」
-// 菜单内容只有一套：明天 / 本周末 / 下周末 / 本月末（core/dates.postponePresets），再加一个「选日期…」。
+// 菜单内容跟全应用选日子同一套（09-21 统一口径，core/options.dateOptions）：
+// 今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…，只是**不晚于这件事现有日期的那几项藏掉**
+// （顺延不往前拉、不原地不动；多选时按其中最早的那个日子算，更早的那几件由 postponeRowsTo 自己跳过）。
 // 落库只走 store.postponeRowsTo：一次选择 = 一次写入 = 一张撤销快照，顺延次数最多数一次。
 //
 // 弹层**不画在行里**：行外面那层 .row-slot 要做收起动画，overflow 是裁掉的（app.css 的 .row-slot），
@@ -12,9 +14,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DateRow } from "../core/store";
-import { postponeRowsTo, useApp } from "../core/store";
-import { fromYMD, postponePresets, todayYMD } from "../core/dates";
-import DateField from "./DateField";
+import { postponeRowsTo, rowDue, useApp } from "../core/store";
+import { cmpYMD, fromYMD, todayYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
+import DatePickRow from "./DatePickRow";
 import type { DateFieldHandle } from "./DateField";
 import "../styles/contextmenu.css";
 import "../styles/postpone.css";
@@ -79,15 +82,14 @@ function PostponePopover({
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [picking, setPicking] = useState(false);
-  /** 日期框里停手落定的那一天。**只记在这儿，不落库**：确定那一下才落一次 */
-  const [picked, setPicked] = useState("");
-  const pickedRef = useRef("");
   const fieldRef = useRef<DateFieldHandle | null>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
+  // 「这件事现有的日期」：打开那一刻取一次（多选取最早的那个）。没日期的行不设下限
+  const [floor] = useState(() => earliestDue(getRows()));
   const today = todayYMD();
-  const presets = postponePresets(today, weekendDay);
+  const presets = dateOptions(today, { weekendDay, after: floor });
 
   // 定位：默认贴在按钮下方、右缘对齐按钮右缘（按钮多半在行尾）；
   // 下面放不下往上弹，左边放不下贴左缘。「选日期…」摊开后尺寸变了要重算
@@ -144,15 +146,6 @@ function PostponePopover({
     onClose();
   }
 
-  /** 「选日期…」的确定：先把日期框里还欠着的那一下收进来，再落**一次**库 */
-  function confirmPicked() {
-    fieldRef.current?.flush();
-    const v = pickedRef.current;
-    if (!v) return;
-    fieldRef.current?.cancel();
-    apply(v);
-  }
-
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
   return createPortal(
@@ -174,37 +167,20 @@ function PostponePopover({
           <span className="pp-when">{shortDay(p.ymd)}</span>
         </button>
       ))}
-      <div className="ctx-sep" />
-      {picking ? (
-        <div
-          className="pp-pick"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              confirmPicked();
-            }
-          }}
-        >
-          <DateField
-            ref={fieldRef}
-            value={picked}
-            onCommit={(v) => {
-              pickedRef.current = v;
-              setPicked(v);
-            }}
-          />
-          {/* 不设 disabled：日期框停手 350ms 才落定，敲完马上点「确定」时按钮还没亮，
-              一个禁用的按钮连 mousedown 都不发，那一下就白点了。没选日子时 confirmPicked 自己什么都不做 */}
-          <button className="btn" onClick={confirmPicked}>
-            确定
-          </button>
-        </div>
-      ) : (
-        <button className="ctx-item" role="menuitem" onClick={() => setPicking(true)}>
-          选日期…
-        </button>
-      )}
+      {presets.length > 0 && <div className="ctx-sep" />}
+      {/* 「选日期…」：点开摊成日期框 + 确定，确定那一下才落一次库（DatePickRow） */}
+      <DatePickRow fieldRef={fieldRef} onPick={apply} onOpenChange={setPicking} />
     </div>,
     document.body,
   );
+}
+
+/** 这几行里最早的那个日期（子任务行按它实际生效的日期算）；都没日期就是 null */
+function earliestDue(rows: DateRow[]): string | null {
+  let min: string | null = null;
+  for (const r of rows) {
+    const d = rowDue(r);
+    if (d && (!min || cmpYMD(d, min) < 0)) min = d;
+  }
+  return min;
 }

@@ -18,13 +18,14 @@
 //     不然「点完日历格 350ms 内按记下」这条事会不带日期地建出来，而那个日期一会儿静默跟到下一条上；
 //   · 记完**只清那句话、不清点选**——跟桌面「选中的会保持生效，方便连续记录」同一个口径。
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Priority, RepeatRule } from "../core/model";
+import type { Priority } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { parseQuickAdd } from "../core/parse";
 // 显示文字跟任务卡同一个说法（「每周一」「每月最后一天」），不再各写一份
 import { describeRepeat } from "../core/recur";
 import type { ParseChip } from "../core/parse";
-import { dayOfWeek, duePresets, formatShort, todayYMD } from "../core/dates";
+import { formatShort, todayYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
 import { addList, addTask, allTags, allWho, useApp } from "../core/store";
 import DateField from "../components/DateField";
 import type { DateFieldHandle } from "../components/DateField";
@@ -32,6 +33,7 @@ import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import { useGuideEntry } from "../components/GuideSheet";
 import { closeSheet, useSheet } from "./sheetStore";
 import Sheet from "./Sheet";
+import RepeatOptions from "./RepeatOptions";
 import {
   EMPTY_PICKS, acceptCandidate, candidatesAt, dropKind, merge, visibleChips, withOverride,
 } from "./quickAddMerge";
@@ -73,8 +75,9 @@ function QuickAddBody({ listId }: { listId: string | null }) {
   const tagNames = useMemo(() => allTags({ tasks }).map((t) => t.tag), [tasks]);
   const listNames = useMemo(() => lists.map((l) => l.name), [lists]);
   const today = todayYMD();
-  // 快捷预设走 core/dates.duePresets 那一份，全仓一处算一处用
-  const presets = duePresets(today);
+  // 快捷项走 core/options.dateOptions 那一份（09-21 全应用统一：今天 / 明天 / 本周末 / 下周末 / 本月末），
+  // 全仓一处算一处用；下面常驻的日期框就是这一套里的「选日期…」
+  const presets = dateOptions(today, { weekendDay: settings.weekendDay });
   const guide = useGuideEntry();
 
   /** 那句话本身（原文）。标题是解析之后剩下的那部分 */
@@ -333,7 +336,8 @@ function QuickAddBody({ listId }: { listId: string | null }) {
       {/* 点哪个就在这张纸里长出对应的一段：不跳页，也不再往上叠第二层抽屉 */}
       {seg === "due" && (
         <div className="msh-seg">
-          <div className="msh-row">
+          {/* 最多五颗：一行排不下，三列两行（跟任务详情同一副排法） */}
+          <div className="msh-dates">
             {presets.map((p) => (
               <button key={p.key} className={`msh-opt${eff.due === p.ymd ? " on" : ""}`} onClick={() => pickDue(p.ymd)}>
                 {p.label}
@@ -446,36 +450,16 @@ function QuickAddBody({ listId }: { listId: string | null }) {
 
       {seg === "repeat" && (
         <div className="msh-seg">
-          <div className="msh-chips">
-            {repeatChoices(today).map((r) => (
-              <button
-                key={r.label}
-                className={`msh-opt${sameRule(eff.repeat, r.rule) ? " on" : ""}`}
-                onClick={() => changePick("repeat", { repeat: r.rule })}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+          {/* 跟全应用同一套（core/options.repeatMenu）。「每周X / 每月X号」按这条事现在生效的日期取形，没选日期才按今天 */}
+          <RepeatOptions
+            anchor={eff.due ?? today}
+            value={eff.repeat}
+            onPick={(r) => changePick("repeat", { repeat: r })}
+          />
         </div>
       )}
     </div>
   );
-}
-
-/** 「每周 / 每月」按当天算，所以每次现算——跨过零点也不会用昨天的星期几 */
-function repeatChoices(today: string): { label: string; rule: RepeatRule | null }[] {
-  return [
-    { label: "不重复", rule: null },
-    { label: "每天", rule: { kind: "daily", every: 1 } },
-    { label: "每个工作日", rule: { kind: "workday" } },
-    { label: "每周（按今天是周几）", rule: { kind: "weekly", days: [dayOfWeek(today)] } },
-    { label: "每月（按今天几号）", rule: { kind: "monthly", day: Number(today.slice(8)) } },
-  ];
-}
-
-function sameRule(a: RepeatRule | null, b: RepeatRule | null): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 function IconDate({ on }: { on: boolean }) {

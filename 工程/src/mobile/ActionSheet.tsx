@@ -1,28 +1,31 @@
 // 长按一行弹出来的动作单（画板 ②，v1.11.0）——手机上取代桌面右键菜单的那张纸。
 //
-// 每一个动作都调**现有的 store 函数**，跟 ContextMenu 一一对应（完成 / 放弃 / 推到明天 /
+// 每一个动作都调**现有的 store 函数**，跟 ContextMenu 一一对应（完成 / 放弃 / 顺延 /
 // 安排日期 / 重要性 / 移到清单 / 需求方 / 复制标题 / 删除）。手机端绝不新造一套语义：
 // 同一个词在两端干不一样的事，是这类跨端应用最容易崩掉信任的地方。
+// 「顺延」（09-21，原「推到明天」）点了换成那张「顺延到哪天」的小纸（PostponeSheet），跟左滑同一张。
 //
 // 长按到的是一条**子任务**行时（subId 有值），作用对象就是那条子任务本身，绝不打到母任务上——
 // 跟桌面 ContextMenu 的 SubRowMenu 同一个口径。子任务没有「归哪张清单 / 谁的需求」这回事
 // （那是任务级的属性），所以那两格不出现。
 //
-// 「安排日期」的候选日一律走 core/dates.duePresets，不在这儿再写一份「明天 / 下周一」——
+// 「安排日期」的候选日一律走 core/options.dateOptions（09-21 全应用统一的那一套：
+// 今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…），不在这儿再写一份「明天 / 下周一」——
 // README 上「安排日期只有一套规矩」这句承诺，得是全仓每个入口都算数。
 
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Priority } from "../core/model";
-import { duePresets, todayYMD } from "../core/dates";
+import { todayYMD } from "../core/dates";
+import { PICK_DATE_LABEL, dateOptions } from "../core/options";
 import {
-  addTasksWho, allWho, completeTasks, deleteTasks, dropSubtask, dropTasks, postponeRows,
-  postponeTasks, removeSubtask, removeTaskWho, setTasksDue, setTasksList, showToast,
+  addTasksWho, allWho, completeTasks, deleteTasks, dropSubtask, dropTasks,
+  removeSubtask, removeTaskWho, setTasksDue, setTasksList, showToast,
   uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
 import DateField from "../components/DateField";
 import Sheet from "./Sheet";
-import { closeSheet, topSheet, useSheet } from "./sheetStore";
+import { closeSheet, openSheet, topSheet, useSheet } from "./sheetStore";
 import { IcoCalendar, IcoCopy, IcoDone, IcoDrop, IcoFlag, IcoPlan, IcoPostpone, IcoTrash, IcoWho } from "./icons";
 import "../styles/mobile-shell.css";
 
@@ -104,7 +107,7 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
 
       {pane === "date" && (
         <div className="msheet-pane">
-          {duePresets(today).map((p) => (
+          {dateOptions(today, { weekendDay: data.settings.weekendDay }).map((p) => (
             <button
               key={p.key}
               className={`msheet-chip${curDue === p.ymd ? " on" : ""}`}
@@ -113,10 +116,10 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
               {p.label}
             </button>
           ))}
-          {/* 「选个日子…」用的是全仓唯一那个日期框（DateField）：草稿 / 合理性闸 / 去抖
+          {/* 「选日期…」用的是全仓唯一那个日期框（DateField）：草稿 / 合理性闸 / 去抖
               三件套都在它里面，手机上键盘敲年份同样会连发好几个合法日期 */}
           <label className="msheet-chip">
-            选个日子
+            {PICK_DATE_LABEL}
             <DateField className="msheet-date" value={curDue} onCommit={applyDue} />
           </label>
           <button
@@ -206,12 +209,18 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
         >
           <IcoDrop size={18} /> {isDropped ? "取消放弃" : "放弃"}
         </button>
-        <button
-          className="msheet-act"
-          onClick={run(() => (sub ? postponeRows([{ task, sub }]) : postponeTasks([task.id])))}
-        >
-          <IcoPostpone size={18} /> 推到明天
-        </button>
+        {/* 顺延：这张单子换成「顺延到哪天」那张小纸（不叠在上面——选完就该全收，不该退回这张单子） */}
+        {!isDone && !isDropped && (
+          <button
+            className="msheet-act"
+            onClick={() => {
+              closeSheet();
+              openSheet({ kind: "postpone", rows: [{ taskId: task.id, subId: sub?.id }] });
+            }}
+          >
+            <IcoPostpone size={18} /> 顺延
+          </button>
+        )}
         <button
           className="msheet-act"
           onClick={run(() => {

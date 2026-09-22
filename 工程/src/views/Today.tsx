@@ -2,7 +2,7 @@
 // 行来自 DateRow：母任务 + 带自己日期的子任务（「母 › 子」形式）。
 import { useState } from "react";
 import { formatCN, todayYMD } from "../core/dates";
-import { openRows, postponeRows, rowTaskIds, sortRows, tasksForToday, useApp } from "../core/store";
+import { openRows, rowTaskIds, sortRows, tasksForToday, useApp } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
 import { isMobile } from "../core/platform";
 import { usePinExpanded } from "../core/pin";
@@ -13,6 +13,7 @@ import TaskCard from "../components/TaskCard";
 import PostponeButton from "../components/PostponeMenu";
 import MobileHead from "../mobile/MobileHead";
 import MobileRow, { useSwipeHint } from "../mobile/MobileRow";
+import { openSheet } from "../mobile/sheetStore";
 
 export default function Today() {
   const data = useApp((s) => s.data);
@@ -82,12 +83,17 @@ export default function Today() {
                 桌面上这两个类名都没有样式，一个像素不变 */}
             <div className="group-head warn split">
               <span className="group-label">逾期 {overdue.length}</span>
-              {/* 桌面：原来是「全部推到明天 →」，只能推一天；现在点开选 明天 / 本周末 / 下周末 / 本月末 / 选日期…
+              {/* 原来是「全部推到明天 →」，只能推一天；现在点开选 今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…
                   顺延的是逾期组**全部**行（折起来看不见的也算），跟原来口径一样。
-                  手机这次不动（手机界面改动要先出稿），照旧是那句链接 */}
+                  桌面是「全部顺延 ▾」小菜单；手机（09-21）换成同一套选项的底部小纸（mobile/PostponeSheet） */}
               {isMobile ? (
-                <button className="act" onClick={() => postponeRows(overdue)}>
-                  全部推到明天 →
+                <button
+                  className="act"
+                  onClick={() =>
+                    openSheet({ kind: "postpone", rows: overdue.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })
+                  }
+                >
+                  全部顺延 →
                 </button>
               ) : (
                 <PostponeButton className="act" label="全部顺延" getRows={() => overdue} />

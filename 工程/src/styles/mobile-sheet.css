@@ -398,3 +398,56 @@ button.msh-acct-row:active { background: color-mix(in srgb, var(--ink) 5%, var(-
   transition: opacity var(--dur-1) var(--ease);
 }
 .msh-acct-go:active { opacity: .8; }
+
+/* ═══════════ 选日子 / 选循环（09-21 全应用统一口径） ═══════════ */
+
+/* 日期快捷项最多五颗（今天 / 明天 / 本周末 / 下周末 / 本月末）：一行排不下，三列两行。
+   任务详情和记一条两张纸同一副排法 */
+.msh-dates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+
+/* 循环里「每隔几天…」点开时那颗亮一档（还没选定，只是展开着） */
+.msh-opt.open { border-color: var(--accent); color: var(--accent); }
+.msh-opt:disabled { opacity: .45; }
+/* 「每隔几天…」长出来的那一行：每 [ n ] 天 · 好 */
+.msh-everyn { align-items: center; }
+.msh-everyn-t { flex: none; font-size: var(--fs-md); color: var(--ink); }
+.msh-everyn .msh-field { flex: 0 1 96px; }
+
+/* 「自定义…」那张叠上来的纸：里面是桌面那块天 / 周 / 月面板（RepeatPicker），逻辑原样，
+   只把尺寸放大到手指点得准——390 宽下月份七列一格约 46 宽、44 高，31 格 + 「最后一天」五行放得下 */
+.msh-rp { padding: 0 16px 20px; }
+.msh-rp .msheet-label { padding: 0 0 10px; }
+.msh-rp .rp { width: auto; padding: 0; }
+.msh-rp .rp-tabs { margin-bottom: 14px; border-radius: 14px; }
+.msh-rp .rp-tab { padding: 10px 0; font-size: var(--fs-md); border-radius: 12px; }
+.msh-rp .rp-every { gap: 12px; padding: 16px 0 20px; font-size: var(--fs-md); }
+.msh-rp .rp-step { width: var(--m-touch); height: var(--m-touch); font-size: 18px; }
+.msh-rp .rp-num { width: 72px; height: var(--m-touch); font-size: var(--fs-lg); border-radius: 12px; }
+.msh-rp .rp-week { gap: 6px; padding: 4px 0 14px; }
+.msh-rp .rp-month { gap: 6px; padding: 0 0 14px; }
+.msh-rp .rp-cell { height: var(--m-touch); border-radius: 12px; font-size: var(--fs-md); background: var(--bg); }
+.msh-rp .rp-cell.on { background: var(--accent); }
+/* 手指没有 hover：按下去那一下给点反馈就够，别让上一次点过的格子一直亮着 hover 色 */
+.msh-rp .rp-cell:hover { background: var(--bg); color: var(--ink); }
+.msh-rp .rp-cell.on:hover { background: var(--accent); color: var(--on-accent); }
+.msh-rp .rp-cell:active { background: var(--accent-soft); }
+.msh-rp .rp-last { font-size: var(--fs-sm); }
+.msh-rp .rp-foot { gap: 8px; padding-top: 12px; }
+.msh-rp .rp-preview { font-size: var(--fs-md); }
+.msh-rp .rp-note { font-size: var(--fs-xs); }
+.msh-rp .rp-btn { min-height: var(--m-touch); padding: 0 18px; font-size: var(--fs-md); }
+
+/* ═══════════ 顺延到哪天（PostponeSheet） ═══════════ */
+/* 一项一行：左边名字，右边落在哪天。整行都是按钮，手指按哪儿都算 */
+.mpp { padding-bottom: 20px; }
+.mpp-list { display: flex; flex-direction: column; gap: 8px; padding: 0 12px; }
+.mpp-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 0 16px; border-radius: 14px; border: 0;
+  background: var(--bg); color: var(--ink);
+  font-family: inherit; font-size: var(--fs-md); text-align: left;
+  transition: background var(--dur-1) var(--ease);
+}
+.mpp-item:active { background: var(--accent-soft); }
+.mpp-when { flex: none; font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.mpp-pick { align-items: stretch; }

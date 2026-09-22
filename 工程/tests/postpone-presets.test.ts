@@ -1,14 +1,16 @@
 // 桌面「顺延 ▾」菜单 + 右键「整件事」菜单（v1.15.x，用户 2026-09 三条需求）。
-//   ① 顺延按钮点开可选 明天 / 本周末 / 下周末 / 本月末 / 选日期…（core/dates.postponePresets）
+//   ① 顺延按钮点开可选 今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…（09-21 起并进 core/options.dateOptions，
+//      不晚于这件事现有日期的藏掉）
 //   ② 过期的行行尾常驻「顺延 ▾」；收起的链头顺延的是这件事**所有过期的子任务**（store.overdueSubRows）
-//   ③ 右键：「推到明天」收进「调整日期 ▸」（原「安排日期」），「今天」后面加一个明天（adjustDatePresets）；
+//   ③ 右键：「推到明天」收进「调整日期 ▸」（原「安排日期」），候选跟全应用同一套（dateOptions）；
 //      代表整件事的那一行右键出的是整件事的菜单，日期 / 优先级改母任务
 // 本周末 / 下周末按设置里的周末日算，跟记事语法「~周末 / ~下周末」逐天对过。
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  addDays, adjustDatePresets, cmpYMD, dayOfWeek, duePresets, fromYMD, monthEnd, postponePresets, weekendOf,
+  addDays, cmpYMD, dayOfWeek, fromYMD, monthEnd, weekendOf,
 } from "../src/core/dates";
+import { dateOptions } from "../src/core/options";
 import { parseQuickAdd } from "../src/core/parse";
 import {
   appStore, flushSave, overdueSubRows, postponeRowsTo, rowDue, rowPriority, setTasksDue, undo, updateTask,
@@ -22,6 +24,7 @@ import ctxSource from "../src/components/ContextMenu.tsx?raw";
 import taskRowSource from "../src/components/TaskRow.tsx?raw";
 import rowListSource from "../src/components/RowList.tsx?raw";
 import postponeSource from "../src/components/PostponeMenu.tsx?raw";
+import datePickSource from "../src/components/DatePickRow.tsx?raw";
 import todaySource from "../src/views/Today.tsx?raw";
 import appSource from "../src/App.tsx?raw";
 
@@ -50,83 +53,93 @@ describe("weekendOf：跟记事语法「~周末 / ~下周末」逐天一致", ()
   });
 });
 
-describe("postponePresets：明天 / 本周末 / 下周末 / 本月末", () => {
-  it("平常的一天四项都在，按这个顺序", () => {
-    // 周一 2026-08-17，周末日周日
-    const ps = postponePresets(MON, "sun");
-    expect(ps.map((p) => p.label)).toEqual(["明天", "本周末", "下周末", "本月末"]);
-    expect(ps.map((p) => p.ymd)).toEqual(["2026-08-18", "2026-08-23", "2026-08-30", "2026-08-31"]);
+// 09-21 起顺延菜单跟全应用选日子同一套（core/options.dateOptions），原来的 postponePresets 并进去了；
+// 顺延特有的只剩一条：不晚于这件事现有日期的藏掉（after）。下面按新口径重写，老的几条规矩（周末日设置、
+// 本周末过了只留下周末、跟前面撞同一天不出、跨年）一条没丢。
+describe("顺延菜单：dateOptions + after（不晚于现有日期的藏掉）", () => {
+  it("过期的事（日子在今天以前）：今天 / 明天 / 本周末 / 下周末 / 本月末 全在，按这个顺序", () => {
+    // 周一 2026-08-17，周末日周日，这件事原来排在上周五
+    const ps = dateOptions(MON, { weekendDay: "sun", after: "2026-08-14" });
+    expect(ps.map((p) => p.label)).toEqual(["今天", "明天", "本周末", "下周末", "本月末"]);
+    expect(ps.map((p) => p.ymd)).toEqual(["2026-08-17", "2026-08-18", "2026-08-23", "2026-08-30", "2026-08-31"]);
   });
 
   it("周末日设成周六：本周末 / 下周末都落在周六", () => {
-    const ps = postponePresets(MON, "sat");
+    const ps = dateOptions(MON, { weekendDay: "sat" });
     expect(ps.find((p) => p.key === "weekend")!.ymd).toBe("2026-08-22");
     expect(ps.find((p) => p.key === "nextWeekend")!.ymd).toBe("2026-08-29");
   });
 
-  it("两种设置 × 两周每一天：全都落在今天之后、没有两项同一天", () => {
+  it("两种设置 × 两周每一天：after = 昨天时全都不早于今天、没有两项同一天，今天和下周末永远在", () => {
     for (const wd of ["sun", "sat"] as const) {
       for (const d of FORTNIGHT) {
-        const ps = postponePresets(d, wd);
-        for (const p of ps) expect(cmpYMD(p.ymd, d), `${d} ${wd} ${p.label}`).toBeGreaterThan(0);
+        const ps = dateOptions(d, { weekendDay: wd, after: addDays(d, -1) });
+        for (const p of ps) expect(cmpYMD(p.ymd, d), `${d} ${wd} ${p.label}`).toBeGreaterThanOrEqual(0);
         expect(new Set(ps.map((p) => p.ymd)).size, `${d} ${wd}`).toBe(ps.length);
-        // 明天和下周末永远在
-        expect(ps[0].key).toBe("tomorrow");
+        expect(ps[0].key).toBe("today");
         expect(ps.some((p) => p.key === "nextWeekend"), `${d} ${wd}`).toBe(true);
-        // 下周末永远是周末日那一天
         expect(dayOfWeek(ps.find((p) => p.key === "nextWeekend")!.ymd)).toBe(wd === "sat" ? 6 : 0);
       }
     }
   });
 
+  it("不晚于现有日期的一律藏掉：原来排在明天 → 今天、明天都不出", () => {
+    const ps = dateOptions(MON, { weekendDay: "sun", after: addDays(MON, 1) });
+    expect(ps.map((p) => p.key)).toEqual(["weekend", "nextWeekend", "monthEnd"]);
+    for (const p of ps) expect(cmpYMD(p.ymd, addDays(MON, 1))).toBeGreaterThan(0);
+  });
+
+  it("原来的日子比下周末还晚 → 一项快捷都不剩（只剩「选日期…」，由界面自己画）", () => {
+    expect(dateOptions(MON, { weekendDay: "sun", after: "2026-09-30" })).toEqual([]);
+  });
+
   it("今天就是周末日：不出「本周末」，只留「下周末」", () => {
-    const sun = "2026-08-23";
-    expect(postponePresets(sun, "sun").map((p) => p.key)).not.toContain("weekend");
-    expect(postponePresets("2026-08-22", "sat").map((p) => p.key)).not.toContain("weekend");
+    expect(dateOptions("2026-08-23", { weekendDay: "sun" }).map((p) => p.key)).not.toContain("weekend");
+    expect(dateOptions("2026-08-22", { weekendDay: "sat" }).map((p) => p.key)).not.toContain("weekend");
   });
 
   it("周末日已经过了（周末日周六、今天周日）：也不出「本周末」", () => {
-    const ps = postponePresets("2026-08-23", "sat");
+    const ps = dateOptions("2026-08-23", { weekendDay: "sat" });
     expect(ps.map((p) => p.key)).not.toContain("weekend");
     expect(ps.find((p) => p.key === "nextWeekend")!.ymd).toBe("2026-08-29");
   });
 
-  it("周六点开、周末日周日：本周末 = 明天，只留「明天」", () => {
-    const ps = postponePresets("2026-08-22", "sun");
+  it("「今天」被 after 藏了，跟今天同一天的「本周末」也不会顶上来", () => {
+    // 周日、周末日周日、这件事原来就排在今天
+    const ps = dateOptions("2026-08-23", { weekendDay: "sun", after: "2026-08-23" });
     expect(ps.map((p) => p.key)).toEqual(["tomorrow", "nextWeekend", "monthEnd"]);
   });
 
-  it("月底：最后一天不出「本月末」（不落回今天），倒数第二天本月末 = 明天也不出", () => {
-    expect(postponePresets("2026-08-31", "sun").map((p) => p.key)).not.toContain("monthEnd");
-    expect(postponePresets("2026-08-30", "sun").map((p) => p.key)).not.toContain("monthEnd");
-    // 倒数第三天还在
-    expect(postponePresets("2026-08-29", "sun").find((p) => p.key === "monthEnd")!.ymd).toBe(monthEnd("2026-08-29"));
+  it("周六点开、周末日周日：本周末 = 明天，只留「明天」", () => {
+    const ps = dateOptions("2026-08-22", { weekendDay: "sun" });
+    expect(ps.map((p) => p.key)).toEqual(["today", "tomorrow", "nextWeekend", "monthEnd"]);
+  });
+
+  it("月底：最后一天本月末 = 今天不出，倒数第二天本月末 = 明天也不出", () => {
+    expect(dateOptions("2026-08-31", { weekendDay: "sun" }).map((p) => p.key)).not.toContain("monthEnd");
+    expect(dateOptions("2026-08-30", { weekendDay: "sun" }).map((p) => p.key)).not.toContain("monthEnd");
+    expect(dateOptions("2026-08-29", { weekendDay: "sun" }).find((p) => p.key === "monthEnd")!.ymd).toBe(monthEnd("2026-08-29"));
   });
 
   it("跨年：12 月 31 日的明天是 1 月 1 日，下周末跨进新年", () => {
-    const ps = postponePresets("2026-12-31", "sun");
-    expect(ps[0].ymd).toBe("2027-01-01");
+    const ps = dateOptions("2026-12-31", { weekendDay: "sun" });
+    expect(ps[1].ymd).toBe("2027-01-01");
     expect(ps.find((p) => p.key === "nextWeekend")!.ymd).toBe("2027-01-10");
     expect(ps.find((p) => p.key === "weekend")!.ymd).toBe("2027-01-03");
   });
 });
 
-describe("adjustDatePresets：右键「调整日期 ▸」= 安排日期那一套 + 今天后面一个明天", () => {
-  it("今天、明天打头，后面接 duePresets 剩下的", () => {
-    const ps = adjustDatePresets(MON);
-    expect(ps.map((p) => p.label)).toEqual(["今天", "明天", "本周五", "本周日", "本月末"]);
+describe("右键「调整日期 ▸」：跟全应用同一套（原 adjustDatePresets 并进 dateOptions）", () => {
+  it("今天、明天打头，后面是本周末 / 下周末 / 本月末（不再有「本周五」「本周日」）", () => {
+    const ps = dateOptions(MON, { weekendDay: "sun" });
+    expect(ps.map((p) => p.label)).toEqual(["今天", "明天", "本周末", "下周末", "本月末"]);
     expect(ps[1].ymd).toBe(addDays(MON, 1));
   });
 
-  it("明天撞上后面某项（周四：本周五 = 明天）就不重复出现", () => {
-    const thu = "2026-08-20";
-    const ps = adjustDatePresets(thu);
-    expect(ps.map((p) => p.label)).toEqual(["今天", "明天", "本周日", "本月末"]);
+  it("明天撞上后面某项（周六、周末日周日：本周末 = 明天）就不重复出现", () => {
+    const ps = dateOptions("2026-08-22", { weekendDay: "sun" });
+    expect(ps.map((p) => p.label)).toEqual(["今天", "明天", "下周末", "本月末"]);
     expect(new Set(ps.map((p) => p.ymd)).size).toBe(ps.length);
-  });
-
-  it("duePresets 本身一个字没动：安排日期那五处照旧不带明天", () => {
-    for (const d of FORTNIGHT) expect(duePresets(d).map((p) => p.label)).not.toContain("明天");
   });
 });
 
@@ -220,6 +233,28 @@ describe("postponeRowsTo：顺延到选定的那一天", () => {
     expect(after.subtasks[2]).toEqual(t.subtasks[2]);
     expect(after.due).toBe(t.due);
     expect(after.postponeCount).toBe(0);
+  });
+
+  it("子任务行也不往前拉（9-22）：自己的日子、继承来的日子比选的晚都不动；一行都没改只提示不写库", () => {
+    const today = todayYMD();
+    const t = newTask({
+      title: "年报", due: addDays(today, 8),
+      subtasks: [sub("own", { due: addDays(today, 6) }), sub("inherit"), sub("late", { due: addDays(today, -1) })],
+    });
+    seed([t]);
+    const to = addDays(today, 1);
+    postponeRowsTo(t.subtasks.map((s) => ({ task: t, sub: s })), to);
+    const after = get(t.id);
+    expect(after.subtasks[0].due).toBe(addDays(today, 6));
+    expect(after.subtasks[1].due).toBeNull();
+    expect(after.subtasks[2].due).toBe(to);
+    expect(appStore.getState().ui.toast!.msg).toBe("已顺延 1 项");
+
+    const depth = appStore.getState().undoDepth;
+    postponeRowsTo([{ task: t, sub: t.subtasks[0] }], to);
+    expect(get(t.id).subtasks[0].due).toBe(addDays(today, 6));
+    expect(appStore.getState().undoDepth).toBe(depth);
+    expect(appStore.getState().ui.toast!.msg).toBe("选的这天比原来的日期还早，没有顺延");
   });
 
   it("不认识的字段原样留着", () => {
@@ -327,10 +362,14 @@ describe("右键「整件事」只给收起的链头（9-21 复核去掉了 solo
 // ---------------------------------------------------------------------------
 
 describe("入口：三处都是同一个「顺延 ▾」", () => {
-  it("今天页逾期组：桌面是「全部顺延」，推的是整组逾期行；手机照旧（这次不动手机）", () => {
+  // 09-21 有意改口：手机那句原来是「全部推到明天 →」（这条当时钉着它不许动）；
+  // 用户这次同意手机一起改，换成「全部顺延 →」，点开同一套选项的底部小纸（mobile/PostponeSheet）
+  it("今天页逾期组：桌面是「全部顺延 ▾」，手机是「全部顺延 →」开小纸，推的都是整组逾期行", () => {
     const src = stripComments(todaySource);
     const head = src.slice(src.indexOf('<span className="group-label">逾期'), src.indexOf("<RowList rows={overdueShown}"));
-    expect(head).toMatch(/\{isMobile \? \(\s*<button className="act" onClick=\{\(\) => postponeRows\(overdue\)\}>\s*全部推到明天 →/);
+    expect(head).toContain('openSheet({ kind: "postpone", rows: overdue.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })');
+    expect(head).toContain("全部顺延 →");
+    expect(head).not.toContain("推到明天");
     expect(head).toContain('<PostponeButton className="act" label="全部顺延" getRows={() => overdue} />');
   });
 
@@ -346,14 +385,16 @@ describe("入口：三处都是同一个「顺延 ▾」", () => {
     expect(appSource).toContain("postponeTasks(selectedIds);");
   });
 
-  it("菜单只走 postponePresets + 一次落库的 postponeRowsTo；选日期那项用 DateField、只记草稿", () => {
-    expect(postponeSource).toContain("postponePresets(today, weekendDay)");
+  it("菜单只走 dateOptions（带 after 下限）+ 一次落库的 postponeRowsTo；选日期那项走 DatePickRow、只记草稿", () => {
+    expect(postponeSource).toContain("dateOptions(today, { weekendDay, after: floor })");
+    expect(postponeSource).toContain("const [floor] = useState(() => earliestDue(getRows()));");
     expect(postponeSource).toContain("postponeRowsTo(rows, ymd)");
-    expect(postponeSource).toContain("<DateField");
-    // 日期框停手时只记在本地，不落库
-    const onCommit = postponeSource.slice(postponeSource.indexOf("onCommit={(v) => {"), postponeSource.indexOf("确定"));
-    expect(onCommit).not.toContain("postponeRowsTo");
-    expect(onCommit).not.toContain("setTasksDue");
+    expect(postponeSource).toContain("<DatePickRow");
+    // 日期框停手时只记在本地，不落库（DatePickRow 的 onCommit 只写草稿，确定那一下才交出去）
+    const at = datePickSource.indexOf("onCommit={(v) => {");
+    const onCommit = datePickSource.slice(at, datePickSource.indexOf("/>", at));
+    expect(onCommit).toContain("pickedRef.current = v;");
+    expect(onCommit).not.toContain("onPick");
     // 画到 body 上，不会被行裁掉
     expect(postponeSource).toContain("createPortal(");
     expect(postponeSource).toContain("document.body");
@@ -380,12 +421,14 @@ describe("右键菜单：推到明天收进「调整日期」，代表整件事�
     expect(code).not.toContain("postponeRows(");
   });
 
-  it("「安排日期」改名「调整日期」（任务、子任务两个都改），候选走 adjustDatePresets", () => {
+  it("「安排日期」改名「调整日期」（任务、子任务两个都改），候选走 dateOptions，末尾有「选日期…」", () => {
     expect(code).not.toContain("安排日期");
     expect(code.match(/调整日期<span className="ctx-caret">▸<\/span>/g) ?? []).toHaveLength(2);
     expect(code).toContain("调整日期");
-    expect(code.match(/adjustDatePresets\(today\)\.map\(/g) ?? []).toHaveLength(2);
+    expect(code.match(/dateOptions\(today, \{ weekendDay: data\.settings\.weekendDay \}\)\.map\(/g) ?? []).toHaveLength(2);
+    expect(code.match(/<DatePickRow /g) ?? []).toHaveLength(2);
     expect(code).not.toContain("duePresets(");
+    expect(code).not.toContain("adjustDatePresets(");
   });
 
   it("整件事的菜单：标题写「整件事 · 名字」；TaskRow 按 whole 分流", () => {

@@ -5,16 +5,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FocusEvent as ReactFocusEvent } from "react";
 import type { ParseResult } from "../core/parse";
+import { parseQuickAdd } from "../core/parse";
+import { deskDueRepeat, withOverride } from "../mobile/quickAddMerge";
+import type { Overrides, PickField } from "../mobile/quickAddMerge";
 import type { Priority, RepeatRule } from "../core/model";
 import { LIST_COLORS } from "../core/model";
-import { dayOfWeek, duePresets, formatShort, todayYMD } from "../core/dates";
+import { formatShort, todayYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
 import { addList, addTask, allTags, allWho, useApp } from "../core/store";
 import SyntaxInput from "./SyntaxInput";
 import type { SyntaxInputEl } from "./SyntaxInput";
 import { describeRepeat } from "../core/recur";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
-import RepeatPicker, { sameRepeat } from "./RepeatPicker";
+import RepeatPicker from "./RepeatPicker";
+import RepeatMenu from "./RepeatMenu";
 import { useLeaving } from "./motion";
 import { useGuideEntry } from "./GuideSheet";
 
@@ -40,17 +45,6 @@ interface Picks {
 const EMPTY: Picks = { due: null, listId: null, who: [], priority: 0, repeat: null };
 
 const PRIO_NAME = ["无", "低", "中", "高"] as const;
-
-/** 「每周/每月」按这条事选的日期算（没选按今天），所以每次打开菜单现算——常驻托盘跨过零点也不会用昨天的星期几。
- *  名字直接写成「每周一」「每月21号」，不再写「按今天是周几」这种绕一道的说法——用户要看的是到底哪天 */
-function repeatChoices(anchor: string): RepeatRule[] {
-  return [
-    { kind: "daily", every: 1 },
-    { kind: "workday" },
-    { kind: "weekly", days: [dayOfWeek(anchor)] },
-    { kind: "monthly", day: Number(anchor.slice(8, 10)) },
-  ];
-}
 
 type MenuId = "due" | "list" | "who" | "prio" | "repeat";
 
@@ -90,6 +84,8 @@ export default function QuickAddBar({
   const [menu, setMenu] = useState<MenuId | null>(null);
   /** 🔁 那个菜单现在是常用项（false）还是「自定义…」面板（true） */
   const [repeatCustom, setRepeatCustom] = useState(false);
+  /** 日期 / 循环两样「改过点选」的记号（跟手机 QuickAddSheet 同一套：谁后动谁说了算） */
+  const [overrides, setOverrides] = useState<Overrides>({});
   /** 📅 那个日期框（DateField）的三个手：flush 提前落、cancel 作废、pending 看还欠着什么。
    *  草稿 / 闸门 / 去抖三件套都封在组件里，这儿不再各写一份 */
   const dueFieldRef = useRef<DateFieldHandle | null>(null);
@@ -99,6 +95,26 @@ export default function QuickAddBar({
   const whoNames = useMemo(() => allWho({ tasks, settings }).map((w) => w.who), [tasks, settings]);
   const tagNames = useMemo(() => allTags({ tasks }).map((t) => t.tag), [tasks]);
   const guide = useGuideEntry();
+  const listNames = useMemo(() => lists.map((l) => l.name), [lists]);
+  // 跟 SyntaxInput 里那份同样的参数再解析一次：点选那排要知道「打字这边现在给了哪天、哪种循环」，
+  // 🔁 菜单的「每周X / 每月X号」按这条事最后会存下的日子出，而不是只看点选的那一天
+  const parsed = useMemo(
+    () => parseQuickAdd(text, { now: new Date(), listNames, weekendDay: settings.weekendDay }),
+    [text, listNames, settings.weekendDay],
+  );
+  /** 现在生效的日期与循环：跟回车落库用的是同一个算法 */
+  const eff = deskDueRepeat(
+    parsed,
+    { due: dueFieldRef.current?.pending() ?? pick.due ?? defaults?.due ?? null, repeat: pick.repeat },
+    overrides,
+  );
+  const repeatAnchor = eff.due ?? today;
+
+  /** 改了点选的日期 / 循环：记下签名，从此这一样以点选为准（打字那边再动又归打字） */
+  function changePick(field: PickField, next: Partial<Picks>) {
+    setOverrides((o) => withOverride(o, parsed, field));
+    setPick((p) => ({ ...p, ...next }));
+  }
 
   // 点别处关掉打开的小菜单
   useEffect(() => {
@@ -121,7 +137,7 @@ export default function QuickAddBar({
    *  免得它一会儿回来把刚点的这个盖掉 */
   function pickDue(d: string | null) {
     dueFieldRef.current?.cancel();
-    setPick({ ...pick, due: d });
+    changePick("due", { due: d });
     setMenu(null);
   }
 
@@ -134,6 +150,8 @@ export default function QuickAddBar({
     const pendingDue = dueFieldRef.current?.pending() ?? null;
     dueFieldRef.current?.flush();
     // defaults.listId 可能指向一张刚被删除的清单，落库前验一遍存在性
+    // 日期与循环：打字和点选谁后动谁说了算（deskDueRepeat，跟手机一个口径）
+    const dr = deskDueRepeat(parsed, { due: pendingDue ?? pick.due ?? defaults?.due ?? null, repeat: pick.repeat }, overrides);
     const defaultListId =
       defaults?.listId && lists.some((l) => l.id === defaults.listId) ? defaults.listId : null;
     const pickedListId = pick.listId && lists.some((l) => l.id === pick.listId) ? pick.listId : null;
@@ -149,11 +167,12 @@ export default function QuickAddBar({
       // 打字写了 @谁 就以打字为准；没写才用点选的，再没有才用视图默认（在某人名下新建）
       who: parsed.who.length ? parsed.who : pick.who.length ? pick.who : defaults?.who ?? [],
       priority: parsed.priority || pick.priority,
-      due: parsed.due ?? pendingDue ?? pick.due ?? defaults?.due ?? null,
-      dueTime: parsed.dueTime,
-      repeat: parsed.repeat ?? pick.repeat,
+      due: dr.due,
+      dueTime: dr.dueTime,
+      repeat: dr.repeat,
     });
     setText("");
+    setOverrides({});
     onAdded?.(id);
   }
 
@@ -181,13 +200,14 @@ export default function QuickAddBar({
         <span className="plus">＋</span>
         <SyntaxInput
           value={text}
-          onChange={setText}
+          onChange={(v) => { setText(v); if (!v) setOverrides({}); }}
           onSubmit={submit}
           onBlurCommit={commitOnBlur}
           onEscape={() => {
             // Esc 才是丢弃：把还没记的这句擦掉，留在原地接着打
             if (!text) return false;
             setText("");
+            setOverrides({});
             return true;
           }}
           autoFocus={autoFocus}
@@ -207,10 +227,9 @@ export default function QuickAddBar({
           <span className="qa-hint">也可以点选：</span>
 
           <Pick menu={menu} setMenu={setMenu} id="due" on={!!pick.due} label={<>📅 {pick.due ? formatShort(pick.due) : "日期"}</>}>
-            {/* 预设跟任务卡的日期弹层、子任务日期小签、右键的「安排日期」、侧栏拖到「计划」
-                那个弹层同一套（core/dates.duePresets）。安排日期只有一套规矩，
-                一处算一处用，别在这儿再写一份「明天 / 下周一」 */}
-            {duePresets(today).map((p) => (
+            {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
+                下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
+            {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
               <button key={p.key} className="item" onClick={() => pickDue(p.ymd)}>
                 {p.label}
               </button>
@@ -222,7 +241,7 @@ export default function QuickAddBar({
             <DateField
               ref={dueFieldRef}
               value={pick.due ?? ""}
-              onCommit={(ymd) => setPick({ ...pick, due: ymd })}
+              onCommit={(ymd) => changePick("due", { due: ymd })}
               onDone={(e) => {
                 // 焦点还在这排点选按钮里（比如正按着上面的预设）就别收弹层——
                 // 收了那一下 click 就落在正在退场的弹层上了
@@ -316,36 +335,26 @@ export default function QuickAddBar({
           >
             {repeatCustom ? (
               <RepeatPicker
-                value={pick.repeat}
-                anchor={pick.due ?? today}
-                onDone={(r) => { setPick({ ...pick, repeat: r }); setMenu(null); }}
+                value={eff.repeat}
+                anchor={repeatAnchor}
+                onDone={(r) => { changePick("repeat", { repeat: r }); setMenu(null); }}
                 onCancel={() => setRepeatCustom(false)}
               />
             ) : (
-              <>
-                <button className="item" onClick={() => { setPick({ ...pick, repeat: null }); setMenu(null); }}>
-                  不重复{!pick.repeat && <span className="k">✓</span>}
-                </button>
-                {/* 现在选的不在常用项里（自定义出来的「每周一三五」这类）：挂在这儿，一眼看得到现在是什么 */}
-                {pick.repeat && !repeatChoices(pick.due ?? today).some((r) => sameRepeat(r, pick.repeat)) && (
-                  <button className="item" onClick={() => setRepeatCustom(true)}>
-                    {describeRepeat(pick.repeat)}<span className="k">✓</span>
-                  </button>
-                )}
-                {repeatChoices(pick.due ?? today).map((r) => (
-                  <button key={r.kind} className="item" onClick={() => { setPick({ ...pick, repeat: r }); setMenu(null); }}>
-                    {describeRepeat(r)}
-                    {sameRepeat(r, pick.repeat) && <span className="k">✓</span>}
-                  </button>
-                ))}
-                <div className="sep" />
-                <button className="item" onClick={() => setRepeatCustom(true)}>自定义…</button>
-              </>
+              // 全应用一套（core/options.repeatMenu）：[现值 ✓] 每天 / 每个工作日 / 每周X / 每月X号 /
+              // 每隔几天… / 自定义… / 不重复。「每周/每月」按这条事现在生效的日期算（打字的、点选的、视图默认，
+              // 跟回车落库同一个算法；都没有按今天），每次打开现算；打勾的也是现在生效的那条循环
+              <RepeatMenu
+                anchor={repeatAnchor}
+                value={eff.repeat}
+                onPick={(r) => { changePick("repeat", { repeat: r }); setMenu(null); }}
+                onCustom={() => setRepeatCustom(true)}
+              />
             )}
           </Pick>
 
           {picked && (
-            <button className="qa-clear" title="清空这些选择" onClick={() => { dueFieldRef.current?.cancel(); setPick(EMPTY); setMenu(null); }}>
+            <button className="qa-clear" title="清空这些选择" onClick={() => { dueFieldRef.current?.cancel(); setPick(EMPTY); setOverrides({}); setMenu(null); }}>
               清空
             </button>
           )}

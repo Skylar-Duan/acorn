@@ -66,7 +66,8 @@ describe("① 习惯页：一件一行，绝不折行", () => {
     const desk = nl(habitsSource).slice(nl(habitsSource).indexOf('<div className="view-body hb-body">'));
     expect(desk).toContain('<div className="hb-add">');
     expect(desk).toContain("加上");
-    expect(desk).toContain('className="input hb-add-rule"');
+    // 09-21 起周期不再是原生下拉，是跟任务「↻ 循环」同一张菜单（HabitRulePick → RepeatMenu）
+    expect(desk).toContain('<HabitRulePick className="hb-add-rule"');
   });
 
   it("桌面那张卡的「失焦即提交」那道闸还在（commit-guards 钉着的那一条）", () => {
@@ -162,11 +163,18 @@ describe("② 「加一个习惯」那张纸", () => {
     expect(habitSheetSource).toContain('key={id ?? "new"}');
   });
 
-  it("周期胶囊复用全仓那一份 RULE_CHOICES，不在手机上另抄一遍", () => {
-    expect(habitsSource).toContain("export const RULE_CHOICES");
-    expect(habitSheetSource).toContain('import { RULE_CHOICES } from "../views/Habits";');
-    // 现有周期不在预设里（比如从任务转过来的「每月 8 号」）也得看得见、也不许被悄悄改掉
-    expect(habitSheetSource).toContain("describeHabitRule(habit)");
+  // 09-21 统一口径推翻了原来那份习惯自己的 RULE_CHOICES（每周一三五 / 每 2 天…）：
+  // 周期胶囊改读跟任务循环同一份的 habitRepeatMenu，不在手机上另抄一遍
+  it("周期胶囊读全应用那一份循环选项（habitRepeatMenu），不在手机上另抄一遍", () => {
+    expect(habitsSource).not.toContain("RULE_CHOICES");
+    expect(habitSheetSource).not.toContain("RULE_CHOICES");
+    expect(habitSheetSource).toContain("habitRepeatMenu(today, rule)");
+    // 现有周期不在常用项里（比如从任务转过来的「每月 8 号」）也得看得见、也不许被悄悄改掉
+    expect(habitSheetSource).toContain('case "current":');
+    expect(habitSheetSource).toContain("savedLost");
+    // 「每隔几天…」手填、「自定义…」天 / 周 / 月面板
+    expect(habitSheetSource).toContain("everyNDays(everyText)");
+    expect(habitSheetSource).toContain("<RepeatPicker");
   });
 
   it("落库走现成的 store 动作，不另写一条", () => {

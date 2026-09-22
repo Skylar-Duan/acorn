@@ -59,11 +59,16 @@ export default function Sheet({ open, onClose, children, size = "auto", expandab
     };
   }, [open, size]);
 
-  // Esc 收掉（外接键盘 / 桌面窗口拖窄时也能用）
+  // Esc 收掉（外接键盘 / 桌面窗口拖窄时也能用）。
+  // 纸可以叠（任务详情上面再抽一张「自定义循环」）：只有最上面那张收，
+  // 不然一下 Esc 两张一起没了、底下那张里改到一半的东西也跟着丢
+  const backRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        const all = document.querySelectorAll(".msheet-back");
+        if (backRef.current && all.length && all[all.length - 1] !== backRef.current) return;
         e.stopPropagation();
         onClose();
       }
@@ -96,7 +101,7 @@ export default function Sheet({ open, onClose, children, size = "auto", expandab
   const style = dy > 0 ? { transform: `translateY(${dy}px)`, transition: "none" } : undefined;
 
   return createPortal(
-    <div className={`msheet-back${shown ? " in" : ""}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div ref={backRef} className={`msheet-back${shown ? " in" : ""}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
         className={`msheet${shown ? " in" : ""}${full ? " full" : ""}${className ? ` ${className}` : ""}`}
         role="dialog"

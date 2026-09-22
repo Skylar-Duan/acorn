@@ -5,18 +5,30 @@
 //
 // 刻意不做的：习惯不排期、不逾期、不进今天/计划。昨天没做就是没做，
 // 不该滚成一笔债堵在今天——那是任务的逻辑，不是习惯的逻辑。
+//
+// 2026-09-21 用户：「习惯展示的是所有的不是今日的」——这一页不许只剩「今天要做的」。
+// 三组：今天要做的（习惯）/ 重复的计划（所有带循环的计划，按下一次排，core/repeating）/
+// 今天不用做（习惯，按下一次排）。每一行右边都写下一次是哪天。
+// 重复的计划那几行就是计划页那一行（桌面 TaskRow + 内嵌任务卡，手机 MobileRow + 任务纸），
+// 勾完成走循环任务原有的「推到下一次」，这里一行逻辑都不另写
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RepeatRule, Task } from "../core/model";
+import { describeRepeat } from "../core/recur";
+import RepeatMenu from "../components/RepeatMenu";
+import RepeatPicker from "../components/RepeatPicker";
+import { useLeaving } from "../components/motion";
+import { repeatingRows } from "../core/repeating";
 import { addDays, dayOfWeek, formatCN, monthStart, todayYMD } from "../core/dates";
 import {
-  addHabit, aliveHabits, deleteTasks, setHabitRepeat, setTaskKind,
+  addHabit, aliveHabits, deleteTasks, rowTaskIds, setHabitRepeat, setTaskKind,
   toggleHabitCheck, updateTask, useApp,
 } from "../core/store";
 import {
-  bestStreak, describeHabitRule, doneOn, isDueOn, monthMarks, recentRate,
-  sortHabitsForDay, streak, weekMarks, type DayMark,
+  bestStreak, describeHabitRule, describeNextDay, doneOn, habitRepeatMenu, habitRule, isDueOn, monthMarks, nextHabitDay,
+  recentRate, sortHabitsByNext, sortHabitsForDay, streak, weekMarks, type DayMark,
 } from "../core/habits";
+import RowList, { cardAnchor, type FoldPlan } from "../components/RowList";
 import { CommitMark, useCommitFlash, useTypingFlash } from "../components/commitFlash";
 import { isMobile } from "../core/platform";
 import MobileHead from "../mobile/MobileHead";
@@ -26,16 +38,86 @@ import "../styles/mobile-pages.css";
 
 const WEEK_LABEL = ["一", "二", "三", "四", "五", "六", "日"];
 
-/** 周期候选。**这一份是全仓唯一一份**：桌面那张新建卡的下拉、习惯详情里的下拉、
- *  手机那张「加一个习惯」的纸全读它，分成两处写早晚有一边少一个选项 */
-export const RULE_CHOICES: { label: string; rule: RepeatRule }[] = [
-  { label: "每天", rule: { kind: "daily", every: 1 } },
-  { label: "每个工作日", rule: { kind: "workday" } },
-  { label: "每周一三五", rule: { kind: "weekly", days: [1, 3, 5] } },
-  { label: "每周二四六", rule: { kind: "weekly", days: [2, 4, 6] } },
-  { label: "每 2 天", rule: { kind: "daily", every: 2 } },
-  { label: "每 3 天", rule: { kind: "daily", every: 3 } },
-];
+/** 重复的计划那一组不折叠子任务链：每一行都是一条独立的循环，收起来就看不见它哪天来了 */
+const NO_FOLD: FoldPlan = { hidden: new Set(), more: new Map(), head: new Set(), total: new Map() };
+
+/** 行尾那句「下次 周三」。今天该做还没打的不写——它就在「今天要做的」那一组里，再写一遍「今天」是噪音 */
+function nextText(habit: Task, today: string): string | null {
+  const next = nextHabitDay(habit, today);
+  if (!next || next === today) return null;
+  return `下次 ${describeNextDay(next, today)}`;
+}
+
+/** 习惯的周期选择（桌面：新建那一行、习惯详情里各一个）。09-21 统一口径：
+ *  选项跟任务的「↻ 循环」是同一份（core/habits.habitRepeatMenu ← core/options.repeatMenu），
+ *  画法也是同一个 RepeatMenu / RepeatPicker，只是习惯没有日期（每周X / 每月X号按今天算）、没有「不重复」。
+ *  用户原话：「习惯界面每天、每个工作日、每月、每N天（手动输入）、日历自行勾选」。
+ *  现有周期（每周一三五、每 2 天……）不在常用项里时挂在最上面打勾，不会被改掉 */
+function HabitRulePick({ value, onPick, className }: {
+  value: RepeatRule;
+  onPick: (rule: RepeatRule) => void;
+  className?: string;
+}) {
+  const today = todayYMD();
+  const [open, setOpen] = useState(false);
+  /** 菜单现在是常用项（false）还是「自定义…」面板（true） */
+  const [custom, setCustom] = useState(false);
+  const pop = useLeaving(open ? true : null);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+
+  // 点别处 / Esc 收起
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function pick(rule: RepeatRule) {
+    onPick(rule);
+    setOpen(false);
+  }
+
+  return (
+    <span className="hb-rule-slot" ref={wrapRef}>
+      <button
+        type="button"
+        className={`input hb-rule-pick${className ? ` ${className}` : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        // 每次点开都先回到常用项那一页，不停在上回的自定义面板上
+        onClick={() => { setCustom(false); setOpen(!open); }}
+      >
+        {describeRepeat(value)}
+        <span className="hb-rule-caret">▾</span>
+      </button>
+      {pop.shown && (
+        <div className={`popmenu hb-rule-pop${pop.leaving ? " leaving" : ""}`}>
+          {custom ? (
+            <RepeatPicker value={value} anchor={today} onDone={pick} onCancel={() => setCustom(false)} />
+          ) : (
+            <RepeatMenu
+              anchor={today}
+              value={value}
+              items={habitRepeatMenu(today, value)}
+              onPick={(r) => r && pick(r)}
+              onCustom={() => setCustom(true)}
+            />
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
 
 function markTitle(mark: DayMark, ymd: string): string {
   const when = formatCN(ymd);
@@ -79,6 +161,7 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
   const due = isDueOn(habit, today);
   const done = doneOn(habit, today);
   const n = streak(habit, today);
+  const next = nextText(habit, today);
 
   return (
     <div className={`hb-row${done ? " done" : ""}${due ? "" : " off"}${expanded ? " open" : ""}`}>
@@ -100,6 +183,7 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
             🔥 {n}
           </span>
         )}
+        {next && <span className="hb-next">{next}</span>}
         <WeekStrip habit={habit} today={today} />
       </div>
       {expanded && <HabitDetail habit={habit} today={today} />}
@@ -130,6 +214,7 @@ function MobileHabitRow({ habit, today }: { habit: Task; today: string }) {
   const due = isDueOn(habit, today);
   const done = doneOn(habit, today);
   const n = streak(habit, today);
+  const next = nextText(habit, today);
 
   return (
     <div className={`mhb-row${done ? " done" : ""}${due ? "" : " off"}`}>
@@ -150,10 +235,14 @@ function MobileHabitRow({ habit, today }: { habit: Task; today: string }) {
           {n > 0 && <span className="mhb-streak"> · 🔥 {n}</span>}
         </span>
       </button>
-      <span className="mhb-dots" aria-hidden>
-        {recentMarks(habit, today).map((m) => (
-          <span key={m.ymd} className={`mhb-dot${m.done ? " on" : ""}${m.ymd === today ? " now" : ""}`} />
-        ))}
+      {/* 右边一列：上面一行「下次 周三」，下面最近七天。宽度由七个点定死，小字右对齐落在点的上方 */}
+      <span className="mhb-side">
+        {next && <span className="mhb-next">{next}</span>}
+        <span className="mhb-dots" aria-hidden>
+          {recentMarks(habit, today).map((m) => (
+            <span key={m.ymd} className={`mhb-dot${m.done ? " on" : ""}${m.ymd === today ? " now" : ""}`} />
+          ))}
+        </span>
       </span>
     </div>
   );
@@ -227,19 +316,11 @@ function HabitDetail({ habit, today }: { habit: Task; today: string }) {
           onChange={(e) => updateTask(habit.id, { title: e.target.value })}
         />
         <CommitMark on={titleFlash} />
-        <select
-          className="input"
-          value={JSON.stringify(habit.repeat)}
-          onChange={(e) => setHabitRepeat(habit.id, JSON.parse(e.target.value) as RepeatRule)}
-        >
-          {RULE_CHOICES.map((c) => (
-            <option key={c.label} value={JSON.stringify(c.rule)}>{c.label}</option>
-          ))}
-          {/* 现有周期不在预设里（比如从任务转过来的每月 8 号）也要显示得出来 */}
-          {!RULE_CHOICES.some((c) => JSON.stringify(c.rule) === JSON.stringify(habit.repeat)) && (
-            <option value={JSON.stringify(habit.repeat)}>{describeHabitRule(habit)}</option>
-          )}
-        </select>
+        {/* 现有周期不在常用项里（比如从任务转过来的每月 8 号）也显示得出来：挂在菜单最上面打勾 */}
+        <HabitRulePick
+          value={habitRule(habit)}
+          onPick={(r) => setHabitRepeat(habit.id, r)}
+        />
       </div>
       {/* 包一层只为给回执的「✓」一个落脚点，跟任务卡的备注同一个写法 */}
       <div className="hb-notes-wrap">
@@ -276,10 +357,20 @@ export default function Habits() {
   const [draftRule, setDraftRule] = useState<RepeatRule>({ kind: "daily", every: 1 });
   const addFlash = useCommitFlash();
 
+  const expandedTask = useApp((s) => s.ui.expandedId);
   const habits = useMemo(() => sortHabitsForDay(aliveHabits(data), today), [data, today]);
   const dueToday = habits.filter((h) => isDueOn(h, today));
-  const restToday = habits.filter((h) => !isDueOn(h, today));
+  // 今天不用做的按「下一次」先后排：明天就轮到的在上
+  const restToday = useMemo(
+    () => sortHabitsByNext(habits.filter((h) => !isDueOn(h, today)), today),
+    [habits, today],
+  );
   const doneCount = dueToday.filter((h) => doneOn(h, today)).length;
+  // 所有带循环的计划，不看今天（core/repeating）。行尾显示的日期就是它的下一次
+  const planRows = useMemo(() => repeatingRows(data), [data]);
+  const planIds = rowTaskIds(planRows);
+  const planAnchor = cardAnchor(planRows, expandedTask);
+  const nothing = habits.length === 0 && planRows.length === 0;
 
   function create() {
     const title = draft.trim();
@@ -292,8 +383,10 @@ export default function Habits() {
 
   // 副标题**同一份喂给两边**：分成两处写，早晚有一边的口径跟另一边对不上
   const sub =
-    habits.length === 0
+    nothing
       ? "需要反复做的事放在这里，每天打卡"
+      : habits.length === 0
+        ? `${planIds.length} 件重复的计划`
       : dueToday.length === 0
         ? "今天没有要打卡的习惯"
         : doneCount === dueToday.length
@@ -310,7 +403,7 @@ export default function Habits() {
           title="习惯"
           // 一个习惯都没有时这一行不写：底下那张空态卡说的就是这句话，
           // 同一句话在一屏里出现两遍，看着像是页面坏了
-          sub={habits.length === 0 ? "" : sub}
+          sub={nothing ? "" : sub}
           // 打卡进度也用同一个环：跟「今天」一个形制，扫一眼就知道今天还欠几个
           ring={{ done: doneCount, total: dueToday.length }}
         />
@@ -340,6 +433,13 @@ export default function Habits() {
             </>
           )}
 
+          {planRows.length > 0 && (
+            <>
+              <div className="group-head">重复的计划</div>
+              <RowList rows={planRows} fold={NO_FOLD} anchor={null} orderedIds={planIds} />
+            </>
+          )}
+
           {restToday.length > 0 && (
             <>
               <div className="group-head">今天不用做</div>
@@ -351,7 +451,7 @@ export default function Habits() {
             </>
           )}
 
-          {habits.length === 0 && (
+          {nothing && (
             <div className="mcard mhb-blank">
               需要反复做的事放在这里，每天打卡。点右下角的 ＋ 加一个。
             </div>
@@ -386,15 +486,7 @@ export default function Habits() {
             }}
           />
           <CommitMark on={addFlash.on} />
-          <select
-            className="input hb-add-rule"
-            value={JSON.stringify(draftRule)}
-            onChange={(e) => setDraftRule(JSON.parse(e.target.value) as RepeatRule)}
-          >
-            {RULE_CHOICES.map((c) => (
-              <option key={c.label} value={JSON.stringify(c.rule)}>{c.label}</option>
-            ))}
-          </select>
+          <HabitRulePick className="hb-add-rule" value={draftRule} onPick={setDraftRule} />
           <button className="btn primary" disabled={!draft.trim()} onClick={create}>
             加上
           </button>
@@ -415,6 +507,14 @@ export default function Habits() {
           </>
         )}
 
+        {planRows.length > 0 && (
+          <>
+            <div className="group-head">重复的计划</div>
+            {/* 就是计划页那一行：点开是同一张任务卡，勾完成推到下一次 */}
+            <RowList rows={planRows} fold={NO_FOLD} anchor={planAnchor} orderedIds={planIds} />
+          </>
+        )}
+
         {restToday.length > 0 && (
           <>
             <div className="group-head">今天不用做</div>
@@ -430,8 +530,8 @@ export default function Habits() {
           </>
         )}
 
-        {habits.length === 0 && (
-          <div className="empty">还没有习惯，在上面加一个。</div>
+        {nothing && (
+          <div className="empty">还没有习惯，在上面加一个。带循环的计划也会列在这里。</div>
         )}
       </div>
       )}

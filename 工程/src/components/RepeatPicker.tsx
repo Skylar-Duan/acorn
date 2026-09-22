@@ -30,12 +30,9 @@ export interface RepeatPickerProps {
   onCancel: () => void;
 }
 
-/** 两条规则是不是同一个（常用项那排用它判「现在选的是哪个」「现在的值在不在常用项里」）。
- *  每周那几天先排序再比，[5,1] 跟 [1,5] 是一回事 */
-export function sameRepeat(a: RepeatRule | null, b: RepeatRule | null): boolean {
-  const norm = (r: RepeatRule | null) => (r && r.kind === "weekly" ? { ...r, days: [...r.days].sort((x, y) => x - y) } : r);
-  return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
-}
+/** 两条规则是不是同一个。09-21 起搬进 core/options（常用项清单在那儿，判现值也在那儿），
+ *  这里转一手，老的 import 照样能用 */
+export { sameRepeat } from "../core/options";
 
 /** 面板初始停在哪一页、各页的草稿是什么：从现有规则推，推不出来的按 anchor 给个合理的默认 */
 function initial(value: RepeatRule | null, anchor: string) {

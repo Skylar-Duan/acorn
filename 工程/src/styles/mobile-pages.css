@@ -128,6 +128,27 @@
 /* 今天不用做的那一组整体退后一步，但仍然读得清——不是「关掉了」，是「今天轮不到」 */
 .mshell .mhb-row.off .mhb-title { color: var(--ink-2); }
 
+/* 右边一列：上面「下次 周三」，下面七个点。平常宽度由七个点撑定（92px）；
+   跨年那句「下次 2027年1月5日」比七个点宽，这时让它撑宽这一列、名字那栏（flex:1 + min-width:0）让位，
+   不然年底就只剩「下次 2027年1…」看不出哪天（09-22） */
+.mshell .mhb-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+.mshell .mhb-next {
+  max-width: 150px;
+  font-size: 12px;
+  line-height: 15px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 右边最近 7 天：一天一个 8px 的点，间距 6px，右起第一个是今天。
    做过的实心 accent，今天那个套一圈虚线（outline 不占位，不会把这一列撑宽） */
 .mshell .mhb-dots {
@@ -318,6 +339,22 @@
 }
 .mhs-input:focus { border-bottom-color: var(--accent); }
 .mhs-seg { padding: 0 20px; }
+/* 周期那排底下摊开的两块（09-21）：「每隔几天…」的 每 [n] 天 · 好；「自定义…」的天 / 周 / 月面板（RepeatPicker） */
+.mhs-every {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; color: var(--ink); font-size: var(--fs-md);
+}
+.mhs-every .msh-field { flex: 0 0 88px; }
+.mhs-every .msh-opt { flex: 0 0 auto; min-height: 44px; padding: 0 18px; }
+.mhs-every .msh-opt:disabled { opacity: .38; }
+.mhs-custom { margin-top: 10px; }
+.mhs-custom .rp { width: 100%; padding: 0; }
+.mhs-custom .rp-cell, .mhs-custom .rp-tab { min-height: 40px; }
+.mhs-custom .rp-btn { min-height: 40px; padding: 0 16px; }
+/* 手指没有 hover：跟任务纸的自定义叠纸（.msh-rp）同一套，点掉的格子别一直挂着 hover 色像还选着 */
+.mhs-custom .rp-cell:hover { background: var(--bg); color: var(--ink); }
+.mhs-custom .rp-cell.on:hover { background: var(--accent); color: var(--on-accent); }
+.mhs-custom .rp-cell:active { background: var(--accent-soft); }
 .mhs-foot { padding: 18px 20px 6px; }
 .mhs-go {
   width: 100%;

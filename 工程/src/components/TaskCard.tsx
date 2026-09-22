@@ -4,7 +4,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { LIST_COLORS } from "../core/model";
-import { cmpYMD, dayOfWeek, duePresets, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
+import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import type { ParseResult } from "../core/parse";
 import { parseQuickAdd, parseSubtaskInput, SUBTASK_SKIP } from "../core/parse";
@@ -20,7 +21,8 @@ import SyntaxInput from "./SyntaxInput";
 import { growArea, keepLines, oneLine } from "./autogrow";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
-import RepeatPicker, { sameRepeat } from "./RepeatPicker";
+import RepeatPicker from "./RepeatPicker";
+import RepeatMenu from "./RepeatMenu";
 import { useLeaving } from "./motion";
 import { CommitMark, FLASH_MS, TYPING_IDLE_MS, useTypingFlash } from "./commitFlash";
 
@@ -484,23 +486,12 @@ export default function TaskCard({ task }: { task: Task }) {
   closeMenusRef.current = closeMenus;
 
   // 循环菜单的「每周X/每月X号」按任务自己的日期取形（没有日期按今天）。
-  // 星期几走 dayOfWeek（本地日期）：以前是 new Date("2026-09-21").getDay()，那是按 UTC 零点解析的，
-  // 西半球时区会差一天——任务排在周一，菜单里却写「每周日」
+  // 星期几在 core/options.repeatCommon 里走 dayOfWeek（本地日期），不按 UTC 解析——
+  // 西半球时区不会差一天。菜单有哪几项、什么顺序也在那儿（全应用一套），这儿只交 anchor 和现值
   const repeatAnchor = task.due ?? today;
-  const wd = dayOfWeek(repeatAnchor);
-  const dom = Number(repeatAnchor.slice(8, 10));
-  /** 循环菜单的常用项。现在的规则不在这几个里（比如「每周一三五」「每3天」）就单独挂在最上面，
-   *  用户一眼能看到现在是什么，点它进自定义面板接着改 */
-  const repeatCommon: RepeatRule[] = [
-    { kind: "daily", every: 1 },
-    { kind: "workday" },
-    { kind: "weekly", days: [wd] },
-    { kind: "monthly", day: dom },
-  ];
-  const repeatOffList = !!task.repeat && !repeatCommon.some((r) => sameRepeat(r, task.repeat ?? null));
-  // 安排日期的快捷预设（今天 / 本周五 / 本周日 / 本月末）现算：永远向后取最近的一个，
-  // 名字跟着算出来的日子走，跟今天撞上的那个不出现。规则和单测都在 core/dates.ts
-  const presets = duePresets(today);
+  // 选日子的快捷项（今天 / 明天 / 本周末 / 下周末 / 本月末）：全应用一套，规则和单测都在 core/options.ts。
+  // 主任务的日期弹层和子任务的日期小签都用它
+  const presets = dateOptions(today, { weekendDay: settings.weekendDay });
 
   /** 一条子任务的整行。未完成那堆和已完成那堆共用它，两处长得一模一样。
    *  写成组件体内的局部函数、不抽成外部组件：外部组件每次 render 都是个新类型，
@@ -578,7 +569,8 @@ export default function TaskCard({ task }: { task: Task }) {
         <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务">×</button>
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
           <div className={`popmenu${subPop.leaving ? " leaving" : ""}`} style={{ top: "100%", right: 0 }}>
-            {/* 预设跟任务卡那个日期弹层同一套（core/dates.duePresets），别在这儿另写一份 */}
+            {/* 预设跟任务卡那个日期弹层同一套（core/options.dateOptions），别在这儿另写一份；
+                下面那个日期框就是「选日期…」 */}
             {presets.map((p) => (
               <button key={p.key} className="item" onClick={() => { updateSubtask(task.id, s.id, { due: p.ymd }); setSubMenu(null); }}>
                 {p.label}
@@ -784,25 +776,14 @@ export default function TaskCard({ task }: { task: Task }) {
                 onCancel={() => setRepeatCustom(false)}
               />
             ) : (
-              <>
-                {repeatOffList && task.repeat && (
-                  <>
-                    <button className="item" onClick={() => setRepeatCustom(true)}>
-                      {describeRepeat(task.repeat)}<span className="k">✓</span>
-                    </button>
-                    <div className="sep" />
-                  </>
-                )}
-                {repeatCommon.map((r) => (
-                  <button key={r.kind} className="item" onClick={() => setRepeat(r)}>
-                    {describeRepeat(r)}
-                    {sameRepeat(r, task.repeat ?? null) && <span className="k">✓</span>}
-                  </button>
-                ))}
-                <div className="sep" />
-                <button className="item" onClick={() => setRepeatCustom(true)}>自定义…</button>
-                {task.repeat && <button className="item" onClick={() => setRepeat(null)}>不再循环</button>}
-              </>
+              // 全应用一套（core/options.repeatMenu）：[现值 ✓] 每天 / 每个工作日 / 每周X / 每月X号 /
+              // 每隔几天… / 自定义… / 不重复。点现值或「自定义…」换成上面那个面板
+              <RepeatMenu
+                anchor={repeatAnchor}
+                value={task.repeat ?? null}
+                onPick={setRepeat}
+                onCustom={() => setRepeatCustom(true)}
+              />
             )}
           </div>
         )}

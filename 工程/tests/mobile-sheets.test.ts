@@ -4,8 +4,8 @@
 // 所以照 tests/mobile-layout.test.ts 那个路数：钉「改法还在不在源码里」。
 // 每一条都对应一个「写歪了用户当场会疼」的点：
 //
-//   ① 安排日期的候选日只有一套（core/dates.duePresets）。在这儿另写一份「本周五」，
-//      周六点开时桌面写「下周五」、手机还写「本周五」，同一件事两个日子。
+//   ① 安排日期的候选日只有一套（09-21 起是 core/options.dateOptions：今天 / 明天 / 本周末 / 下周末 / 本月末，
+//      原来的 core/dates.duePresets「本周五 / 本周日」已删）。在这儿另写一份，桌面和手机就会各说各的日子。
 //   ② 「记一条」在手机上**也解析**（用户 2026-09-03 改口：「便捷输入还是加回去」；v1.11.0 那版
 //      是纯点选）。解析器只有全仓那一个；打字和点选谁说了算见 tests/mobile-quickadd-syntax.test.ts，
 //      这儿只钉落库那条路跟桌面同源。
@@ -20,7 +20,7 @@ import quickAddSheetSource from "../src/mobile/QuickAddSheet.tsx?raw";
 import taskCardSource from "../src/components/TaskCard.tsx?raw";
 import quickAddBarSource from "../src/components/QuickAddBar.tsx?raw";
 import swipeSource from "../src/mobile/swipe.ts?raw";
-import { duePresets } from "../src/core/dates";
+import { dateOptions } from "../src/core/options";
 
 const read = (p: string) => readFileSync(p, "utf8");
 const sheetCss = read("src/styles/mobile-sheet.css");
@@ -38,31 +38,35 @@ function slice(src: string, from: string, to: string): string {
   return src.slice(i, j);
 }
 
-describe("① 安排日期的候选日：两张纸都走 core/dates.duePresets，不许另写一份", () => {
-  it("两张纸都 import 并现算 duePresets(today)", () => {
+// 09-21 有意改口（用户：「各个地方的循环可选项要对齐一致，包括延期选项也要对齐」）：
+// 原来这组钉的是 duePresets（今天 / 本周五 / 本周日 / 本月末），现在全应用统一成 dateOptions
+describe("① 安排日期的候选日：两张纸都走 core/options.dateOptions，不许另写一份", () => {
+  it("两张纸都 import 并现算 dateOptions(today, { weekendDay })", () => {
     for (const [name, src] of [["任务详情", taskSheetSource], ["记一条", quickAddSheetSource]] as const) {
-      expect(src, name).toContain('from "../core/dates"');
-      expect(src, name).toContain("duePresets");
-      expect(src, name).toContain("const presets = duePresets(today);");
-      // 渲染那一排就是它，不是别的什么数组
-      expect(src, name).toMatch(/presets\.map\(\(p\) =>/);
+      expect(src, name).toContain('import { dateOptions } from "../core/options";');
+      expect(src, name).toContain("const presets = dateOptions(today, { weekendDay: settings.weekendDay });");
+      expect(src, name).not.toContain("duePresets");
+      // 渲染那一排就是它，不是别的什么数组；五颗三列两行
+      expect(src, name).toMatch(/<div className="msh-dates">\s*\{presets\.map\(\(p\) =>/);
     }
+    expect(sheetCss).toContain(".msh-dates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));");
   });
 
-  it("四个名字一个都不许写死在这两个文件里（「本周五」到了周六要变成「下周五」）", () => {
-    // 标签跟着算出来的日子走，规则和单测都在 core/dates。写死就等于把那条规则复制了一份
+  it("日子的名字一个都不许写死在这两个文件里（全从 dateOptions 来）", () => {
+    const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     for (const [name, src] of [["任务详情", taskSheetSource], ["记一条", quickAddSheetSource]] as const) {
-      for (const label of ["本周五", "下周五", "本周日", "下周日", "本月末"]) {
-        expect(src, `${name} 里不许出现写死的「${label}」`).not.toContain(label);
+      // 「明天」不在这张单子上：子任务输入框的提示语「~明天 !高」是在教写法，不是一个选项
+      for (const label of ["本周末", "下周末", "本周五", "下周五", "本周日", "下周日", "本月末"]) {
+        expect(strip(src), `${name} 里不许出现写死的「${label}」`).not.toContain(label);
       }
     }
   });
 
-  it("先钉住前提：duePresets 给的就是这四类，而且跟今天撞上的那个不出现", () => {
-    const keys = duePresets("2026-09-02").map((p) => p.key); // 周三
-    expect(keys).toEqual(["today", "fri", "sun", "monthEnd"]);
-    // 正好是本月末那天点开：「本月末」跟「今天」撞了，只剩三个
-    expect(duePresets("2026-09-30").map((p) => p.key)).not.toContain("monthEnd");
+  it("先钉住前提：dateOptions 给的就是这五类，撞同一天的不出现", () => {
+    const keys = dateOptions("2026-09-02").map((p) => p.key); // 周三
+    expect(keys).toEqual(["today", "tomorrow", "weekend", "nextWeekend", "monthEnd"]);
+    // 正好是本月末那天点开：「本月末」跟「今天」撞了，不出现
+    expect(dateOptions("2026-09-30").map((p) => p.key)).not.toContain("monthEnd");
   });
 
   it("日期框仍然是全仓那唯一一个件（DateField），不许手写 <input type=\"date\">", () => {

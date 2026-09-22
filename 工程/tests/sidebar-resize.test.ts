@@ -216,4 +216,11 @@ describe("挂在哪、谁看得到", () => {
     // 抽屉宽度仍是写死的，不跟 --side-w 走
     expect(narrow).toContain("width: min(82vw, 300px);");
   });
+
+  it("侧栏竖向滚动条藏掉，滚轮还能滚（同一条 .side 规则窄屏抽屉也一起盖到）", () => {
+    const rule = appCss.slice(appCss.indexOf(".side {"), appCss.indexOf("}", appCss.indexOf(".side {")));
+    expect(rule).toContain("overflow-y: auto;");
+    expect(rule).toContain("scrollbar-width: none;");
+    expect(appCss).toContain(".side::-webkit-scrollbar { display: none; }");
+  });
 });

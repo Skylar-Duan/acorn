@@ -42,32 +42,36 @@
 
 **2026-09-21 这一批（账本「橡木开发」七组，只动桌面为主；手机要跟的记进 README「手机跟随清单」）**
 
-- **顺延可选哪天 + 右键「调整日期」**（只动桌面）：
-  `core/dates.ts` 新增 `weekendOf(today, weekendDay, shift)`（跟 `parse.ts` 内部 `resolveWeekend` 同一套算法，测试逐天对照）、
-  `postponePresets(today, weekendDay)`（明天 / 本周末 / 下周末 / 本月末，只留今天之后、撞同一天的去掉；本周末已到或已过只留下周末）、
-  `adjustDatePresets(today)`（`duePresets` 在「今天」后插一个绝对的明天，后面跟明天撞日的去掉，如周四的「本周五」）。`duePresets` 本身没改。
+- **顺延可选哪天 + 右键「调整日期」**（桌面；手机 09-22 跟上，见下一批）：
+  `core/dates.ts` 新增 `weekendOf(today, weekendDay, shift)`（跟 `parse.ts` 内部 `resolveWeekend` 同一套算法，测试逐天对照）。
+  选项清单本身 09-22 统一进 `core/options.dateOptions`（见下一批），这一批先加的 `postponePresets` / `adjustDatePresets` 和老的 `duePresets` 都已删掉。
   `store.ts` 新增 `postponeRowsTo(rows, ymd)`：按行落日期，母任务行只有旧日期存在且新日期更晚才 `postponeCount +1` 并重算提醒；
-  子任务行只改这一条，继承来的日期和钟点先落成自己的（走 `subTime`）；一次调用一次写库、一张撤销快照，toast「已顺延 N 项」可撤销。另有 `overdueSubRows(task, today)`。
+  子任务行只改这一条，继承来的日期和钟点先落成自己的（走 `subTime`）；**不往前拉**：母任务行和子任务行都拿当下生效的日期（子任务自己的，没有就母任务的）比，选的日子不晚于它就跳过，
+  一行都没改时只 toast「选的这天比原来的日期还早，没有顺延」、不写库、不留撤销；一次调用一次写库、一张撤销快照，toast「已顺延 N 项」可撤销。另有 `overdueSubRows(task, today)`。
   新组件 `PostponeMenu.tsx` + `postpone.css`：弹层 `createPortal` 到 body、fixed 定位、放不下反向弹（`.row-slot` 会裁切）；
   根节点吞掉 click / contextmenu / pointerdown / mousedown / dragstart（portal 事件会沿组件树冒泡回行）；点外、Esc、滚动、改窗口尺寸关闭。
-  「选日期…」用 DateField，`onCommit` 只记草稿，点「确定」/回车才调一次 `postponeRowsTo`；「确定」故意不设 disabled（日期框停手 350ms 才落定，禁用的按钮收不到 mousedown）。
-  挂三处：今天页逾期组「全部顺延 ▾」（手机保留「全部推到明天 →」）、多选浮条「顺延 ▾」（按件取母任务行）、`TaskRow` 行尾常驻「顺延 ▾」
+  选项走 `dateOptions(today, {weekendDay, after})`，`after` 在开菜单那一刻从要顺延的行里取最早的有效日期（子任务按生效日期），所以过期的行第一项是「今天」、多选按最早的算。
+  「选日期…」抽成 `components/DatePickRow.tsx`（顺延菜单和右键共用）：DateField，`onCommit` 只记草稿，点「确定」/回车才调一次；回车 `stopPropagation`，不冒泡去打开别的任务卡；
+  「确定」故意不设 disabled（日期框停手 350ms 才落定，禁用的按钮收不到 mousedown）。
+  挂三处：今天页逾期组「全部顺延 ▾」、多选浮条「顺延 ▾」（按件取母任务行）、`TaskRow` 行尾常驻「顺延 ▾」
   （`!isMobile && !dateOnlyTail && !doneDate`，且本行过期或它是收起的链头、这件事里有过期子任务；链头推 `overdueSubRows`；Ctrl/Shift 点仍走多选）。`Ctrl+→` 没动。
 - **右键「整件事」菜单**：`TaskRow` 加 `whole` prop，`RowList` 的 FoldPlan 加 `solo`（整页只露一行的子任务行），`whole = fold.more.has(key) || fold.solo.has(key)`；
   `sub && !whole` 仍出子任务菜单，否则出任务菜单并带 whole，标题「整件事 · 名字」，日期和优先级改母任务、子任务字段一个不写。
-  `UIState.ctxMenu` 加可选 `whole`，`openCtxMenu` 第 5 参 `opts.whole`。`ContextMenu.tsx` 两个菜单都删「推到明天」，「安排日期」改名「调整日期」、改走 `adjustDatePresets`。
+  `UIState.ctxMenu` 加可选 `whole`，`openCtxMenu` 第 5 参 `opts.whole`。`ContextMenu.tsx` 两个菜单都删「推到明天」，「安排日期」改名「调整日期」，
+  选项走 `dateOptions` + 末尾 `DatePickRow`「选日期…」+「清除日期」/「继承母任务」。`datePicking` 状态：日期框摊开时鼠标移出不收子菜单，移到「优先级」上复位。
+  子菜单往左弹的判断任务菜单依赖 `[sub, datePicking]`；子任务菜单原来完全不会往左弹，补上同一套（日期、优先级两个子菜单，依赖 `[subOpen, datePicking]`）。
 - **循环：「~每个月末」+ 自定义面板**：`parse.ts` 的 `repWeekly` / `repWeekend` / `repMonthly` 放宽成可带「个」；新增 `repMonthEnd`（`每个?月(最后一天|末|底)` → `{monthly, day:31}`，排在日期规则之前扫，免得「月末」被当成一次性日期）；
   新增 `repWeekBare` / `repMonthBare`（只写「每周」「每个月」，否定前瞻排除带下文的写法；「每月初」「每月中」这次不认），先按今天占位，state 的 `repeatBare` 记住占位，
   汇总时若句中写了日期就按 `st.due` 重算周几 / 几号并改芯片。都走 `~` 闸门。子任务残留清理正则 `每月?` → `每(?:个?月)?`。
   `recur.describeRepeat` 在 day≥31 时写「每月最后一天」，`syntax.repeatToSyntax` 同步输出「每月最后一天」，整句改能往返。数据模型、DATA_VERSION 不动（仍存 31 号，老版本小月本来就落月末，只是显示成「每月31号」）。
-  新组件 `RepeatPicker.tsx` + `repeatpicker.css`（天 / 周 / 月三页，月页 1–31 加「最后一天」同为 day 31，`describeRepeat` 实时预览、周一天不选「好」按不动，同文件导出 `sameRepeat`），
-  渲染在调用方原有的 `.popmenu` / `.qa-picks` 里，外部点击判断不用改。`TaskCard` 的「↻ 循环」与 `QuickAddBar` 的「🔁 重复」：常用项统一用 `describeRepeat` 命名、当前项打勾、
-  不在常用项里的当前值挂最上面、末尾「自定义…」；`QuickAddBar` 删掉手写 `repeatLabel`，`repeatChoices` 按 `pick.due ?? today` 取值。
-  顺手修 `TaskCard` `new Date(task.due).getDay()` 按 UTC 零点解析、西半球差一天，改 `dayOfWeek(task.due ?? today)`。
-  `mobile/QuickAddSheet.tsx` 只把「重复」那颗显示换成 `describeRepeat`。`GuideContent` 补卡片「~每个月末 交房租」。
+  新组件 `RepeatPicker.tsx` + `repeatpicker.css`（天 / 周 / 月三页，月页 1–31 加「最后一天」同为 day 31，`describeRepeat` 实时预览、周一天不选「好」按不动；
+  `sameRepeat` 09-22 挪进 `core/options.ts`，这里转手再导出），渲染在调用方原有的 `.popmenu` / `.qa-picks` 里，外部点击判断不用改。
+  菜单本身 09-22 统一成 `core/options.repeatMenu` + 新组件 `components/RepeatMenu.tsx`（见下一批）；`QuickAddBar` 删掉手写 `repeatLabel`，anchor 取 `pick.due ?? today`。
+  顺手修 `TaskCard` `new Date(task.due).getDay()` 按 UTC 零点解析、西半球差一天，改 `dayOfWeek(task.due ?? today)`。`GuideContent` 补卡片「~每个月末 交房租」。
 - **侧栏宽度可拖**（桌面 + 电脑浏览器网页版）：新 `core/sideWidth.ts`（键 `acorn-sidew`，带 `acorn-` 前缀被 `clearLocalPrefs` 扫掉、避开 useFold 的 `acorn-side-` 前缀；默认 232 / 180~360；存默认值时删键），
   新 `SideGrip.tsx`（role=separator，pointer 事件 + setPointerCapture，拖动中只改 `--side-w`，pointerup / cancel / lostpointercapture 写一次存储，只认左键，双击恢复默认，拖动时 body 加 `.side-resizing`）。
   `main.tsx` 在 createRoot 前 `applySavedSideW()`，第一帧就是记住的宽度。存 localStorage 不进 settings（settings 会同步到手机，各电脑屏宽也不同）。`.side-grip` fixed、宽 6px、`-webkit-app-region:no-drag`，≤760px 隐藏。
+  侧栏竖向滚动条藏掉（09-22）：只在 `.side` 上加 `scrollbar-width:none` + `::-webkit-scrollbar{display:none}`，滚轮 / 触控板照滚；`.side` 桌面与窄屏抽屉共用，一次改两处；`.side-grip` 与 `Sidebar.tsx` 没动。
 - **子任务可以写几行**（桌面）：`parse.ts` 的 ParseOpts 加 `keepNewlines`，内部 `tidyTitle` 不开时逐字等价旧代码，开时逐行清理、丢空行再用 `\n` 拼回；`parseSubtaskInput` 加可选第 5 参 `{keepNewlines}`（手机 4 参调用不变）。
   `SyntaxInput` 加 `allowNewline`（Shift+Enter 交给 textarea 换行、不调 onShiftEnter，补全下拉开着时 Enter/Tab 仍优先），`autogrow.ts` 新增 `keepLines`。
   `TaskCard` 新加子任务栏开 `allowNewline`、去掉 `onShiftEnter`；已有子任务标题改用 `keepLines`、Shift+Enter 放行。母任务标题、备注、整句改、记一条、快捷记浮窗都没动。其他显示多行标题的地方逐个查过（列表 / 日历 / 手机行换行显示成空格，导出与搜索不受影响）。
@@ -119,16 +123,57 @@
   `LoginPage.tsx` 新增 `ACCOUNT_LINE`，每步一句写在原灰字位置，布局不动。`cloud.ts`：`RemoteInfo` 加可选 `isAdmin` / `feedbackAdmin` / `displayName` / `account`（老服务器不回也不报错），
   `deleteAccount` 带回服务器回复，`needsLogin` 仍只认 401（503 不算要重新登录）。`AccountPanel.tsx` 注销确认框写明只删橡果云端数据、反馈一并删、cdpandas 账号还在；有 `cdpandasAccountKept` 时结果提示换新说法。
 - **App · 设置里的反馈**（三端）：`Settings.tsx` 在「账号」后加「反馈」一节（现有可折叠卡片），新 `components/FeedbackPanel.tsx` + `core/feedback.ts`
-  （`FEEDBACK_MAX` 2000 与服务端对齐、剩不到 200 字才显示字数、`feedbackPayload` 自动带 `APP_PLATFORM` / `APP_VERSION`（测试版是完整 beta 号）/ `deviceName`、`feedbackErr` 出错说法、
-  `openExternal`：Tauri 走 `plugin-opener` 用系统浏览器、网页版 `window.open` 新标签页）。`cloud.submitFeedback`。
+  （`FEEDBACK_MAX` 2000 与服务端对齐、剩不到 200 字才显示字数、`feedbackPayload` 自动带 `APP_PLATFORM` / `APP_VERSION`（测试版是完整 beta 号）/ `deviceName`、`feedbackErr` 出错说法）。`cloud.submitFeedback`。
   401 时调新抽出来的 `syncCtl.expireSession()`（清会话、停监听、停自动拉取、状态改「登录状态已过期…」，本机数据不动；`syncNow` 也改用它），这一节变成没登录的样子，框里的字留着；
-  503 / 429 不断开。管理员入口只认 `feedbackAdmin`（与服务端放行条件一致）；`feedbackAdminStale`（isAdmin 但不 fresh）只显示「要看大家的反馈，先退出再登录一次」。样式追加在 `settings.css`。
+  503 / 429 不断开。样式追加在 `settings.css`。
+  **App 里不设管理员入口**（用户 09-22 撤掉）：卡里没有「查看大家的反馈」链接和「先退出再登录一次」提示，管理员看反馈只走介绍页。`FeedbackPanel` 不再问 `/api/me`；
+  `core/feedback.ts` 里只为这条链接服务的 `FEEDBACK_ADMIN_URL` / `isFeedbackAdmin` / `feedbackAdminStale` / `FEEDBACK_ADMIN_STALE_TEXT` / `openExternal` 与 `.fb-admin` 样式一并删了。
+  `cloud.ts` 的 `RemoteInfo.feedbackAdmin` 字段、`whoAmI` 导出和服务端 `/api/me` 的 `feedbackAdmin` 没动（账号 / 服务端契约，介绍页照用）。
 - **介绍页 · 管理员看反馈**（`网站/`，未发布）：`网站/assets/feedback-admin.js`，挂在 `index.html` 的 `<span data-feedback-mount hidden>`（「打开网页版」右边）。
   加载后先带同源 `acorn-auth` 令牌问 `/api/feedback`，不认再不带 Authorization 让浏览器带 cdpandas cookie；200 才换成「反馈」按钮 + 未处理数角标，普通访客什么也不出（控制台有浏览器自己打的 404，不是脚本错）。
   面板是 `<dialog>`：未处理 / 全部两页、每页 50 条「再看更早的」、每条原文 / 邮箱 / 端与版本 / 设备 / 时间、「标记已处理」「改回未处理」。
   字段一律 textContent 渲染不拼 innerHTML，被套 iframe 时整段不启用。线上 `/intro/` 只映射 index.html 和 `/intro/assets/*`，所以脚本必须在 `网站/assets/`。本地截图在 `../界面截图/介绍页反馈/`。
 - 测试：新增 `tests/feedback-entry.test.ts`（21）、`tests/login-cdpandas.test.ts`（17，含真 `cloud.call` + nginx 503 HTML 页）；`settings-layout` 加「反馈」一节顺序，`auto-pull` 改查 `expireSession`。
   全量 77 文件 2378 测全绿，`tsc --noEmit` 无错。
+
+**2026-09-22 这一批（选日子 / 选循环全应用一套、习惯页列出重复的计划、习惯频率、手机跟上；未打包）**
+
+- **唯一一份选项清单 `core/options.ts`**（纯函数，今天 / 周末日 / 这件事的日期全由调用方传，不读时钟不读设置）：
+  `dateOptions(today, {weekendDay, after})` = 今天 / 明天 / 本周末 / 下周末 / 本月末（「选日期…」由界面画，名字 `PICK_DATE_LABEL`）。先去重、后按 `after` 藏：
+  「今天」被藏了，跟今天同一天的「本周末」也不顶上来；顺序固定不按日子排（月底那周「本月末」早于「下周末」仍排在后面，测试钉住）。
+  `repeatMenu(anchor, current)` = [现值（不在常用项里时，kind current）] 每天 / 每个工作日 / 每周X / 每月X号 / 每隔几天… / 自定义… / [不重复（有循环时）]；
+  `repeatCommon(anchor)`、`everyNDays(input)`（只收 1–365 整数，写 `{daily, every:n}`）、`sameRepeat`（每周天数排序后比，七天全勾 = 每天）。
+  `core/dates.ts` 删 `duePresets` / `DuePreset`（手机切完后全仓已无调用）以及上一批的 `postponePresets` / `adjustDatePresets`。
+- **桌面各入口切过去**：任务卡日期（主任务 / 子任务小签）、`QuickAddBar` 日期与重复、右键「调整日期 ▸」（任务 / 子任务）、顺延菜单（逾期组 / 多选浮条 / 行尾）、侧栏拖到「计划」的「安排到哪天？」。
+  命令面板没有日期项，不涉及。任务卡、QuickAddBar、侧栏弹层里常驻的日期框就是它们的「选日期…」；没有常驻日期框的（顺延菜单、右键）用 `DatePickRow`。
+  循环菜单抽成 `components/RepeatMenu.tsx`（可选 `items` prop，默认 `repeatMenu(anchor, value)`）：「每隔几天…」原地变「每 [ ] 天 · 好」、回车写入（回车 `stopPropagation`）；「不再循环」改名「不重复」，只在有循环时出。
+- **`describeRepeat` / 习惯说法统一**：`recur.describeRepeat` 七天全勾说「每天」、乱序勾的按周日→周六顺序说；`habits.describeHabitRule` 直接调 `describeRepeat`（「每3天」「每月8号」不带空格，31 号「每月最后一天」）。
+- **习惯页「重复的计划」**（桌面 + 手机）：新 `core/repeating.ts` 的 `repeatingRows(d)`（单独成文件，因为要用 store 的 `aliveTasks` / `aliveSubtasks` / `rowDue` / `rowTime`，放 habits.ts 会跟 store 互相引用）。
+  口径：母任务带循环、没做完没放弃就出一行（有子任务也只占这一行）；它底下自己带循环、没做完没放弃没进回收站的子任务各出一行「母 › 子」；按生效日期 + 钟点排，没日期沉底，同刻按标题。
+  两端都用 `RowList` 渲染、传空折叠方案 `NO_FOLD`（每条循环都要露出自己的日期）；桌面展开位置 `cardAnchor(planRows, ui.expandedId)`，就是计划页那张内嵌 TaskCard，习惯详情原来的本地 `expandedId` 没动。
+  勾完成走原有「推到下一次」。行尾不加「下次」前缀（要改 TaskRow，这次不动）。
+  习惯行加「下次 周三」「下次 10月1日」（`habits.nextHabitDay` / `describeNextDay`，今天该做没打卡的不写；跨年写全年份）；「今天不用做」按下一次排（`sortHabitsByNext`）。
+  手机那句在 `.mhb-side` 里七个点上方（`.mhb-next` 最宽 150px，名字栏收窄让位）。副标题 / 空状态文案见验收单。
+- **习惯频率**：`habits.habitRepeatMenu(today, current)` = `repeatMenu` 去掉「不重复」、anchor 用今天；`RULE_CHOICES`（一三五 / 二四六 / 每 2 天 / 每 3 天）删掉。
+  桌面新建行与详情用 `Habits.tsx` 里的 `HabitRulePick`（按钮 + `RepeatMenu items=`）；选择器 `.hb-add select.hb-add-rule` → `.hb-add .hb-add-rule`、`.hb-edit select.input` → `.hb-edit .hb-rule-pick`。
+  「今天不用做」那组变淡只作用在 `.hb-row.off > .hb-head`，展开行 `position:relative; z-index:1`，菜单不再半透明、不被下面的卡盖住。
+  手机 `HabitSheet` 周期胶囊按同一顺序，「每隔几天…」「自定义…」在胶囊下展开（自定义直接嵌桌面 `RepeatPicker`，样式 `.mhs-custom`，补了 hover / 选中 hover / 按下三条）；
+  存着的非常用规则一直留在最前面可点回；保存改用 `sameRepeat` 比较（每周天数只是顺序不同不算改动）。数据格式不变，仍走 `setHabitRepeat` / `addHabit`。
+- **手机（安卓 + 网页手机界面）跟上**：任务详情、记一条、动作单「安排日期」走 `dateOptions`（390 宽三列两行），动作单「选个日子」改名「选日期…」。
+  左滑「推明天」、动作单「推到明天」→「顺延」，今天页「全部推到明天 →」→「全部顺延 →」，三处都开新的底部小纸 `mobile/PostponeSheet.tsx`（`PostponeSheetHost` 挂在 `App.tsx`）：
+  `sheetStore` 新增 `{kind:"postpone"; rows:{taskId, subId?}[]}`（排在 habit 前，老测试要求 habit 收尾）；纸里只存 id，点选项时 `resolvePostponeRows` 现找（删 / 完成 / 放弃的跳过，一行不剩自动收纸），
+  落库同样走 `store.postponeRowsTo`，下限同桌面；动作单先 `closeSheet` 再 `openSheet`，选完全收。已完成 / 已放弃的事动作单不出「顺延」。长按收起的整件事那一行仍只推那一行（这次不改）。
+  「重复」换成新组件 `mobile/RepeatOptions.tsx`（任务详情 + 记一条共用）：「每隔几天…」下面长出数字输入（`inputMode` 数字、1–365）；「自定义…」用组件本地开关叠一张底部纸放 `RepeatPicker`（格子放大到 390 宽约 46×44），
+  不进 `sheetStore`——`TaskSheetHost` 只在栈顶时开，往栈里推一张会把底下的任务详情卸掉、日期段顺延结算也会提前触发。配合叠纸，`Sheet` 的 Esc 只收 DOM 里最后一张 `.msheet-back`。
+- **数据**：`DATA_VERSION` 没动，数据模型没变。
+- **流程上要记的**：`core/dates.ts`、`views/Habits.tsx`、`App.tsx`、`components/RepeatMenu.tsx` 这四处是用脚本整文件读写回去的（违反「不直接开 w 覆盖写」），写前各自确认没有别人的未提交改动，写后逐个 `git diff` 核过只有本组改动。
+- 有意按新口径改写的旧测试：`date-presets`（安排日期、五处入口，`duePresets` 换成「已不再导出」守卫）、`postpone-presets`（原两组 presets 与源码守卫；手机「全部顺延 →」开小纸）、
+  `polish-fixes`（右键和侧栏）、`repeat-picker`（`repeatCommon` / `repeatOffList` / `const wd` 守卫；手机两张纸共用 RepeatOptions）、`commit-guards`（日期框名单 PostponeMenu → DatePickRow，全仓 8 → 9 处加 PostponeSheet）、
+  `mobile-sheets` ①、`mobile-shell`（左滑与动作单开顺延小纸）、`mobile-pages`（`RULE_CHOICES` → `habitRepeatMenu`、`HabitRulePick`）、`habits`（周期说人话改「每3天」「每月8号」、补 31 号与七天全勾）、
+  `feedback-entry`（删「④ 管理员才有『查看大家的反馈』」整块，②③ 补「不再调 whoAmI、页面没有那两行字」）。
+  新增：`options`、`habits-list`、`habit-rules`、`mobile-options`、`review-0922-picks`（第二轮复核 5 处样式 / 源码守卫），`sidebar-resize` 加滚动条隐藏一条，`recur` / `postpone-presets` 各补一条。
+  复核后 `tsc --noEmit` 通过；全量 vitest 当时 82 文件 2442 测里 5 条红（1 条复核者自己写错数目已改；2 条 `commit-guards` + 1 条 `repeat-picker` 断言 `QuickAddBar.tsx` 的老写法，
+  该文件现为 `changePick("due", …)`；1 条 `review-0921` 要验收单桌面说明写「还没打测试版、没装到这台电脑」，验收单已改）。
 
 ## v1.15.0 · 2026-09-15
 

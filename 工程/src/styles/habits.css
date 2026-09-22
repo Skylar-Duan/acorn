@@ -29,13 +29,22 @@
 .hb-add-input::placeholder { color: var(--ink-3); }
 /* 选择器要压过 base.css 的 `.input { width: 100% }`——不压住的话这个 select 会撑满整行，
    把左边的输入框挤成 0 宽（第一版就是这么坏的） */
-.hb-add select.hb-add-rule {
+.hb-add .hb-add-rule {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
   padding: 5px 8px;
   font-size: var(--fs-sm);
 }
+
+/* 周期选择（09-21 起不再是原生下拉）：一颗按钮 + 跟任务卡「↻ 循环」同一张 .popmenu（RepeatMenu / RepeatPicker） */
+.hb-rule-slot { position: relative; flex: 0 0 auto; display: inline-flex; }
+.hb-rule-pick {
+  width: auto; display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap; cursor: pointer; text-align: left;
+}
+.hb-rule-caret { color: var(--ink-3); font-size: 10px; }
+.hb-rule-pop { top: calc(100% + 4px); right: 0; }
 .hb-add .btn { flex: 0 0 auto; white-space: nowrap; }
 
 /* ---------- 一行一个习惯 ---------- */
@@ -49,7 +58,11 @@
 }
 .hb-row:hover { border-color: var(--ink-3); }
 .hb-row.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.hb-row.off { opacity: .62; }
+/* 淡下去的只是这一行的头：整行设 opacity 会把展开后详情里的周期菜单一起变半透明，
+   还会让每一行各成一层、菜单被后面的行盖住（09-22） */
+.hb-row.off > .hb-head { opacity: .62; }
+/* 展开的那一行压在后面几行上面，里面弹出的周期菜单 / 自定义面板不被挡 */
+.hb-row.open { position: relative; z-index: 1; }
 
 .hb-head {
   display: flex;
@@ -88,6 +101,17 @@
   font-weight: 600;
   flex: none;
   font-variant-numeric: tabular-nums;
+}
+
+/* 「下次 周三」：今天已经打过、或今天轮不到的习惯，下一次是哪天。跟周期那行小字同一档，
+   定一个最小宽度让各行的七格从同一条竖线起 */
+.hb-next {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  flex: none;
+  min-width: 72px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* ---------- 本周七格 ---------- */
@@ -174,7 +198,7 @@
 
 .hb-edit { display: flex; gap: 8px; flex-wrap: wrap; }
 .hb-edit .input { flex: 1 1 180px; min-width: 140px; width: auto; }
-.hb-edit select.input { flex: 0 0 auto; }
+.hb-edit .hb-rule-pick { flex: 0 0 auto; min-width: 0; }
 /* 备注外面那层只为托住提交回执的「✓」（A2），不改布局 */
 .hb-notes-wrap { position: relative; }
 .hb-notes-ok { left: auto; right: 8px; top: 15px; }

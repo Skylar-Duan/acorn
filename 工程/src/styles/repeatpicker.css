@@ -30,6 +30,12 @@
 }
 .rp-num:focus { border-color: var(--accent); }
 
+/* 循环菜单里「每隔几天…」摊开后的小输入：每 [ n ] 天 · 好（components/RepeatMenu） */
+.rp-everyn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; font-size: 13px; color: var(--ink);
+}
+
 /* 周 / 月的格子 */
 .rp-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 4px 0 10px; }
 .rp-month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; padding: 0 0 8px; }

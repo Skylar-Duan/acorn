@@ -2,7 +2,9 @@
 // App.tsx 常驻渲染 <ContextMenu/>；打开/关闭走 store 的 openCtxMenu/closeCtxMenu。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Priority, Task } from "../core/model";
-import { adjustDatePresets, todayYMD } from "../core/dates";
+import { todayYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
+import DatePickRow from "./DatePickRow";
 import {
   closeCtxMenu, completeTasks, deleteTasks, dropSubtask, dropTasks,
   removeSubtask, setTasksDue, setTasksList, setTasksWho, showToast, uncompleteTask,
@@ -36,6 +38,11 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [subOpen, setSubOpen] = useState<"date" | "priority" | null>(null);
+  /** 「调整日期 ▸」里的「选日期…」摊开着：鼠标移出去（比如去点日历）也别把子菜单收了 */
+  const [datePicking, setDatePicking] = useState(false);
+  /** 子菜单右边放不下就往左弹（跟任务右键菜单同一套）；「选日期…」摊开后子菜单变宽，要重新判断一次 */
+  const subRef = useRef<HTMLDivElement>(null);
+  const [subFlip, setSubFlip] = useState(false);
 
   const task = data.tasks.find((t) => t.id === taskId && !t.deletedAt);
   const sub = task?.subtasks.find((s) => s.id === subId);
@@ -53,6 +60,12 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
     if (top + el.offsetHeight > window.innerHeight - 8) top = Math.max(8, top - el.offsetHeight);
     setPos({ left, top });
   }, [x, y]);
+
+  useLayoutEffect(() => {
+    if (!subOpen || !menuRef.current || !subRef.current) return;
+    const mr = menuRef.current.getBoundingClientRect();
+    setSubFlip(mr.right + subRef.current.offsetWidth > window.innerWidth - 8);
+  }, [subOpen, datePicking]);
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -97,14 +110,14 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
       <div
         className={`ctx-subwrap${subOpen === "date" ? " open" : ""}`}
         onMouseEnter={() => setSubOpen("date")}
-        onMouseLeave={() => setSubOpen(null)}
+        onMouseLeave={() => { if (!datePicking) setSubOpen(null); }}
       >
         <button className="ctx-item">调整日期<span className="ctx-caret">▸</span></button>
         {subOpen === "date" && (
-          <div className="ctx-submenu">
-            {/* 安排日期那一套（core/dates.duePresets）在「今天」后面多一个明天——
-                跟任务的「调整日期」同一份（adjustDatePresets），两个菜单不许给出不一样的候选日 */}
-            {adjustDatePresets(today).map((p) => (
+          <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
+            {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…，
+                跟任务的「调整日期」、任务卡、侧栏、顺延菜单一模一样，别在这儿另写一份 */}
+            {dateOptions(today, { weekendDay: data.settings.weekendDay }).map((p) => (
               <button
                 key={p.key}
                 className="ctx-item"
@@ -113,6 +126,7 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
                 {p.label}
               </button>
             ))}
+            <DatePickRow onOpenChange={setDatePicking} onPick={(ymd) => run(() => updateSubtask(taskId, subId, { due: ymd }))} />
             <div className="ctx-sep" />
             <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { due: null, dueTime: null }))}>继承母任务</button>
           </div>
@@ -120,12 +134,12 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
       </div>
       <div
         className={`ctx-subwrap${subOpen === "priority" ? " open" : ""}`}
-        onMouseEnter={() => setSubOpen("priority")}
+        onMouseEnter={() => { setDatePicking(false); setSubOpen("priority"); }}
         onMouseLeave={() => setSubOpen(null)}
       >
         <button className="ctx-item">优先级<span className="ctx-caret">▸</span></button>
         {subOpen === "priority" && (
-          <div className="ctx-submenu">
+          <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
             {([3, 2, 1, 0] as Priority[]).map((p) => (
               <button key={p} className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { priority: p }))}>
                 <span className={`flag p${p}`} />
@@ -167,6 +181,8 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
   const [pos, setPos] = useState({ left: x, top: y });
   const [sub, setSub] = useState<SubName | null>(null);
   const [subFlip, setSubFlip] = useState(false);
+  /** 「调整日期 ▸」里的「选日期…」摊开着：鼠标移出去（比如去点日历）也别把子菜单收了 */
+  const [datePicking, setDatePicking] = useState(false);
   const [whoOpen, setWhoOpen] = useState(false);
   const whoRef = useRef<HTMLInputElement>(null);
   /** 需求方那个内联框已经交代过了（提交或丢弃），别再交代第二遍 */
@@ -231,7 +247,8 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
     if (!sub || !menuRef.current || !subRef.current) return;
     const mr = menuRef.current.getBoundingClientRect();
     setSubFlip(mr.right + subRef.current.offsetWidth > window.innerWidth - 8);
-  }, [sub]);
+    // 「选日期…」摊开后子菜单变宽：跟着重判一次，不然靠右时「确定」伸到窗口外
+  }, [sub, datePicking]);
 
   if (empty) return null;
 
@@ -240,9 +257,11 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
       clearTimeout(subTimer.current);
       subTimer.current = null;
     }
+    if (name !== "date") setDatePicking(false);
     setSub(name);
   }
   function subLeave() {
+    if (datePicking) return;
     if (subTimer.current) clearTimeout(subTimer.current);
     subTimer.current = setTimeout(() => setSub(null), 150);
   }
@@ -318,13 +337,14 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
         </button>
         {sub === "date" && (
           <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
-            {/* 预设 = 安排日期那一套（core/dates.duePresets）+「今天」后面一个明天，由 adjustDatePresets 一处算好。
-                别在这儿再手写一份「明天 / 下周一」。改的是母任务：还在继承的子任务跟着动，自己设过日子的不动 */}
-            {adjustDatePresets(today).map((p) => (
+            {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…
+                别在这儿再手写一份。改的是母任务：还在继承的子任务跟着动，自己设过日子的不动 */}
+            {dateOptions(today, { weekendDay: data.settings.weekendDay }).map((p) => (
               <button key={p.key} className="ctx-item" onClick={() => run(() => setTasksDue(ids, p.ymd))}>
                 {p.label}
               </button>
             ))}
+            <DatePickRow onOpenChange={setDatePicking} onPick={(ymd) => run(() => setTasksDue(ids, ymd))} />
             <div className="ctx-sep" />
             <button className="ctx-item" onClick={() => run(() => setTasksDue(ids, null))}>清除日期</button>
           </div>

@@ -8,7 +8,7 @@
 //   ② RowList 在手机上走 MobileRow，不画内嵌展开卡（卡片改成从底下抽出来的纸）
 //   ③ 底部导航固定五项、固定不动；＋ 只在记得下东西的页面出现
 //   ④ 清单页顶栏收干净：六颗颜色点和「删除清单」进「···」那张纸
-//   ⑤ 动作单的候选日走现有的 duePresets，不在手机上另写一份
+//   ⑤ 动作单的候选日走全应用那一份 dateOptions（09-21 前是 duePresets），不在手机上另写一份
 //   ⑥ App 把手机端那几张纸和登录页挂上了树
 //   ⑦ 颜色全是 token、时长全是变量（六主题 × 深浅自动成立）
 //
@@ -246,12 +246,15 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
   });
 
   it("左滑三个动作各调对应的 store 函数，做完把动作条收回去", () => {
-    expect(rowSource).toContain("postponeTasks([task.id])");
+    // 09-21 有意改口：「推明天」改成「顺延」，点开「顺延到哪天」那张小纸（PostponeSheet），
+    // 跟桌面「顺延 ▾」同一套选项；这一行只管把「是哪一行」交过去，落库在那张纸里走 postponeRowsTo
+    expect(rowSource).toContain('openSheet({ kind: "postpone", rows: [{ taskId: task.id, subId: sub?.id }] })');
+    expect(stripComments(rowSource)).not.toContain("推明天");
+    expect(stripComments(rowSource)).not.toContain("postponeTasks(");
     expect(rowSource).toContain("dropTasks([task.id], true)");
     expect(rowSource).toContain("deleteTasks([task.id])");
     expect(rowSource).toContain("swipe.close();");
-    // 子任务行只动自己那一条，不打到母任务上
-    expect(rowSource).toContain("postponeRows([{ task, sub }])");
+    // 子任务行只动自己那一条，不打到母任务上（顺延交过去的也是子任务那一行：subId）
     expect(rowSource).toContain("dropSubtask(task.id, sub.id, true)");
     expect(rowSource).toContain("removeSubtask(task.id, sub.id)");
   });
@@ -681,9 +684,11 @@ describe("⑦ 清单页：顶栏收干净，颜色和删除进「···」那张
 });
 
 describe("⑧ 动作单：每个动作都对得上桌面右键菜单里那一条", () => {
-  it("候选日走现有的 duePresets，不在手机上另写一份「明天 / 下周一」", () => {
-    expect(actionSheetSource).toContain('import { duePresets, todayYMD } from "../core/dates";');
-    expect(actionSheetSource).toContain("duePresets(today).map");
+  // 09-21 有意改口：候选日从 duePresets（今天 / 本周五 / 本周日 / 本月末）换成全应用统一的 dateOptions
+  it("候选日走全应用那一份 dateOptions，不在手机上另写一份「明天 / 下周一」", () => {
+    expect(actionSheetSource).toContain('import { PICK_DATE_LABEL, dateOptions } from "../core/options";');
+    expect(actionSheetSource).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay }).map");
+    expect(actionSheetSource).not.toContain("duePresets");
     const pane = stripComments(
       actionSheetSource.slice(
         actionSheetSource.indexOf('{pane === "date" && ('),
@@ -706,15 +711,17 @@ describe("⑧ 动作单：每个动作都对得上桌面右键菜单里那一条
     expect(applyDue).not.toContain("closeSheet()");
   });
 
-  it("完成 / 放弃 / 推到明天 / 复制标题 / 删除，跟右键菜单一一对应", () => {
+  it("完成 / 放弃 / 顺延 / 复制标题 / 删除，跟右键菜单一一对应", () => {
     const ctx = read("src/components/ContextMenu.tsx");
     for (const fn of ["completeTasks", "dropTasks", "deleteTasks", "setTasksList", "setTasksDue"]) {
       expect(actionSheetSource, fn).toContain(fn);
       expect(ctx, fn).toContain(fn);
     }
-    // 2026-09 有意分家：桌面右键里单独那一项「推到明天」收进了「调整日期 ▸」的「明天」（走 setTasksDue），
-    // 手机动作单这次没动（手机界面改动要先出稿），还是 postponeTasks
-    expect(actionSheetSource).toContain("postponeTasks");
+    // 2026-09 桌面右键里单独那一项「推到明天」收进了「调整日期 ▸」的「明天」；
+    // 09-21 手机动作单跟上：「推到明天」改成「顺延」，换成「顺延到哪天」那张小纸（跟左滑同一张）
+    expect(stripComments(actionSheetSource)).not.toContain("postponeTasks");
+    expect(stripComments(actionSheetSource)).not.toContain("推到明天");
+    expect(actionSheetSource).toContain('openSheet({ kind: "postpone", rows: [{ taskId: task.id, subId: sub?.id }] });');
     expect(actionSheetSource).toContain("navigator.clipboard.writeText");
   });
 

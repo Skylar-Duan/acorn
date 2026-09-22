@@ -18,7 +18,8 @@
 // 换顺序有两套手势：鼠标走 HTML5 拖拽，手指走「按住不动进排序模式」——
 // 后者是必须的，HTML5 拖拽在触摸屏上根本不触发（见 core/touchSort.ts）。
 import { useEffect, useMemo, useRef, useState } from "react";
-import { duePresets, todayYMD, cmpYMD } from "../core/dates";
+import { todayYMD, cmpYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
 import {
   addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
   moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
@@ -542,9 +543,9 @@ export default function Sidebar(
               安排到哪天？
               {planPop.shown.sub ? "（这条子任务）" : planPop.shown.ids.length > 1 ? `（${planPop.shown.ids.length} 项）` : ""}
             </div>
-            {/* 预设跟任务卡的日期弹层、右键的「安排日期」同一套（core/dates.duePresets）。
-                安排日期只有一套规矩，一处算一处用，别在这儿再写一份 */}
-            {duePresets(today).map((p) => (
+            {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
+                下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
+            {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
               <button key={p.key} className="item" onClick={() => planTo(p.ymd)}>{p.label}</button>
             ))}
             {/* 跟另外三处日期框同一个件。这一处以前**三样都没有**（没草稿、没去抖、

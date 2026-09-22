@@ -182,6 +182,11 @@ describe("describeRepeat", () => {
     expect(describeRepeat({ kind: "workday" })).toBe("每个工作日");
   });
 
+  it("七天全勾说「每天」；几天乱序勾的按周日到周六排（09-22）", () => {
+    expect(describeRepeat({ kind: "weekly", days: [0, 1, 2, 3, 4, 5, 6] })).toBe("每天");
+    expect(describeRepeat({ kind: "weekly", days: [5, 1, 3] })).toBe("每周一、三、五");
+  });
+
   // 31 号在没有 31 号的月份落到月末，所以它说的就是「每月最后一天」（「~每个月末」存的也是它）
   it("每月 31 号显示成「每月最后一天」，30 号照旧", () => {
     expect(describeRepeat({ kind: "monthly", day: 31 })).toBe("每月最后一天");

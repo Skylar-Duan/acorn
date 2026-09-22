@@ -971,15 +971,19 @@ export function postponeTasks(ids: string[], days = 1) {
  *   · 一次调用 = 一张撤销快照，弹「已顺延 N 项」可撤销。
  *  同一件事的母任务行和子任务行同时传进来也照样只写一遍、只数一次。
  *   · **不往前拉母任务的日子**（9-21 复核）：母任务原来有日期、选的这天比它早，这件事不动——
- *     「顺延」不该把截止日提前。提示里的 N 只数真正改了的行；一行都没改就只提示一句、不写库 */
+ *     「顺延」不该把截止日提前。子任务行同理，按它的生效日期（自己的或继承的）比（9-22）。
+     提示里的 N 只数真正改了的行；一行都没改就只提示一句、不写库 */
 export function postponeRowsTo(rows: DateRow[], ymd: string) {
   if (rows.length === 0) return;
   const cur = new Map(appStore.getState().data.tasks.map((t) => [t.id, t]));
-  const wouldPullEarlier = (id: string) => {
-    const due = cur.get(id)?.due;
+  // 子任务行也一样（09-22）：它的日子 = 自己填的，没填就是继承母任务的——都用库里当下的那份算，
+  // 不然「选日期…」能把子任务的截止日提前，还提示「已顺延」
+  const wouldPullEarlier = (r: DateRow) => {
+    const t = cur.get(r.task.id) ?? r.task;
+    const due = r.sub ? subDue(t.subtasks.find((s) => s.id === r.sub!.id) ?? r.sub, t) : t.due;
     return !!due && cmpYMD(ymd, due) < 0;
   };
-  rows = rows.filter((r) => r.sub || !wouldPullEarlier(r.task.id));
+  rows = rows.filter((r) => !wouldPullEarlier(r));
   if (rows.length === 0) {
     showToast("选的这天比原来的日期还早，没有顺延", false);
     clearSelection();

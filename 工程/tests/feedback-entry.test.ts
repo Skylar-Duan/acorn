@@ -1,13 +1,13 @@
-// 设置页「反馈」一节（2026-09-21，用户：「三端：反馈入口做出来（放到设置里面）」）。
+// 设置页「反馈」一节（2026-09-21，用户：「三端：反馈入口做出来（放到设置里面）」；
+// 「查看大家的反馈」那个管理员入口同一天又撤掉了——用户：「反馈那里：不需要查看大家的反馈」）。
 //
-// 钉四样：
+// 钉三样：
 //   ① 挂在哪：设置页「账号」后面一节，三端同一份（不包在任何平台判断里）
 //   ② 没登录：只有一句「登录后就能发反馈」+「去登录」，没有输入框
 //   ③ 发送：带对的 platform / version / device；成了清空并说「收到了，谢谢」；
 //      没成给人话（太长、太频繁、网络不通），框里的字留着；
-//      401 跟同步一样断开登录态（本机数据不动），503 / 429 不断
-//   ④ 只认 feedbackAdmin（跟服务端反馈后台放行条件一样）才有「查看大家的反馈」，打开的是介绍页；
-//      isAdmin 真、feedbackAdmin 假（隔了一阵没登录）不给入口，只说一句「先退出再登录一次」
+//      401 跟同步一样断开登录态（本机数据不动），503 / 429 不断；
+//      这一节不问 /api/me，没有「查看大家的反馈」这条路
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { readFileSync } from "node:fs";
@@ -30,10 +30,7 @@ import { syncStore } from "../src/core/syncCtl";
 import { appStore } from "../src/core/store";
 import { loginStore } from "../src/mobile/sheetStore";
 import { APP_PLATFORM, APP_VERSION } from "../src/core/version";
-import {
-  FEEDBACK_ADMIN_STALE_TEXT, FEEDBACK_ADMIN_URL, FEEDBACK_MAX, canSendFeedback, feedbackAdminStale,
-  feedbackCountText, feedbackErr, feedbackLength, isFeedbackAdmin,
-} from "../src/core/feedback";
+import { FEEDBACK_MAX, canSendFeedback, feedbackCountText, feedbackErr, feedbackLength } from "../src/core/feedback";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,8 +42,6 @@ const stripComments = (s: string) =>
   s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const settingsCode = stripComments(nl(readFileSync("src/views/Settings.tsx", "utf8")));
 const panelSrc = nl(readFileSync("src/components/FeedbackPanel.tsx", "utf8"));
-
-const INFO = { email: "a@b.c", rev: 3, updatedAt: null, device: "", hasData: true };
 
 const roots: Root[] = [];
 function render(): HTMLDivElement {
@@ -87,7 +82,6 @@ const toast = () => appStore.getState().ui.toast?.msg ?? null;
 beforeEach(() => {
   submitFeedback.mockReset();
   whoAmI.mockReset();
-  whoAmI.mockResolvedValue({ ...INFO });
   syncStore.setState({ session: null, phase: "off", message: "" });
   loginStore.setState({ open: false, reason: "manual" });
   appStore.setState({ ui: { ...appStore.getState().ui, toast: null } });
@@ -151,12 +145,14 @@ describe("② 没登录：只有一句提示和「去登录」", () => {
 // ---------------------------------------------------------------- ③ 发送
 
 describe("③ 发送", () => {
-  it("没写字时「发送」按不了", async () => {
+  it("没写字时「发送」按不了；这一节不问 /api/me，也没有「查看大家的反馈」", async () => {
     const host = render();
     await signIn();
     expect(button(host, "发送")!.disabled).toBe(true);
     type(host.querySelector("textarea")!, "   \n ");
     expect(button(host, "发送")!.disabled).toBe(true);
+    expect(whoAmI).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain("查看大家的反馈");
   });
 
   it("带上端、版本、设备名；成了清空框子、说「收到了，谢谢」", async () => {
@@ -262,60 +258,15 @@ describe("③ 发送", () => {
     expect(feedbackErr(new ApiError(503, "error", "服务器出错（503）")).text).toBe("暂时发不出去，过一会儿再试");
     expect(feedbackErr(new ApiError(403, "unverified", "邮箱还没验证")).login).toBe(true);
   });
-});
 
-// ---------------------------------------------------------------- ④ 管理员
-
-describe("④ 管理员才有「查看大家的反馈」", () => {
-  it("普通账号没有", async () => {
-    whoAmI.mockResolvedValue({ ...INFO, isAdmin: false, feedbackAdmin: false });
+  it("发送成功也不问 /api/me、不出现「查看大家的反馈」（那条路已经撤掉）", async () => {
+    submitFeedback.mockResolvedValue({ id: 1, message: "收到了，谢谢" });
     const host = render();
     await signIn();
+    type(host.querySelector("textarea")!, "一条");
+    await clickSend(host);
+    expect(whoAmI).not.toHaveBeenCalled();
     expect(host.textContent).not.toContain("查看大家的反馈");
-  });
-
-  it("老服务器不给这两项：当不是管理员，也不报错", async () => {
-    const host = render();
-    await signIn();
-    expect(host.textContent).not.toContain("查看大家的反馈");
-    expect(host.querySelector(".acct-err")).toBeNull();
-  });
-
-  it("只认 feedbackAdmin（跟服务端反馈后台放行条件一样），isAdmin 单独为真不算", () => {
-    expect(isFeedbackAdmin({ ...INFO, feedbackAdmin: true })).toBe(true);
-    expect(isFeedbackAdmin({ ...INFO, isAdmin: true, feedbackAdmin: true })).toBe(true);
-    expect(isFeedbackAdmin({ ...INFO, isAdmin: true, feedbackAdmin: false })).toBe(false);
-    expect(isFeedbackAdmin({ ...INFO, isAdmin: true })).toBe(false);
-    expect(isFeedbackAdmin({ ...INFO })).toBe(false);
-    expect(isFeedbackAdmin(null)).toBe(false);
-    expect(feedbackAdminStale({ ...INFO, isAdmin: true, feedbackAdmin: false })).toBe(true);
-    expect(feedbackAdminStale({ ...INFO, isAdmin: true, feedbackAdmin: true })).toBe(false);
-    expect(feedbackAdminStale({ ...INFO })).toBe(false);
-  });
-
-  it("是管理员但隔了一阵没登录：没有入口，只说一句先退出再登录一次", async () => {
-    whoAmI.mockResolvedValue({ ...INFO, isAdmin: true, feedbackAdmin: false });
-    const host = render();
-    await signIn();
-    expect(button(host, "查看大家的反馈")).toBeUndefined();
-    expect(host.textContent).toContain(FEEDBACK_ADMIN_STALE_TEXT);
-  });
-
-  it("点开的是介绍页（浏览器里开新标签页）", async () => {
-    whoAmI.mockResolvedValue({ ...INFO, feedbackAdmin: true });
-    const open = vi.spyOn(window, "open").mockImplementation(() => null);
-    const host = render();
-    await signIn();
-    const link = button(host, "查看大家的反馈");
-    expect(link).toBeDefined();
-    await act(async () => link!.click());
-    expect(FEEDBACK_ADMIN_URL).toBe("https://acorn.cdpandas.com/intro/");
-    expect(open).toHaveBeenCalledWith(FEEDBACK_ADMIN_URL, "_blank", "noopener,noreferrer");
-  });
-
-  it("装好的橡果里走 opener 插件开系统浏览器（webview 里 window.open 没反应）", () => {
-    const src = readFileSync("src/core/feedback.ts", "utf8");
-    expect(src).toContain('await import("@tauri-apps/plugin-opener")');
-    expect(src).toContain("await openUrl(url);");
+    expect(host.textContent).not.toContain("先退出再登录一次");
   });
 });

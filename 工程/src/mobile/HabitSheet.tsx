@@ -12,8 +12,11 @@
 import { useEffect, useState } from "react";
 import type { RepeatRule } from "../core/model";
 import { addHabit, aliveHabits, deleteTasks, setHabitRepeat, updateTask, useApp } from "../core/store";
-import { describeHabitRule } from "../core/habits";
-import { RULE_CHOICES } from "../views/Habits";
+import { habitRepeatMenu } from "../core/habits";
+import { todayYMD } from "../core/dates";
+import { describeRepeat } from "../core/recur";
+import { everyNDays, sameRepeat } from "../core/options";
+import RepeatPicker from "../components/RepeatPicker";
 import Sheet from "./Sheet";
 import { closeSheet, topSheet, useSheet } from "./sheetStore";
 import { IcoTrash } from "./icons";
@@ -40,6 +43,11 @@ function HabitBody({ id }: { id?: string }) {
 
   const [title, setTitle] = useState(habit?.title ?? "");
   const [rule, setRule] = useState<RepeatRule>(habit?.repeat ?? { kind: "daily", every: 1 });
+  /** 周期那排底下摊开的是什么：「每隔几天…」的天数框 / 「自定义…」的天·周·月面板 / 都不摊 */
+  const [panel, setPanel] = useState<null | "every" | "custom">(null);
+  const [everyText, setEveryText] = useState(() =>
+    String(habit?.repeat?.kind === "daily" && habit.repeat.every > 1 ? habit.repeat.every : 2),
+  );
   /** 删除按两下：第一下把这一行换成「真的删掉」＋「取消」 */
   const [confirming, setConfirming] = useState(false);
 
@@ -58,19 +66,29 @@ function HabitBody({ id }: { id?: string }) {
     if (!name) return;
     if (habit) {
       if (name !== habit.title) updateTask(habit.id, { title: name });
-      if (JSON.stringify(rule) !== JSON.stringify(habit.repeat)) setHabitRepeat(habit.id, rule);
+      if (!sameRepeat(rule, habit.repeat)) setHabitRepeat(habit.id, rule);
     } else {
       addHabit({ title: name, repeat: rule });
     }
     closeSheet();
   }
 
-  // 现有周期不在六个预设里（比如从任务转过来的「每月 8 号」）也要看得见、也不许被悄悄改掉
-  const extra =
-    habit && !RULE_CHOICES.some((c) => JSON.stringify(c.rule) === JSON.stringify(habit.repeat))
-      ? { label: describeHabitRule(habit), rule: habit.repeat as RepeatRule }
-      : null;
-  const choices = extra ? [extra, ...RULE_CHOICES] : RULE_CHOICES;
+  // 周期选项跟任务的循环、桌面的习惯页同一份（core/habits.habitRepeatMenu ← core/options.repeatMenu，09-21 统一口径）：
+  //   [现值] 每天 / 每个工作日 / 每周X / 每月X号 / 每隔几天… / 自定义…
+  // 习惯没有日期，「每周X / 每月X号」按今天算；习惯天生重复，没有「不重复」。
+  // 现有周期不在常用项里（每周一三五、每 2 天、每月 8 号……）挂在最前面亮着；
+  // 点了别的再反悔，存着的那个也还在最前面（不然点歪一下就再也找不回来了）
+  const today = todayYMD();
+  const items = habitRepeatMenu(today, rule);
+  const saved = habit?.repeat ?? null;
+  const savedLost =
+    saved && !sameRepeat(saved, rule) && !items.some((it) => it.kind === "rule" && sameRepeat(it.rule, saved));
+  const everyRule = everyNDays(everyText);
+
+  function choose(r: RepeatRule) {
+    setRule(r);
+    setPanel(null);
+  }
 
   return (
     <div className="mhs-body">
@@ -96,17 +114,80 @@ function HabitBody({ id }: { id?: string }) {
       <div className="msheet-label">多久做一次</div>
       <div className="mhs-seg">
         <div className="msh-chips">
-          {choices.map((c) => (
-            <button
-              key={c.label}
-              className={`msh-opt${JSON.stringify(rule) === JSON.stringify(c.rule) ? " on" : ""}`}
-              onClick={() => setRule(c.rule)}
-            >
-              {c.label}
+          {savedLost && saved && (
+            <button key="saved" className="msh-opt" onClick={() => choose(saved)}>
+              {describeRepeat(saved)}
             </button>
-          ))}
+          )}
+          {items.map((it) => {
+            switch (it.kind) {
+              case "current":
+                return (
+                  // 现值不在常用项里：挂在最前面、亮着，点它进自定义接着改（跟 RepeatOptions / 桌面 RepeatMenu 同一个手感）
+                  <button key="current" className="msh-opt on" onClick={() => setPanel("custom")}>
+                    ✓ {it.label}
+                  </button>
+                );
+              case "rule":
+                return (
+                  <button key={`rule-${it.rule.kind}`} className={`msh-opt${it.on ? " on" : ""}`} onClick={() => choose(it.rule)}>
+                    {it.label}
+                  </button>
+                );
+              case "every":
+              case "custom":
+                // 展开中的那颗只描边（.open），实心 .on 只留给现在存的周期——跟 RepeatOptions 一样
+                return (
+                  <button
+                    key={it.kind}
+                    className={`msh-opt${panel === it.kind ? " open" : ""}`}
+                    aria-expanded={panel === it.kind}
+                    onClick={() => setPanel(panel === it.kind ? null : it.kind)}
+                  >
+                    {it.label}
+                  </button>
+                );
+              default:
+                return null;
+            }
+          })}
         </div>
       </div>
+
+      {panel === "every" && (
+        // 每 [n] 天 · 好：只收 1–365 的整数，不合法时「好」按不动
+        <div className="mhs-seg mhs-every">
+          每
+          <input
+            className="msh-field"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={365}
+            autoFocus
+            value={everyText}
+            aria-label="隔几天"
+            enterKeyHint="done"
+            onChange={(e) => setEveryText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              if (everyRule) choose(everyRule);
+            }}
+          />
+          天
+          <button className="msh-opt on" disabled={!everyRule} onClick={() => everyRule && choose(everyRule)}>
+            好
+          </button>
+        </div>
+      )}
+
+      {panel === "custom" && (
+        // 天 / 周 / 月勾选面板：跟桌面「自定义…」同一个面板，点「好」才改周期
+        <div className="mhs-seg mhs-custom">
+          <RepeatPicker value={rule} anchor={today} onDone={choose} onCancel={() => setPanel(null)} />
+        </div>
+      )}
 
       <div className="mhs-foot">
         <button className="mhs-go" disabled={!name} onClick={save}>

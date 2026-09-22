@@ -72,7 +72,9 @@ export function describeRepeat(rule: RepeatRule): string {
     case "daily":
       return rule.every <= 1 ? "每天" : `每${rule.every}天`;
     case "weekly":
-      return `每周${rule.days.map((d) => WEEK_CN[d]).join("、")}`;
+      // 七天全勾（自定义面板的周页能勾出来）说的就是「每天」
+      if (new Set(rule.days).size >= 7) return "每天";
+      return `每周${[...rule.days].sort((a, b) => a - b).map((d) => WEEK_CN[d]).join("、")}`;
     case "monthly":
       // 31 号在没有 31 号的月份落到月末（见 nextOccurrence），所以它说的就是「每月最后一天」。
       // 快捷语「~每个月末」「~每月底」存的也是它，数据模型不另加字段——三端老版本照样算对

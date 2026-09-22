@@ -252,15 +252,18 @@ describe("日期弹层：年份段还在累加的那几拍不许落库", () => {
     // 七处调用点：任务卡两个（日期弹层 / 子任务日期小签）、侧栏一个、随手记一个，
     // v1.11.0 起手机端三张抽屉各一个（长按的动作单 / 任务详情的日期段 / 记一条的日期段）。
     // 数字对不上就是新加了一个日期框——它已经被上面那三件套罩住了，改这个数就行。
-    // 第八处（v1.15.x）：桌面「顺延 ▾」菜单里的「选日期…」（PostponeMenu），停手只记草稿、点确定才落一次库
+    // 第八处（v1.15.x）：桌面「顺延 ▾」菜单里的「选日期…」，停手只记草稿、点确定才落一次库。
+    // 09-21 起它抽成 components/DatePickRow（顺延菜单和右键「调整日期 ▸」共用），框还是那一个。
+    // 第九处（09-21）：手机「顺延到哪天」那张小纸（mobile/PostponeSheet）的「选日期…」，同样只记草稿、点确定才落库
     const spots = allTsx.flatMap(([name, src]) => dateFieldsIn(src).map(() => name));
-    expect(spots.length).toBe(8);
+    expect(spots.length).toBe(9);
     expect([...new Set(spots)].sort()).toEqual([
-      "src/components/PostponeMenu.tsx",
+      "src/components/DatePickRow.tsx",
       "src/components/QuickAddBar.tsx",
       "src/components/Sidebar.tsx",
       "src/components/TaskCard.tsx",
       "src/mobile/ActionSheet.tsx",
+      "src/mobile/PostponeSheet.tsx",
       "src/mobile/QuickAddSheet.tsx",
       "src/mobile/TaskSheet.tsx",
     ]);
@@ -442,7 +445,7 @@ describe("日期弹层：月/日段一路累加出来的中间值，一次都不
     expect(quickAddSource).toContain("onClick={() => pickDue(p.ymd)}");
     expect(quickAddSource).toContain("onClick={() => pickDue(null)}");
     // 「清空」也得把欠着的作废，否则清完 350ms 又被写回来
-    expect(quickAddSource).toContain('onClick={() => { dueFieldRef.current?.cancel(); setPick(EMPTY); setMenu(null); }}');
+    expect(quickAddSource).toContain('onClick={() => { dueFieldRef.current?.cancel(); setPick(EMPTY); setOverrides({}); setMenu(null); }}');
   });
 
   it("「随手记」的 📅 不许在人还在敲的时候自己关掉：收弹层挂在失焦，不在去抖回调里", () => {
@@ -450,7 +453,7 @@ describe("日期弹层：月/日段一路累加出来的中间值，一次都不
     // 把弹层连同 date 框一起卸载，后面敲的键全部落空、半截日期被当成用户的选择
     const el = dateFieldsIn(quickAddSource)[0];
     const onCommit = el.slice(el.indexOf("onCommit={"), el.indexOf("onDone={"));
-    expect(onCommit).toContain("setPick({ ...pick, due: ymd })");
+    expect(onCommit).toContain('changePick("due", { due: ymd })');
     expect(onCommit).not.toContain("setMenu(null)");
 
     // 收弹层挂在 onDone 上（由 DateField 的失焦触发），焦点还在这排点选按钮里
@@ -477,7 +480,9 @@ describe("日期弹层：月/日段一路累加出来的中间值，一次都不
     expect(submit).toContain("const pendingDue = dueFieldRef.current?.pending() ?? null;");
     expect(submit).toContain("dueFieldRef.current?.flush();");
     expect(submit.indexOf("dueFieldRef.current?.flush();")).toBeLessThan(submit.indexOf("addTask({"));
-    expect(submit).toContain("due: parsed.due ?? pendingDue ?? pick.due ?? defaults?.due ?? null,");
+    // 欠着的那一天进了「打字 / 点选谁后动听谁的」那道合并（deskDueRepeat），落库用的就是合并结果
+    expect(submit).toContain("deskDueRepeat(parsed, { due: pendingDue ?? pick.due ?? defaults?.due ?? null, repeat: pick.repeat }, overrides)");
+    expect(submit).toContain("due: dr.due,");
   });
 });
 

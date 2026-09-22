@@ -236,3 +236,22 @@ export function acceptCandidate(text: string, m: CandMatch, item: string): { tex
   const next = `${text.slice(0, m.start + 1)}${item} ${text.slice(m.end)}`;
   return { text: next, caret: m.start + 1 + item.length + 1 };
 }
+
+// ---------- 电脑「记一条」借用的那一半 ----------
+
+/** 电脑「记一条」那排点选按钮的日期与循环，跟手机同一个「谁后动谁说了算」口径（09-21 复核：
+ *  以前电脑上打字的循环总盖过点选的，「每周X / 每月X号」也只看点选的日期，打「~周五 开会」再点
+ *  🔁 会按今天出「每周一」）。清单 / 需求方 / 重要性那几样电脑上照旧打字为准，不经这里。
+ *  pickedDue = 还欠着的那一天 ?? 点选的日子 ?? 视图默认；dueTime 只从打字来（电脑这排不选钟点） */
+export function deskDueRepeat(
+  parsed: ParseResult,
+  pick: { due: string | null; repeat: RepeatRule | null },
+  overrides: Overrides = {},
+): { due: string | null; dueTime: string | null; repeat: RepeatRule | null } {
+  const m = merge(
+    parsed,
+    { ...EMPTY_PICKS, due: pick.due, dueTime: parsed.dueTime, repeat: pick.repeat },
+    { due: overrides.due, repeat: overrides.repeat },
+  );
+  return { due: m.due, dueTime: m.due ? m.dueTime : null, repeat: m.repeat };
+}

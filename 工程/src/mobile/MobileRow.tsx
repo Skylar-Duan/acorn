@@ -9,7 +9,7 @@
 // 这一行只做四件事，都是手指能直接够到的：
 //   · 点圆圈 = 完成（可撤销）
 //   · 右滑 = 完成，松手即生效（底下那层绿的随进度渐显）
-//   · 左滑 = 露出 推明天 / 放弃 / 删除；已了结的行只露一个删除
+//   · 左滑 = 露出 顺延 / 放弃 / 删除；已了结的行只露一个删除（顺延点开选哪天，见 PostponeSheet）
 //   · 长按 = 底部动作单（取代桌面的右键菜单）；轻点 = 拉出任务详情那张纸
 //
 // 【v1.15.0 推翻了一条老规矩】
@@ -28,7 +28,7 @@ import { isMobile } from "../core/platform";
 // 长按的两个数跟侧栏拖动排序、桌面 TaskRow 共用一份：「按住多久算长按」全应用只该有一个口径
 import { LONG_PRESS_MS, SLOP_PX } from "../core/touchSort";
 import {
-  completeTasks, deleteTasks, dropSubtask, dropTasks, postponeRows, postponeTasks,
+  completeTasks, deleteTasks, dropSubtask, dropTasks,
   removeSubtask, rowDue, rowPriority, rowTime, uncompleteTask, updateSubtask,
 } from "../core/store";
 import { openSheet } from "./sheetStore";
@@ -222,16 +222,18 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
         </div>
       </div>
 
-      {/* 左滑那层：三个动作。已了结的行只留删除——一件做完的事没有「推到明天」这回事 */}
+      {/* 左滑那层：三个动作。已了结的行只留删除——一件做完的事没有「顺延」这回事 */}
       <div className="swipe-under left">
         {!settled && (
           <>
+            {/* 09-21 起「推明天」改成「顺延」：点开一张小纸选哪天（今天到期的事第一项就是明天），
+                跟桌面「顺延 ▾」、长按单子里的「顺延」同一套选项（mobile/PostponeSheet） */}
             <button
               className="swipe-act postpone"
-              onClick={act(() => (sub ? postponeRows([{ task, sub }]) : postponeTasks([task.id])))}
+              onClick={act(() => openSheet({ kind: "postpone", rows: [{ taskId: task.id, subId: sub?.id }] }))}
             >
               <IcoPostpone />
-              推明天
+              顺延
             </button>
             <button
               className="swipe-act drop"

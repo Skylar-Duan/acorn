@@ -253,5 +253,3 @@
 .fb-input { resize: none; min-height: 76px; max-height: 320px; line-height: 1.7; font-size: var(--fs-md); }
 .fb-count { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .fb-count.over { color: #C0564A; }
-.fb-admin { align-self: flex-start; color: var(--accent); font-size: var(--fs-sm); }
-.fb-admin:hover { text-decoration: underline; }

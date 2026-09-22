@@ -13,8 +13,11 @@ import RepeatPicker, { sameRepeat } from "../src/components/RepeatPicker";
 import type { RepeatRule } from "../src/core/model";
 import taskCardSource from "../src/components/TaskCard.tsx?raw";
 import quickAddBarSource from "../src/components/QuickAddBar.tsx?raw";
+import repeatMenuSource from "../src/components/RepeatMenu.tsx?raw";
+import optionsSource from "../src/core/options.ts?raw";
 import quickAddSheetSource from "../src/mobile/QuickAddSheet.tsx?raw";
 import taskSheetSource from "../src/mobile/TaskSheet.tsx?raw";
+import mobileRepeatSource from "../src/mobile/RepeatOptions.tsx?raw";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -150,33 +153,60 @@ describe("sameRepeat：判「现在选的是不是这个」", () => {
   });
 });
 
-describe("两个桌面入口：常用项 + 「自定义…」，现值不在常用项里也看得到", () => {
+describe("两个桌面入口：菜单统一走 RepeatMenu（core/options.repeatMenu），现值不在常用项里也看得到", () => {
+  // 09-21 改口：常用项、「每隔几天…」「自定义…」「不重复」的顺序和名字全在 core/options.repeatMenu，
+  // 桌面两处都画 components/RepeatMenu，自己不再列常用项（单测见 tests/options.test.ts）
   it("任务卡 ↻ 循环", () => {
-    expect(taskCardSource).toContain('<button className="item" onClick={() => setRepeatCustom(true)}>自定义…</button>');
+    expect(taskCardSource).toContain("<RepeatMenu");
+    expect(taskCardSource).toContain("onCustom={() => setRepeatCustom(true)}");
     expect(taskCardSource).toContain("<RepeatPicker");
     expect(taskCardSource).toContain("onDone={(r) => setRepeat(r)}");
-    // 现值不在常用项里：单独挂在最上面
-    expect(taskCardSource).toContain("const repeatOffList = !!task.repeat && !repeatCommon.some((r) => sameRepeat(r, task.repeat ?? null));");
-    // 常用项的名字统一走 describeRepeat（月末那项写「每月最后一天」，不再手写「每月{dom}号」）
+    expect(taskCardSource).toContain("anchor={repeatAnchor}");
+    // 不再自己列一份常用项；名字统一走 describeRepeat（在 repeatMenu 里）
+    expect(taskCardSource).not.toContain("const repeatCommon");
     expect(taskCardSource).not.toContain("每月{dom}号");
+    expect(taskCardSource).not.toContain("不再循环");
   });
 
-  it("任务卡菜单的星期几按本地日期取，不再按 UTC 解析", () => {
+  it("星期几按本地日期取，不再按 UTC 解析（取形在 core/options.repeatCommon）", () => {
     expect(taskCardSource).not.toContain("new Date(task.due).getDay()");
-    expect(taskCardSource).toContain("const wd = dayOfWeek(repeatAnchor);");
+    expect(optionsSource).toContain("{ kind: \"weekly\", days: [dayOfWeek(anchor)] }");
   });
 
-  it("快速添加条 🔁 重复：常用项写成「每周一」「每月21号」，末尾「自定义…」，显示文字走 describeRepeat", () => {
-    expect(quickAddBarSource).toContain('<button className="item" onClick={() => setRepeatCustom(true)}>自定义…</button>');
+  it("快速添加条 🔁 重复：同一个 RepeatMenu，按这条事选的日期取形，显示文字走 describeRepeat", () => {
+    expect(quickAddBarSource).toContain("<RepeatMenu");
+    // 取形按这条事最后会存下的日子（打字与点选合并后，跟回车落库同一个算法），没日子才按今天
+    expect(quickAddBarSource).toContain("anchor={repeatAnchor}");
+    expect(quickAddBarSource).toContain("const repeatAnchor = eff.due ?? today;");
     expect(quickAddBarSource).toContain("<RepeatPicker");
     expect(quickAddBarSource).toContain('pick.repeat ? describeRepeat(pick.repeat) : "重复"');
+    expect(quickAddBarSource).not.toContain("function repeatChoices");
     expect(quickAddBarSource).not.toContain("function repeatLabel");
     expect(quickAddBarSource).not.toContain("每周（按今天是周几）");
   });
 
-  it("手机这次只改显示文字，选项排里不加自定义（要先出稿）", () => {
+  it("RepeatMenu 自己不写死任何一项的名字，全从 repeatMenu 来", () => {
+    const code = repeatMenuSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).toContain("repeatMenu(anchor, value)");
+    for (const label of ["每天", "每个工作日", "自定义…", "每隔几天…", "不重复"]) expect(code).not.toContain(label);
+  });
+
+  // 09-21 有意改口：原来这条钉的是「手机只改显示文字、不加自定义」。用户这次要求各处循环选项对齐一致、
+  // 并同意手机一起改，所以手机两张纸也换成同一套（mobile/RepeatOptions），「自定义…」叠一张底部纸装 RepeatPicker
+  it("手机两张纸（任务详情 / 记一条）走同一个 RepeatOptions，选项全从 repeatMenu 来", () => {
     expect(quickAddSheetSource).toContain('eff.repeat ? describeRepeat(eff.repeat) : "重复"');
-    expect(quickAddSheetSource).not.toContain("RepeatPicker");
-    expect(taskSheetSource).not.toContain("RepeatPicker");
+    expect(quickAddSheetSource).toContain("<RepeatOptions");
+    expect(quickAddSheetSource).toContain("anchor={eff.due ?? today}");
+    expect(taskSheetSource).toContain("<RepeatOptions anchor={task.due ?? today} value={task.repeat} onPick={setRepeat} />");
+    for (const [name, src] of [["记一条", quickAddSheetSource], ["任务详情", taskSheetSource]] as const) {
+      expect(src, name).not.toContain("function repeatChoices");
+      expect(src, name).not.toContain("每周（按今天是周几）");
+    }
+    const code = mobileRepeatSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).toContain("repeatMenu(anchor, value)");
+    expect(code).toContain("<RepeatPicker");
+    expect(code).toContain("everyNDays(text)");
+    expect(code).toContain('inputMode="numeric"');
+    for (const label of ["每天", "每个工作日", "自定义…", "每隔几天…", "不重复"]) expect(code).not.toContain(label);
   });
 });

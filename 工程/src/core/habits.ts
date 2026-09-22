@@ -9,9 +9,20 @@
 
 import type { RepeatRule, Task } from "./model";
 import { addDays, cmpYMD, dayOfWeek, daysInMonth, diffDays, isWorkday, pad2, todayYMD, toYMD, weekStart } from "./dates";
+import { repeatMenu, type RepeatMenuItem } from "./options";
+import { describeRepeat } from "./recur";
 
 /** 习惯没设周期时按「每天」算——新建习惯默认就是每天，这里只是兜底 */
 export const DEFAULT_HABIT_REPEAT: RepeatRule = { kind: "daily", every: 1 };
+
+/** 习惯的周期选项（09-21 统一口径）：跟任务的循环菜单是同一份（core/options.repeatMenu），
+ *  只差两处——
+ *   · 习惯没有日期，「每周X / 每月X号」按今天算（today 由调用方传）；
+ *   · 习惯天生就重复，没有「不重复」这一项。
+ *  现有周期不在常用项里（每周一三五、每 2 天、每月 8 号……）照样挂在最上面、打勾，不会被悄悄改掉 */
+export function habitRepeatMenu(today: string, current: RepeatRule | null): RepeatMenuItem[] {
+  return repeatMenu(today, current ?? DEFAULT_HABIT_REPEAT).filter((it) => it.kind !== "clear");
+}
 
 export function isHabit(t: Task): boolean {
   return t.kind === "habit";
@@ -171,22 +182,10 @@ export function sortHabitsForDay(habits: Task[], today = todayYMD(), now = new D
   );
 }
 
-/** 「每天 / 每个工作日 / 每周一三五 / 每月 8 号」——习惯卡片上那行小字 */
+/** 「每天 / 每个工作日 / 每周一、三、五 / 每月8号」——习惯卡片上那行小字。
+ *  跟循环菜单、任务上的循环说法是同一句话（recur.describeRepeat），同一屏上不会出两种写法 */
 export function describeHabitRule(h: Task): string {
-  const rule = habitRule(h);
-  switch (rule.kind) {
-    case "daily":
-      return rule.every === 1 ? "每天" : `每 ${rule.every} 天`;
-    case "workday":
-      return "每个工作日";
-    case "weekly": {
-      const names = ["日", "一", "二", "三", "四", "五", "六"];
-      if (rule.days.length === 7) return "每天";
-      return `每周${rule.days.map((d) => names[d]).join("、")}`;
-    }
-    case "monthly":
-      return `每月 ${rule.day} 号`;
-  }
+  return describeRepeat(habitRule(h));
 }
 
 /** 这个月的日历格子（给习惯详情用）：每天一个状态 */
@@ -211,4 +210,39 @@ export function monthMarks(
     out.push({ ymd, mark });
   }
   return out;
+}
+
+/** 这个习惯**下一次**该做是哪天（习惯页每行右边那句「下次 周三」用它）。
+ *  今天该做、还没打卡 → 就是今天；今天已经打过、或者今天轮不到 → 从明天起往后找第一个该做的日子。
+ *  400 天内都找不到（坏数据，比如每周几一个都没勾）返回 null，界面上就不写 */
+export function nextHabitDay(h: Task, today = todayYMD(), now = new Date()): string | null {
+  if (isDueOn(h, today, now) && !doneOn(h, today)) return today;
+  return nextDueDay(h, addDays(today, 1), 400, now);
+}
+
+const NEXT_WEEK_CN = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+/** 「下一次」那半句怎么说：今天 / 明天 / 后天 / 一周内写星期几（周三）/ 再远写日子（10月1日），
+ *  不是今年的带上年份。刻意不走 formatShort：它一周内也写日子，「下次 9月24日」得自己换算是星期几，
+ *  而习惯大多是按星期排的，直接说「周三」一眼就懂 */
+export function describeNextDay(ymd: string, today = todayYMD()): string {
+  const diff = diffDays(today, ymd);
+  if (diff === 0) return "今天";
+  if (diff === 1) return "明天";
+  if (diff === 2) return "后天";
+  if (diff > 2 && diff < 7) return NEXT_WEEK_CN[dayOfWeek(ymd)];
+  const base = `${Number(ymd.slice(5, 7))}月${Number(ymd.slice(8, 10))}日`;
+  return ymd.slice(0, 4) === today.slice(0, 4) ? base : `${ymd.slice(0, 4)}年${base}`;
+}
+
+/** 今天不用做的那一组按「下一次」先后排：明天就轮到的在上，下个月才来的在下。
+ *  同一天的照旧按重要性 / 手排顺序；找不到下一次的（坏数据）沉底 */
+export function sortHabitsByNext(habits: Task[], today = todayYMD(), now = new Date()): Task[] {
+  const key = (h: Task) => nextHabitDay(h, today, now) ?? "9999-99-99";
+  return [...habits].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    return b.priority - a.priority || a.order - b.order;
+  });
 }

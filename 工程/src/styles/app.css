@@ -45,7 +45,10 @@
   padding: 14px 10px 10px;
   overflow-y: auto;
   /* 换主题不做底色渐变（B7 已撤回）：前景色是瞬切的，只渐底色会在中段把字压糊。见 base.css body 那处 */
+  /* 竖向滚动条藏起来：贴着拉宽把手太近，容易误按。滚轮/触控板照样能滚，抽屉模式同一条规则一起盖到 */
+  scrollbar-width: none;
 }
+.side::-webkit-scrollbar { display: none; }
 /* 侧栏宽度把手（components/SideGrip）：贴在侧栏右边线上，只盖边线那 1px 再往右 5px，
    不压侧栏的滚动条（滚动条在边线里侧）。no-drag：别让它变成窗口拖拽区 */
 .side-grip {

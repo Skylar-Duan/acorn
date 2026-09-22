@@ -16,6 +16,7 @@ import {
 } from "../src/core/store";
 import { defaultData, migrate, newTask, normalizeCheckIns } from "../src/core/model";
 import type { RepeatRule, Task } from "../src/core/model";
+import { describeRepeat } from "../src/core/recur";
 import {
   bestStreak,
   describeHabitRule,
@@ -276,10 +277,19 @@ describe("排序与文案", () => {
   it("周期说人话", () => {
     const say = (r: RepeatRule) => describeHabitRule(habit({ title: "x", repeat: r }));
     expect(say({ kind: "daily", every: 1 })).toBe("每天");
-    expect(say({ kind: "daily", every: 3 })).toBe("每 3 天");
+    // 09-22 起跟 describeRepeat 同一句（原来这里带空格「每 3 天」「每月 8 号」，同一屏上跟菜单写法对不上）
+    expect(say({ kind: "daily", every: 3 })).toBe("每3天");
     expect(say({ kind: "workday" })).toBe("每个工作日");
     expect(say({ kind: "weekly", days: [1, 3, 5] })).toBe("每周一、三、五");
-    expect(say({ kind: "monthly", day: 8 })).toBe("每月 8 号");
+    expect(say({ kind: "monthly", day: 8 })).toBe("每月8号");
+    // 七天全勾 = 每天（行上、菜单上同一个说法）
+    expect(say({ kind: "weekly", days: [0, 1, 2, 3, 4, 5, 6] })).toBe("每天");
+    for (const r of [
+      { kind: "daily", every: 1 }, { kind: "daily", every: 3 }, { kind: "workday" },
+      { kind: "weekly", days: [5, 1] }, { kind: "monthly", day: 8 }, { kind: "monthly", day: 31 },
+    ] as RepeatRule[]) expect(say(r)).toBe(describeRepeat(r));
+    // 31 号在没有 31 号的月份落到月末：跟任务的循环一个说法（09-21）
+    expect(say({ kind: "monthly", day: 31 })).toBe("每月最后一天");
   });
 
   it("月历格子：天数对得上，状态分得清", () => {

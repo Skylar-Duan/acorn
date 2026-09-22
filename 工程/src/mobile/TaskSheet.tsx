@@ -14,7 +14,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
-import { cmpYMD, dayOfWeek, duePresets, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
+import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
+import { dateOptions } from "../core/options";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { parseSubtaskInput } from "../core/parse";
 import {
@@ -27,6 +28,7 @@ import type { DateFieldHandle } from "../components/DateField";
 import { growArea, oneLine } from "../components/autogrow";
 import { closeSheet, topSheet, useSheet } from "./sheetStore";
 import Sheet from "./Sheet";
+import RepeatOptions from "./RepeatOptions";
 import { useSwipeRow } from "./swipe";
 import "../styles/mobile-sheet.css";
 
@@ -104,10 +106,10 @@ function TaskSheetBody({ task }: { task: Task }) {
   );
 
   const today = todayYMD();
-  // 安排日期的四个快捷预设现算，规则和单测都在 core/dates.duePresets：
-  // 一律向后取最近的一个、名字跟着算出来的日子走、跟今天撞上的那个不出现。
-  // 全仓七处安排日期共用这一份，绝不在这儿再写一份
-  const presets = duePresets(today);
+  // 安排日期的快捷项现算（09-21 全应用统一的那一套，规则和单测都在 core/options.dateOptions）：
+  // 今天 / 明天 / 本周末 / 下周末 / 本月末，撞同一天的不出现，本周末按设置里的周末日算。
+  // 下面常驻的那个日期框就是这一套里的「选日期…」。全仓每处选日子共用这一份，绝不在这儿再写一份
+  const presets = dateOptions(today, { weekendDay: settings.weekendDay });
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   // 母任务一起传进去：没自己填日期的那几步按母任务的日子排，跟屏幕上显示的日期一致（同 TaskCard）
   const { open: openSubs, done: doneSubs } = useMemo(
@@ -332,7 +334,8 @@ function TaskSheetBody({ task }: { task: Task }) {
           </button>
           {seg === "date" && (
             <div className="msh-seg">
-              <div className="msh-row">
+              {/* 最多五颗：一行排不下（390 宽上「本周末」会被切掉），三列两行 */}
+              <div className="msh-dates">
                 {presets.map((p) => (
                   <button
                     key={p.key}
@@ -371,17 +374,8 @@ function TaskSheetBody({ task }: { task: Task }) {
                 </button>
               </div>
               <div className="msh-seg-t">重复</div>
-              <div className="msh-chips">
-                {repeatChoices(today, task).map((r) => (
-                  <button
-                    key={r.label}
-                    className={`msh-opt${sameRule(task.repeat, r.rule) ? " on" : ""}`}
-                    onClick={() => setRepeat(r.rule)}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
+              {/* 选项跟全应用同一套（core/options.repeatMenu）；「每周X / 每月X号」按这件事的日子取形，没日子按今天 */}
+              <RepeatOptions anchor={task.due ?? today} value={task.repeat} onPick={setRepeat} />
             </div>
           )}
 
@@ -666,26 +660,6 @@ function SubRow({ task, sub, today }: { task: Task; sub: Subtask; today: string 
  *  自定义属性不在 CSSProperties 的字段表里，只能在这一处绕一下类型，别散着写 */
 function dxStyle(dx: number): CSSProperties {
   return { "--dx": `${dx}px` } as unknown as CSSProperties;
-}
-
-/** 循环选项：「每周X / 每月N号」按这件事自己的日子取形（没日子就按今天）。
- *  星期几走 core/dates.dayOfWeek——'YYYY-MM-DD' 交给 new Date() 会按 UTC 解析，
- *  东八区的凌晨会算成前一天 */
-function repeatChoices(today: string, task: Task): { label: string; rule: RepeatRule | null }[] {
-  const base = task.due ?? today;
-  const wd = dayOfWeek(base);
-  const dom = Number(base.slice(8, 10));
-  return [
-    { label: "不重复", rule: null },
-    { label: "每天", rule: { kind: "daily", every: 1 } },
-    { label: "每个工作日", rule: { kind: "workday" } },
-    { label: describeRepeat({ kind: "weekly", days: [wd] }), rule: { kind: "weekly", days: [wd] } },
-    { label: `每月${dom}号`, rule: { kind: "monthly", day: dom } },
-  ];
-}
-
-function sameRule(a: RepeatRule | null, b: RepeatRule | null): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 // ---------- 图标：跟设计稿同一套线条（stroke 走 currentColor，六主题自动跟着走） ----------

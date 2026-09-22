@@ -91,48 +91,8 @@ export function nextDow(ymd: string, dow: number): string {
   return addDays(ymd, (dow - dayOfWeek(ymd) + 7) % 7);
 }
 
-/** 安排日期的一个快捷预设 */
-export interface DuePreset {
-  /** 稳定标识，UI 拿它做 key，不随标签变 */
-  key: "today" | "fri" | "sun" | "monthEnd";
-  /** 按算出来的日子现取的名字：周六点开时「本周五」就写成「下周五」 */
-  label: string;
-  ymd: string;
-}
-
-/** 安排日期的快捷预设：今天 / 本周五 / 本周日 / 本月末。
- *
- *  三条规矩：
- *  ① 一律**向后取最近的一个**（周起始按周一），过了就顺延到下一个；
- *  ② 标签跟着算出来的日子走，落在下一周就叫「下周五」；
- *  ③ **跟「今天」撞上同一天的预设直接不出现**——两个按钮干同一件事，只会让人多犹豫一下。
- *     「本月末」正好是今天时也照此隐掉（它不可能往后跑到下个月，所以没有「下月末」这一说）。 */
-export function duePresets(today: string): DuePreset[] {
-  const weekEnd = addDays(weekStart(today), 6);
-  const inThisWeek = (d: string) => cmpYMD(d, weekEnd) <= 0;
-  const fri = nextDow(today, 5);
-  const sun = nextDow(today, 0);
-  const all: DuePreset[] = [
-    { key: "today", label: "今天", ymd: today },
-    { key: "fri", label: inThisWeek(fri) ? "本周五" : "下周五", ymd: fri },
-    { key: "sun", label: inThisWeek(sun) ? "本周日" : "下周日", ymd: sun },
-    { key: "monthEnd", label: "本月末", ymd: monthEnd(today) },
-  ];
-  return all.filter((p) => p.key === "today" || p.ymd !== today);
-}
-
-/** 右键菜单「调整日期 ▸」的候选日：安排日期那一套（duePresets）在「今天」后面插一个**绝对的**明天。
- *
- *  只有右键这两个子菜单（任务的、子任务的）用它：用户要的是「推到明天收进调整日期里」，
- *  原来单独那一项「推到明天」删了。任务卡日期按钮、侧栏「安排到哪天？」、随手记、手机那几处
- *  照旧走 duePresets，不带明天（v1.9 那次「安排日期去掉明天」的决定在那几处不变）。
- *  这里的明天就是明天这一天——跟旁边几项一样是个具体的日子，不是 Ctrl+→ 那种「原日期加一天」。
- *  后面的预设跟明天撞上同一天的（周四点开：本周五 = 明天）不再重复出现 */
-export function adjustDatePresets(today: string): { key: DuePreset["key"] | "tomorrow"; label: string; ymd: string }[] {
-  const [first, ...rest] = duePresets(today);
-  const tomorrow = addDays(today, 1);
-  return [first, { key: "tomorrow", label: "明天", ymd: tomorrow }, ...rest.filter((p) => p.ymd !== tomorrow)];
-}
+// 原来这儿还有一个 duePresets（今天 / 本周五 / 本周日 / 本月末），09-21 起全应用选日子统一走
+// core/options.dateOptions（今天 / 明天 / 本周末 / 下周末 / 本月末），手机那三张纸也切完了，一并删掉。
 
 /** 周末 / 下周末 / 下下周末：本周（shift=0）或往后第 shift 周的周末日（周起始按周一）。
  *  周末日是周六还是周日跟设置走（settings.weekendDay），默认周日。
@@ -146,37 +106,8 @@ export function weekendOf(today: string, weekendDay: "sat" | "sun" | undefined, 
   return shift === 0 && cmpYMD(d, today) < 0 ? today : d;
 }
 
-/** 顺延菜单的一项 */
-export interface PostponePreset {
-  /** 稳定标识，UI 拿它做 key */
-  key: "tomorrow" | "weekend" | "nextWeekend" | "monthEnd";
-  label: string;
-  ymd: string;
-}
-
-/** 「顺延 ▾」那个小菜单的预设：明天 / 本周末 / 下周末 / 本月末（后面再跟一个「选日期…」，由界面自己画）。
- *
- *  跟 duePresets 分家是有意的：那一套是「安排日期」，第一项是今天；顺延是往后推，今天不在候选里。
- *  规矩：
- *  ① 一律**落在今天之后**——顺延不该落回今天，更不该落回过去；
- *  ② 本周末落在今天或以前（今天就是周末日 / 周末日已经过了）→ 不出「本周末」，只留「下周末」；
- *  ③ **跟前面某项撞上同一天的不出现**（周六点开、周末日是周日：本周末 = 明天；
- *     月底倒数第二天：本月末 = 明天）。两个按钮干同一件事，只会让人多犹豫一下 */
-export function postponePresets(today: string, weekendDay?: "sat" | "sun"): PostponePreset[] {
-  const all: PostponePreset[] = [
-    { key: "tomorrow", label: "明天", ymd: addDays(today, 1) },
-    { key: "weekend", label: "本周末", ymd: weekendOf(today, weekendDay, 0) },
-    { key: "nextWeekend", label: "下周末", ymd: weekendOf(today, weekendDay, 1) },
-    { key: "monthEnd", label: "本月末", ymd: monthEnd(today) },
-  ];
-  const out: PostponePreset[] = [];
-  for (const p of all) {
-    if (cmpYMD(p.ymd, today) <= 0) continue;
-    if (out.some((q) => q.ymd === p.ymd)) continue;
-    out.push(p);
-  }
-  return out;
-}
+// 顺延菜单（原 postponePresets）、右键「调整日期 ▸」（原 adjustDatePresets）09-21 起并进
+// core/options.dateOptions：全应用选日子只有那一份。
 
 const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
 
