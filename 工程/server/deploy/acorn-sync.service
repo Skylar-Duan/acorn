@@ -13,6 +13,9 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONIOENCODING=utf-8
 Environment=ACORN_DB=/var/lib/acorn-sync/acorn.db
 Environment=ACORN_PUBLIC_DIR=/var/www/acorn-public
+# 账号以 cdpandas 为准（2026-09-21 合并）；过渡用的「橡果旧密码兜底」随桌面 1.16.0 正式发布关掉（2026-09-23）。
+# 写在这里而不是 /etc/acorn-sync/env：write-env.sh 会整份重写那个文件，写那儿会被冲掉
+Environment=ACORN_LEGACY_LOGIN=0
 # 只听本机回环，外网一律经 nginx 进来（TLS、限速、真实 IP 都在那层做）
 ExecStart=/var/www/acorn-sync/.venv/bin/python -m uvicorn app.main:app \
   --host 127.0.0.1 --port 8021 --proxy-headers --forwarded-allow-ips 127.0.0.1
