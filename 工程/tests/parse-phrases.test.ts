@@ -135,6 +135,38 @@ describe("3. N天内 = N天后；N个月后 / N月后", () => {
   });
 });
 
+// 用户 2026-09-23：「~半年内」要认，口径跟计划页「半年内」那一组一致——月份向上取整、取那个月最后一天
+describe("3b. 半年内 = 往后第六个月的最后一天", () => {
+  it("用户给的例子：9月23日写，落在明年3月31日", () => {
+    const r = p("~半年内 考驾照", new Date(2026, 8, 23, 10, 0));
+    expect(r.due).toBe("2027-03-31");
+    expect(r.title).toBe("考驾照");
+    expect(r.chips[0]).toEqual({ kind: "date", text: "2027年3月31日" });
+  });
+
+  it("月初写也是同一个月底；落在二月就是二月最后一天", () => {
+    expect(p("~半年内 考驾照", new Date(2026, 8, 1, 10, 0)).due).toBe("2027-03-31");
+    expect(p("~半年内 体检").due).toBe("2027-02-28"); // 8月21日
+    expect(p("~半年内 体检", new Date(2027, 7, 31, 9, 0)).due).toBe("2028-02-29");
+    expect(p("~半年内 体检", new Date(2026, 0, 5, 9, 0)).due).toBe("2026-07-31");
+  });
+
+  it("「半年之内」同义；不打 ~ 就是标题的一部分", () => {
+    expect(p("~半年之内 考驾照").due).toBe("2027-02-28");
+    const r = p("半年内 考驾照");
+    expect(r.due).toBeNull();
+    expect(r.title).toBe("半年内 考驾照");
+  });
+
+  it("子任务里也认，跟别的要素一起写", () => {
+    expect(parseSubtaskInput("~半年内 考科目一", FRI).due).toBe("2027-02-28");
+    const r = p("考驾照 ~半年内 #生活 !高");
+    expect(r.due).toBe("2027-02-28");
+    expect(r.title).toBe("考驾照");
+    expect(r.priority).toBe(3);
+  });
+});
+
 describe("4. 下月初 / 下月中 / 下月底 / 月末", () => {
   it("下月初 / 下月中 / 下月底", () => {
     expect(p("~下月初 交房租").due).toBe("2026-09-01");

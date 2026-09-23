@@ -168,14 +168,17 @@ describe("文案", () => {
   it("账号卡说明：手机上说「「今天」页右上角」，桌面说「右上角」，都不写端名", () => {
     expect(accountPanelSource).toContain('{isMobile ? "「今天」页" : ""}右上角那颗头像点开也能退出登录');
   });
-  it("网页 beta 段没有「修复更新弹窗贴边」（网页弹不出那个框）；桌面、安卓留着", () => {
-    const titles = (p: "desktop" | "android" | "web") => changelogData.beta[p].highlights.map((h) => h.title);
+  // 桌面这段 09-23 已随 1.16.0 发布、beta 清空（细节并进 1.16.0 的「体验优化」），这两条只剩还攒着的两端要核
+  it("网页 beta 段没有「修复更新弹窗贴边」（网页弹不出那个框）；安卓留着", () => {
+    const beta = changelogData.beta as Partial<Record<"desktop" | "android" | "web", { highlights: { title: string }[] }>>;
+    const titles = (p: "android" | "web") => (beta[p]?.highlights ?? []).map((h) => h.title);
     expect(titles("web")).not.toContain("修复更新弹窗贴边");
-    expect(titles("desktop")).toContain("修复更新弹窗贴边");
     expect(titles("android")).toContain("修复更新弹窗贴边");
   });
-  it("桌面 beta 叫「今日任务页」", () => {
-    const body = changelogData.beta.desktop.highlights.map((h) => h.body).join("\n");
+  it("桌面那份叫「今日任务页」，不叫「今天页」（1.16.0 正式条目 + 以后攒的 beta）", () => {
+    const beta = changelogData.beta as Partial<Record<"desktop", { highlights: { body: string }[] }>>;
+    const v116 = changelogData.desktop.find((e) => e.version === "1.16.0")!;
+    const body = [...v116.highlights, ...(beta.desktop?.highlights ?? [])].map((h) => h.body).join("\n");
     expect(body).not.toContain("今天页");
   });
   it("v1.14.0「子任务支持循环」的例子照着打真能设上循环", () => {
@@ -203,10 +206,14 @@ describe.skipIf(!existsSync(PENDING))("验收单（最新改动.json）", () => 
   it("网页没有「更新弹窗」那一项", () => {
     expect(items("web").map((x) => x.id)).not.toContain("w-2609d-dialog");
   });
-  it("桌面说明写明对应哪个测试版、已经装了", () => {
-    // 不钉死整句——每打一次新测试版这句话就会改一次，只钉「写明版本号 + 已装」这层意思
-    expect(pend.desktop.note).toMatch(/beta\.\d+/);
-    expect(pend.desktop.note).toContain("已装到这台电脑");
+  it("桌面说明：攒着改动时写明对应哪个测试版、已经装了；刚发完正式版时写明发的是几号", () => {
+    // 不钉死整句——每打一次新测试版这句话就会改一次，只钉这层意思
+    if (items("desktop").length) {
+      expect(pend.desktop.note).toMatch(/beta\.\d+/);
+      expect(pend.desktop.note).toContain("已装到这台电脑");
+    } else {
+      expect(pend.desktop.note).toMatch(/\d+\.\d+\.\d+ 已于 \d{4}-\d{2}-\d{2} 正式发布/);
+    }
   });
   it("网页那几项没有浏览器做不到的操作", () => {
     for (const w of ["托盘", "拖窗口", "快捷记浮窗", "关掉橡果"]) {
@@ -214,9 +221,14 @@ describe.skipIf(!existsSync(PENDING))("验收单（最新改动.json）", () => 
     }
   });
   it("桌面和电脑浏览器那几项叫「今日任务页」；收起的链头才代表整件事", () => {
-    for (const [p, id] of [["desktop", "d-2609d-postpone"], ["desktop", "d-2609d-ctx"], ["web", "w-2609d-postpone"], ["web", "w-2609d-ctx"]]) {
-      expect(text(p, id), id).not.toContain("今天页");
+    // 桌面那两项 09-23 随 1.16.0 发布、从「最新改动」挪走了，只剩网页那两项要核（桌面还攒着的话照核）
+    const pairs = [["desktop", "d-2609d-postpone"], ["desktop", "d-2609d-ctx"], ["web", "w-2609d-postpone"], ["web", "w-2609d-ctx"]]
+      .filter(([p, id]) => items(p).some((x) => x.id === id));
+    expect(pairs.some(([p]) => p === "web")).toBe(true);
+    for (const [p, id] of pairs) expect(text(p, id), id).not.toContain("今天页");
+    if (items("desktop").some((x) => x.id === "d-2609d-ctx")) {
+      expect(text("desktop", "d-2609d-ctx")).not.toContain("右键也是「整件事 · 名字」");
     }
-    expect(text("desktop", "d-2609d-ctx")).not.toContain("右键也是「整件事 · 名字」");
+    expect(text("web", "w-2609d-ctx")).not.toContain("右键也是「整件事 · 名字」");
   });
 });

@@ -1,8 +1,9 @@
 // 「计划」视图怎么分组（纯函数，可单测）。
 //
-// 用户口径（2026-08-28）：
-//   · 按时间：逾期 / 今天 之后，「接下来」再切成 一周内 / 一个月内 / 半年内
-//   · 按重要性：先分 高 / 中 / 低 / 普通 四档，**每档内部按时间排**
+// 用户口径：
+//   · 按时间（2026-09-23 改）：逾期 / 今天 / 本周 / 本月 / 半年内 / 更远 / 未安排。
+//     中间三段按日历切，不再按固定天数（原来是 一周内 7 天 / 一个月内 30 天 / 半年内 182 天）
+//   · 按重要性（2026-08-28）：先分 高 / 中 / 低 / 普通 四档，**每档内部按时间排**
 //
 // 为什么一定要有「更远」这一组：半年以后的事总会有（学费、年检、明年的考试）。
 // 没有兜底组，它们不属于任何一段，会在界面上凭空消失——那是丢数据级的错觉。
@@ -10,7 +11,7 @@
 import type { Priority, Task } from "./model";
 import type { DateRow } from "./store";
 import { rowDue, rowPriority, sortRows } from "./store";
-import { addDays, cmpYMD } from "./dates";
+import { addDays, cmpYMD, halfYearEnd, monthEnd, weekEnd } from "./dates";
 
 export interface PlanGroup {
   key: string;
@@ -20,12 +21,18 @@ export interface PlanGroup {
   rows: DateRow[];
 }
 
-/** 「接下来」的三档分界（天数，从今天往后算，含端点）。顺序即显示顺序 */
-export const PLAN_BANDS = [
-  { key: "w1", label: "一周内", days: 7 },
-  { key: "m1", label: "一个月内", days: 30 },
-  { key: "h1", label: "半年内", days: 182 },
-] as const;
+/** 「接下来」的三段，顺序即显示顺序。end 是这一段的最后一天（含）：
+ *   本周 = 到本周日；本月 = 到这个月最后一天；
+ *   半年内 = 月份往后数 6 个月、取那个月最后一天（9 月 23 日看，收到明年 3 月 31 日——跟「~半年内」同一个算法）。
+ *  每一段只收上一段收剩下的：月底落在本周里的时候（9 月 28 日周一看，本周到 10 月 4 日），
+ *  「本月」那段就是空的，10 月 5 日起的事直接进「半年内」 */
+export function planBands(today: string): { key: string; label: string; end: string }[] {
+  return [
+    { key: "week", label: "本周", end: weekEnd(today) },
+    { key: "month", label: "本月", end: monthEnd(today) },
+    { key: "half", label: "半年内", end: halfYearEnd(today) },
+  ];
+}
 
 // 「普通」是兜底档：任何不是 高/中/低 的重要性都归它。
 // 别写成 === 0——导进来的数据里 priority 可能是 5 或 null（migrate 不校验这个字段），
@@ -57,9 +64,10 @@ export function planGroups(rows: DateRow[], mode: "time" | "priority", today: st
     { key: "today", label: "今天", rows: pick((r) => rowDue(r) === today) },
   ];
   let from = today;
-  for (const b of PLAN_BANDS) {
+  for (const b of planBands(today)) {
     const lo = from;
-    const hi = addDays(today, b.days);
+    // 右端点不许比左端点还靠前（本月底早于本周日），那样这一段就是空的，下一段从 lo 接着收
+    const hi = cmpYMD(b.end, lo) > 0 ? b.end : lo;
     out.push({
       key: b.key,
       label: b.label,

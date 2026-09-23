@@ -17,6 +17,7 @@ import {
   dayOfWeek,
   daysInMonth,
   formatShort,
+  halfYearEnd,
   isWorkday,
   nowLocalDT,
   pad2,
@@ -162,6 +163,8 @@ const RE = {
   monthEndN: new RegExp(`(?<!\\d)(${NUM})月底`, "g"),
   // 三个月后 / 3月后:往后数 N 个月
   monthsAfter: new RegExp(`(?<!\\d)(${NUM})个?月后`, "g"),
+  // 半年内 / 半年之内:月份往后数 6 个月、取那个月最后一天,跟计划页「半年内」那一组同一个右端点
+  halfYear: /半年之?内/g,
   // 月底/月末/月初/月中,可带「下(个)/这(个)/本」前缀;年底
   monthPart: /(下个?|这个?|本)?月(底|末|初|中)|年底/g,
   // 与 RE.list 同款左边界:必须在行首、空白后或那个 ~ 后(严格模式下真正写日期的写法是「~8-31」),
@@ -681,6 +684,13 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     },
     true,
   );
+
+  // 半年内 / 半年之内 = 往后第 6 个月的最后一天(月份向上取整:9月23日写,落在明年3月31日)。
+  // 用户 2026-09-23 定的:跟计划页「半年内」那一组的边界一致,两边都走 dates.halfYearEnd
+  scan(RE.halfYear, () => {
+    const ymd = halfYearEnd(today);
+    return { chip: dateChip(ymd), apply: setDate(ymd) };
+  });
 
   // 月底/月末/月初/月中/年底;带「下(个)」前缀就是下个月的那一天,「这(个)/本」跟不带前缀一样
   scan(

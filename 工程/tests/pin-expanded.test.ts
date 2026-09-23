@@ -184,7 +184,9 @@ function reset() {
 describe("接上真数据：两个月后的事，在卡里加一条今天到期的子任务", () => {
   beforeEach(reset);
 
-  const today = todayYMD();
+  // 钉死一个周三：计划页的「本周 / 本月」按日历切（2026-09-23 起），拿真实今天的话，
+  // 「三天后的丙」月底那几天会跟两个月后的大事落进同一组，断言跟着日历时对时错
+  const today = "2026-09-23";
   const ROWS: PinIds<{ task: { id: string }; sub: { id: string } | null }> = {
     key: (r) => (r.sub ? `${r.task.id}/${r.sub.id}` : r.task.id),
     taskId: (r) => r.task.id,
@@ -198,7 +200,7 @@ describe("接上真数据：两个月后的事，在卡里加一条今天到期�
         ...appStore.getState().data,
         tasks: [
           newTask({ id: "a", title: "今天要做的甲", due: today, order: 1 }),
-          newTask({ id: "c", title: "一周内的丙", due: addDays(today, 3), order: 2 }),
+          newTask({ id: "c", title: "本周的丙", due: addDays(today, 3), order: 2 }),
           big,
           newTask({ id: "z", title: "两个月后的另一件", due: addDays(today, 61), order: 4 }),
         ],
@@ -210,10 +212,10 @@ describe("接上真数据：两个月后的事，在卡里加一条今天到期�
   it("不钉的话它真的会换一组——这条先证明病在", () => {
     seed();
     const before = lay();
-    expect(before.find((g) => g.key === "h1")!.rows.map(ROWS.key)).toEqual(["big", "z"]);
+    expect(before.find((g) => g.key === "half")!.rows.map(ROWS.key)).toEqual(["big", "z"]);
     addSubtask("big", "补一条数据", { due: today });
     const after = lay();
-    expect(after.find((g) => g.key === "h1")!.rows.map(ROWS.key)).not.toContain("big");
+    expect(after.find((g) => g.key === "half")!.rows.map(ROWS.key)).not.toContain("big");
     expect(after.find((g) => g.key === "today")!.rows.map(ROWS.key).some((k) => k.startsWith("big/"))).toBe(true);
   });
 
@@ -222,7 +224,7 @@ describe("接上真数据：两个月后的事，在卡里加一条今天到期�
     const before = lay();
     addSubtask("big", "补一条数据", { due: today });
     const pinned = pinExpanded(lay(), before, "big", ROWS);
-    const far = pinned.find((g) => g.key === "h1")!.rows.map(ROWS.key);
+    const far = pinned.find((g) => g.key === "half")!.rows.map(ROWS.key);
     expect(far.length).toBe(2);
     expect(far[0].startsWith("big/")).toBe(true);
     expect(far[1]).toBe("z");
@@ -237,7 +239,7 @@ describe("接上真数据：两个月后的事，在卡里加一条今天到期�
     ver = pinExpanded(lay(), ver, "big", ROWS);
     addSubtask("big", "再补一条", { due: addDays(today, 1) });
     ver = pinExpanded(lay(), ver, "big", ROWS);
-    const far = ver.find((g) => g.key === "h1")!.rows;
+    const far = ver.find((g) => g.key === "half")!.rows;
     expect(far.map((r) => r.sub?.title ?? r.task.title)).toEqual([
       "补一条数据",
       "再补一条",
@@ -252,7 +254,7 @@ describe("接上真数据：两个月后的事，在卡里加一条今天到期�
     const pinned = pinExpanded(lay(), before, "big", ROWS);
     const free = pinExpanded(lay(), pinned, null, ROWS);
     expect(free.find((g) => g.key === "today")!.rows.map(ROWS.key).some((k) => k.startsWith("big/"))).toBe(true);
-    expect(free.find((g) => g.key === "h1")!.rows.map(ROWS.key)).toEqual(["z"]);
+    expect(free.find((g) => g.key === "half")!.rows.map(ROWS.key)).toEqual(["z"]);
   });
 
   it("在卡里改子任务的日期同样不许挪窝", () => {
@@ -263,8 +265,8 @@ describe("接上真数据：两个月后的事，在卡里加一条今天到期�
     const subId = appStore.getState().data.tasks.find((t) => t.id === big.id)!.subtasks[0].id;
     updateSubtask("big", subId, { due: addDays(today, 3) });
     ver = pinExpanded(lay(), ver, "big", ROWS);
-    expect(ver.find((g) => g.key === "h1")!.rows.map(ROWS.key)).toEqual([`big/${subId}`, "z"]);
-    expect(ver.find((g) => g.key === "w1")!.rows.map(ROWS.key)).toEqual(["c"]);
+    expect(ver.find((g) => g.key === "half")!.rows.map(ROWS.key)).toEqual([`big/${subId}`, "z"]);
+    expect(ver.find((g) => g.key === "week")!.rows.map(ROWS.key)).toEqual(["c"]);
   });
 });
 

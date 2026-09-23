@@ -85,6 +85,21 @@ export function monthEnd(ymd: string): string {
   return `${ymd.slice(0, 7)}-${pad2(daysInMonth(y, m))}`;
 }
 
+/** 本周日（周一开始的自然周的最后一天） */
+export function weekEnd(ymd: string): string {
+  return addDays(weekStart(ymd), 6);
+}
+
+/** 「半年内」的最后一天：月份往后数 6 个月，取那个月的最后一天（月份向上取整）。
+ *  9 月 23 日看是明年 3 月 31 日，9 月 1 日看也是。
+ *  **计划页「半年内」那一组的右端点和记事语法「~半年内」共用这一个**（用户 2026-09-23：要求一致） */
+export function halfYearEnd(ymd: string): string {
+  const m0 = Number(ymd.slice(5, 7)) - 1 + 6; // 0 起算的月序号，可能超过 11
+  const y = Number(ymd.slice(0, 4)) + Math.floor(m0 / 12);
+  const mo = (m0 % 12) + 1;
+  return `${y}-${pad2(mo)}-${pad2(daysInMonth(y, mo))}`;
+}
+
 /** 从 ymd 起（**含当天**）往后最近的那个星期几。dow：0=周日 … 6=周六。
  *  「向后取最近的一个」是全部日期预设的统一口径：过了就顺延到下一个，绝不给出一个过去的日子 */
 export function nextDow(ymd: string, dow: number): string {

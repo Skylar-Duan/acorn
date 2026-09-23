@@ -166,7 +166,7 @@ describe("别处：按日期摆子任务的地方都得是生效日期", () => {
     const idsIn = (key: string) => groups.find((g) => g.key === key)!.rows.map((r) => r.sub!.id);
     expect(idsIn("today")).toEqual(["办理护照", "选校清单"]);
     expect(idsIn("nodate")).toEqual([]); // 继承来的日期算数，它不是「没安排」
-    expect(idsIn("m1")).toEqual(["材料一"]);
+    expect(idsIn("month")).toEqual(["材料一"]); // 9-11 周五看，9-30 在本周日之后、月底之前
   });
 });
 

@@ -67,10 +67,21 @@ describe("分端：每一端只列它真拿到、且看得见变化的版本", (
 
 describe("测试版：第一块是比上一个正式版多了什么", () => {
   it("装着测试版时，第一块是这个测试版，上一个正式版挪进后面", () => {
-    const list = changelogFor("desktop", { beta: true, betaVersion: "1.15.1-beta.3" });
-    expect(list[0].version).toBe("1.15.1-beta.3");
-    expect(list[0].headline).toBe(BETA_NOTES.desktop!.headline);
-    expect(list[1].version).toBe(table.public.desktop);
+    // 哪一端刚发过正式版，那一端的 beta 就是空的（发布时清掉、下一轮重新攒），所以对每个攒着改动的端都核一遍
+    const withNotes = PLATFORMS.filter((p) => BETA_NOTES[p]);
+    expect(withNotes.length).toBeGreaterThan(0);
+    for (const p of withNotes) {
+      const list = changelogFor(p, { beta: true, betaVersion: "1.15.1-beta.3" });
+      expect(list[0].version, p).toBe("1.15.1-beta.3");
+      expect(list[0].headline, p).toBe(BETA_NOTES[p]!.headline);
+      expect(list[1].version, p).toBe(table.public[p]);
+    }
+  });
+
+  it("刚发完正式版、这一端还没攒改动时：测试版也只列正式版，不凭空多出一块", () => {
+    for (const p of PLATFORMS.filter((x) => !BETA_NOTES[x])) {
+      expect(changelogFor(p, { beta: true, betaVersion: "9.9.9-beta.1" })[0].version, p).toBe(table.public[p]);
+    }
   });
 
   it("正式版里没有那一块", () => {
