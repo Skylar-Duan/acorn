@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "四个窗口共用的权限",
+  "description": "桌面窗口共用的权限",
   "windows": [
     "main",
     "quickadd",
     "focus",
+    "eye-care",
     "guide"
   ],
   "permissions": [

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Sidebar from "./components/Sidebar";
+import LoadingScreen from "./components/LoadingScreen";
 import { SideGrip } from "./components/SideGrip";
 import Today from "./views/Today";
 import ListView from "./views/ListView";
@@ -201,8 +202,8 @@ export default function App() {
         setQuickAddOpen(true);
         return;
       }
-      // Ctrl+2~5 = 侧栏常驻四项从上往下数（2026-09 跟着侧栏重排）：计划 / 日历 / 今日任务 / 习惯。
-      // 这组键的意思就是「第几个」，顺序变了还按老对应，手指记的就跟眼睛看到的对不上
+      // Ctrl+2~5 固定打开计划 / 日历 / 今日任务 / 习惯。
+      // 侧栏可重排或隐藏入口，快捷键继续按功能固定，保留已有的键盘习惯。
       if (mod && /^[2-5]$/.test(e.key)) {
         e.preventDefault();
         navigate((["plan", "calendar", "today", "habits"] as const)[Number(e.key) - 2]);
@@ -330,19 +331,14 @@ export default function App() {
   }, [view, bodyKey]);
 
   if (!loaded) {
-    return <div className="center-note"><span className="big">橡果</span>正在读取数据…</div>;
+    return <LoadingScreen message="正在读取数据…" />;
   }
   if (loadError) return <DataErrorScreen error={loadError} />;
   // 这台设备上还没有账本、而这个账号云端有东西：开机这一轮正在把它取回来。
   // 那是一个网络往返加一整份账本，手机上可能要好几秒——这几秒里界面**不能**摆一本空账本
   // 让人对着它开始记，取回一落地就是整份覆盖，刚记的当着面就没了（撤销也撤不回来）
   if (restoring) {
-    return (
-      <div className="center-note">
-        <span className="big">橡果</span>
-        正在把你在云端的那份取回这台设备…
-      </div>
-    );
+    return <LoadingScreen message="正在把你在云端的那份取回这台设备…" />;
   }
 
   // 这份数据由更新版本的橡果写入：**照常渲染整个应用**，弹一次「已有更新版橡果」的框，

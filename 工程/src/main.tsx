@@ -9,6 +9,7 @@ import { LIST_COLORS } from "./core/model";
 import { startThemeSync } from "./core/themeCtl";
 import { windowContext } from "./core/windowCtx";
 import { startReminderLoop } from "./core/reminders";
+import { startEyeCareLoop } from "./core/eyeCare";
 import { wireFocusCommands } from "./core/focusCtl";
 import { applyQuickAddShortcut } from "./core/shortcutCtl";
 import { inTauri } from "./core/persist";
@@ -23,6 +24,9 @@ import { applySavedSideW } from "./core/sideWidth";
 // 手机没有侧栏，不碰
 if (!isMobile) applySavedSideW();
 
+// 数据还在读取时也先铺好底纸与系统深浅色；读完后订阅会自动换成保存的主题。
+startThemeSync();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
@@ -31,11 +35,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 void (async () => {
   await initStore();
-  startThemeSync();
 
   if (await maybeRunSmoke()) return; // 冒烟模式：跑完自检直接退出
 
   startReminderLoop();
+  void startEyeCareLoop();
 
   // 每次打开都查一次版本。放在 maybeRunSmoke 之后：冒烟验收不该多打一次网络请求。
   // **void 不 await**：查更新挡不得启动，断网时那 12 秒超时也不能让人干等。

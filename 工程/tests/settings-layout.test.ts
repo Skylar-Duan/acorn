@@ -120,12 +120,12 @@ describe("② 「一句话记事」并进「通用」，在里面叫「快捷用
 });
 
 describe("③ 顺序按主流 App 的习惯来", () => {
-  it("账号 → 反馈 → 通用 → 外观 → 数据 → 导出与导入 → 版本更新", () => {
+  it("账号 / 反馈 / 通用后是桌面护眼与侧栏，之后外观 / 数据 / 导出与导入 / 版本更新", () => {
     expect(sections().map((s) => s.id)).toEqual([
-      "cloud", "feedback", "general", "look", "data", "io", "update",
+      "cloud", "feedback", "general", "eye-care", "sidebar", "look", "data", "io", "update",
     ]);
     expect(sections().map((s) => s.title)).toEqual([
-      "账号", "反馈", "通用", "外观", "数据", "导出与导入", "版本更新",
+      "账号", "反馈", "通用", "护眼提醒", "侧栏", "外观", "数据", "导出与导入", "版本更新",
     ]);
   });
 

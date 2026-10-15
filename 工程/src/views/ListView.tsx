@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { List, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
+import { taskDue } from "../core/taskDue";
 import {
   aliveTasks, deleteList, navigate, purgeSubtask, purgeTask, purgeTrash, renameList,
   restoreSubtask, restoreTask, rowPriority, setListColor, sortTasks, trashDaysLeft, trashedSubtaskRows, useApp,
@@ -112,7 +113,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
       case "inbox":
         return {
           title: "还没有清单的事", sub: "没有日期、也没有归入清单的任务",
-          tasks: sortTasks(alive.filter((t) => !t.done && !t.droppedAt && !t.listId && !t.due), sortMode),
+          tasks: sortTasks(alive.filter((t) => !t.done && !t.droppedAt && !t.listId && !taskDue(t)), sortMode),
           showAdd: true, defaults: {}, fade: true,
         };
       case "list":

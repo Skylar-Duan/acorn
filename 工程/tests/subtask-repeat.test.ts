@@ -164,22 +164,20 @@ describe("解析：子任务里所有循环词都认", () => {
   });
 });
 
-describe("解析：那句「每月?」清理正则**保留**，只剩一种触发场景", () => {
+describe("解析：没打 ~ 的循环文字保留在正文", () => {
   const p = (s: string) => parseSubtaskInput(s, MON);
 
-  // 结论：留着。循环认了之后它不再是「循环词的残渣清扫」，而是「用户打了半句话」的兜底——
-  // 光杆「每」后面没跟循环词、日期另写在别处，那个「每」不是标题的一部分
-  it("光杆「每」+ 另写的日期：「每」不留在标题里", () => {
+  it("光杆「每」+ 另写的日期：「每」仍是正文", () => {
     const r = p("每 交周报 ~明天");
     expect(r.repeat).toBeNull();
     expect(r.due).toBe("2026-08-18");
-    expect(r.title).toBe("交周报");
+    expect(r.title).toBe("每 交周报");
   });
 
   it("光杆「每月」同理", () => {
     const r = p("每月 交房租 ~明天");
     expect(r.repeat).toBeNull();
-    expect(r.title).toBe("交房租");
+    expect(r.title).toBe("每月 交房租");
   });
 
   // 9-21 复核改回：没打 ~ 的「每个月」是用户写的正文，删了等于把「每月的事」悄悄变成一次性，

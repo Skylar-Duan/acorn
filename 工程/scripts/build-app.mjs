@@ -17,7 +17,7 @@
 // --config 临时盖一层（写一个 tauri.version.json，打完删掉），文件里那个号就不再有人信它。
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,7 +96,14 @@ if (!existsSync(artifact)) {
 if (beta) {
   table.beta = { ...(table.beta ?? {}), [platform]: n };
   table.betaAfter = { ...(table.betaAfter ?? {}), [platform]: pub };
-  writeFileSync(VERSIONS, JSON.stringify(table, null, 2) + "\n");
+  const temporary = `${VERSIONS}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temporary, JSON.stringify(table, null, 2) + "\n");
+    JSON.parse(readFileSync(temporary, "utf8"));
+    renameSync(temporary, VERSIONS);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }
 
 mkdirSync(PKG_DIR, { recursive: true });
@@ -104,7 +111,13 @@ const ext = platform === "desktop" ? "exe" : "apk";
 // 跟以前的命名一样：「橡果 v1.15.0 安装包.exe」「橡果 v1.15.0 安卓版.apk」，测试版把号换成 beta
 const kind = platform === "desktop" ? "安装包" : "安卓版";
 const dest = join(PKG_DIR, `橡果 ${beta ? "beta" : `v${version}`} ${kind}.${ext}`);
-copyFileSync(artifact, dest);
+const temporaryPackage = `${dest}.${process.pid}.tmp`;
+try {
+  copyFileSync(artifact, temporaryPackage);
+  renameSync(temporaryPackage, dest);
+} finally {
+  rmSync(temporaryPackage, { force: true });
+}
 console.log(`\n✓ 产物：${artifact}\n✓ 复制到：${dest}`);
 
 // 推到测试版通道：更新说明取 changelog-data.json 里这一端 beta 那段的小标题

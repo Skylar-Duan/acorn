@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Task } from "../core/model";
 import { cmpYMD, formatShort, todayYMD } from "../core/dates";
 import { searchTasks } from "../core/search";
-import { aliveSubtasks, aliveTasks, expandTask, navigate, setSearchOpen, useApp } from "../core/store";
+import { aliveTasks, expandTask, navigate, openRows, rowDue, setSearchOpen, useApp } from "../core/store";
+import { taskDue, taskTime } from "../core/taskDue";
 import "../styles/overlays.css";
 
 const MAX_SHOWN = 20;
@@ -13,16 +14,17 @@ const MAX_SHOWN = 20;
  *  母任务写着「今天到期」也不会出现在今天页上。只看 t.due 就 navigate('today')，
  *  用户会跳到一个什么都没有的页面 */
 function showsToday(t: Task, today: string): boolean {
-  const open = aliveSubtasks(t).filter((s) => !s.done);
-  const dues = open.length ? open.map((s) => s.due ?? t.due) : [t.due];
-  return dues.some((d) => !!d && cmpYMD(d, today) <= 0);
+  return openRows({ tasks: [t] }).some((r) => {
+    const due = rowDue(r);
+    return !!due && cmpYMD(due, today) <= 0;
+  });
 }
 
 /** 跳到任务平时住的视图：做完的回「已完成」，逾期/今天回「今天」，再按清单/计划归位 */
 function goHome(t: Task) {
   if (t.done) {
     navigate("done");
-  } else if (t.due && cmpYMD(t.due, todayYMD()) <= 0 && showsToday(t, todayYMD())) {
+  } else if (showsToday(t, todayYMD())) {
     navigate("today");
   } else if (t.listId) {
     navigate("list", { listId: t.listId });
@@ -110,10 +112,10 @@ export default function SearchOverlay() {
                     </span>
                   )}
                   {t.who && <span>＠{t.who}</span>}
-                  {t.due && (
+                  {taskDue(t) && (
                     <span>
-                      {formatShort(t.due)}
-                      {t.dueTime ? ` ${t.dueTime}` : ""}
+                      {formatShort(taskDue(t)!)}
+                      {taskTime(t) ? ` ${taskTime(t)}` : ""}
                     </span>
                   )}
                 </span>

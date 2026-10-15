@@ -22,6 +22,7 @@ import {
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
+import { previewEyeCare } from "../core/eyeCare";
 import { useSync } from "../core/syncCtl";
 // 开关拆成了两件事（v1.15.0）：hasDesktopFeatures 只说「界面是桌面那一套吗」，
 // isDesktopShell 才是「这台机器真做得到吗」。电脑上的浏览器前者真、后者假——
@@ -36,6 +37,7 @@ import { CommitMark, useCommitFlash } from "../components/commitFlash";
 import UpdatePanel from "../components/UpdatePanel";
 import { updaterSupported } from "../core/updater";
 import MobileHead from "../mobile/MobileHead";
+import SidebarSettings from "../components/SidebarSettings";
 import "../styles/settings.css";
 
 /** 设置页那些节在本机记忆里的键前缀（侧栏是 `acorn-side-`）。
@@ -560,6 +562,26 @@ export default function Settings() {
         </SetSection>
         {/* 用法那张纸必须留在折叠容器之外：容器 overflow:hidden 会把它裁掉 */}
         {guide.sheet}
+
+        {isDesktopShell && (
+          <SetSection id="eye-care" title="护眼提醒" summary={settings.eyeCareEnabled ? "每 20 分钟 · 准备 10 秒后远眺 20 秒" : "已关闭"}>
+            <div className="set-row">
+              <div className="set-row-label">定时休息<span className="set-hint">每 20 分钟提醒一次，先留 10 秒准备，再看远处 20 秒。橡果收进托盘也会提醒；随时可以跳过。</span></div>
+              <div className="set-ctl"><button className={`set-switch${settings.eyeCareEnabled ? " on" : ""}`} role="switch" aria-label="定时护眼提醒" aria-checked={settings.eyeCareEnabled === true} onClick={() => updateSettings({ eyeCareEnabled: !settings.eyeCareEnabled })} /></div>
+            </div>
+            <div className="set-row">
+              <div className="set-row-label">提醒方式<span className="set-hint">全屏提醒覆盖当前屏幕，可以随时关闭。</span></div>
+              <div className="set-ctl"><div className="set-seg">{([["small", "小窗"], ["full", "全屏"]] as const).map(([id, label]) => <button key={id} className={(settings.eyeCareMode ?? "small") === id ? "on" : undefined} onClick={() => updateSettings({ eyeCareMode: id })}>{label}</button>)}</div></div>
+            </div>
+            <div className="set-row"><div className="set-row-label">试试看<span className="set-hint">预览一次完整的准备和休息过程，不会打开定时提醒。</span></div><div className="set-ctl"><button className="btn" onClick={() => void previewEyeCare()}>预览一次</button></div></div>
+          </SetSection>
+        )}
+
+        {hasDesktopFeatures && (
+          <SetSection id="sidebar" title="侧栏" anchorId="set-sidebar" summary="拖动整组排序 · 添加与隐藏模块">
+            <SidebarSettings />
+          </SetSection>
+        )}
 
         {/* ---------- 外观 ---------- */}
         <SetSection

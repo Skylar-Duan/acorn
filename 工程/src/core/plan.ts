@@ -11,6 +11,7 @@
 import type { Priority, Task } from "./model";
 import type { DateRow } from "./store";
 import { rowDue, rowPriority, sortRows } from "./store";
+import { taskDue } from "./taskDue";
 import { addDays, cmpYMD, halfYearEnd, monthEnd, weekEnd } from "./dates";
 
 export interface PlanGroup {
@@ -101,10 +102,10 @@ export interface ListGroup {
 
 /** @param nodateLabel 「没有日期」那一组的标题（随手记整页都是没日期的，不用再标一遍） */
 export function listGroups(tasks: Task[], today: string, nodateLabel: string): ListGroup[] {
-  const overdue = tasks.filter((t) => t.due && cmpYMD(t.due, today) < 0);
-  const todays = tasks.filter((t) => t.due === today);
-  const later = tasks.filter((t) => t.due && cmpYMD(t.due, today) > 0);
-  const nodate = tasks.filter((t) => !t.due);
+  const overdue = tasks.filter((t) => { const due = taskDue(t); return due && cmpYMD(due, today) < 0; });
+  const todays = tasks.filter((t) => taskDue(t) === today);
+  const later = tasks.filter((t) => { const due = taskDue(t); return due && cmpYMD(due, today) > 0; });
+  const nodate = tasks.filter((t) => !taskDue(t));
   // 标题上那个数字数的是「这一组本来有几件」——钉住只管画面上别挪窝，不改「谁属于哪一组」
   return [
     { key: "overdue", label: `逾期 ${overdue.length}`, warn: true, rows: overdue },

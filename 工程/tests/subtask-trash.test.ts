@@ -406,7 +406,8 @@ describe("TaskRow / SearchOverlay 也走 aliveSubtasks（回收站里的那一�
   });
 
   it("SearchOverlay 的 showsToday 只看活着的步", () => {
-    expect(searchOverlaySource).toContain("const open = aliveSubtasks(t).filter((s) => !s.done)");
+    expect(searchOverlaySource).toContain("openRows({ tasks: [t] })");
+    expect(searchOverlaySource).toContain("const due = rowDue(r)");
     expect(searchOverlaySource).not.toContain("t.subtasks.filter(");
   });
 });

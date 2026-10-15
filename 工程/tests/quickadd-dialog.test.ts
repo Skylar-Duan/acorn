@@ -87,7 +87,7 @@ describe("侧栏：「随手记」那个导航项没了，顶上是一颗「＋ 
   it("那颗按钮在品牌行和 <nav> 之间，也就是「今天」上面", () => {
     const brandAt = side.indexOf('className="brand"');
     const btnAt = side.indexOf('className="side-quickadd"');
-    const navAt = side.indexOf("<nav>");
+    const navAt = side.indexOf("<nav ");
     expect(btnAt).toBeGreaterThan(brandAt);
     expect(btnAt).toBeLessThan(navAt);
     expect(side).toContain("记一条");
@@ -96,7 +96,7 @@ describe("侧栏：「随手记」那个导航项没了，顶上是一颗「＋ 
   it("它不是导航项：不 navigate、不给选中态、也不收抽屉", () => {
     const btn = side.slice(
       side.indexOf('className="side-quickadd"'),
-      side.indexOf("<nav>"),
+      side.indexOf("</button>", side.indexOf('className="side-quickadd"')),
     );
     expect(btn).not.toContain("navigate(");
     expect(btn).not.toContain("onNavigate");
@@ -186,7 +186,7 @@ describe("快捷键：Ctrl+1 记一条，Ctrl+2~5 还是切视图", () => {
     expect(appSource).toMatch(/mod && e\.key === "1"[\s\S]{0,120}setQuickAddOpen\(true\)/);
   });
 
-  // 2026-09 侧栏重排后改口：Ctrl+2~5 跟常驻四项从上往下数（见 tests/desktop-nav-order.test.ts）
+  // Ctrl+2~5 按功能固定；侧栏模块拖排或隐藏后，键盘习惯保持原样。
   it("Ctrl+2~5 一格不错位：计划 / 日历 / 今日任务 / 习惯", () => {
     expect(appSource).toContain('/^[2-5]$/.test(e.key)');
     expect(appSource).toContain('navigate((["plan", "calendar", "today", "habits"] as const)[Number(e.key) - 2]);');

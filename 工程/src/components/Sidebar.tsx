@@ -1,22 +1,5 @@
-// 侧栏：一颗「＋ 记一条」+ 常驻四项（计划/日历/今日任务/习惯）+ 可展开的「更多」+ 清单/需求方/标签。
-// 同时是拖拽落点：任务拖到「今日任务」改今天、「计划」弹日期选择、清单/需求方即归属。
-//
-// 常驻四项的顺序是用户定的（2026-09）：「计划移到最前面……日历挪到计划下面（第二个）」，
-// 原来的「今天」改叫「今日任务」排第三、习惯第四；已完成收进「更多」排第一个。
-// 只动桌面：手机的底部导航另有一套（mobile/MobileShell.tsx），按约定先出稿再改。
-//
-// v1.11.2：「随手记」这一项撤了。它原来一半是记录入口、一半是「没日期也没归清单那堆事」
-// 的列表，两件事挤在一个导航项里；现在记录那半边变成顶上那颗按钮（点开是居中的
-// QuickAddDialog），列表那半边并回「计划」。按钮不是导航项，所以它没有选中态。
-//
-// 为什么要折叠：加了习惯之后侧栏太长了。偶尔才看的视图收进「更多」，
-// 清单/需求方/标签各只列 3 个，剩下的点一下才出来。展开状态记在本机 localStorage——
-// 它是「这台机器的界面偏好」，不该跟着云同步跑到另一台设备上去。
-//
-// 清单和需求方还能**拖着换顺序**（拖清单到另一张清单上面）。清单的顺序跟数据走，
-// 需求方的顺序存在设置里（每台设备各排各的，见 Settings.whoOrder）。
-// 换顺序有两套手势：鼠标走 HTML5 拖拽，手指走「按住不动进排序模式」——
-// 后者是必须的，HTML5 拖拽在触摸屏上根本不触发（见 core/touchSort.ts）。
+// 桌面侧栏按模块自由排序；清单、需求方和标签保留分组，组内全部展开。
+// 模块排布/隐藏/显示别名只在本机生效，任务拖入侧栏的原有动作照常保留。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { todayYMD, cmpYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
@@ -24,16 +7,20 @@ import {
   addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
   moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
   setQuickAddOpen, setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
-  trashedSubtaskRows,
+  trashedSubtaskRows, updateSettings,
 } from "../core/store";
 import { LIST_COLORS } from "../core/model";
 import { shortVersion } from "../core/version";
-import { forceFoldOpen, useFold } from "../core/useFold";
+import { forceFoldOpen } from "../core/useFold";
+import { moveSidebarModule, sidebarHidden, sidebarModules, sidebarName, SIDEBAR_MODULES, type SidebarModuleId } from "../core/sidebar";
+import SidebarIcon from "./SidebarIcon";
+import SidebarModuleMenu, { type SidebarMenuTarget } from "./SidebarModuleMenu";
+import { useSidebarModuleDrag } from "./sidebarModuleDrag";
+import "../styles/sidebar.css";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
-import { FOCUS_ENABLED } from "../core/features";
 import { dismissRestored, syncFootState, useSync } from "../core/syncCtl";
 import { openFoundUpdate, updateFootState, useUpdate } from "../core/updateCtl";
 import {
@@ -70,31 +57,7 @@ const revealCloudSection = () => revealSetSection("cloud", "set-cloud");
  *  v1.15.0 之前那行是一句死字，看见了也没地方去 */
 const revealDataSection = () => revealSetSection("data", "set-data");
 
-function Ico({ d }: { d: string }) {
-  return (
-    <svg className="ico" viewBox="0 0 24 24">
-      <path d={d} />
-    </svg>
-  );
-}
-
-const ICONS = {
-  today: "M12 8a4 4 0 100 8 4 4 0 000-8z M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1",
-  plan: "M4 6h16 M4 12h16 M4 18h10",
-  done: "M20 6L9 17l-5-5",
-  calendar: "M3 5h18v16H3z M8 3v4M16 3v4M3 10h18M9 10v11M15 10v11M3 15.5h18",
-  focus: "M12 5a8 8 0 100 16 8 8 0 000-16z M12 9v4l3 2 M9 2h6",
-  stats: "M4 20V10 M10 20V4 M16 20v-9 M21 20H3",
-  trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6",
-  // 习惯：循环箭头里打个勾——重复着做，做一次记一次
-  habits: "M20.5 12a8.5 8.5 0 1 1-2.6-6.1 M20.5 3.5v4h-4 M8.6 12.2l2.4 2.4 4.6-4.8",
-} as const;
-
-/** 折叠组默认只露几个 */
-const PEEK = 3;
-
-// 侧栏的展开/收起状态用 core/useFold（2026-09-01 抽出去共用，设置页分节折叠也是它）。
-// 存本机、不同步——换台设备用什么样子是那台设备自己的事
+const ICONS = Object.fromEntries(SIDEBAR_MODULES.map((m) => [m.id, m.icon])) as Record<SidebarModuleId, string>;
 
 /** 从拖拽事件里取任务 id 组（TaskRow onDragStart 放进去的，多选拖拽是逗号串） */
 function draggedTaskIds(e: React.DragEvent): string[] {
@@ -150,6 +113,7 @@ function reorderProps(
   return {
     draggable: true,
     onDragStart: (e: React.DragEvent) => {
+      e.stopPropagation();
       e.dataTransfer.setData(type, self);
       e.dataTransfer.effectAllowed = "move";
     },
@@ -403,32 +367,26 @@ export default function Sidebar(
   const whoList = useMemo(() => allWho({ tasks, settings }), [tasks, settings]);
   const tagList = useMemo(() => allTags({ tasks }), [tasks]);
 
-  const [moreOpen, toggleMore] = useFold("more", false);
-  const [listsOpen, toggleLists] = useFold("lists", false);
-  const [whoOpen, toggleWho] = useFold("who", false);
-  const [tagsOpen, toggleTags] = useFold("tags", false);
-
   const lists = useMemo(() => [...rawLists].sort((a, b) => a.order - b.order), [rawLists]);
-  // 正看着的东西如果被折在下面，就得露出来——否则界面上没有任何地方显示「你在哪」
-  const MORE_VIEWS: ViewId[] = ["done", "focus", "stats", "trash"];
-  const showMore = moreOpen || MORE_VIEWS.includes(view);
-  const curListHidden =
-    view === "list" && lists.findIndex((l) => l.id === curList) >= PEEK;
-  const curWhoHidden = view === "who" && whoList.findIndex((w) => w.who === curWho) >= PEEK;
-  const curTagHidden = view === "tag" && tagList.findIndex((t) => t.tag === curTag) >= PEEK;
-  const showLists = listsOpen || curListHidden || addingList;
-  const showWho = whoOpen || curWhoHidden;
-  const showTags = tagsOpen || curTagHidden;
-
-  /** 「还有 N 个 ▾ / 收起 ▴」那一行。
-   *  小三角是**转过去**的，不是换个字符（B4）——所以这里永远画 ▾，方向交给 CSS 的 transform */
-  const moreRow = (hidden: number, open: boolean, onClick: () => void) =>
-    hidden <= 0 ? null : (
-      <li className="side-more" onClick={onClick}>
-        <span className="side-more-txt">{open ? "收起" : `还有 ${hidden} 个`}</span>
-        <span className={`side-caret${open ? " up" : ""}`}>▾</span>
-      </li>
-    );
+  const modules = sidebarModules(settings.sidebar).filter((m) => !sidebarHidden(m.id, settings.sidebar));
+  const [moduleMenu, setModuleMenu] = useState<SidebarMenuTarget | null>(null);
+  const moduleDrag = useSidebarModuleDrag((from, to) => {
+    const next = moveSidebarModule(appStore.getState().data.settings.sidebar, from, to);
+    if (next) updateSettings({ sidebar: next });
+  });
+  function editSidebar() {
+    navigate("settings");
+    onNavigate?.();
+    revealSetSection("sidebar", "set-sidebar");
+  }
+  function openModuleMenu(e: React.MouseEvent | React.KeyboardEvent, id: SidebarModuleId) {
+    e.preventDefault();
+    const box = e.currentTarget.getBoundingClientRect();
+    setModuleMenu({ id, x: "clientX" in e ? e.clientX : box.left, y: "clientY" in e ? e.clientY : box.bottom });
+  }
+  function moduleKeys(e: React.KeyboardEvent, id: SidebarModuleId) {
+    if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) openModuleMenu(e, id);
+  }
 
   function dropProps(key: string, onDrop: (taskIds: string[], e: React.DragEvent) => void) {
     return {
@@ -440,7 +398,9 @@ export default function Sidebar(
       },
       onDragLeave: () => setDropHint((h) => (h === key ? null : h)),
       onDrop: (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes("text/acorn-task")) return;
         e.preventDefault();
+        e.stopPropagation();
         setDropHint(null);
         const ids = draggedTaskIds(e);
         if (ids.length) onDrop(ids, e);
@@ -493,110 +453,41 @@ export default function Sidebar(
   ) => (
     <li
       className={`${view === id ? "on" : ""}${dropHint === id ? " dropping" : ""}`}
-      onClick={() => { navigate(id); onNavigate?.(); }}
+      tabIndex={0}
+      title="拖动调整模块顺序，右键编辑或隐藏"
+      onClick={() => { if (moduleDrag.swallowClick()) return; navigate(id); onNavigate?.(); }}
+      onContextMenu={(e) => openModuleMenu(e, id as SidebarModuleId)}
+      onKeyDown={(e) => {
+        moduleKeys(e, id as SidebarModuleId);
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(id); onNavigate?.(); }
+      }}
       {...(drop ? dropProps(id, drop) : {})}
+      {...moduleDrag.source(id)}
     >
-      <Ico d={ICONS[icon]} />
-      {label}
+      <span className="sidebar-drag-grip" aria-hidden="true">⠿</span>
+      <SidebarIcon path={ICONS[icon]} />
+      <span className="side-label">{sidebarName(id as SidebarModuleId, settings.sidebar) || label}</span>
       {n != null && n > 0 && <span className={`n${hot ? " hot" : ""}`}>{n}</span>}
     </li>
   );
 
-  return (
-    <aside className={`side${drawerOpen ? " open" : ""}`}>
-      <div className="brand">
-        <img src={iconUrl} alt="" />
-        橡果
-        {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
-            跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
-        <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>
-        {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
-            .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
-        <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
-      </div>
-      {/* 记一条：整条侧栏最该一眼看见的那件事，所以是唯一一颗实心按钮。
-          它**不是导航项**——记完还留在原来那一页，所以没有选中态，也不调 onNavigate
-          （手机上侧栏根本不渲染，抽屉那套跟它无关） */}
-      <button className="side-quickadd" title="记一条（Ctrl+1）" onClick={() => setQuickAddOpen(true)}>
-        <span className="side-quickadd-plus">＋</span>
-        记一条
-      </button>
-      <nav>
+  const moduleBodies = {
+    plan: item("plan", "计划", "plan", counts.plan, false, (ids, e) =>
+      setPendingPlan({ ids, sub: draggedSub(e), x: e.clientX, y: e.clientY })),
+    calendar: item("calendar", "日历", "calendar"),
+    today: item("today", "今日任务", "today", counts.today, true, (ids, e) => dropDue(e, ids, today)),
+    habits: item("habits", "习惯", "habits", counts.habits, true),
+    done: item("done", "已完成", "done"),
+    focus: item("focus", "专注", "focus"),
+    stats: item("stats", "统计", "stats"),
+    trash: item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
+      const sub = draggedSub(e);
+      if (sub) removeSubtask(sub.taskId, sub.subId);
+      else deleteTasks(ids);
+    }),
+    lists: (
         <ul>
-          {/* 计划 = 所有没做完的事（原来的「全部」）。拖任务过来仍然是弹日期选择 */}
-          {item("plan", "计划", "plan", counts.plan, false, (ids, e) =>
-            setPendingPlan({ ids, sub: draggedSub(e), x: e.clientX, y: e.clientY }),
-          )}
-          {/* 日历不挂角标、也不是拖拽落点：它是按月翻着看的，「欠多少」在这儿没意思 */}
-          {item("calendar", "日历", "calendar")}
-          {/* 今日任务 = 原来的「今天」，只是改了叫法（ViewId 还是 today，老设置照样认得）。
-              角标和「拖上来就改今天做」都跟着搬过来了 */}
-          {item("today", "今日任务", "today", counts.today, true, (ids, e) => dropDue(e, ids, today))}
-          {item("habits", "习惯", "habits", counts.habits, true)}
-        </ul>
-        {planPop.shown && (
-          <div
-            className={`popmenu side-plan-pop${planPop.leaving ? " leaving" : ""}`}
-            style={{ left: Math.min(planPop.shown.x, window.innerWidth - 220), top: Math.min(planPop.shown.y, window.innerHeight - 220), position: "fixed" }}
-          >
-            <div style={{ fontSize: 12, color: "var(--ink-2)", padding: "4px 10px" }}>
-              安排到哪天？
-              {planPop.shown.sub ? "（这条子任务）" : planPop.shown.ids.length > 1 ? `（${planPop.shown.ids.length} 项）` : ""}
-            </div>
-            {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
-                下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
-            {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
-              <button key={p.key} className="item" onClick={() => planTo(p.ymd)}>{p.label}</button>
-            ))}
-            {/* 跟另外三处日期框同一个件。这一处以前**三样都没有**（没草稿、没去抖、
-                一凑齐就落库并当场关窗），是同一个病复发的第四轮；三件套现在封在 DateField 里，
-                这儿只交代「落库那句」和「什么时候收弹层」——落库那句绝不许自己关弹层 */}
-            <DateField
-              ref={planFieldRef}
-              value=""
-              onCommit={(ymd) => planTo(ymd, false)}
-              onDone={(e) => {
-                // 焦点还落在这个弹层里（比如点了一下日期框、又改主意去按上面的「本周五」）
-                // 就别收弹层：mousedown 把焦点挪走 → 这儿一收 → 弹层当场进退场态
-                // （.leaving 是 pointer-events:none）→ 后面那下 mouseup 落不到按钮上、
-                // click 根本不触发，整个拖拽动作静默作废。跟「记一条」那排点选同一道闸
-                const next = e.relatedTarget as HTMLElement | null;
-                if (next && next.closest(".side-plan-pop")) return;
-                setPendingPlan(null);
-              }}
-            />
-            <button className="item" onClick={() => setPendingPlan(null)}>取消</button>
-          </div>
-        )}
-        {/* 不常用的收进这里。默认收起——加了习惯之后侧栏太长了 */}
-        <div className={`group-title fold${showMore ? " on" : ""}`} onClick={toggleMore}>
-          更多
-          <span className={`side-caret${showMore ? " up" : ""}`}>▾</span>
-        </div>
-        {/* B4：以前是条件渲染，开合是瞬时的。改成一直挂着、靠外层把高度收成 0——
-            开和收才都是「长出来 / 收回去」，而不是几行凭空增删 */}
-        <div className={`side-fold${showMore ? "" : " shut"}`}>
-          <ul>
-            {/* 已完成不挂角标：其它角标的意思都是「还欠着多少」，已完成是历史累计，
-                摆一起口径相反，而且这个数只会越来越大，看久了变成噪音 */}
-            {item("done", "已完成", "done")}
-            {/* 专注暂时收起，见 core/features.ts */}
-            {FOCUS_ENABLED && item("focus", "专注", "focus")}
-            {item("stats", "统计", "stats")}
-            {/* 回收站：删掉的事在这儿待 30 天。也是拖拽落点——拖过来就是删掉（还能撤销、还能在这里恢复） */}
-            {item("trash", "回收站", "trash", counts.trash, false, (ids, e) => {
-              const s = draggedSub(e);
-              if (s) removeSubtask(s.taskId, s.subId);
-              else deleteTasks(ids);
-            })}
-          </ul>
-        </div>
-        <div className="group-title">
-          清单
-          <button title="新建清单" onClick={() => setAddingList(true)}>＋</button>
-        </div>
-        <ul>
-          {(showLists ? lists : lists.slice(0, PEEK)).map((l) => {
+          {lists.map((l) => {
             const n = open.filter((t) => t.listId === l.id).length;
             return (
               <li
@@ -614,13 +505,12 @@ export default function Sidebar(
                   reorderProps("list", l.id, (dragged) => moveList(dragged, l.id), moveHint),
                 )}
               >
-                <span className="dot" style={{ background: `var(--list-${l.color})` }} />
-                {l.name}
+                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={ICONS.lists} color={`var(--list-${l.color})`} />
+                <span className="side-label">{l.name}</span>
                 {n > 0 && <span className="n">{n}</span>}
               </li>
             );
           })}
-          {moreRow(lists.length - PEEK, showLists, toggleLists)}
           {addingList && (
             <li>
               {/* A1：这里原来是「点走就丢」。改成**空的就丢、有字就建**——
@@ -663,11 +553,11 @@ export default function Sidebar(
             </li>
           )}
         </ul>
-        {whoList.length > 0 && (
-          <>
-            <div className="group-title">需求方</div>
+
+    ),
+    who: (
             <ul>
-              {(showWho ? whoList : whoList.slice(0, PEEK)).map(({ who, open: n }) => (
+              {whoList.map(({ who, open: n }) => (
                 <li
                   key={who}
                   className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}${moveOver === `who:${who}` ? " move-over" : ""}${whoSort.lifted(who) ? " lifted" : ""}`}
@@ -683,44 +573,106 @@ export default function Sidebar(
                     reorderProps("who", who, (dragged) => moveWho(dragged, who), moveHint),
                   )}
                 >
-                  <span
-                    className="dot"
-                    style={{
-                      background: "var(--accent-soft)", color: "var(--accent)",
-                      width: 16, height: 16, borderRadius: 99, fontSize: 10, fontWeight: 600,
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    }}
-                  >
-                    {who.slice(0, 1)}
-                  </span>
-                  {who}
+                  <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={ICONS.who} />
+                  <span className="side-label">{who}</span>
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
               ))}
-              {moreRow(whoList.length - PEEK, showWho, toggleWho)}
             </ul>
-          </>
-        )}
-        {tagList.length > 0 && (
-          <>
-            <div className="group-title">标签</div>
+    ),
+    tags: (
             <ul>
-              {(showTags ? tagList : tagList.slice(0, PEEK)).map(({ tag, open: n }) => (
+              {tagList.map(({ tag, open: n }) => (
                 <li
                   key={tag}
                   className={view === "tag" && curTag === tag ? "on" : ""}
                   onClick={() => { navigate("tag", { tag }); onNavigate?.(); }}
                 >
-                  <span style={{ color: "var(--ink-3)", fontSize: 12, width: 8, textAlign: "center" }}>#</span>
-                  {tag}
+                  <span className="sidebar-drag-grip spacer" aria-hidden="true" /><SidebarIcon path={ICONS.tags} />
+                  <span className="side-label">{tag}</span>
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
               ))}
-              {moreRow(tagList.length - PEEK, showTags, toggleTags)}
             </ul>
-          </>
+    ),
+  };
+  const groupCounts = { lists: lists.length, who: whoList.length, tags: tagList.length };
+
+  return (
+    <aside className={`side side-modules${drawerOpen ? " open" : ""}`}>
+      <div className="brand">
+        <img src={iconUrl} alt="" />
+        橡果
+        {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
+            跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
+        <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>
+        {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
+            .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
+        <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
+      </div>
+      {/* 记一条：整条侧栏最该一眼看见的那件事，所以是唯一一颗实心按钮。
+          它**不是导航项**——记完还留在原来那一页，所以没有选中态，也不调 onNavigate
+          （手机上侧栏根本不渲染，抽屉那套跟它无关） */}
+      <button className="side-quickadd" title="记一条（Ctrl+1）" onClick={() => setQuickAddOpen(true)}>
+        <span className="side-quickadd-plus">＋</span>
+        记一条
+      </button>
+      <nav aria-label="侧栏">
+        {modules.map((m) => (
+          <section key={m.id} data-sidebar-module={m.id} className={`side-module${m.group ? " side-module-group" : ""}${moduleDrag.over === m.id ? " module-over" : ""}`} {...moduleDrag.target(m.id)}>
+            {m.group ? <>
+              <div className="side-module-heading" tabIndex={0} title="拖动整组排序，右键编辑或隐藏"
+                {...moduleDrag.source(m.id)} onContextMenu={(e) => openModuleMenu(e, m.id)} onKeyDown={(e) => moduleKeys(e, m.id)}>
+                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={m.icon} />
+                <span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
+                {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
+                {m.id === "lists" && <button type="button" title="新建清单" aria-label="新建清单" onClick={(e) => { e.stopPropagation(); setAddingList(true); }} onDragStart={(e) => e.stopPropagation()}>＋</button>}
+              </div>
+              {moduleBodies[m.id]}
+              {m.id === "who" && whoList.length === 0 && <p className="side-group-empty">暂无需求方</p>}
+              {m.id === "tags" && tagList.length === 0 && <p className="side-group-empty">暂无标签</p>}
+            </> : <ul>{moduleBodies[m.id]}</ul>}
+          </section>
+        ))}
+        <div className={`side-module-end${moduleDrag.over === "end" ? " module-over" : ""}`} {...moduleDrag.target(null)}>
+          <button type="button" onClick={editSidebar}>编辑侧栏</button>
+        </div>
+        {planPop.shown && (
+          <div
+            className={`popmenu side-plan-pop${planPop.leaving ? " leaving" : ""}`}
+            style={{ left: Math.min(planPop.shown.x, window.innerWidth - 220), top: Math.min(planPop.shown.y, window.innerHeight - 220), position: "fixed" }}
+          >
+            <div style={{ fontSize: 12, color: "var(--ink-2)", padding: "4px 10px" }}>
+              安排到哪天？
+              {planPop.shown.sub ? "（这条子任务）" : planPop.shown.ids.length > 1 ? `（${planPop.shown.ids.length} 项）` : ""}
+            </div>
+            {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
+                下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
+            {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
+              <button key={p.key} className="item" onClick={() => planTo(p.ymd)}>{p.label}</button>
+            ))}
+            {/* 跟另外三处日期框同一个件。这一处以前**三样都没有**（没草稿、没去抖、
+                一凑齐就落库并当场关窗），是同一个病复发的第四轮；三件套现在封在 DateField 里，
+                这儿只交代「落库那句」和「什么时候收弹层」——落库那句绝不许自己关弹层 */}
+            <DateField
+              ref={planFieldRef}
+              value=""
+              onCommit={(ymd) => planTo(ymd, false)}
+              onDone={(e) => {
+                // 焦点还落在这个弹层里（比如点了一下日期框、又改主意去按上面的「本周五」）
+                // 就别收弹层：mousedown 把焦点挪走 → 这儿一收 → 弹层当场进退场态
+                // （.leaving 是 pointer-events:none）→ 后面那下 mouseup 落不到按钮上、
+                // click 根本不触发，整个拖拽动作静默作废。跟「记一条」那排点选同一道闸
+                const next = e.relatedTarget as HTMLElement | null;
+                if (next && next.closest(".side-plan-pop")) return;
+                setPendingPlan(null);
+              }}
+            />
+            <button className="item" onClick={() => setPendingPlan(null)}>取消</button>
+          </div>
         )}
       </nav>
+      {moduleMenu && <SidebarModuleMenu key={moduleMenu.id} target={moduleMenu} onClose={() => setModuleMenu(null)} onEditSidebar={editSidebar} />}
       <div className="foot">
         {loadError ? <span className="bad" title={loadError} /> : <span className="ok" />}
         {/* 「数据异常」点得动：跟旁边那行「同步失败」一个口径——出了问题就得有地方可去。

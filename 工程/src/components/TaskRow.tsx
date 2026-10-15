@@ -437,7 +437,8 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           !dateOnlyTail && due && (
             <span
               className={overdue ? "overdue" : undefined}
-              title={dueInherited ? "日期继承自母任务，改母任务会一起动" : undefined}
+              title={dueInherited ? "日期继承自母任务，改母任务会一起动"
+                : !sub && !task.due ? "最近未完成子任务的安排" : undefined}
             >
               {formatShort(due)}
               {dueTime ? ` ${dueTime}` : ""}

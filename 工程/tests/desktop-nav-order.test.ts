@@ -5,13 +5,14 @@
 // 用户同时定了：先只改电脑，手机按规矩先出稿再改。
 //
 // 这一份钉五件事：
-//   ① 侧栏常驻四项的顺序是 计划 / 日历 / 今日任务 / 习惯
-//   ② 「更多」里已完成排第一个，日历不在里面了
-//   ③ Ctrl+2~5、命令面板跟着新顺序，导航上不再叫「今天」
+//   ① 默认四项是 计划 / 日历 / 今日任务 / 习惯，模块可以由用户重排
+//   ② 所有模块直接显示，清单 / 需求方 / 标签保留整组
+//   ③ Ctrl+2~5、命令面板按功能固定，拖排不改变键盘习惯
 //   ④ 桌面打开先落在「计划」，手机仍是「今天」
 //   ⑤ 手机底部导航一格没动（等出稿）
 import { describe, expect, it } from "vitest";
 import { startView } from "../src/core/store";
+import { sidebarModules } from "../src/core/sidebar";
 import appSource from "../src/App.tsx?raw";
 import sidebarSource from "../src/components/Sidebar.tsx?raw";
 import paletteSource from "../src/components/CommandPalette.tsx?raw";
@@ -23,15 +24,12 @@ function items(block: string): [string, string][] {
   return [...block.matchAll(/item\("(\w+)", "([^"]+)"/g)].map((m) => [m[1], m[2]]);
 }
 
-// 常驻组：<nav> 之后的第一个 <ul>；「更多」组：side-fold 里的那个 <ul>
-const navAt = sidebarSource.indexOf("<nav>");
-const mainBlock = sidebarSource.slice(navAt, sidebarSource.indexOf("</ul>", navAt));
-const foldAt = sidebarSource.indexOf('className={`side-fold');
-const moreBlock = sidebarSource.slice(foldAt, sidebarSource.indexOf("</ul>", foldAt));
+// 默认次序延续原来的常用四项，用户可以整模块拖排；键盘快捷键按功能固定。
+const mainBlock = sidebarSource.slice(sidebarSource.indexOf("  const moduleBodies ="));
 
-describe("① 侧栏常驻四项：计划 / 日历 / 今日任务 / 习惯", () => {
-  it("顺序一格不错", () => {
-    expect(items(mainBlock)).toEqual([
+describe("① 侧栏默认四项：计划 / 日历 / 今日任务 / 习惯", () => {
+  it("默认顺序延续原有习惯，但可以自定义", () => {
+    expect(sidebarModules().slice(0, 4).map((m) => [m.id, m.name])).toEqual([
       ["plan", "计划"],
       ["calendar", "日历"],
       ["today", "今日任务"],
@@ -50,18 +48,20 @@ describe("① 侧栏常驻四项：计划 / 日历 / 今日任务 / 习惯", () 
   });
 });
 
-describe("② 「更多」：已完成排第一个，日历提出去了", () => {
-  it("顺序是 已完成 / 专注 / 统计 / 回收站", () => {
-    expect(items(moreBlock).map((x) => x[0])).toEqual(["done", "focus", "stats", "trash"]);
-    expect(moreBlock).not.toContain('item("calendar"');
+describe("② 所有模块直接显示，清单和需求方保留分组", () => {
+  it("已完成 / 统计 / 回收站不再藏在更多中", () => {
+    expect(sidebarModules().slice(4, 7).map((m) => m.id)).toEqual(["done", "stats", "trash"]);
+    expect(sidebarSource).not.toContain("side-fold");
+    expect(sidebarSource).not.toContain("side-more");
   });
 
-  it("正看着已完成时「更多」自动展开（不然界面上没地方显示你在哪）", () => {
-    expect(sidebarSource).toContain('const MORE_VIEWS: ViewId[] = ["done", "focus", "stats", "trash"];');
+  it("清单 / 需求方 / 标签是三个整组，全部展开", () => {
+    expect(sidebarModules().filter((m) => m.group).map((m) => m.id)).toEqual(["lists", "who", "tags"]);
+    expect(sidebarSource).not.toContain("slice(0, PEEK)");
   });
 });
 
-describe("③ 快捷键与命令面板跟新顺序", () => {
+describe("③ 快捷键与命令面板按功能固定，拖排不影响键盘习惯", () => {
   it("Ctrl+2~5 = 计划 / 日历 / 今日任务 / 习惯", () => {
     expect(appSource).toContain('navigate((["plan", "calendar", "today", "habits"] as const)[Number(e.key) - 2]);');
   });

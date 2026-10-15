@@ -227,13 +227,14 @@ body.side-resizing { user-select: none; cursor: col-resize; }
    日历、已完成、计划这几页标题行最右边本来就有按钮，不让的话会被它压住。
    只给桌面那一套：手机的标题行是 MobileHead，头像也是它自己那颗 */
 .shell:not(.mobile) .view-head { padding-right: 44px; }
-/* 换视图时正文淡入 + 上移 6px（B3）。换的是整个视图组件，这条动画自然就重播一遍。
-   刻意**不做左右滑页**：那种动效跟橡果的纸感不搭 */
+/* 标题和正文一起柔和出现，导航保持稳定；不插入假加载，不延迟点击。 */
+.main { animation: page-in var(--dur-2) var(--ease); }
+@keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
 .view-body {
   flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px 30px; margin-top: 6px;
-  animation: view-in var(--dur-1) var(--ease);
+  animation: view-in var(--dur-2) var(--ease);
 }
-@keyframes view-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes view-in { from { transform: translateY(4px); } to { transform: none; } }
 
 /* ---------- 任务组 ---------- */
 .group-head {
@@ -706,6 +707,21 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   align-items: center; justify-content: center; color: var(--ink-2); font-size: var(--fs-md);
 }
 .center-note .big { font-family: var(--serif); font-size: 22px; color: var(--ink); }
+
+.loading-screen { gap: 16px; padding: 28px; text-align: center; animation: page-in var(--dur-2) var(--ease); }
+.loading-emblem { position: relative; width: 76px; height: 76px; display: grid; place-items: center; color: var(--accent); }
+.loading-emblem svg { width: 40px; height: 40px; }
+.loading-orbit { position: absolute; inset: 0; border: 1px solid var(--hair); border-top-color: var(--accent); border-radius: 50%; animation: loading-turn calc(var(--dur-2) * 8) linear infinite; }
+.loading-copy { color: var(--ink-2); font-size: var(--fs-sm); max-width: 28em; line-height: 1.8; }
+.loading-lines { display: grid; gap: 7px; width: min(200px, 65vw); margin-top: 6px; }
+.loading-lines i { height: 5px; border-radius: 99px; background: var(--hair); animation: loading-breathe calc(var(--dur-2) * 8) var(--ease) infinite alternate; }
+.loading-lines i:nth-child(2) { width: 82%; animation-delay: var(--dur-1); }
+.loading-lines i:nth-child(3) { width: 60%; animation-delay: var(--dur-2); }
+@keyframes loading-turn { to { transform: rotate(360deg); } }
+@keyframes loading-breathe { from { opacity: .35; } to { opacity: .9; } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-orbit, .loading-lines i { animation: none; }
+}
 
 
 /* ---------- 侧栏折叠（v1.6：加了习惯之后侧栏太长） ---------- */

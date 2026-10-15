@@ -1,0 +1,52 @@
+/* 桌面可排序侧栏：顶部工具和底部状态固定，模块区独立滚动。 */
+.side.side-modules { overflow: hidden; min-height: 0; }
+.side-modules > .brand, .side-modules > .side-quickadd, .side-modules > .foot { flex: none; }
+.side-modules > nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; padding: 0 2px 10px; }
+.side-modules > nav::-webkit-scrollbar { display: block; width: 4px; }
+.side-modules > nav::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--hair); }
+.side-modules .side-module { min-width: 0; border-radius: 7px; }
+.side-modules .side-module-group { margin-top: 13px; }
+.side-modules .side-module-heading { display: flex; gap: 8px; align-items: center; min-height: 34px; padding: 7px 9px 7px 3px; color: var(--ink-2); font-size: 12px; border-radius: 7px; cursor: grab; }
+.side-modules .side-module-heading:hover { background: var(--card); }
+.side-modules .side-module-heading > .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.side.side-modules nav li { display: flex; gap: 8px; padding-left: 3px; min-height: 34px; }
+.side-modules .side-label { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-drag-grip { width: 10px; flex: none; font-size: 13px; line-height: 1; color: var(--ink-3); cursor: grab; opacity: 0; user-select: none; }
+.side-modules nav li:hover > .sidebar-drag-grip, .side-modules nav li:focus-visible > .sidebar-drag-grip,
+.side-module-heading:hover > .sidebar-drag-grip, .side-module-heading:focus-visible > .sidebar-drag-grip { opacity: .85; }
+.sidebar-drag-grip.spacer { visibility: hidden; }
+.side-modules .side-module-heading .n { margin-left: auto; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.side-modules .side-module-heading > button { color: var(--ink-3); padding: 1px 4px; border-radius: 5px; font-size: 15px; line-height: 1; cursor: pointer; }
+.side-modules .side-module-heading > button:hover { color: var(--accent); background: var(--accent-soft); }
+.side-modules .side-group-empty { margin: 1px 0 4px 37px; color: var(--ink-3); font-size: 11px; }
+.side-modules .module-over { box-shadow: inset 0 2px 0 var(--accent); background: var(--accent-soft); }
+.side-module-end { padding: 12px 5px 3px; min-height: 37px; text-align: center; border-radius: 6px; }
+.side-module-end button { color: var(--ink-3); font-size: 11px; padding: 3px 8px; border-radius: 5px; }
+.side-module-end button:hover { background: var(--card); color: var(--accent); }
+.sidebar-module-menu { z-index: 1000; width: 240px; max-width: calc(100vw - 16px); }
+.sidebar-module-menu form { padding: 9px; }
+.sidebar-module-menu label { display: block; color: var(--ink-2); font-size: 12px; margin-bottom: 7px; }
+.sidebar-module-menu input { width: 100%; font-size: 13px; }
+.sidebar-module-menu p { color: var(--ink-3); font-size: 11px; line-height: 1.7; margin-top: 8px; }
+.sidebar-name-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.sidebar-name-actions > button:first-child { color: var(--ink-2); font-size: 11px; }
+.sidebar-name-actions .btn { font-size: 12px; padding: 5px 12px; }
+.sidebar-settings h3 { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; margin: 20px 0 8px; }
+.sidebar-settings h3 span { font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.sidebar-setting-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--hair); font-size: 13px; min-width: 0; }
+.sidebar-setting-row > .sidebar-drag-grip { opacity: .75; }
+.sidebar-setting-row > .ico { width: 15px; height: 15px; stroke: var(--ink-2); stroke-width: 1.7; fill: none; flex: none; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-setting-name { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0; }
+button.sidebar-setting-name:hover { color: var(--accent); }
+.sidebar-setting-kind { color: var(--ink-3); font-size: 10px; }
+.sidebar-toggle { width: 23px; height: 23px; border-radius: 50%; border: 1px solid var(--hair); color: var(--accent); font-size: 17px; line-height: 19px; padding: 0; flex: none; }
+.sidebar-toggle.minus { background: var(--accent-soft); color: var(--ink-2); }
+.sidebar-toggle:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.sidebar-order-key { color: var(--ink-3); font-size: 12px; padding: 2px 3px; }
+.sidebar-order-key:not(:disabled):hover { color: var(--accent); }
+.sidebar-order-key:disabled { opacity: .25; cursor: default; }
+.sidebar-setting-row.move-over, .sidebar-setting-end.move-over { box-shadow: inset 0 2px 0 var(--accent); background: var(--accent-soft); }
+.sidebar-setting-end { padding: 9px; text-align: center; color: var(--ink-3); font-size: 10px; border-radius: 5px; }
+.sidebar-settings-empty { font-size: 12px; line-height: 1.8; color: var(--ink-3); padding: 11px 0; }
+.sidebar-settings-note { font-size: 11px; line-height: 1.8; color: var(--ink-3); margin-top: 17px; }
+@media (hover: none) { .side-modules .sidebar-drag-grip { opacity: .55; } }

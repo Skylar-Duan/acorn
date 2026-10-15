@@ -10,6 +10,7 @@
 import { useMemo, useState } from "react";
 import type { Task } from "../core/model";
 import { addDays, cmpYMD, formatShort, todayYMD } from "../core/dates";
+import { taskDue, taskTime } from "../core/taskDue";
 import {
   aliveTasks, byPriorityThenOrder, completeTask, expandTask,
   setTasksDue, updateTask, useApp,
@@ -43,7 +44,8 @@ function isImportant(t: Task): boolean {
 
 /** 紧急 = 有日期且不晚于明天（含逾期） */
 function isUrgent(t: Task, tomorrow: string): boolean {
-  return !!t.due && cmpYMD(t.due, tomorrow) <= 0;
+  const due = taskDue(t);
+  return !!due && cmpYMD(due, tomorrow) <= 0;
 }
 
 export default function QuadrantBoard() {
@@ -81,8 +83,8 @@ export default function QuadrantBoard() {
     }
     if (isUrgent(t, tomorrow) !== q.urgent) {
       if (q.urgent) {
-        if (!t.due) setTasksDue([t.id], today); // 无日期的设为今天
-      } else if (t.due) {
+        setTasksDue([t.id], today);
+      } else if (taskDue(t)) {
         setTasksDue([t.id], addDays(today, 3)); // 挪出紧急带；本来没日期的不动
       }
     }
@@ -153,7 +155,9 @@ export default function QuadrantBoard() {
 
 /** 格内简化行：旗标 + 勾选 + 标题 + 日期短格式。点击展开卡片，可拖走。 */
 function QuadRow({ task, today }: { task: Task; today: string }) {
-  const overdue = !!task.due && cmpYMD(task.due, today) < 0;
+  const due = taskDue(task);
+  const time = taskTime(task);
+  const overdue = !!due && cmpYMD(due, today) < 0;
   return (
     <div
       className="quad-row"
@@ -175,10 +179,10 @@ function QuadRow({ task, today }: { task: Task; today: string }) {
         }}
       />
       <span className="quad-title">{task.title || "（未命名）"}</span>
-      {task.due && (
+      {due && (
         <span className={`quad-due${overdue ? " overdue" : ""}`}>
-          {formatShort(task.due)}
-          {task.dueTime ? ` ${task.dueTime}` : ""}
+          {formatShort(due)}
+          {time ? ` ${time}` : ""}
         </span>
       )}
     </div>

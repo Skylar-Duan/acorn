@@ -122,6 +122,9 @@ export interface Settings {
   quickAddShortcut: string; // 如 'Alt+Space'
   autostart: boolean;
   focusMinutesDefault: number; // 25
+  /** 本机桌面护眼提醒：不参与云端设置同步，旧数据默认关闭。 */
+  eyeCareEnabled?: boolean;
+  eyeCareMode?: "small" | "full";
   /** 只填日期没填时间的任务，提醒默认落在这个钟点 */
   reminderDefaultTime: string; // '09:00'
   /** 列表排序：时间优先（同时间按重要性）或重要性优先 */
@@ -132,6 +135,12 @@ export interface Settings {
    *  放在设置里 = 每台设备各排各的：需求方不是一条真实记录，只是任务上的一个名字，
    *  给它建一张会同步的表不值当 */
   whoOrder: string[];
+  /** 桌面侧栏模块的本机排布。缺省使用默认顺序，隐藏和别名不改任何任务记录。 */
+  sidebar?: {
+    order?: string[];
+    hidden?: string[];
+    labels?: Record<string, string>;
+  };
   /** 下次打开还认不认这台设备上的登录态（v1.15.0，手机端右上角那张账号纸上的开关）。
    *  缺这个字段一律当**开着**：老数据和一直以来的桌面端都是「打开就是登录着的」，
    *  升上来不能突然把人踢出去。
@@ -213,6 +222,8 @@ export function defaultSettings(): Settings {
     quickAddShortcut: "Alt+Space",
     autostart: false,
     focusMinutesDefault: 25,
+    eyeCareEnabled: false,
+    eyeCareMode: "small",
     reminderDefaultTime: "09:00",
     sortMode: "time",
     weekendDay: "sun",

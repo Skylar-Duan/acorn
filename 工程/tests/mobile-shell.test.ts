@@ -400,7 +400,7 @@ describe("④ 底部导航：固定五项、固定不动", () => {
     // 「更多」里那一行也撤了，它已经没有入口
     expect(moreSource).not.toContain('navigate("inbox")');
     // ListView 的 inbox 分支照旧算它那份数据，一条都没丢
-    expect(nl(listViewSource)).toContain("!t.done && !t.droppedAt && !t.listId && !t.due");
+    expect(nl(listViewSource)).toContain("!t.done && !t.droppedAt && !t.listId && !taskDue(t)");
   });
 
   it("当前那一格有个 --accent-soft 的小胶囊垫在图标底下", () => {

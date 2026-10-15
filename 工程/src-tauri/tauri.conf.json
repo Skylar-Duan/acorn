@@ -50,6 +50,20 @@
         "resizable": false
       },
       {
+        "label": "eye-care",
+        "title": "护眼休息",
+        "url": "eye-care.html",
+        "width": 400,
+        "height": 280,
+        "visible": false,
+        "focus": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "center": true
+      },
+      {
         "label": "guide",
         "title": "一句话记事",
         "url": "guide.html",

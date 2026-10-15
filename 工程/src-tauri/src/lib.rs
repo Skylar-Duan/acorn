@@ -904,6 +904,37 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// 显示提醒不夺走其他软件的输入焦点。Tao 的 focus:false 只约束第一次 show，
+/// 后续 show 会走 SW_SHOW；Windows 每次都直接用 SW_SHOWNOACTIVATE。
+#[cfg(desktop)]
+fn set_eye_care_visible(app: &AppHandle, visible: bool) -> Result<(), String> {
+    let w = app.get_webview_window("eye-care").ok_or("护眼窗口不存在")?;
+    #[cfg(target_os = "windows")]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn ShowWindowAsync(hwnd: *mut std::ffi::c_void, command: i32) -> i32;
+        }
+        let hwnd = w.hwnd().map_err(|e| e.to_string())?;
+        // 显示和隐藏均走同一原生接口，避免Tao内部visible缓存与实际窗口不一致。
+        let queued = unsafe { ShowWindowAsync(hwnd.0, if visible { 4 } else { 0 }) };
+        if queued == 0 {
+            return Err(format!("护眼窗口显示状态切换失败: {}", std::io::Error::last_os_error()));
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    if visible { w.show().map_err(|e| e.to_string())?; } else { w.hide().map_err(|e| e.to_string())?; }
+    Ok(())
+}
+
+#[tauri::command]
+async fn eye_care_visibility(app: AppHandle, visible: bool) -> Result<(), String> {
+    #[cfg(desktop)]
+    { set_eye_care_visible(&app, visible) }
+    #[cfg(mobile)]
+    { let _ = (app, visible); Err("护眼独立窗口仅在电脑可用".into()) }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -972,6 +1003,16 @@ pub fn run() {
                     *cur = real;
                 }
             }
+            // 后台系统时钟：托盘隐藏时不依赖 WebView 的 setInterval。
+            // 主窗只接收 tick、计算护眼状态，子窗不接触账本。
+            #[cfg(desktop)]
+            {
+                let eye_app = _app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    let _ = eye_app.emit_to("main", "eye-care:tick", ());
+                });
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -1004,9 +1045,17 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+            if window.label() == "eye-care" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = set_eye_care_visible(window.app_handle(), false);
+                    let _ = window.app_handle().emit_to("main", "eye-care:cmd", "skip");
+                }
+            }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            eye_care_visibility,
             get_data_dir,
             set_data_dir,
             find_data_candidates,

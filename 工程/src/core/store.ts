@@ -9,6 +9,7 @@ import { bury } from "./merge";
 import { doneOn, isDueOn, sortHabitsForDay, toggleCheck, DEFAULT_HABIT_REPEAT } from "./habits";
 import { addDays, cmpYMD, formatShort, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
+import { taskDue, taskTime } from "./taskDue";
 import * as persist from "./persist";
 // 只用它一个 loadSession（读令牌在不在，不发网络请求）。cloud 不回头依赖 store，没有环
 import * as cloud from "./cloud";
@@ -909,7 +910,8 @@ export function postponeRows(rows: DateRow[], days = 1) {
         const subHits = subs.filter((r) => r.task.id === t.id);
         let next = t;
         if (taskIds.includes(t.id)) {
-          const base = t.due && cmpYMD(t.due, today) > 0 ? t.due : today;
+          const due = taskDue(t);
+          const base = due && cmpYMD(due, today) > 0 ? due : today;
           const nd = addDays(base, days);
           next = { ...next, due: nd, postponeCount: t.postponeCount + 1, reminder: regenReminder(t, nd) };
         }
@@ -945,7 +947,8 @@ export function postponeTasks(ids: string[], days = 1) {
       ...d,
       tasks: d.tasks.map((t) => {
         if (!ids.includes(t.id)) return t;
-        const base = t.due && cmpYMD(t.due, today) > 0 ? t.due : today;
+        const due = taskDue(t);
+        const base = due && cmpYMD(due, today) > 0 ? due : today;
         const nd = addDays(base, days);
         return {
           ...t,
@@ -980,7 +983,7 @@ export function postponeRowsTo(rows: DateRow[], ymd: string) {
   // 不然「选日期…」能把子任务的截止日提前，还提示「已顺延」
   const wouldPullEarlier = (r: DateRow) => {
     const t = cur.get(r.task.id) ?? r.task;
-    const due = r.sub ? subDue(t.subtasks.find((s) => s.id === r.sub!.id) ?? r.sub, t) : t.due;
+    const due = r.sub ? subDue(t.subtasks.find((s) => s.id === r.sub!.id) ?? r.sub, t) : taskDue(t);
     return !!due && cmpYMD(ymd, due) < 0;
   };
   rows = rows.filter((r) => !wouldPullEarlier(r));
@@ -1677,14 +1680,14 @@ export function subTime(s: Subtask, parent: DueOwner): string | null {
   return s.dueTime ?? parent.dueTime;
 }
 
-/** 行的有效日期。子任务没填日期 = 继承母任务的（用户口径：默认等于母任务截止日期） */
+/** 行的有效日期。母任务用整件事的显示日期；子任务只继承母任务手排的日期。 */
 export function rowDue(r: DateRow): string | null {
-  return r.sub ? subDue(r.sub, r.task) : r.task.due;
+  return r.sub ? subDue(r.sub, r.task) : taskDue(r.task);
 }
 
 /** 行的有效时间。口径见 subTime */
 export function rowTime(r: DateRow): string | null {
-  return r.sub ? subTime(r.sub, r.task) : r.task.dueTime;
+  return r.sub ? subTime(r.sub, r.task) : taskTime(r.task);
 }
 
 /** 排序键：日期拼上钟点。没日期的排最后，同一天里写了钟点的排在没钟点的前面。
@@ -1872,8 +1875,8 @@ export function tasksForToday(d: AppData, today = todayYMD()): { overdue: DateRo
 /** 旧比较器：仍被四象限等纯任务列表使用 */
 export function byPriorityThenOrder(a: Task, b: Task): number {
   if (a.priority !== b.priority) return b.priority - a.priority;
-  const at = a.dueTime ?? "99:99";
-  const bt = b.dueTime ?? "99:99";
+  const at = taskTime(a) ?? "99:99";
+  const bt = taskTime(b) ?? "99:99";
   if (at !== bt) return at < bt ? -1 : 1;
   return a.order - b.order;
 }

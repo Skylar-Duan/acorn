@@ -38,12 +38,12 @@ describe("① parse：keepNewlines 只让子任务那条路留换行", () => {
     expect(r.title).toBe("写周报\n附上数据");
   });
 
-  it("开了：「提醒我」「光杆的每」那两道清理按行做，不会把换行当词边界吃掉", () => {
+  it("开了：提醒词清理不吞换行，未标记的「每」保留正文", () => {
     const r = parseSubtaskInput("~20点 提醒我\n交电费", NOW, [], "sun", { keepNewlines: true });
     expect(r.dueTime).toBe("20:00");
     expect(r.title).toBe("交电费");
     const w = parseSubtaskInput("每 交周报 ~明天\n带上表格", NOW, [], "sun", { keepNewlines: true });
-    expect(w.title).toBe("交周报\n带上表格");
+    expect(w.title).toBe("每 交周报\n带上表格");
   });
 
   it("不开（默认）：跟以前一模一样，换行压成一个空格", () => {

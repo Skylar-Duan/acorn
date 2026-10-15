@@ -8,6 +8,7 @@
 
 import type { FocusSession, List, Task } from "./model";
 import { addDays, cmpYMD, diffDays, fromYMD, toYMD, weekStart } from "./dates";
+import { taskDue } from "./taskDue";
 
 /** ISO 时刻 → 本地 'YYYY-MM-DD'（带 Z 或显式时区偏移的写法都归到本地日历日） */
 export function localDateOfISO(iso: string): string {
@@ -214,10 +215,12 @@ export function weeklyReview(
   // 「未清」「反复顺延」都得把放弃的剔掉：那些事已经收场了，再挂在这两栏里是在催人做不打算做的事
   const stillOpen = live
     .filter(
-      (t): t is Task & { due: string } =>
-        !t.done && !isDropped(t) && t.due !== null && cmpYMD(t.due, we) <= 0,
+      (t) => {
+        const due = taskDue(t);
+        return !t.done && !isDropped(t) && due !== null && cmpYMD(due, we) <= 0;
+      },
     )
-    .sort((a, b) => cmpYMD(a.due, b.due) || a.order - b.order);
+    .sort((a, b) => cmpYMD(taskDue(a)!, taskDue(b)!) || a.order - b.order);
 
   const postponed = live
     .filter((t) => !t.done && !isDropped(t) && t.postponeCount > 0)
@@ -281,7 +284,8 @@ export function exportWeekMarkdown(r: WeeklyReview): string {
   if (r.stillOpen.length > 0) {
     lines.push("", `## 未清 ${r.stillOpen.length} 件`);
     for (const t of r.stillOpen) {
-      const overdue = t.due === null ? 0 : diffDays(t.due, r.weekEnd);
+      const due = taskDue(t);
+      const overdue = due === null ? 0 : diffDays(due, r.weekEnd);
       lines.push(`- ${t.title}${overdue > 0 ? `（逾期 ${overdue} 天）` : "（本周到期）"}`);
     }
   }

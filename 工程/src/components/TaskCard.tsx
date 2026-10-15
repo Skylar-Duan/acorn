@@ -6,6 +6,7 @@ import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
+import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import type { ParseResult } from "../core/parse";
 import { parseQuickAdd, parseSubtaskInput, SUBTASK_SKIP } from "../core/parse";
@@ -195,6 +196,8 @@ export default function TaskCard({ task }: { task: Task }) {
 
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   const today = todayYMD();
+  const shownDue = taskDue(task);
+  const shownTime = taskTime(task);
 
   // 已经做完的子任务沉到最下面，多了还要收起来（只改显示顺序，存的那份数组原样不动）。
   // 用户口径：「子任务已通过的排到最下面」——上面永远是还欠着的。
@@ -715,8 +718,9 @@ export default function TaskCard({ task }: { task: Task }) {
 
       <div className="chips" style={{ position: "relative" }}>
         {/* 日期 */}
-        <button className={`pill${task.due ? " hot" : ""}`} onClick={openDateMenu}>
-          📅 {task.due ? `${formatShort(task.due)}${task.dueTime ? " " + task.dueTime : ""}` : "安排日期"}
+        <button className={`pill${shownDue ? " hot" : ""}`} onClick={openDateMenu}
+          title={!task.due && shownDue ? "最近子任务的安排；点开可为母任务单独安排日期" : undefined}>
+          📅 {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}${!task.due ? " · 最近子任务" : ""}` : "安排日期"}
         </button>
         {menuPop.shown === "date" && (
           <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 0 }}>

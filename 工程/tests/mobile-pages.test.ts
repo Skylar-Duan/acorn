@@ -295,8 +295,8 @@ describe("⑤ 「随手记」退场：词没了，数据一条没少", () => {
     expect(iconsSource).not.toContain("IcoInbox");
   });
 
-  it("🔴 数据语义原样：没归清单的事照常存在，ListView 那一份算法一个字没动", () => {
-    expect(read("src/views/ListView.tsx")).toContain("!t.done && !t.droppedAt && !t.listId && !t.due");
+  it("未归类视图保留未了结、未归清单且自身和子任务都未安排日期的事", () => {
+    expect(read("src/views/ListView.tsx")).toContain("!t.done && !t.droppedAt && !t.listId && !taskDue(t)");
     expect(read("src/core/model.ts")).toContain("null = 随手记");
   });
 });

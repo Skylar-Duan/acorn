@@ -278,19 +278,19 @@ describe("严格模式最实在的好处：从前那些误认，现在一个都�
       "每日一记",
       "下周一晚上bill朋友来取东西",
     ]) {
-      const r = p(s);
-      expect(r.title, s).toBe(s);
-      expect(r.due, s).toBeNull();
-      expect(r.dueTime, s).toBeNull();
-      expect(r.repeat, s).toBeNull();
-      expect(r.chips, s).toEqual([]);
+      for (const r of [p(s), parseSubtaskInput(s, FRI)]) {
+        expect(r.title, s).toBe(s);
+        expect(r.due, s).toBeNull();
+        expect(r.dueTime, s).toBeNull();
+        expect(r.repeat, s).toBeNull();
+        expect(r.chips, s).toEqual([]);
+      }
     }
   });
 });
 
 describe("中文里当范围号用的 ~／～ 不是时间标记", () => {
-  // 「3～5天内」「1~2个月后」这类是标准写法。闸门只放行站在词头的 ~
-  // （句首 / 空白之后 / 已被别的要素占掉的字符之后），范围号左边贴着的是数字，不算词头。
+  // 「3～5天内」「1~2个月后」这类是标准写法，范围号左边是数字或日期。
   // 漏掉这条的后果正是这一版要消灭的那件事：悄悄排了期，标题还被啃掉半截
   it("范围号写法一个字都不动，也不设日期", () => {
     for (const s of [
@@ -302,13 +302,17 @@ describe("中文里当范围号用的 ~／～ 不是时间标记", () => {
       "面试 14:00～15:00 二轮",
       "周一~周五 值班",
       "会期 3~5号",
+      "预计 三～五天内 出结果",
+      "会期 3号~5号",
+      "会期 周日～周五",
     ]) {
-      const r = p(s);
-      expect(r.title, s).toBe(s);
-      expect(r.due, s).toBeNull();
-      expect(r.dueTime, s).toBeNull();
-      expect(r.repeat, s).toBeNull();
-      expect(r.chips, s).toEqual([]);
+      for (const r of [p(s), parseSubtaskInput(s, FRI)]) {
+        expect(r.title, s).toBe(s);
+        expect(r.due, s).toBeNull();
+        expect(r.dueTime, s).toBeNull();
+        expect(r.repeat, s).toBeNull();
+        expect(r.chips, s).toEqual([]);
+      }
     }
   });
 
@@ -334,6 +338,69 @@ describe("中文里当范围号用的 ~／～ 不是时间标记", () => {
 });
 
 describe("子任务那条输入框走的是同一道闸门", () => {
+  it("URL、邮件和文件路径里的波浪符不能被拆成时间", () => {
+    for (const text of [
+      "参考 https://example.com/~12/31",
+      "参考 https://example.com/~3天后",
+      "参考 www.example.com/~12/31",
+      "邮箱 user~明天@example.com",
+      "文件 C:\\notes\\材料~明天.txt",
+      "文件 \\\\server\\share\\~12/31",
+      "文件 ./notes/材料~明天",
+      "文件 /notes/~12/31",
+      "文件 ~/notes/~12/31",
+      "文件 材料~明天.md",
+      "计算 a~b = c",
+      "波浪线 ~ 与 ～",
+    ]) {
+      // @地址仍沿用主任务既有的需求方语法,这里只限定时间解析不拆字。
+      const r = parseSubtaskInput(text, FRI);
+      expect(r.title, text).toBe(text);
+      expect(r.due, text).toBeNull();
+      expect(r.dueTime, text).toBeNull();
+      expect(p(text).due, text).toBeNull();
+    }
+    expect(p("参考 https://example.com/~12/31 ~明天").due).toBe("2026-08-22");
+    expect(p("报告~明天").due).toBe("2026-08-22");
+    expect(p("报告 /工作~明天").due).toBe("2026-08-22");
+  });
+
+  it("主任务与子任务在句首、句中、句尾解析相同的日期、时间、循环", () => {
+    for (const marker of ["~", "～"]) {
+      for (const time of ["明天", "下午3点", "周五下午3点", "每周一", "12/31"]) {
+        const baseline = p(`${marker}${time} 整理材料`);
+        expect(baseline.due, time).not.toBeNull();
+        for (const text of [
+          `${marker}${time}整理材料`,
+          `整理${marker}${time}材料`,
+          `整理材料${marker}${time}`,
+          `整理 ${marker}${time} 材料`,
+          `整理材料 ${marker}${time}`,
+        ]) {
+          for (const r of [p(text), parseSubtaskInput(text, FRI)]) {
+            expect(r.due, text).toBe(baseline.due);
+            expect(r.dueTime, text).toBe(baseline.dueTime);
+            expect(r.repeat, text).toEqual(baseline.repeat);
+            expect(r.title.replace(/\s/g, ""), text).toBe("整理材料");
+          }
+        }
+      }
+    }
+  });
+
+  it("子任务换行内的句中与句尾时间保留其余文字", () => {
+    const r = parseSubtaskInput("整理材料\n核对~明天下午3点数字", FRI, [], "sun", { keepNewlines: true });
+    expect(r.due).toBe("2026-08-22");
+    expect(r.dueTime).toBe("15:00");
+    expect(r.title).toBe("整理材料\n核对数字");
+  });
+
+  it("子任务不再额外删掉没用 ~ 标记的正文", () => {
+    for (const text of ["每 交周报~明天", "每月 交水费~明天", "每个月 交房租~明天"]) {
+      expect(parseSubtaskInput(text, FRI)).toEqual(p(text));
+    }
+  });
+
   it("子任务里也要打 ~", () => {
     const yes = parseSubtaskInput("~明天 ~15点 !高 画趋势图", FRI);
     expect(yes.due).toBe("2026-08-22");

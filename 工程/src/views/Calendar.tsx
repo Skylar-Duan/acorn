@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import type { Task } from "../core/model";
 import { addDays, cmpYMD, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
 import type { DateRow } from "../core/store";
+import { taskDue, taskTime } from "../core/taskDue";
 import {
   addTask, aliveTasks, byPriorityThenOrder, doneRows, expandTask, navigate, rowDoneDay,
   rowDoneGuessed, rowTaskIds, setTasksDue, useApp,
@@ -221,7 +222,7 @@ export default function Calendar() {
   }, [anchor, mode]);
 
   // 按日期归堆，两个桶各按各的日子：
-  //   · 计划桶按截止日 t.due（维持原样）
+  //   · 计划桶按整件事的显示日期（手排日期优先，否则取最近的未完成子任务）
   //   · 已完成桶按**实际完成日**——走 store.rowDoneDay，跟「已完成」视图同一个函数。
   //     它已经把 UTC ISO 转成本地日期了（本地 0-8 点做完的不能归到昨天）
   // 已完成是**按行**的：做完的子任务各占一条，母任务勾掉了也占一条
@@ -238,7 +239,8 @@ export default function Calendar() {
     for (const t of aliveTasks(data)) {
       // 放弃的一格都不占：日历上的计划条是「那天要做什么」，已经不做了就不该再排在那儿。
       // 已完成桶走 doneRows，那个函数本来就只收做完的，放弃的进不去（见 store.droppedRows）
-      if (t.due && !t.done && !t.droppedAt) slotOf(t.due).open.push(t);
+      const due = taskDue(t);
+      if (due && !t.done && !t.droppedAt) slotOf(due).open.push(t);
     }
     // 完成时刻是猜出来的（老子任务没戳、母任务也没完成）一律不落格：
     // 那天用户其实什么都没做完，画上去就是凭空捏造一条完成记录。
@@ -657,7 +659,7 @@ export default function Calendar() {
                     <button key={t.id} className="cal-day-row" onClick={() => expandTask(t.id)}>
                       <span className={`flag p${t.priority}`} />
                       <span className="cal-day-title">{t.title || "（未命名）"}</span>
-                      {t.dueTime && <span className="cal-day-time">{t.dueTime}</span>}
+                      {taskTime(t) && <span className="cal-day-time">{taskTime(t)}</span>}
                     </button>
                   ))}
                   {done.map((r) => (

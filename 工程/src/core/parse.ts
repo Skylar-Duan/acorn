@@ -293,26 +293,34 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   /** 要过闸门的三类:日期、钟点(含时段词)、循环 */
   const TIMEY = new Set<ParseChip["kind"]>(["date", "time", "repeat"]);
   const isTilde = (c: string | undefined): boolean => c === "~" || c === "～";
+  // URL、邮件地址、明确的文件路径/文件名里的 ~ 是字面字符,不能拆出日期。
+  // /工作 仍是清单语法;只有带后续目录分隔符的绝对路径才按文件路径保护。
+  const literalSpans = Array.from(input.matchAll(
+    /\b[a-z][a-z\d+.-]*:\/\/\S+|\bwww\.\S+|\b[a-z]:[\\/]\S+|\\\\\S+|(?<!\S)(?:\.{1,2}[\\/]|~[\\/]|\/(?:[^/\s]+\/)+)\S+|\S+@[^\s@]+\.[^\s@]+|[^\s/\\]+\.[a-z][a-z\d]{0,7}(?=\s|$)/gi,
+  ), (m) => [m.index!, m.index! + m[0].length] as const);
 
   /** 时间闸门:这个 token 前面有没有人领着?
-   *  · 紧邻的前一个字符是还没被占用的 ~ / ～,而且**那个 ~ 自己站在词头** → 认,
+   *  · 紧邻的前一个字符是还没被占用的 ~ / ～,且不是正文里的范围号 → 认,
    *    并把这个符号一起并进占用区间(返回它的下标);
    *  · 紧邻的前一个字符已经在某个 ~ 领着的那一串里 → 也认(一个 ~ 管一整串:「~周五下午3点」);
    *  · 别的一律不认(返回 -1),原文原样留在标题里。
    *  中间空了格就断了——空格不在 licensed 里,得再打一个 ~。这条规矩写在用法页上。
    *
-   *  **「~ 要站在词头」这条左边界跟 RE.list 的 / 是一个路数,是为了中文里当范围号用的波浪线**:
+   *  ~ 可以紧跟正文,句首/句中/句尾一致。数字或日期末尾紧接的波浪线仍当范围号:
    *  「预计 3～5天内 出结果」「报销 1~2个月后 到账」「档期 8/20~8/25」「面试 14:00～15:00 二轮」
-   *  ——范围号左边贴着的是正文(数字),不是词头,这时右半截不算时间,整句原样留给标题。
+   *  ——范围号右半截不算时间,整句原样留给标题。
    *  不然就正好是这一版要消灭的那件事:悄悄排了期,标题还被啃掉半截。
-   *  前面是「已被别的要素占掉的字符」照旧算词头,「@李哥~3点」「#紧要~明天」「/工作~明天」
-   *  「!高~明天」这些扫到时间之前就已经占上了。裸感叹号串(RE.prioBang)排在日期之后扫,
-   *  这会儿还没占上字,所以 [!！] 在这儿单独放行——「!!~明天」得照旧认。 */
+   *  前面已被别的要素占用时照旧放行,包括「@李哥~3点」「#紧要~明天」「/工作~明天」;
+   *  人名或标签结尾即使是数字,也不会被当作范围端点。 */
   const gate = (a: number): number => {
     if (a === 0) return -1;
     if (isTilde(input[a - 1]) && !consumed[a - 1]) {
       const t = a - 1;
-      return t === 0 || consumed[t - 1] || /[\s!！]/.test(input[t - 1]) ? t : -1;
+      if (literalSpans.some(([start, end]) => start <= t && t < end)) return -1;
+      if (t === 0 || consumed[t - 1]) return t;
+      const left = input.slice(0, t);
+      const rangeEnd = /(?:[\d一二两三四五六七八九十百零〇](?:年|个月|月|日|号|天|周|点|时|分|秒)?|(?:周|星期|礼拜)[日天])$/.test(left);
+      return rangeEnd ? -1 : t;
     }
     return licensed[a - 1] ? a : -1;
   };
@@ -1020,15 +1028,6 @@ export function parseSubtaskInput(
   /** keepNewlines:任务卡子任务栏 Shift+Enter 写的换行留着(见 ParseOpts)。手机那条路不传,照旧压成空格 */
   more: { keepNewlines?: boolean } = {},
 ): ParseResult {
-  const keepNewlines = more.keepNewlines;
-  const r = parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP, weekendDay, keepNewlines });
-  if (r.due === null && r.dueTime === null) return r;
-  // 光杆「每」/「每月」的清理**留着**。循环认了之后它只剩一种触发场景:用户打了个孤零零的「每」、
-  // 日期另写在别处(「每 交周报 明天」)——那个「每」是半句没说完的话,不是标题的一部分。
-  // 仍然只在识别出日期/时间时才扫,所以「每日一记」「每人一份」这类正文一个字都不动。
-  // 只扫「每」「每月」:没打 ~ 的「每个月」是正文,一个字不动(有 ~ 领着的「~每个月」早被循环那条整串吃掉了)
-  const title = tidyTitle(r.title, keepNewlines, (l) =>
-    l.replace(/(?:^|\s)每月?(?=\s|$)/g, " ").replace(/\s+/g, " ").trim(),
-  );
-  return { ...r, title };
+  // 未由 ~ 标记的「每」「每月」也是正文,不能因为别处设了日期就删掉。
+  return parseQuickAdd(input, { now, listNames, skip: SUBTASK_SKIP, weekendDay, keepNewlines: more.keepNewlines });
 }

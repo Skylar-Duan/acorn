@@ -74,9 +74,9 @@ describe("子任务 · 没打 ~ 的「每个月」一个字不动", () => {
     expect(r.due).toBe("2026-10-15");
     expect(r.title).toBe("每个月 交房租");
   });
-  it("孤零零的「每」「每月」照旧扫掉", () => {
-    expect(parseSubtaskInput("每 交周报 ~明天", SEP21).title).toBe("交周报");
-    expect(parseSubtaskInput("每月 交水费 ~明天", SEP21).title).toBe("交水费");
+  it("孤零零的「每」「每月」也保留正文", () => {
+    expect(parseSubtaskInput("每 交周报 ~明天", SEP21).title).toBe("每 交周报");
+    expect(parseSubtaskInput("每月 交水费 ~明天", SEP21).title).toBe("每月 交水费");
   });
 });
 
