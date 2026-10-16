@@ -59,6 +59,8 @@ export default function QuadrantBoard() {
   const [size, setSize] = useState({ width: 900, height: 540 });
   const ticks = useMemo(() => quadrantAxisTicks(today, { compact: isMobile || size.width < 700 }), [today, size.width]);
   const ignoreClick = useRef({ id: "", until: 0 });
+  const cancelledPointer = useRef<{ id: string } | null>(null);
+  const ignoreContextUntil = useRef(0);
   const cancelRef = useRef<() => void>(() => {});
   const restoreFocus = useRef<HTMLElement | null>(null);
 
@@ -68,7 +70,9 @@ export default function QuadrantBoard() {
     if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null; }
     if (current?.pointerId !== null && current?.element.hasPointerCapture?.(current.pointerId!)) current.element.releasePointerCapture(current.pointerId!);
     setDrag(null);
-    if (current && current.pointerId !== null && (current.active || cancelled)) ignoreClick.current = { id: current.point.id, until: Date.now() + 350 };
+    if (current && current.pointerId !== null && (current.active || cancelled)) {
+      ignoreClick.current = { id: current.point.id, until: Date.now() + 350 };
+    }
     if (current?.active) {
       if (cancelled) setLive("已取消调整，任务保持原样");
     }
@@ -104,9 +108,30 @@ export default function QuadrantBoard() {
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && gesture.current) { event.preventDefault(); event.stopPropagation(); cancel(); }
     };
+    // 多按钮chord不会再次触发pointerdown。捕获mousedown，右键按下那一刻就取消。
+    const rightdown = (event: MouseEvent) => {
+      if (event.button !== 2 || !gesture.current || gesture.current.pointerId === null) return;
+      cancelledPointer.current = { id: gesture.current.point.id };
+      ignoreContextUntil.current = Date.now() + 350;
+      event.preventDefault(); event.stopPropagation(); cancel();
+    };
+    const leftup = (event: MouseEvent) => {
+      if (!cancelledPointer.current) return;
+      if (event.button === 0) ignoreClick.current = { id: cancelledPointer.current.id, until: Date.now() + 350 };
+      ignoreContextUntil.current = Date.now() + 350;
+      // 左键也可能先松、右键稍后才松；整个chord结束前都屏蔽这次菜单。
+      if (event.buttons === 0) cancelledPointer.current = null;
+    };
+    const contextmenu = (event: MouseEvent) => {
+      if (gesture.current && gesture.current.pointerId !== null) { cancelledPointer.current = { id: gesture.current.point.id }; ignoreContextUntil.current = Date.now() + 350; cancel(); }
+      if (cancelledPointer.current || Date.now() < ignoreContextUntil.current) { event.preventDefault(); event.stopPropagation(); }
+    };
     window.addEventListener("blur", cancel);
     document.addEventListener("keydown", keydown, true);
-    return () => { off(); offData(); window.removeEventListener("blur", cancel); document.removeEventListener("keydown", keydown, true); if (frame.current !== null) cancelAnimationFrame(frame.current); };
+    document.addEventListener("mousedown", rightdown, true);
+    document.addEventListener("mouseup", leftup, true);
+    document.addEventListener("contextmenu", contextmenu, true);
+    return () => { off(); offData(); window.removeEventListener("blur", cancel); document.removeEventListener("keydown", keydown, true); document.removeEventListener("mousedown", rightdown, true); document.removeEventListener("mouseup", leftup, true); document.removeEventListener("contextmenu", contextmenu, true); if (frame.current !== null) cancelAnimationFrame(frame.current); };
   }, []);
 
   function initial(point: QuadrantPoint, element: HTMLButtonElement, pointerId: number | null, startX = 0, startY = 0): Gesture {
@@ -121,6 +146,7 @@ export default function QuadrantBoard() {
   function move(event: ReactPointerEvent<HTMLButtonElement>) {
     const current = gesture.current;
     if (!current || current.pointerId !== event.pointerId) return;
+    if (event.buttons & 2) { event.preventDefault(); cancelledPointer.current = { id: current.point.id }; ignoreContextUntil.current = Date.now() + 350; clearGesture(true); return; }
     const dx = event.clientX - current.startX, dy = event.clientY - current.startY;
     if (!current.active && Math.hypot(dx, dy) < 5) return;
     event.preventDefault();
@@ -217,7 +243,7 @@ export default function QuadrantBoard() {
             style={{ left: `${active ? drag.xPct : point.xPct}%`, top: `${active ? drag.yPct : point.yPct}%` }}
             onFocus={() => setFocus(point.id)} onBlur={() => { setFocus(null); if (gesture.current?.pointerId === null) clearGesture(true); }}
             onPointerEnter={() => { if (!gesture.current) setHover(point.id); }} onPointerLeave={() => { if (!gesture.current) setHover(null); }}
-            onPointerDown={(event) => { if (event.button !== 0 || gesture.current) return; event.stopPropagation(); gesture.current = initial(point, event.currentTarget, event.pointerId, event.clientX, event.clientY); event.currentTarget.setPointerCapture?.(event.pointerId); }}
+            onPointerDown={(event) => { if (event.button !== 0 || gesture.current) return; event.stopPropagation(); cancelledPointer.current = null; ignoreClick.current = { id: "", until: 0 }; gesture.current = initial(point, event.currentTarget, event.pointerId, event.clientX, event.clientY); event.currentTarget.setPointerCapture?.(event.pointerId); }}
             onPointerMove={move} onPointerCancel={() => clearGesture(true)} onLostPointerCapture={() => { if (gesture.current?.pointerId !== null) clearGesture(true); }}
             onPointerUp={(event) => { const current = gesture.current; if (!current || current.pointerId !== event.pointerId) return; if (current.active) { event.preventDefault(); commit(current); } clearGesture(); }}
             onClick={() => open(point)} onKeyDown={(event) => keydown(event, point)}><span /></button>;
@@ -234,7 +260,7 @@ export default function QuadrantBoard() {
       <strong>{shown.title || "未命名任务"}</strong>
       <div className="quad-preview-values"><span><Icon name="flag" size={13} />{PRIO[shown.priority]}{preview && <><Icon name="arrowRight" size={12} /><b>{PRIO[preview.priority]}</b></>}</span>
       <span><Icon name="calendar" size={13} />{dueLabel(shown.due)}{preview && <><Icon name="arrowRight" size={12} /><b>{preview.inheritsDue ? `继承母任务日期${preview.effectiveDue ? ` · ${dueLabel(preview.effectiveDue)}` : ""}` : dueLabel(preview.due)}</b></>}</span></div>
-      {drag && <small>{drag.pointerId === null ? "回车保存 · Esc取消" : "松手保存 · Esc取消"}</small>}
+      {drag && <small>{drag.pointerId === null ? "回车保存 · Esc取消" : "松手保存 · 右键取消"}</small>}
     </div>, document.body)}
     {!isMobile && activeTask && createPortal(<div className="quad-detail-layer" data-quad-detail onMouseDown={(event) => { if (event.target === event.currentTarget) expandTask(null); }}
       onKeyDownCapture={(event) => {

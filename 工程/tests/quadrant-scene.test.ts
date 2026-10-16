@@ -15,7 +15,8 @@ const today = todayYMD();
 const task = () => appStore.getState().data.tasks[0];
 function seed(value: Partial<Task> = {}) { appStore.setState({ data: { ...defaultData(), tasks: [newTask({ id: "parent", title: "真实任务", due: today, priority: 3, dueTime: "14:00", ...value })] } }); }
 function point(subId?: string) { return [...document.querySelectorAll<HTMLButtonElement>(".quad-point")].find((el) => (el.dataset.subtaskId ?? "") === (subId ?? ""))!; }
-function pointer(el: HTMLElement, name: string, x: number, y: number) { const event = new Event(name, { bubbles: true, cancelable: true }); for (const [key, value] of Object.entries({ pointerId: 1, button: 0, clientX: x, clientY: y, pointerType: "mouse" })) Object.defineProperty(event, key, { value }); act(() => el.dispatchEvent(event)); }
+function pointer(el: HTMLElement, name: string, x: number, y: number, buttons = 1) { const event = new Event(name, { bubbles: true, cancelable: true }); for (const [key, value] of Object.entries({ pointerId: 1, button: 0, buttons, clientX: x, clientY: y, pointerType: "mouse" })) Object.defineProperty(event, key, { value }); act(() => el.dispatchEvent(event)); }
+function mouse(el: HTMLElement, name: string, button: number, buttons: number) { const event = new MouseEvent(name, { bubbles: true, cancelable: true, button, buttons }); act(() => el.dispatchEvent(event)); return event; }
 async function drag(el: HTMLElement, xPct: number, yPct: number, cancel?: string) {
   const origin = quadrantPoints(appStore.getState().data, today).find((p) => p.id === el.dataset.quadPoint)!;
   pointer(el, "pointerdown", origin.xPct * 10, origin.yPct * 6);
@@ -84,5 +85,42 @@ describe("坐标点真实交互", () => {
     const el = point(); pointer(el, "pointerdown", 10, 10);
     act(() => window.dispatchEvent(new Event("blur"))); pointer(el, "pointerup", 11, 11); act(() => el.click());
     expect(appStore.getState().ui.expandedId).toBeNull(); expect(appStore.getState().undoDepth).toBe(0);
+  });
+  it.each([true, false])("左键按住%s移动时右键立即取消，右键先松再松左键不写也不开详情", async (moved) => {
+    const el = point(), original = appStore.getState().data, origin = quadrantPoints(original, today)[0];
+    pointer(el, "pointerdown", origin.xPct * 10, origin.yPct * 6);
+    if (moved) {
+      pointer(el, "pointermove", 200, 500); await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+      expect(document.querySelector('[data-quad-preview] small')?.textContent).toBe("松手保存 · 右键取消");
+    }
+    // 在捕获点以外按右键，并且不发第二次pointerdown，模拟真实多按钮chord。
+    expect(mouse(document.body, "mousedown", 2, 3).defaultPrevented).toBe(true);
+    expect(document.querySelector(".quad-point.moving")).toBeNull();
+    expect(mouse(document.body, "contextmenu", 2, 3).defaultPrevented).toBe(true);
+    mouse(document.body, "mouseup", 2, 1);
+    const now = Date.now(); vi.spyOn(Date, "now").mockReturnValue(now + 1000);
+    mouse(document.body, "mouseup", 0, 0); pointer(el, "pointerup", 200, 500, 0); act(() => el.click());
+    expect(appStore.getState().data).toBe(original); expect(appStore.getState().undoDepth).toBe(0); expect(appStore.getState().ui.expandedId).toBeNull();
+  });
+  it("pointermove.buttons右键兜底能取消，未拖动时正常右键不拦截", () => {
+    const el = point(), before = appStore.getState().data;
+    expect(mouse(el, "mousedown", 2, 2).defaultPrevented).toBe(false); expect(mouse(el, "contextmenu", 2, 2).defaultPrevented).toBe(false);
+    pointer(el, "pointerdown", 10, 10); pointer(el, "pointermove", 200, 500, 3);
+    expect(mouse(el, "contextmenu", 2, 3).defaultPrevented).toBe(true);
+    mouse(el, "mouseup", 0, 0); pointer(el, "pointerup", 200, 500, 0); act(() => el.click());
+    expect(appStore.getState().data).toBe(before); expect(appStore.getState().ui.expandedId).toBeNull();
+  });
+  it("键盘调整仍提示并使用Esc取消", () => {
+    const el = point(), before = appStore.getState().data; key(el, " "); key(el, "ArrowDown");
+    expect(document.querySelector('[data-quad-preview] small')?.textContent).toBe("回车保存 · Esc取消");
+    key(el, "Escape"); expect(appStore.getState().data).toBe(before); expect(document.querySelector(".quad-point.moving")).toBeNull();
+  });
+  it("右键取消后左键先松，长按右键再松时仍屏蔽本次菜单", () => {
+    const el = point(), before = appStore.getState().data; pointer(el, "pointerdown", 10, 10); pointer(el, "pointermove", 200, 500);
+    mouse(el, "mousedown", 2, 3); mouse(el, "mouseup", 0, 2); act(() => el.click());
+    const now = Date.now(); vi.spyOn(Date, "now").mockReturnValue(now + 1000);
+    expect(mouse(document.body, "contextmenu", 2, 2).defaultPrevented).toBe(true);
+    mouse(document.body, "mouseup", 2, 0); expect(mouse(document.body, "contextmenu", 2, 0).defaultPrevented).toBe(true);
+    expect(appStore.getState().data).toBe(before); expect(appStore.getState().ui.expandedId).toBeNull();
   });
 });
