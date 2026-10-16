@@ -9,6 +9,7 @@ import { appStore } from "../core/store";
 import { syncStore } from "../core/syncCtl";
 import { IMAGE_MAX_COUNT, imageListUpdateError, imageUrlLength, ledgerImageBytes } from "../core/taskImages";
 import { renderableTaskImages } from "../core/imageDisplay";
+import { bindImageInput } from "../core/imageInput";
 import Icon from "./Icon";
 import "../styles/task-images.css";
 
@@ -23,6 +24,10 @@ export interface ImageAttachmentsProps {
   usedBytes?: () => number;
   /** 创建草稿未计入账本总量；已存图片已计入。 */
   draft?: boolean;
+  /** 只有这些文字输入接收粘贴/拖入。 */
+  inputTargets?: () => readonly (HTMLElement | null | undefined)[];
+  /** 组件被复用于另一目标时，旧压缩结果不得写到新目标。 */
+  targetKey?: string;
 }
 
 export default function ImageAttachments(props: ImageAttachmentsProps) {
@@ -30,11 +35,11 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState<TaskImage | null>(null);
-  const input = useRef<HTMLInputElement>(null);
   const current = useRef(props);
   current.current = props;
   const operation = useRef<{ cancel: boolean; context: ImageOperation } | null>(null);
   useEffect(() => () => { if (operation.current) { operation.current.cancel = true; operation.current.context.dispose(); operation.current = null; current.current.onBusyChange?.(false); } }, []);
+  useEffect(() => () => { if (operation.current) operation.current.cancel = true; }, [props.targetKey]);
   useEffect(() => {
     if (!IS_ULTRA || !draft) return;
     const key = () => { const s = syncStore.getState().session; return s ? `${s.email}\n${s.token}` : ""; };
@@ -50,16 +55,18 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     document.addEventListener("keydown", close, true);
     return () => document.removeEventListener("keydown", close, true);
   }, [viewing]);
+  useEffect(() => {
+    if (!IS_ULTRA || isMobile) return;
+    return bindImageInput(props.inputTargets?.() ?? [], (files) => { void attach(files); });
+  });
 
-  if (!IS_ULTRA || isMobile) return null;
-  const visible = renderableTaskImages(images);
-
-  async function choose(files: File[]) {
+  async function attach(files: File[]) {
     if (!files.length || busy || operation.current) return;
     const context = createContext?.() ?? imageEditContext(canEdit);
+    const targetKey = current.current.targetKey;
     const job = { cancel: false, context };
     operation.current = job;
-    const valid = () => operation.current === job && !job.cancel && context.valid();
+    const valid = () => operation.current === job && !job.cancel && current.current.targetKey === targetKey && context.valid();
     setBusy(true); current.current.onBusyChange?.(true); setError("");
     try {
       const original = current.current.images ?? [];
@@ -86,12 +93,14 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     }
   }
 
+  if (!IS_ULTRA || isMobile) return null;
+  const visible = renderableTaskImages(images);
+  if (!visible.length && !busy && !error) return null;
+
   return <div className={`task-images${visible.length ? "" : " task-images-empty"}`} data-task-images onMouseDown={(e) => e.stopPropagation()}>
     <div className="task-images-head">
       <span className="task-images-label">{label}{visible.length ? ` · ${visible.length}/${IMAGE_MAX_COUNT}` : ""}</span>
-      <button type="button" className="image-add" aria-label={`为${label}添加图片`} disabled={busy || images.length >= IMAGE_MAX_COUNT} onClick={() => input.current?.click()}><Icon name="image" size={14} /> 插图</button>
       {busy && <><span role="status">正在处理图片…</span><button type="button" onClick={() => { if (operation.current) operation.current.cancel = true; }}>取消</button></>}
-      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; void choose(files); }} />
     </div>
     {visible.length > 0 && <div className="task-image-list">
       {visible.map((image) => <div className="task-image-thumb" key={image.id}>

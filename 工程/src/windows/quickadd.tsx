@@ -6,6 +6,7 @@ import "../styles/themes.css";
 import "../styles/base.css";
 import type { ParseResult } from "../core/parse";
 import SyntaxInput from "../components/SyntaxInput";
+import type { SyntaxInputEl } from "../components/SyntaxInput";
 import ImageAttachments from "../components/ImageAttachments";
 import type { TaskImage } from "../core/model";
 import { IS_ULTRA } from "../core/version";
@@ -38,8 +39,20 @@ function QuickAddApp() {
   const ctxRef = useRef<Ctx | null>(null);
   const imageRevision = useRef(0);
   const imageBusy = useRef(false);
+  const [imagesBusy, setImagesBusy] = useState(false);
+  const imageInputRef = useRef<SyntaxInputEl | null>(null);
   const [ctx, setCtx] = useState<Ctx>({ listNames: [], tagNames: [], whoNames: [], theme: "forest", mode: "system" });
   const pending = useRef<string | null>(null);
+
+  // 普通草稿与普通版共用210高度，只有本次确实有图片时才展开。
+  useEffect(() => {
+    if (!IS_ULTRA) return;
+    let active = true;
+    void Promise.all([import("@tauri-apps/api/window"), import("@tauri-apps/api/dpi")]).then(([{ getCurrentWindow }, { LogicalSize }]) => {
+      if (active) void getCurrentWindow().setSize(new LogicalSize(640, images.length || imagesBusy ? 330 : 210)).catch(() => {});
+    });
+    return () => { active = false; };
+  }, [images.length > 0, imagesBusy]);
 
   useEffect(() => {
     applyThemeAttrs("forest", "system");
@@ -119,6 +132,7 @@ function QuickAddApp() {
         <span className="task-quickadd-window-hint">Esc 关闭 · 回车保存</span>
       </div>
       <SyntaxInput
+        elementRef={imageInputRef}
         value={text}
         onChange={setText}
         // 回执照实说：没标题就什么都没发出去（submit 自己会退回），那一下不该闪 ✓。
@@ -137,7 +151,8 @@ function QuickAddApp() {
         showChips
       />
       <ImageAttachments images={images} draft label="这件事的图片"
-        onBusyChange={(busy) => { imageBusy.current = busy; }}
+        inputTargets={() => [imageInputRef.current]}
+        onBusyChange={(busy) => { imageBusy.current = busy; setImagesBusy(busy); }}
         createContext={() => { const revision = imageRevision.current; const context = ctxRef.current?.imageContextId; return { valid: () => !!context && revision === imageRevision.current && context === ctxRef.current?.imageContextId && !pending.current, dispose: () => {} }; }}
         usedBytes={() => ctxRef.current?.imageBudgetUsed ?? 0}
         onChange={setImages} />

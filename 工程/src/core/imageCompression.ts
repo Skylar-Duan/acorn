@@ -50,7 +50,7 @@ export async function compressTaskImage(file: File, valid: () => boolean = () =>
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!valid()) throw new Error("已取消图片处理");
   const header = imageHeaderSize(bytes);
-  if (!header) throw new Error("请选择 JPG、PNG 或 WebP 图片");
+  if (!header) throw new Error("仅支持 JPG、PNG 或 WebP 图片");
   const sizeError = imageSourceError(file.size, header.width, header.height);
   if (sizeError) throw new Error(sizeError);
   const bitmap = await createImageBitmap(file);

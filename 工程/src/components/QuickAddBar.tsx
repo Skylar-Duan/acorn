@@ -94,6 +94,7 @@ export default function QuickAddBar({
   const [images, setImages] = useState<TaskImage[]>([]);
   const imagesRef = useRef<TaskImage[]>([]);
   const imageBusy = useRef(false);
+  const imageInputRef = useRef<SyntaxInputEl | null>(null);
   const imageRevision = useRef(0);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; imageRevision.current++; }; }, []);
@@ -243,6 +244,7 @@ export default function QuickAddBar({
       <div className="qa-line">
         <span className="plus"><Icon name="plus" size={18} /></span>
         <SyntaxInput
+          elementRef={imageInputRef}
           value={text}
           onChange={(v) => { setText(v); if (!v) setOverrides({}); }}
           onSubmit={submit}
@@ -267,6 +269,7 @@ export default function QuickAddBar({
         <CommitMark on={saved.on} />
       </div>
       <ImageAttachments images={images} draft label="这件事的图片"
+        inputTargets={() => [imageInputRef.current]}
         onBusyChange={(busy) => { imageBusy.current = busy; }}
         createContext={() => { const revision = imageRevision.current; return imageEditContext(() => mounted.current && imageRevision.current === revision); }}
         onChange={(next) => { if (!next.length) imageRevision.current++; imagesRef.current = next; setImages(next); }} />

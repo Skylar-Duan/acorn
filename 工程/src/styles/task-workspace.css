@@ -46,11 +46,6 @@
 .tw-card .sub-categories { flex: 1 0 calc(100% - 24px); width: calc(100% - 24px); margin-left: 24px; }
 .tw-card .subs .sub-row > .sub-images:has(.task-images-empty) { flex: 0 0 auto; width: auto; margin: 0; padding: 0; }
 .tw-card .sub-images .task-images-empty { margin: 0; }
-.tw-card .sub-images .task-images-empty .image-add { min-height: 26px; font-size: 11px; padding: 3px 6px; }
-@media (hover: hover) {
-  .tw-card .sub-row:not(.new-sub-row) .task-images-empty .image-add { opacity: 0; }
-  .tw-card .sub-row:hover .task-images-empty .image-add, .tw-card .sub-row:focus-within .task-images-empty .image-add { opacity: 1; }
-}
 .tw-card .sub-category { min-width: 0; max-width: 240px; padding: 2px 5px 2px 7px; border: 1px solid var(--hair); background: transparent; border-radius: 5px; font-size: 11px; }
 .tw-card .sub-category > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tw-card .sub-category button { width: 20px; height: 20px; }

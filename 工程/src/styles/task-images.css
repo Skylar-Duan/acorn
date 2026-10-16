@@ -13,7 +13,8 @@
 .task-image-error { margin: 6px 0 0; color: var(--warn); font-size: 11px; }
 .tw-card.task-card > .task-images { margin: 8px 0 12px 43px; }
 .sub-images { flex-basis: 100%; width: 100%; padding-left: 24px; }
-.task-card .subs .sub-row:has(.sub-images) { flex-wrap: wrap; }
+.sub-images:empty { display: none; }
+.task-card .subs .sub-row:has(.sub-images .task-images) { flex-wrap: wrap; }
 .image-lightbox { position: fixed; z-index: 2200; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 52px 32px 24px; background: #101510e8; }
 .image-lightbox > img { display: block; flex: 0 1 auto; min-height: 0; min-width: 0; max-width: 100%; max-height: calc(100dvh - 118px); object-fit: contain; border-radius: 8px; }
 .image-lightbox > span { flex: none; min-height: 20px; line-height: 20px; color: #fff; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }

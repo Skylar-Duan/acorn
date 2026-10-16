@@ -21,6 +21,7 @@ import {
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
 import SyntaxInput from "./SyntaxInput";
+import type { SyntaxInputEl } from "./SyntaxInput";
 import { growArea, keepLines, oneLine } from "./autogrow";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
@@ -64,6 +65,10 @@ export default function TaskCard({ task }: { task: Task }) {
   const [newSubImages, setNewSubImages] = useState<TaskImage[]>([]);
   const newSubImagesRef = useRef<TaskImage[]>([]);
   const newSubImageBusy = useRef(false);
+  const newSubInputRef = useRef<SyntaxInputEl | null>(null);
+  const subInputRefs = useRef(new Map<string, HTMLTextAreaElement>());
+  const subInputCallbacks = useRef(new Map<string, (el: HTMLTextAreaElement | null) => void>());
+  const taskImageBusy = useRef(false);
   const newSubImageRevision = useRef(0);
   /** 已完成子任务那堆展不展开。null = 还没表过态，跟自动规则走；
    *  用不得直接存 boolean：那样刚勾掉一条子任务、已完成刚够数的时候自动规则就再也不生效了。
@@ -478,15 +483,20 @@ export default function TaskCard({ task }: { task: Task }) {
    *  写成组件体内的局部函数、不抽成外部组件：外部组件每次 render 都是个新类型，
    *  React 会把行整个卸载重建，行里那两个 .popmenu 会在打字时闪没 */
   function renderSub(s: Subtask) {
+    // 每步复用同一个ref回调，避免编辑母标题时让133个子框逐个重新量高。
+    let inputRef = subInputCallbacks.current.get(s.id);
+    if (!inputRef) {
+      inputRef = (el) => { growArea(el); if (el) subInputRefs.current.set(s.id, el); else subInputRefs.current.delete(s.id); };
+      subInputCallbacks.current.set(s.id, inputRef);
+    }
     return (
       <div key={s.id} className={`sub-row${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}`} style={{ position: "relative" }}>
         <button className={`sb${s.done ? " done" : ""}`} aria-label={`${s.done ? "标记未完成" : "完成子任务"} ${s.title}`} onClick={() => toggleSubtask(task.id, s.id)} />
         {/* 子任务标题跟母任务标题同一个待遇：长了就换行，不再单行截断（v1.9.1）。
-            ref 直接给 growArea——它是个模块级的稳定函数，React 只在元素挂/卸时调它，
-            不会每渲染一次就重挂一遍 */}
+            ref按子任务复用，挂载时量高度并记录图片输入目标。 */}
         <textarea
           rows={1}
-          ref={growArea}
+          ref={inputRef}
           className={subFlash === s.id ? "commit-lit" : undefined}
           value={subDrafts[s.id] ?? s.title}
           onChange={(e) => {
@@ -570,6 +580,8 @@ export default function TaskCard({ task }: { task: Task }) {
           </span>
         )}
         {IS_ULTRA && <div className="sub-images"><ImageAttachments images={taskImages(s.images)} label="这一步的图片"
+          targetKey={`${task.id}:${s.id}`}
+          inputTargets={() => [subInputRefs.current.get(s.id)]}
           canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
           onChange={(images) => updateSubtask(task.id, s.id, { images })} /></div>}
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
@@ -647,6 +659,7 @@ export default function TaskCard({ task }: { task: Task }) {
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             e.preventDefault();
+            if (taskImageBusy.current) { showToast("图片还在处理，请稍候再保存", false); return; }
             void commitTitle();
             if (e.shiftKey) expandTask(null);
             else notesRef.current?.focus();
@@ -671,6 +684,7 @@ export default function TaskCard({ task }: { task: Task }) {
           onKeyDown={(e) => {
             if (e.key === "Enter" && e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
+              if (taskImageBusy.current) { showToast("图片还在处理，请稍候再保存", false); return; }
               expandTask(null);
             }
           }}
@@ -679,6 +693,9 @@ export default function TaskCard({ task }: { task: Task }) {
       </div>
 
       <ImageAttachments images={taskImages(task.images)}
+        targetKey={task.id}
+        inputTargets={() => [titleRef.current, notesRef.current]}
+        onBusyChange={(busy) => { taskImageBusy.current = busy; }}
         canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
         onChange={(images) => updateTask(task.id, { images })} />
       <div className="subs">
@@ -694,6 +711,7 @@ export default function TaskCard({ task }: { task: Task }) {
         <div className="sub-row new-sub-row">
           <span className="sb" style={{ opacity: 0.35 }} />
           <SyntaxInput
+            elementRef={newSubInputRef}
             value={newSub}
             onChange={(v) => { newSubRef.current = v; setNewSub(v); }}
             onSubmit={addSubFromInput}
@@ -720,6 +738,8 @@ export default function TaskCard({ task }: { task: Task }) {
             inputStyle={{ fontSize: 13 }}
           />
           {IS_ULTRA && <div className="sub-images"><ImageAttachments images={newSubImages} label="新子任务图片" draft
+            targetKey={`new:${task.id}`}
+            inputTargets={() => [newSubInputRef.current]}
             onBusyChange={(busy) => { newSubImageBusy.current = busy; }}
             canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
             createContext={() => { const revision = newSubImageRevision.current; return imageEditContext(() => newSubImageRevision.current === revision && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)); }}

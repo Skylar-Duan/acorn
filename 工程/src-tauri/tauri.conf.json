@@ -24,6 +24,7 @@
       },
       {
         "label": "quickadd",
+        "dragDropEnabled": false,
         "title": "随手记一条",
         "url": "quickadd.html",
         "width": 640,

@@ -7,6 +7,7 @@ import type {
   FocusEvent as ReactFocusEvent,
   KeyboardEvent as ReactKeyboardEvent,
   SyntheticEvent,
+  MutableRefObject,
 } from "react";
 import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
@@ -58,6 +59,8 @@ export interface SyntaxInputProps {
    *  （\r\n 统一成 \n）。Enter 仍是提交，补全下拉开着时 Enter 仍是选候选——那两条一点不变。
    *  换行要一路留到标题里，调用方解析时还得给 parse 开 keepNewlines */
   allowNewline?: boolean;
+  /** 将图片粘贴/拖入绑定到真正的文字输入。 */
+  elementRef?: MutableRefObject<SyntaxInputEl | null>;
 }
 
 /** 这个框底下那个真实元素。开了 multiline 是 textarea，否则还是 input——
@@ -105,7 +108,7 @@ interface DropMatch {
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
   placeholder, autoFocus, showChips = true, skip, weekendDay, inputStyle,
-  onBlurCommit, onEscape, onShiftEnter, multiline: multilineProp = false, allowNewline = false,
+  onBlurCommit, onEscape, onShiftEnter, multiline: multilineProp = false, allowNewline = false, elementRef,
 }: SyntaxInputProps) {
   const multiline = multilineProp || allowNewline;
   const inputRef = useRef<SyntaxInputEl | null>(null);
@@ -301,13 +304,14 @@ export default function SyntaxInput({
         <textarea
           ref={(el) => {
             inputRef.current = el;
+            if (elementRef) elementRef.current = el;
             growArea(el);
           }}
           rows={1}
           {...shared}
         />
       ) : (
-        <input ref={(el) => { inputRef.current = el; }} {...shared} />
+        <input ref={(el) => { inputRef.current = el; if (elementRef) elementRef.current = el; }} {...shared} />
       )}
       <CommitMark on={flashOn} />
       {showChips && parsed.chips.length > 0 && (
