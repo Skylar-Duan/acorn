@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import account
+from . import account, ultra
 from .config import settings
 from .db import Database, now_iso
 from .security import TokenError, make_token, read_token, verify_password
@@ -455,6 +455,8 @@ def me(user: CurrentUser) -> dict:
         "displayName": user["display_name"],
         # 账号在 cdpandas：改密码走「忘记密码」，注销只删橡果这边
         "account": "cdpandas",
+        "ultra": ultra.enabled(db, int(user["id"])),
+        "maxVaultBytes": settings.ultra_max_vault_bytes if ultra.enabled(db, int(user["id"])) else settings.max_vault_bytes,
     }
 
 
@@ -514,8 +516,11 @@ def push(body: PushIn, user: CurrentUser) -> dict:
             f"先升级这台设备上的橡果，升级前不会同步，本地数据一条都不会动。",
         )
     payload = json.dumps(body.data, ensure_ascii=False, separators=(",", ":"))
-    if len(payload.encode("utf-8")) > settings.max_vault_bytes:
-        raise bad(413, "too_big", "数据太大了，同步不了")
+    cap = settings.ultra_max_vault_bytes if ultra.enabled(db, int(user["id"])) else settings.max_vault_bytes
+    if len(payload.encode("utf-8")) > cap:
+        raise bad(413, "too_big", "本机记录仍保留。图片或历史记录较多，减少图片后重试同步" if cap > settings.max_vault_bytes else "本机记录仍保留。云端数据已超过 5 MiB，减少内容后重试同步")
+    previous = json.loads(vault["data"]) if vault["data"] else None
+    ultra.check_new_images(body.data, previous)
 
     rev = db.put_vault(int(user["id"]), body.base_rev, payload, (body.device or "")[:64], schema)
     if rev is None:
@@ -800,6 +805,18 @@ def desktop_beta(user: CurrentUser) -> dict:
 
 
 # ---------- 收尾 ----------
+
+ultra.mount(app, db, current_user, is_admin, forward_ip)
+
+
+@app.middleware("http")
+async def private_ultra_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/ultra/"):
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.exception_handler(HTTPException)

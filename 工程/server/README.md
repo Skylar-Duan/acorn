@@ -3,12 +3,13 @@
 橡果的账号与跨设备同步后端。跑在 `cdpandas-prod`（阿里云 47.85.52.202），地址
 `https://acorn.cdpandas.com`。
 
-## 它只做两件事
+## 服务范围
 
 1. **认人**：账号跟 cdpandas 是**同一套**（2026-09-21 起，以 cdpandas 为准）。登录、注册、验证码、
    找回密码都由这里转给同机的 cdpandas 账号后端（`127.0.0.1:8000/api/auth/*`），它认过这个人，
    橡果再签**自己的**长效令牌（60 天）。见下文「账号转接」。
 2. **存一份数据**：每个账号一整份 `AppData`（信封 JSON）+ 一个版本号 `rev`。
+3. **Windows Ultra**：独立安装包的下载申请与账号额度，见下文。普通版账号与同步接口保持兼容。
 
 **合并逻辑不在这里**，在客户端 `src/core/merge.ts`。服务器只认版本号，永远不解释、
 不改动用户数据的内容——这样以后加端（安卓、网页、iOS）只要复用同一份合并代码，
@@ -143,13 +144,15 @@ cd server
 python -m uvicorn app.main:app --reload --port 8787
 ```
 
-没配 `SMTP_*` 时**不真发信**，验证码直接打进日志——本地自测就靠这个。
+旧验证码辅助函数没配 `SMTP_*` 时不真发信（账号验证码现由 cdpandas 管）；
+**Ultra 申请例外：没配置邮件就明确失败，验证码不会写进日志。**测试必须 mock 邮件。
 客户端指过来：`VITE_ACORN_API=http://127.0.0.1:8787 npm run vite:dev`。
 
 ## 测试
 
 ```bash
 python tests/test_api.py          # 74 条，不装 pytest 也能跑；装了也能 python -m pytest tests
+python tests/test_ultra.py        # 私有包、并发、北京时间边界与配额；全用临时库和假邮件
 # cdpandas 由 tests/fake_cdpandas.py 顶替（真 HTTP、本机随机端口），不用连真的
 ```
 
@@ -169,6 +172,7 @@ bash deploy/deploy.sh --code      # 日常：只推代码 + 重启
 |---|---|
 | `/var/www/acorn-sync` | 代码 + venv |
 | `/var/lib/acorn-sync/acorn.db` | 数据库（只有 `acorn` 用户能写） |
+| `/var/lib/acorn-sync/private/windows/ultra/` | Ultra 私有正式包与 latest.json，beta 放其 beta/ 子目录 |
 | `/etc/acorn-sync/env` | 凭据（chmod 600，属主 root） |
 | `/etc/systemd/system/acorn-sync.service` | 服务 |
 | `/etc/nginx/conf.d/acorn.conf` | 新增的 server 块 |
@@ -185,3 +189,81 @@ DNS 不用配：`*.cdpandas.com` 已有通配符 A 记录指到本机。证书�
 1. `rsync /var/lib/acorn-sync/` 过去（停服务再拷，或先 `sqlite3 acorn.db ".backup"`）
 2. 在新机器上跑一遍 `deploy.sh`（把 `ACORN_DEPLOY_HOST` 指过去）
 3. 把 `/etc/acorn-sync/env` 里的 `ACORN_JWT_SECRET` **原样搬过去**，否则所有人被登出
+
+## Windows Ultra（2026-10-16）
+
+代码在 `app/ultra.py`；只增加 `ultra_grants / ultra_requests / ultra_downloads` 三张表，不改旧账号 id、
+令牌或账本内容，也不改 DATA_VERSION。普通版与 Ultra 共用账号和任务数据，客户端只在 Ultra 显示图片。
+
+### 申请与七天锁定
+
+- 网站先用 cdpandas 登录，接口支持同源 `sbg_session` Cookie；App 用橡果 Bearer。
+  Cookie 转接只认已验证且未冻结身份，写请求须带受信任 Origin；管理员身份不是申请前提。
+- 每账号按**北京时间自然日**申请一次，只寄 `bower.6868@gmail.com`，不接收请求指定的收件人。
+  邮件中说明申请账号与准确失效时刻；验证码只以绑定账号/申请的 HMAC 摘要入库，不进日志。
+- 验证码到申请当天北京时间 24:00 失效，23 点申请只有一小时。服务端时间是唯一依据。
+- 错码只受短期限流，**不增加连续失败**。一次申请到期仍未正确验证并完整下载，才记一次失败。
+  没申请的日期不记失败，验证正确但未下载仍记失败。
+- 连续第三次失败从该申请的 expiresAt 起锁七天。到期结算在事务中只做一次，惰性结算与常驻进程结果相同。
+  锁定只管新的网站申请；不影响普通使用、同步或已经启用的 Ultra 的正常更新。
+- 完整下载后客户端 SHA-256 校验再确认，成功清零；重复确认幂等。
+  服务器只在最后一帧 HTTP body 成功发送后记录传输证据，不能凭验码成功、点按钮或随意调用 complete 获得授权。
+  浏览器无法证明系统“另存为”最终落盘，产品以“完整传输并校验通过”为成功边界。
+- 成功后账号长期启用 Ultra 更新与较大额度。网站次日重新申请，当天已验证/成功申请可从 status 取新下载资格重下。
+- 网站申请可以取得已上传的最新正式或 beta 私有包，首发只有 beta 时也不要求申请人是管理员，仍须 Bower 验证码。
+  应用内 `/desktop/beta` 的管理员门槛保留；不会把 beta 写进正式 latest 清单。
+
+### 接口契约
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/ultra/status` | 当前账号、申请日/截止/锁定、可否申请、连续失败与当天可用的下载资格 |
+| POST | `/api/ultra/request` | 无请求体，202；邮件未配 503、发送失败 502，两者不占当天申请机会 |
+| POST | `/api/ultra/verify` | `{requestId,code}` → `{ok,requestId,expiresAt,download}`；错码 400，到期 410 |
+| GET | `/api/ultra/download/{ticket}` | 本人鉴权后传整个私有安装包，不支持绕过身份的公开直链 |
+| POST | `/api/ultra/download/{downloadId}/complete` | `{sha256}`；未完整传输 409、摘要不符 400、资格到期 410 |
+| GET | `/api/ultra/desktop/latest` | 已启用账号的正式更新清单；未启用 403 |
+| GET | `/api/ultra/desktop/beta` | 已启用且管理员才见 beta，其他已启用账号 `available:false` |
+
+status 返回 `email / enabled / serverNow / requestId / requestDay / expiresAt / canRequest / nextRequestAt /
+consecutiveFailures / lockedUntil / verified / downloaded / download / message`。
+
+download 沿用普通清单的 `available / version / schema / url / size / sha256 / notes / publishedAt / pageUrl`，
+另有 `edition:"ultra" / fileName / downloadId / requiresAuth:true / expiresAt`。url 是当前本人可用的短期票据，
+**fetch 必须附 Bearer 或同源 Cookie**，不能直接拿一条无鉴权 a 链接替代；SHA 校验后用 downloadId 调 complete。
+
+业务错误沿用 `{error,message}`，其中 `ultra_locked` 为 423 并带 lockedUntil，`already_requested` 为 429 并带
+nextRequestAt；`download_incomplete` 为 409 可稍后重试。所有 Ultra 回包含 `Cache-Control: private,no-store`。
+
+### 私有包与部署
+
+`ACORN_PRIVATE_DIR` 默认 `/var/lib/acorn-sync/private`，清单/包分别放：
+
+```text
+windows/ultra/latest.json
+windows/ultra/Acorn_Ultra_<版本>_x64-setup.exe
+windows/ultra/beta/latest.json
+windows/ultra/beta/Acorn_Ultra_<版本-beta.N>_x64-setup.exe
+```
+
+manifest 与普通包相同，含 file、version、schema、size、sha256、notes、publishedAt。
+服务器会核对实体大小和 SHA。包路径必须在 private_dir 内且不能位于 public_dir 下。
+**绝不能上传到 `/var/www/acorn-public` 或 nginx `/download/`**，也不能用公开目录里的 symlink 冒充私有。
+目录和文件由部署程序保证 acorn 用户可读；现有 systemd 已能访问 `/var/lib/acorn-sync`。
+
+### 内联图片额度
+
+- 普通账号整份信封仍上限 5 MiB，已启用 Ultra 账号上限 32 MiB，依据服务器授权，不信客户端 edition。
+  已启用者覆盖装普通构建仍可无损同步原账本；主 `/api/me` 新增 `ultra` 和 `maxVaultBytes`。
+- Task.images / Subtask.images 是可选数组，每项 id、name、dataUrl、width、height、bytes。
+  新图只收 JPEG dataURL，实际 JPEG 字节最多 256 KiB，最长边 1920，每个 owner 最多 8 图。
+- 每账号实际内联 dataURL UTF-8 总量上限 20 MiB（base64 已在内，不给重复图片折扣）。
+  只在有新图片内容时拦此额度；云端已存图片的普通文本编辑、完成、删除、循环历史复制继续保留。
+  新旧图片内容按 dataUrl 比对（生命周期复制即使换了局部 id 也保留），新增元数据本身不改任何任务。
+- 整本 32 MiB 是硬上限，历史继续增长超限也不会报同步成功；返回明确提示“本机记录仍保留，减少图片后重试”。
+  本机动作照常，客户端不得因为服务端 413 抹图、阻止删除或伪报已同步。
+- nginx 的请求上限为 40m，为信封留余量；应用仍逐账号强制 5/32 MiB。
+  数据大时客户端需延长同步超时并用 rev 轻探测避免空转重传。
+
+可调配置为 `ACORN_ULTRA_MAX_VAULT_BYTES`（32 MiB）和 `ACORN_ULTRA_MAX_IMAGE_BYTES`（20 MiB）。
+没有新增外部服务、存储账号或服务器运行依赖。

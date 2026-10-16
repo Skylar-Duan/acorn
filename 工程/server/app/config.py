@@ -58,6 +58,11 @@ class Settings:
 
     # 一份数据最大多少字节（防止有人把服务器当网盘）。5MB 够存几万条任务
     max_vault_bytes: int = _int("ACORN_MAX_VAULT_BYTES", 5 * 1024 * 1024)
+    # Ultra 的授权和图片仍与原账本放在同一账号；普通构建也能无损同步它已有的图片。
+    ultra_max_vault_bytes: int = _int("ACORN_ULTRA_MAX_VAULT_BYTES", 32 * 1024 * 1024)
+    ultra_max_image_bytes: int = _int("ACORN_ULTRA_MAX_IMAGE_BYTES", 20 * 1024 * 1024)
+    # 绝不放进 nginx 公开的 /download/。只有校验过身份的应用接口能送出包。
+    private_dir: str = os.environ.get("ACORN_PRIVATE_DIR", "/var/lib/acorn-sync/private")
 
     # 安装包与版本清单放哪（android/ 是 APK，windows/ 是桌面 exe；
     # nginx 以 /download/ 静态伺服同一个目录）

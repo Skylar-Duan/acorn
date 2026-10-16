@@ -74,6 +74,42 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 CREATE INDEX IF NOT EXISTS feedback_user ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS feedback_open ON feedback(done_at);
+
+-- Ultra 只增加独立授权/申请/下载表，不迁移、不修改用户账本。
+CREATE TABLE IF NOT EXISTS ultra_grants (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  failures INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
+  enabled_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ultra_requests (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  request_day TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  state TEXT NOT NULL,
+  verified_at TEXT,
+  completed_at TEXT,
+  settled_at TEXT,
+  UNIQUE(user_id, request_day)
+);
+CREATE INDEX IF NOT EXISTS ultra_requests_user ON ultra_requests(user_id, expires_at);
+CREATE TABLE IF NOT EXISTS ultra_downloads (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  request_id TEXT REFERENCES ultra_requests(id) ON DELETE CASCADE,
+  package_key TEXT NOT NULL,
+  version TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
+  streamed_at TEXT,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ultra_downloads_user ON ultra_downloads(user_id, expires_at);
 """
 
 

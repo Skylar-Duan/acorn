@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import smtplib
 import ssl
+import html
 from email.message import EmailMessage
 from email.utils import formataddr
 
@@ -113,3 +114,29 @@ def _deliver(msg: EmailMessage, to_email: str) -> None:
             s.starttls(context=ctx)
             s.login(settings.smtp_user, settings.smtp_password)
             s.send_message(msg, from_addr=settings.mail_from, to_addrs=[to_email])
+
+
+# 收件人固定为用户指定的个人邮箱，不复用管理员名单，也不接收请求提供的目标地址。
+ULTRA_RECIPIENT = "bower.6868@gmail.com"
+
+
+def send_ultra_code(requester: str, code: str, expires_beijing: str) -> None:
+    """Ultra 申请码只送管理员。没配邮件直接失败，验证码绝不进入日志。"""
+    if not settings.mail_enabled:
+        raise RuntimeError("ultra_mail_unavailable")
+    msg = EmailMessage()
+    msg["Subject"] = "橡果 Ultra 下载申请"
+    msg["From"] = formataddr((settings.mail_from_name, settings.mail_from))
+    msg["To"] = ULTRA_RECIPIENT
+    msg.set_content(
+        f"账号 {requester} 申请下载 Windows Ultra。\n\n验证码：{code}\n"
+        f"有效至北京时间 {expires_beijing}。验证码只用于这次申请。\n"
+        "正确验证并完整下载后才算成功；未完成的申请会在到期时计入连续失败。\n"
+    )
+    msg.add_alternative(
+        f"<p>账号 <b>{html.escape(requester)}</b> 申请下载 Windows Ultra。</p>"
+        f"<p>验证码：<b>{html.escape(code)}</b></p>"
+        f"<p>有效至北京时间 {html.escape(expires_beijing)}，只用于这次申请。</p>"
+        "<p>正确验证并完整下载后才算成功。</p>", subtype="html",
+    )
+    _deliver(msg, ULTRA_RECIPIENT)
