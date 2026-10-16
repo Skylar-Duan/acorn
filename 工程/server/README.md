@@ -153,6 +153,7 @@ python -m uvicorn app.main:app --reload --port 8787
 ```bash
 python tests/test_api.py          # 74 条，不装 pytest 也能跑；装了也能 python -m pytest tests
 python tests/test_ultra.py        # 私有包、并发、北京时间边界与配额；全用临时库和假邮件
+python tests/test_ultra_authorization.py # Bower默认资格、验码即授权、受保护后台列表/详情
 # cdpandas 由 tests/fake_cdpandas.py 顶替（真 HTTP、本机随机端口），不用连真的
 ```
 
@@ -206,10 +207,15 @@ DNS 不用配：`*.cdpandas.com` 已有通配符 A 记录指到本机。证书�
   没申请的日期不记失败，验证正确但未下载仍记失败。
 - 连续第三次失败从该申请的 expiresAt 起锁七天。到期结算在事务中只做一次，惰性结算与常驻进程结果相同。
   锁定只管新的网站申请；不影响普通使用、同步或已经启用的 Ultra 的正常更新。
+- 正确验证当天验证码即长期授权 Ultra 更新与32 MiB额度；错码、未验证/冻结身份或客户端自报邮箱不授权。
+  授权与下载状态分开：只验证未下载，到期仍计一次失败，连续三次锁七天，不因已授权跳过申请限制。
 - 完整下载后客户端 SHA-256 校验再确认，成功清零；重复确认幂等。
-  服务器只在最后一帧 HTTP body 成功发送后记录传输证据，不能凭验码成功、点按钮或随意调用 complete 获得授权。
+  服务器只在最后一帧 HTTP body 成功发送后记录传输证据，不能凭验码成功、点按钮或随意调用 complete 冒充已完整下载。
   浏览器无法证明系统“另存为”最终落盘，产品以“完整传输并校验通过”为成功边界。
-- 成功后账号长期启用 Ultra 更新与较大额度。网站次日重新申请，当天已验证/成功申请可从 status 取新下载资格重下。
+- 网站次日重新申请，当天已验证/成功申请可从 status 取新下载资格重下。
+- `bower.6868@gmail.com` 默认长期授权，按服务端已验证账号邮箱 `strip().casefold()` 识别，
+  不需要先验 Ultra 码/下载，也不创建虚构的验证或授权时间。它仍沿用网站每日申请、午夜到期、失败锁定规则；
+  已安装客户端更新及32 MiB额度直接可用。普通管理员不会仅凭管理员身份获得 Ultra 资格。
 - 网站申请可以取得已上传的最新正式或 beta 私有包，首发只有 beta 时也不要求申请人是管理员，仍须 Bower 验证码。
   应用内 `/desktop/beta` 的管理员门槛保留；不会把 beta 写进正式 latest 清单。
 
@@ -219,7 +225,7 @@ DNS 不用配：`*.cdpandas.com` 已有通配符 A 记录指到本机。证书�
 |---|---|---|
 | GET | `/api/ultra/status` | 当前账号、申请日/截止/锁定、可否申请、连续失败与当天可用的下载资格 |
 | POST | `/api/ultra/request` | 无请求体，202；邮件未配 503、发送失败 502，两者不占当天申请机会 |
-| POST | `/api/ultra/verify` | `{requestId,code}` → `{ok,requestId,expiresAt,download}`；错码 400，到期 410 |
+| POST | `/api/ultra/verify` | `{requestId,code}` → `{ok,requestId,expiresAt,download}`；正确即授权，错码 400，到期 410 |
 | GET | `/api/ultra/download/{ticket}` | 本人鉴权后传整个私有安装包，不支持绕过身份的公开直链 |
 | POST | `/api/ultra/download/{downloadId}/complete` | `{sha256}`；未完整传输 409、摘要不符 400、资格到期 410 |
 | GET | `/api/ultra/desktop/latest` | 已启用账号的正式更新清单；未启用 403 |
@@ -227,6 +233,22 @@ DNS 不用配：`*.cdpandas.com` 已有通配符 A 记录指到本机。证书�
 
 status 返回 `email / enabled / serverNow / requestId / requestDay / expiresAt / canRequest / nextRequestAt /
 consecutiveFailures / lockedUntil / verified / downloaded / download / message`。
+
+### 管理员授权记录
+
+网站既有反馈后台增加 Ultra 授权页；接口共用 `feedback_admin` 门禁，只接受新鲜橡果管理员 Bearer 或
+cdpandas 已验证且未冻结管理员 Cookie。非管理员与不存在路径一致返回404；响应 `private, no-store`，不加入公开OpenAPI。
+
+- GET `/api/admin/ultra/accounts?status=enabled|all&limit=50&before=<id>`：默认只看已授权，id倒序、before排他，
+  limit限制1–200，返回 `{items,next}`，next为空表示末页。
+- GET `/api/admin/ultra/accounts/{id}`：单个本地账号详情。不存在返回404；查看时按服务端时间结算已有申请到期状态。
+- 每项仅含 `id/email/displayName/verified/createdAt/lastSeen/ultra`。
+  ultra含 `enabled/source/enabledAt/downloadedAt`；source为 `default`、`verified_code` 或null。
+  默认资格的enabledAt为null；旧下载授权沿用原enabled_at，来源归为已通过验证码，不伪造历史时间。
+  downloadedAt为最近一次完整传输+SHA确认时间，可为null，不能把验码当已下载。
+  详情另含 `consecutiveFailures/lockedUntil/lastRequestAt/lastVerifiedAt/lastCompletedAt`。
+- 不返回账本、密码、验证码摘要、Bearer、下载ticket或私有包路径，不新增手工授权/撤销入口。
+  列表只列本服务已有账号，不为默认资格创建虚构账号。无需迁库、改账本或新增环境变量。
 
 download 沿用普通清单的 `available / version / schema / url / size / sha256 / notes / publishedAt / pageUrl`，
 另有 `edition:"ultra" / fileName / downloadId / requiresAuth:true / expiresAt`。url 是当前本人可用的短期票据，

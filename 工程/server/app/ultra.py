@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Callable
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+\.[^@\s]+$")
 FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,170}\.exe$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_PREFIX = "data:image/jpeg;base64,"
+DEFAULT_ENTITLED_EMAIL = "bower.6868@gmail.com"
 
 
 def utcnow() -> datetime:
@@ -97,9 +98,22 @@ def unlocked(grant):
         fail(423, "ultra_locked", "连续三次申请未完成下载，七天后可重新申请", lockedUntil=grant["locked_until"])
 
 
+def entitlement(user, enabled_at=None) -> dict:
+    """只接受服务端账号行；默认身份不创建虚构验证/下载时间。"""
+    default = bool(user["verified"]) and str(user["email"]).strip().casefold() == DEFAULT_ENTITLED_EMAIL
+    return {
+        "enabled": default or bool(enabled_at),
+        "source": "default" if default else "verified_code" if enabled_at else None,
+        "enabledAt": None if default else enabled_at,
+    }
+
+
 def enabled(db: Database, uid: int) -> bool:
-    row = db.conn.execute("SELECT enabled_at FROM ultra_grants WHERE user_id=?", (uid,)).fetchone()
-    return bool(row and row["enabled_at"])
+    row = db.conn.execute(
+        "SELECT u.email,u.verified,g.enabled_at FROM users u"
+        " LEFT JOIN ultra_grants g ON g.user_id=u.id WHERE u.id=?", (uid,),
+    ).fetchone()
+    return bool(row and entitlement(row, row["enabled_at"])["enabled"])
 
 
 def rate(c, key: str, cap: int, seconds: int, now: datetime):
@@ -219,7 +233,7 @@ class TrackedDownload(StreamingResponse):
         self.mark()
 
 
-def mount(app, db: Database, current_user, is_admin, forward_ip):
+def mount(app, db: Database, current_user, is_admin, forward_ip, admin_identity):
     router = APIRouter(prefix="/api/ultra")
 
     def identity(request: Request, authorization: Annotated[str | None, Header()] = None):
@@ -271,7 +285,7 @@ def mount(app, db: Database, current_user, is_admin, forward_ip):
                 else:
                     download = ticket(c, uid, package, now, row)
             return {
-                "email": user["email"], "enabled": bool(grant["enabled_at"]), "serverNow": iso(now),
+                "email": user["email"], "enabled": enabled(db, uid), "serverNow": iso(now),
                 "requestId": row["id"] if row else None, "requestDay": row["request_day"] if row else None,
                 "expiresAt": row["expires_at"] if row else None, "canRequest": not row and not grant["locked_until"],
                 "nextRequestAt": grant["locked_until"] or (iso(midnight) if row else iso(now)),
@@ -343,6 +357,8 @@ def mount(app, db: Database, current_user, is_admin, forward_ip):
             if not hmac.compare_digest(code_hash(uid, row["id"], body.code.strip()), row["code_hash"]):
                 fail(400, "bad_code", "验证码不正确，请核对管理员提供的当天验证码")
             c.execute("UPDATE ultra_requests SET verified_at=COALESCE(verified_at,?) WHERE id=?", (iso(now), row["id"]))
+            # 授权与完整下载分开：正确验证码立即授权；未完成下载仍到期计失败。
+            c.execute("UPDATE ultra_grants SET enabled_at=COALESCE(enabled_at,?) WHERE user_id=?", (iso(now), uid))
             return {"ok": True, "requestId": row["id"], "expiresAt": row["expires_at"], "download": ticket(c, uid, package, now, row)}
 
     def update(user, beta=False):
@@ -416,10 +432,68 @@ def mount(app, db: Database, current_user, is_admin, forward_ip):
                     c.execute("UPDATE ultra_requests SET completed_at=COALESCE(completed_at,?),settled_at=COALESCE(settled_at,?),state='succeeded' WHERE id=?", (iso(now), iso(now), row["request_id"]))
                     c.execute("UPDATE ultra_grants SET failures=0,locked_until=NULL,enabled_at=COALESCE(enabled_at,?) WHERE user_id=?", (iso(now), uid))
                 c.execute("UPDATE ultra_downloads SET completed_at=? WHERE id=?", (iso(now), download_id))
+            failures = c.execute("SELECT failures FROM ultra_grants WHERE user_id=?", (uid,)).fetchone()
             return {"ok": True, "enabled": enabled(db, uid), "downloaded": True,
-                    "consecutiveFailures": int(c.execute("SELECT failures FROM ultra_grants WHERE user_id=?", (uid,)).fetchone()[0])}
+                    "consecutiveFailures": int(failures["failures"]) if failures else 0}
 
     app.include_router(router)
+
+    # 和反馈后台使用同一道新鲜管理员门禁；外部访客得到普通404。
+    admin = APIRouter(prefix="/api/admin/ultra", dependencies=[Depends(admin_identity)], include_in_schema=False)
+
+    def admin_out(row, detail=False):
+        state = entitlement(row, row["enabled_at"])
+        state["downloadedAt"] = row["downloaded_at"]
+        if detail:
+            latest = db.conn.execute(
+                "SELECT MAX(created_at) AS requested,MAX(verified_at) AS verified,MAX(completed_at) AS completed"
+                " FROM ultra_requests WHERE user_id=?", (int(row["id"]),),
+            ).fetchone()
+            state.update(consecutiveFailures=int(row["failures"] or 0), lockedUntil=row["locked_until"],
+                         lastRequestAt=latest["requested"], lastVerifiedAt=latest["verified"],
+                         lastCompletedAt=latest["completed"])
+        return {"id": int(row["id"]), "email": row["email"], "displayName": row["display_name"],
+                "verified": bool(row["verified"]), "createdAt": row["created_at"], "lastSeen": row["last_seen"],
+                "ultra": state}
+
+    columns = ("SELECT u.id,u.email,u.display_name,u.verified,u.created_at,u.last_seen,"
+               "g.enabled_at,g.failures,g.locked_until,"
+               "(SELECT MAX(d.completed_at) FROM ultra_downloads d WHERE d.user_id=u.id) AS downloaded_at"
+               " FROM users u LEFT JOIN ultra_grants g ON g.user_id=u.id")
+
+    @admin.get("/accounts")
+    def accounts(response: Response, state: Annotated[str, Query(alias="status")] = "enabled",
+                 count: Annotated[int, Query(alias="limit")] = 50, before: int | None = None):
+        response.headers["Cache-Control"] = "private, no-store"
+        if state not in ("enabled", "all"):
+            fail(400, "bad_request", "status 只能是 enabled 或 all")
+        n = max(1, min(count, 200))
+        filters, args = [], []
+        if state == "enabled":
+            filters.append("(NULLIF(g.enabled_at,'') IS NOT NULL OR (u.verified=1 AND lower(trim(u.email))=?))")
+            args.append(DEFAULT_ENTITLED_EMAIL)
+        if before is not None:
+            filters.append("u.id<?")
+            args.append(before)
+        where = " WHERE " + " AND ".join(filters) if filters else ""
+        rows = db.conn.execute(columns + where + " ORDER BY u.id DESC LIMIT ?", (*args, n + 1)).fetchall()
+        return {"items": [admin_out(row) for row in rows[:n]], "next": int(rows[n - 1]["id"]) if len(rows) > n else None}
+
+    @admin.get("/accounts/{user_id}")
+    def account_detail(user_id: int, response: Response):
+        response.headers["Cache-Control"] = "private, no-store"
+        row = db.conn.execute(columns + " WHERE u.id=?", (user_id,)).fetchone()
+        if row is None:
+            # 与未知路由、非管理员一致，不给外部账号枚举信号。
+            from starlette.exceptions import HTTPException as NotFound
+            raise NotFound(status_code=404)
+        # 授权/申请详情只结算本账号的现有请求，不触碰账本。
+        with transaction(db) as c:
+            settle(c, user_id, utcnow())
+        row = db.conn.execute(columns + " WHERE u.id=?", (user_id,)).fetchone()
+        return admin_out(row, True)
+
+    app.include_router(admin)
 
 
 def image_entries(envelope):

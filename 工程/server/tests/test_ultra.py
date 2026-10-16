@@ -134,7 +134,7 @@ def test_ultra_success_requires_entire_transfer_and_digest_then_resets():
         assert client.get("/api/ultra/status", headers=headers).json()["consecutiveFailures"] == 1
         applied = apply(headers)
         manifest = verify(headers, applied, sent)
-        assert not ultra.enabled(db, uid)
+        assert ultra.enabled(db, uid)  # 正确验证码即授权；完整下载才清零失败计数。
         assert complete(headers, manifest).status_code == 409  # 知道公开sha也不能假确认
         assert client.get("/api/ultra/status", headers=headers).json()["consecutiveFailures"] == 1
         result = client.get(manifest["url"], headers=headers)
@@ -155,7 +155,7 @@ def test_ultra_success_requires_entire_transfer_and_digest_then_resets():
         assert client.get(update.json()["url"], headers=headers).content == binary
 
 
-def test_ultra_expired_during_download_cannot_activate_after_midnight():
+def test_ultra_expired_during_download_cannot_complete_after_midnight():
     with world() as (sent, _, _):
         uid, headers, _ = user()
         applied = apply(headers)
@@ -163,7 +163,7 @@ def test_ultra_expired_during_download_cannot_activate_after_midnight():
         assert client.get(manifest["url"], headers=headers).status_code == 200
         Clock.now = ultra.dt(applied["expiresAt"])
         result = complete(headers, manifest)
-        assert result.status_code == 410 and not ultra.enabled(db, uid)
+        assert result.status_code == 410 and ultra.enabled(db, uid)
         assert client.get("/api/ultra/status", headers=headers).json()["consecutiveFailures"] == 1
 
 

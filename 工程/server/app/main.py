@@ -806,7 +806,7 @@ def desktop_beta(user: CurrentUser) -> dict:
 
 # ---------- 收尾 ----------
 
-ultra.mount(app, db, current_user, is_admin, forward_ip)
+ultra.mount(app, db, current_user, is_admin, forward_ip, feedback_admin)
 
 
 @app.middleware("http")
