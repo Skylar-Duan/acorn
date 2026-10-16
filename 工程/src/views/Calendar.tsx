@@ -684,7 +684,7 @@ export default function Calendar() {
         {expanded && (
           <div className="cal-detail">
             {/* key 必不可少：不给 key，切换展开的任务时 React 会复用同一个实例，
-                已完成子任务的折叠状态、整句改草稿都会从上一张卡串到下一张 */}
+                已完成子任务的折叠状态、标题编辑草稿都会从上一张卡串到下一张 */}
             <TaskCard key={expanded.id} task={expanded} />
           </div>
         )}

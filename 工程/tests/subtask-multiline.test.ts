@@ -212,19 +212,19 @@ describe("③ 任务卡与其他入口", () => {
   });
 
   it("加子任务时解析开 keepNewlines（换行一路留进标题）", () => {
-    expect(taskCardSource).toContain(
-      "parseSubtaskInput(newSub, new Date(), [], settings.weekendDay, { keepNewlines: true })",
-    );
+    expect(taskCardSource).toContain("parseEditedTitle(raw,");
+    expect(taskCardSource).toContain('keepNewlines: true, skip: ["tag"]');
   });
 
-  it("已有子任务标题：Shift+Enter 放行（换行），Enter 拦掉不做事；改标题走 keepLines", () => {
-    const at = taskCardSource.indexOf("value={s.title}");
+  it("已有子任务标题：Shift+Enter换行，Enter提交快捷标记；草稿保留分行", () => {
+    const at = taskCardSource.indexOf("value={subDrafts[s.id] ?? s.title}");
     const body = taskCardSource.slice(at, taskCardSource.indexOf("<CommitMark", at));
     expect(body).toContain("keepLines(e.target.value)");
     expect(body).not.toContain("oneLine(");
     expect(body).toContain("if (e.shiftKey) return;");
     expect(body).not.toContain("expandTask(null)");
     expect(body).toContain("e.preventDefault();");
+    expect(body).toContain("void commitSubTitle(s.id);");
   });
 
   it("母任务标题一个字没动：oneLine + Shift+Enter 收卡 + Enter 跳备注", () => {

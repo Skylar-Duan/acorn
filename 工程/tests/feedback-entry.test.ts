@@ -2,7 +2,7 @@
 // 「查看大家的反馈」那个管理员入口同一天又撤掉了——用户：「反馈那里：不需要查看大家的反馈」）。
 //
 // 钉三样：
-//   ① 挂在哪：设置页「账号」后面一节，三端同一份（不包在任何平台判断里）
+//   ① 挂在哪：设置页最下面一节，三端同一份（不包在任何平台判断里）
 //   ② 没登录：只有一句「登录后就能发反馈」+「去登录」，没有输入框
 //   ③ 发送：带对的 platform / version / device；成了清空并说「收到了，谢谢」；
 //      没成给人话（太长、太频繁、网络不通），框里的字留着；
@@ -95,14 +95,17 @@ afterEach(() => {
 
 // ---------------------------------------------------------------- ① 挂在哪
 
-describe("① 设置页「账号」后面一节，三端同一份", () => {
-  it("「反馈」紧跟在「账号」那一节后面", () => {
+describe("① 设置页最下面一节，三端同一份", () => {
+  it("「反馈」在通用、版本和关于之后", () => {
     const cloudAt = settingsCode.indexOf('<SetSection\n          id="cloud"');
     const fbAt = settingsCode.indexOf('<SetSection\n          id="feedback"');
     const generalAt = settingsCode.indexOf('<SetSection\n          id="general"');
     expect(cloudAt).toBeGreaterThan(-1);
     expect(fbAt).toBeGreaterThan(cloudAt);
-    expect(generalAt).toBeGreaterThan(fbAt);
+    expect(generalAt).toBeGreaterThan(cloudAt);
+    expect(fbAt).toBeGreaterThan(generalAt);
+    expect(fbAt).toBeGreaterThan(settingsCode.indexOf("set-about"));
+    expect(fbAt).toBe(settingsCode.lastIndexOf("<SetSection"));
     expect(settingsCode).toContain('title="反馈"');
     expect(settingsCode).toContain("<FeedbackPanel />");
   });

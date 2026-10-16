@@ -356,6 +356,15 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           已放弃
         </span>
       )}
+      {!isMobile && !dateOnlyTail && sub && ((sub.who?.length ?? 0) > 0 || (sub.listIds?.length ?? 0) > 0) && (
+        <span className="sub-row-categories" aria-label="子任务追加归类">
+          {(sub.who ?? []).map((who) => <span key={`who:${who}`} title={`本步追加需求方：${who}`}>@{who}</span>)}
+          {(sub.listIds ?? []).map((id) => {
+            const addedList = lists.find((l) => l.id === id);
+            return addedList ? <span key={`list:${id}`} title={`本步追加清单：${addedList.name}`}>/{addedList.name}</span> : null;
+          })}
+        </span>
+      )}
       {/* .meta 整块吞掉点击（防止点日期/清单标签误开卡片）。这句是全块的规矩，
           绝不为了让下面那个徽标可点就把它拆掉——拆了整条右侧信息区都会变成「点了就开卡」。
           徽标自己带 onClick，本来就跑在这句之前 */}

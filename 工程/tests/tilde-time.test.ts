@@ -435,15 +435,9 @@ describe("界面上教的写法要跟规矩对得上（教错了用户照着打�
     // 子任务那两条也得改口，不然照着「明天 !高」打，日期不会被认出来
     expect(taskCardSource).toContain("可以写「~明天 !高」");
     expect(taskSheetSource).toContain("可以直接写「~明天 !高」");
-    // 任务卡底下那栏「快捷改」的提示语：这一档的框是空的，照着它打就是用户唯一的依据。
-    // 少个 ~ 的话，「明天 15点」会被当成新标题把原标题整条换掉
-    expect(taskCardSource).toContain("快捷改：输入「~明天 ~15点 !高 #标签 /清单 @人」");
-    expect(taskCardSource).not.toContain("快捷改：输入「明天");
-    // 提示语改对了还不够：万一用户漏打 ~，那句时间词也不许把原标题整条换掉。
-    // 这一档撤销当场按不出来（焦点在框里，Ctrl+Z 被 inEditable 挡着），所以要在写库前拦一道
-    expect(taskCardSource).toContain("const bareTime = isBareTimeOnly(p.title, settings.weekendDay);");
-    expect(taskCardSource).toContain("if (p.title.trim() && !bareTime) patch.title = p.title.trim();");
-    expect(taskCardSource).toContain('showToast("时间前面要打个 ~ 才算数，标题先没动", false)');
+    // 直接改标题就能改属性，不再另开一句话输入框。
+    expect(taskCardSource).toContain("任务标题，可加 ~明天 @人 /清单");
+    expect(taskCardSource).not.toContain("tc-sentence");
   });
 
   it("设置里「周末指的是」那句也带着 ~（照着写「周末」是不设日期的）", () => {

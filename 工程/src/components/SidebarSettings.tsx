@@ -21,7 +21,7 @@ export default function SidebarSettings() {
     updateSettings({ sidebar: setSidebarHidden(appStore.getState().data.settings.sidebar, id, hide) });
   }
   return <div className="sidebar-settings">
-    <p className="set-desc">拖动模块调整顺序。清单、需求方和标签各自保留一组，组内全部显示。隐藏只移走侧栏入口，任务和清单仍在。</p>
+    <p className="set-desc">拖动模块调整顺序。清单、需求方和标签保留分组，可在侧栏独立收展。隐藏只移走入口，任务和清单仍在。</p>
     <h3>已显示 <span>拖动整组排序</span></h3>
     {shown.length === 0 && <p className="sidebar-settings-empty">侧栏入口已全部隐藏。从下面点 ＋ 可以放回。</p>}
     {shown.map((m, i) => <div key={m.id} className={`sidebar-setting-row${drag.over === m.id ? " move-over" : ""}`}

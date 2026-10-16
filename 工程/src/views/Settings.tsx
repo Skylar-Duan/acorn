@@ -1,4 +1,4 @@
-// 设置：账号 / 反馈 / 通用 / 外观 / 数据 / 导出与导入 / 版本更新 / 关于。分节卡片，一次只摊开一节。
+// 设置：账号 / 通用 / 护眼提醒 / 功能区设置 / 主题 / 数据 / 导出与导入 / 版本更新 / 关于 / 反馈。
 //
 // v1.15.1（用户原话「三端：设置中，账号卡片默认张开，并且移到最上面」）：账号挪到第一节，
 // 标题从「云账号」改叫「账号」（跟头像点开的那张面板一个叫法），每次进来都摊开它——
@@ -75,6 +75,7 @@ function SetSection({
   defaultOpen = false,
   summary,
   anchorId,
+  headerAction,
   children,
 }: {
   id: string;
@@ -84,16 +85,20 @@ function SetSection({
   summary?: string;
   /** 给别处 scrollIntoView 用的 DOM id（侧栏同步指示滚到「账号」靠它） */
   anchorId?: string;
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [open, toggle] = useFold(id, defaultOpen, SET_FOLD_PREFIX, SET_GROUP);
   return (
     <div className={`set-section${open ? "" : " set-closed"}`} id={anchorId}>
-      <button type="button" className="set-head" aria-expanded={open} onClick={toggle}>
-        <h2>{title}</h2>
-        {!open && summary && <span className="set-summary">{summary}</span>}
-        <span className={`set-caret${open ? " up" : ""}`}>▾</span>
-      </button>
+      <div className="set-header">
+        <button type="button" className="set-head" aria-expanded={open} onClick={toggle}>
+          <h2>{title}</h2>
+          {!open && summary && <span className="set-summary">{summary}</span>}
+          <span className={`set-caret${open ? " up" : ""}`}>▾</span>
+        </button>
+        {headerAction}
+      </div>
       <div className={`set-fold${open ? "" : " shut"}`}>
         <div className="set-fold-inner">{children}</div>
       </div>
@@ -391,14 +396,14 @@ export default function Settings() {
       {isMobile ? (
         <MobileHead
           title="设置"
-          sub="通用、外观、账号与数据"
+          sub="通用、主题、账号与数据"
           search={false}
           onBack={() => navigate("today")}
         />
       ) : (
         <div className="view-head">
           <h1>设置</h1>
-          <span className="sub">通用、外观、账号与数据</span>
+          <span className="sub">通用、主题、账号与数据</span>
         </div>
       )}
       <div className="view-body set-body">
@@ -418,18 +423,6 @@ export default function Settings() {
             登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
           <AccountPanel />
-        </SetSection>
-
-        {/* ---------- 反馈（2026-09-21，用户：「三端：反馈入口做出来（放到设置里面）」） ---------- */}
-        {/* 紧跟账号：发反馈要登录，没登录时这一节只有一句「登录后就能发反馈」，
-            往上一格就是登录入口。三端同一节，端、版本、设备自动带上，见 components/FeedbackPanel */}
-        <SetSection
-          id="feedback"
-          title="反馈"
-          summary={session ? "哪里不好用、想要什么，写给我们" : "登录后就能发反馈"}
-        >
-          <div className="set-desc">每一条都会有人看。</div>
-          <FeedbackPanel />
         </SetSection>
 
         {/* ---------- 通用（v1.14.1 前叫「行为」，PM 点名改名并挪到第一位；v1.15.1 起让给账号，排第二） ---------- */}
@@ -564,7 +557,9 @@ export default function Settings() {
         {guide.sheet}
 
         {isDesktopShell && (
-          <SetSection id="eye-care" title="护眼提醒" summary={settings.eyeCareEnabled ? "每 20 分钟 · 准备 10 秒后远眺 20 秒" : "已关闭"}>
+          <SetSection id="eye-care" title="护眼提醒" summary={settings.eyeCareEnabled ? "每 20 分钟 · 准备 10 秒后远眺 20 秒" : "已关闭"}
+            headerAction={<button type="button" className="set-preview" aria-label="预览护眼提醒" onClick={() => void previewEyeCare()}>预览</button>}
+          >
             <div className="set-row">
               <div className="set-row-label">定时休息<span className="set-hint">每 20 分钟提醒一次，先留 10 秒准备，再看远处 20 秒。橡果收进托盘也会提醒；随时可以跳过。</span></div>
               <div className="set-ctl"><button className={`set-switch${settings.eyeCareEnabled ? " on" : ""}`} role="switch" aria-label="定时护眼提醒" aria-checked={settings.eyeCareEnabled === true} onClick={() => updateSettings({ eyeCareEnabled: !settings.eyeCareEnabled })} /></div>
@@ -573,20 +568,19 @@ export default function Settings() {
               <div className="set-row-label">提醒方式<span className="set-hint">全屏提醒覆盖当前屏幕，可以随时关闭。</span></div>
               <div className="set-ctl"><div className="set-seg">{([["small", "小窗"], ["full", "全屏"]] as const).map(([id, label]) => <button key={id} className={(settings.eyeCareMode ?? "small") === id ? "on" : undefined} onClick={() => updateSettings({ eyeCareMode: id })}>{label}</button>)}</div></div>
             </div>
-            <div className="set-row"><div className="set-row-label">试试看<span className="set-hint">预览一次完整的准备和休息过程，不会打开定时提醒。</span></div><div className="set-ctl"><button className="btn" onClick={() => void previewEyeCare()}>预览一次</button></div></div>
           </SetSection>
         )}
 
         {hasDesktopFeatures && (
-          <SetSection id="sidebar" title="侧栏" anchorId="set-sidebar" summary="拖动整组排序 · 添加与隐藏模块">
+          <SetSection id="sidebar" title="功能区设置" anchorId="set-sidebar" summary="拖动整组排序 · 添加与隐藏模块">
             <SidebarSettings />
           </SetSection>
         )}
 
-        {/* ---------- 外观 ---------- */}
+        {/* ---------- 主题 ---------- */}
         <SetSection
           id="look"
-          title="外观"
+          title="主题"
           summary={`${THEMES.find((t) => t.id === settings.theme)?.name ?? ""} · ${MODES.find((m) => m.id === settings.mode)?.name ?? ""}`}
         >
           <div className="set-desc">六款主题，每款配一幅背景画，淡淡地垫在任务下面。</div>
@@ -730,6 +724,15 @@ export default function Settings() {
           {/* 跟侧栏版本号点开的是同一个弹窗，别三处各讲一遍 */}
           <button className="btn ghost" onClick={() => setChangelogOpen(true)}>查看更新日志</button>
         </div>
+
+        <SetSection
+          id="feedback"
+          title="反馈"
+          summary={session ? "哪里不好用、想要什么，写给我们" : "登录后就能发反馈"}
+        >
+          <div className="set-desc">每一条都会有人看。</div>
+          <FeedbackPanel />
+        </SetSection>
       </div>
     </section>
   );

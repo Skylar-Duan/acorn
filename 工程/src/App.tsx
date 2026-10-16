@@ -23,6 +23,7 @@ import UpdateDialog, { UpdateNudge } from "./components/UpdateDialog";
 import NewerDataDialog from "./components/NewerDataDialog";
 import ChangelogDialog from "./components/ChangelogDialog";
 import QuickAddDialog from "./components/QuickAddDialog";
+import CategoryCreationHost from "./components/CategoryCreationDialog";
 import AccountCorner from "./components/AccountPopover";
 import PostponeButton from "./components/PostponeMenu";
 import { useLeaving } from "./components/motion";
@@ -421,6 +422,7 @@ export default function App() {
       {changelogOpen && <ChangelogDialog />}
       {/* 「记一条」弹窗只在桌面：手机上那个动作是右下角的 ＋（QuickAddSheet） */}
       {!isMobile && quickAddOpen && <QuickAddDialog />}
+      {!isMobile && <CategoryCreationHost />}
       {paletteOpen && <CommandPalette />}
       {searchOpen && <SearchOverlay />}
       <ContextMenu />

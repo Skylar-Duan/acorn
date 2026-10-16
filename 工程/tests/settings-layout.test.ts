@@ -57,11 +57,12 @@ describe("① 「行为」改叫「通用」，紧跟在账号后面", () => {
     expect(code).not.toContain('id="behavior"');
   });
 
-  it("第一节是「账号」，紧跟着「反馈」（2026-09-21 加），「通用」排第三", () => {
-    const [first, second, third] = sections();
+  it("第一节是「账号」，紧跟着「通用」，反馈挪到最后", () => {
+    const [first, second] = sections();
     expect(first).toEqual({ id: "cloud", title: "账号" });
-    expect(second).toEqual({ id: "feedback", title: "反馈" });
-    expect(third).toEqual({ id: "general", title: "通用" });
+    expect(second).toEqual({ id: "general", title: "通用" });
+    const allSections = sections();
+    expect(allSections[allSections.length - 1]).toEqual({ id: "feedback", title: "反馈" });
   });
 
   it("只有账号那一节带 defaultOpen（新用户第一次进来摊开的就是它）", () => {
@@ -82,7 +83,7 @@ describe("① 「行为」改叫「通用」，紧跟在账号后面", () => {
 
   it("页眉那句副标题跟着改口，不再提「行为」", () => {
     expect(code).not.toContain("外观、账号、数据与行为");
-    expect(code).toContain("通用、外观、账号与数据");
+    expect(code).toContain("通用、主题、账号与数据");
   });
 });
 
@@ -120,12 +121,12 @@ describe("② 「一句话记事」并进「通用」，在里面叫「快捷用
 });
 
 describe("③ 顺序按主流 App 的习惯来", () => {
-  it("账号 / 反馈 / 通用后是桌面护眼与侧栏，之后外观 / 数据 / 导出与导入 / 版本更新", () => {
+  it("账号 / 通用后是桌面护眼与功能区设置，主题等按原顺序，反馈在最后", () => {
     expect(sections().map((s) => s.id)).toEqual([
-      "cloud", "feedback", "general", "eye-care", "sidebar", "look", "data", "io", "update",
+      "cloud", "general", "eye-care", "sidebar", "look", "data", "io", "update", "feedback",
     ]);
     expect(sections().map((s) => s.title)).toEqual([
-      "账号", "反馈", "通用", "护眼提醒", "侧栏", "外观", "数据", "导出与导入", "版本更新",
+      "账号", "通用", "护眼提醒", "功能区设置", "主题", "数据", "导出与导入", "版本更新", "反馈",
     ]);
   });
 
@@ -133,15 +134,16 @@ describe("③ 顺序按主流 App 的习惯来", () => {
     expect(code).not.toContain("云账号");
   });
 
-  it("「关于」压在最底下（它不折叠，是一张单独的卡）", () => {
-    const lastSection = code.lastIndexOf("<SetSection");
+  it("「关于」在反馈之前（它不折叠，是一张单独的卡）", () => {
+    const feedback = code.indexOf('id="feedback"');
     const about = code.indexOf("set-about");
-    expect(about).toBeGreaterThan(lastSection);
+    expect(about).toBeLessThan(feedback);
+    expect(about).toBeGreaterThan(code.indexOf('id="update"'));
   });
 
   it("「版本更新」沉到倒数第二——一年也点不了几次，别占着开头", () => {
     const ids = sections().map((s) => s.id);
-    expect(ids[ids.length - 1]).toBe("update");
+    expect(ids[ids.length - 2]).toBe("update");
   });
 });
 

@@ -4,8 +4,8 @@ import App from "./App";
 import "./styles/themes.css";
 import "./styles/base.css";
 import "./styles/app.css";
-import { addList, addTask, appStore, initStore, showToast } from "./core/store";
-import { LIST_COLORS } from "./core/model";
+import { addTask, appStore, initStore, showToast } from "./core/store";
+import { finishCategoryDraft, prepareTaskCategories, taskCategoriesNeedConfirmation, useCategoryCreation } from "./core/categoryCreation";
 import { startThemeSync } from "./core/themeCtl";
 import { windowContext } from "./core/windowCtx";
 import { startReminderLoop } from "./core/reminders";
@@ -113,7 +113,11 @@ void (async () => {
     await listen("guide:pull", async () => {
       await emitTo("guide", "guide:context", windowContext());
     });
-    await listen<AddTaskInput & { listName?: string | null }>("quickadd:submit", (e) => {
+    await listen<AddTaskInput & { listName?: string | null; requestId?: string }>("quickadd:submit", async (e) => {
+      const respond = (saved: boolean) => emitTo("quickadd", "quickadd:result", { requestId: e.payload.requestId, saved });
+      let saved = false;
+      let request: ReturnType<typeof useCategoryCreation.getState>["pending"] = null;
+      try {
       const s = appStore.getState();
       // 数据没加载成功时不接收——此时任何写入都会拿空库覆盖磁盘真数据。
       // wiped：用户刚清空了本机，正等着 reload，这会儿收下也只会石沉大海。
@@ -122,15 +126,28 @@ void (async () => {
         showToast("数据尚未就绪（数据文件夹不可用），这一条没有保存", false);
         return;
       }
-      const { listName, ...input } = e.payload;
-      let listId: string | null = null;
-      if (listName) {
-        const hit = s.data.lists.find((l) => l.name === listName);
-        // /新清单 自动创建
-        listId = hit ? hit.id : addList(listName, LIST_COLORS[s.data.lists.length % LIST_COLORS.length]);
+      const { listName, requestId: _requestId, ...input } = e.payload;
+      const needsConfirmation = taskCategoriesNeedConfirmation(listName, input.who ?? []);
+      const preparation = prepareTaskCategories(listName, input.who ?? []);
+      request = useCategoryCreation.getState().pending;
+      if (needsConfirmation && request) {
+        // 浮窗暂藏着草稿，确认在主窗完成；取消后由回执把原句送回浮窗。
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const main = getCurrentWindow();
+        await main.show();
+        await main.setFocus();
       }
-      addTask({ ...input, listId });
+      const categories = await preparation;
+      if (!categories) return;
+      addTask({ ...input, listId: categories.listId, who: categories.who });
+      saved = true;
       showToast("已记录", false);
+      } catch {
+        if (request && useCategoryCreation.getState().pending === request) finishCategoryDraft(null);
+        showToast("这一条没有保存，原句已留在记事窗口", false);
+      } finally {
+        await respond(saved).catch(() => {});
+      }
     });
   }
 })();

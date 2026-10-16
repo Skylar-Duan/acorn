@@ -231,7 +231,7 @@ export interface ParseOpts {
   /** 「周末」指周六还是周日,跟设置里那一项走;不给就当周日 */
   weekendDay?: "sat" | "sun";
   /** 标题里的换行留着(每行各自压空白、去首尾空格,空行扔掉)。**只有子任务那条路开**:
-   *  任务卡里加子任务、改子任务可以 Shift+Enter 写成几行。记一条 / 整句改 / 快捷记浮窗都不开,
+   *  任务卡里加子任务、改子任务可以 Shift+Enter 写成几行。记一条 / 标题编辑 / 快捷记浮窗都不开,
    *  那几处一句话就是一句话,换行照旧压成一个空格 */
   keepNewlines?: boolean;
 }
@@ -337,6 +337,8 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
       const a = m.index;
       let b = a + m[0].length;
       if (!free(a, b)) continue;
+      // 先保护正文再调用回调：需求方/清单回调会写解析草稿，不能等产生chip之后才拦。
+      if (literalSpans.some(([start, end]) => a < end && b > start)) continue;
       const t = on(m);
       if (t === null) continue;
       if (skip.has(t.chip.kind)) continue; // 关掉的类别：不认、不吃字，原文留给标题

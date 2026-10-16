@@ -360,6 +360,8 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   flex: none;
 }
 .task-row .meta .list-tag { display: inline-flex; align-items: center; gap: 5px; }
+.task-row .sub-row-categories { display: flex; flex: 0 1 auto; min-width: 0; max-width: min(28%, 230px); gap: 4px; overflow: hidden; }
+.task-row .sub-row-categories > span { min-width: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 5px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--ink-3); font-size: 11px; }
 .task-row .meta .warn { color: var(--warn); }
 .task-row .meta .overdue { color: var(--warn); font-weight: 600; }
 /* 「完成于 X」那一格的固定右列（v1.9.1）。88px = 实测最宽的一档「完成于 12月28日」86px
@@ -418,7 +420,7 @@ body.side-resizing { user-select: none; cursor: col-resize; }
 }
 /* min-width: 0 跟 min-height 是一对，缺一半就等于没写（v1.10.0）。
    .task-card 是 grid item，默认 min-width: auto = 不能收缩到内容最小宽度以下；
-   桌面宽度看不出来，390px 的手机上整张卡被里面最宽的那一行（「整句改」那排 chips）
+   桌面宽度看不出来，390px 的手机上整张卡被里面最宽的那一行（标题编辑那排 chips）
    顶到 839px，右边 449px 连同「# 标签」「⊘ 放弃」「× 删除」全挂在屏幕外，
    而 body 不能横滚 —— 那些按钮不是难点，是**永远点不到**。
    同一个病 .row-slot 在 v1.9.1 已经修过一次（见 tests/row-tail.test.ts） */
@@ -898,15 +900,6 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   /* 折叠头是手指点的，12px 的一行字太薄，撑到跟任务行一个厚度 */
   .task-card .subs .tc-donefold { padding: 10px 0; font-size: 13px; }
 
-  /* 任务卡的「整句改」：里面那排解析 chips 不可收缩（flex: none + nowrap），
-     就是把整张卡顶出屏幕的那只手。窄屏让输入框和 chips 各占一整行、都能换行 */
-  /* .tc-sentence 自己那两句窄屏声明**不在这儿**：它的本体写在这个 @media 块之后
-     （同为一个类名，谁在后面谁赢），写这里会被本体的 border-radius: 999px 顶掉。
-     搬到本体旁边了，见下面「任务卡底部的整句改」那一节。
-     下面这三条能留在这儿，是因为它们比 syntaxinput.css 里的本体多一层类，specificity 更高 */
-  .tc-sentence .si-wrap { flex-wrap: wrap; }
-  .tc-sentence .si-input { min-width: 0; flex: 1 1 100%; }
-  .tc-sentence .si-chips { flex: 1 1 100%; flex-wrap: wrap; }
   /* 子任务行：允许换行，并且给标题定一个下限。
      日期小签 / 重要性小签 / ⊘ / × 全是 flex: none，标题是唯一会被压的那个；
      不给下限的话，多挂一个「已放弃」灰标签就把标题挤到三四个字宽，
@@ -1005,47 +998,10 @@ button.chain-more:hover { filter: brightness(.94); }
 button.chain-more.plain:hover { color: var(--accent); border-color: var(--accent); filter: none; }
 @keyframes badge-in { from { opacity: 0; transform: scale(.7); } }
 
-/* ---------- 任务卡底部的「整句改」 ----------
-   一定要看得出这是个能改的输入框：里面预填着这件事的一整句话，
-   不给外框的话它读起来就是一行说明文字，没人会去点 */
-.tc-sentence {
-  display: flex;
-  /* 里面那个框 v1.9.1 起会换行长高（长句子不再被切掉半截），所以左边那个「整句改」小签
-     和右边的 ↺ 得贴着第一行走，不能跟着整坨居中 */
-  align-items: flex-start;
-  gap: 8px;
-  margin: 10px 0 2px 28px;
-  padding: 3px 10px 3px 8px;
-  border: 1px solid var(--hair);
-  border-radius: 999px;
-  background: var(--bg);
-  transition: border-color var(--dur-1) var(--ease);
-}
-/* 窄屏版必须写在本体**后面**（同为一个类名，谁在后面谁赢，而上面那个
-   @media (max-width: 760px) 大块在本体之前——这个坑 .chain-caret 已经踩过一次）。
-   999px 的圆角在换行长高之后是个奇怪的长胶囊，窄屏收成常规圆角 */
-@media (max-width: 760px) {
-  .tc-sentence { flex-wrap: wrap; border-radius: var(--r-md); }
-}
-.tc-sentence:focus-within { border-color: var(--accent); }
-.tc-sentence-tag {
-  flex: none;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-.tc-sentence:focus-within .tc-sentence-tag { color: var(--accent); }
-.tc-restore {
-  flex: none;
-  color: var(--ink-3);
-  font-size: 13px;
-  line-height: 1;
-  padding: 3px 6px;
-  border-radius: var(--r-sm);
-}
-.tc-restore:hover { color: var(--accent); background: var(--accent-soft); }
+.sub-categories { display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: 100%; align-items: center; }
+.sub-category { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--ink-2); font-size: 11px; overflow-wrap: anywhere; }
+.sub-category button { flex: none; padding: 0 2px; color: var(--ink-3); font-size: 12px; }
+.sub-category button:hover { color: var(--danger); }
 
 /* 「已完成 → 更早」下面那个「还有 N 件，全部展开」 */
 .done-more {
@@ -1098,7 +1054,7 @@ button.chain-more.plain:hover { color: var(--accent); border-color: var(--accent
   line-height: 1;
 }
 .quick-add .qa-help:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-/* 窄屏版写在本体后面才盖得住（同上面 .tc-sentence 那条注释）：20px 的圆手指按不准 */
+/* 窄屏版写在本体后面才盖得住：20px 的圆手指按不准 */
 @media (max-width: 760px) {
   .quick-add .qa-help { width: 30px; height: 30px; }
 }

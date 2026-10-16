@@ -30,7 +30,7 @@ function isSubsequence(word: string, text: string): boolean {
  * 单词在单个任务上的得分；0 表示未命中。
  * word 已小写；各域文本在此处小写后比较（中文不受影响）。
  */
-function wordScore(task: Task, listName: string | null, word: string, exact: boolean): number {
+function wordScore(task: Task, listName: string | null, word: string, exact: boolean, listNames: Map<string, string>): number {
   const title = task.title.toLowerCase();
   const idx = title.indexOf(word);
   if (idx >= 0) return W_TITLE_SUB + (idx === 0 ? W_TITLE_PREFIX_BONUS : 0);
@@ -44,7 +44,10 @@ function wordScore(task: Task, listName: string | null, word: string, exact: boo
     // 子任务标题也算：计划视图是把子任务拆成独立行的，那一行明明在屏幕上、
     // 搜它的名字却一无所获，用户会当成坏了（2026-09-01 补）。
     // 回收站里的那几步不算（v7）：跟整件事进了回收站就搜不到是同一个口径
-    task.subtasks.some((s) => !s.deletedAt && s.title.toLowerCase().includes(word));
+    task.subtasks.some((s) => !s.deletedAt && (
+      s.title.toLowerCase().includes(word) || s.who?.some((w) => w.toLowerCase().includes(word)) ||
+      s.listIds?.some((id) => listNames.get(id)?.toLowerCase().includes(word))
+    ));
   if (metaHit) return W_META_SUB;
   if (task.notes.toLowerCase().includes(word)) return W_NOTES_SUB;
   return 0;
@@ -74,7 +77,7 @@ export function searchTasks(tasks: Task[], lists: List[], query: string, opts: S
     let score = 0;
     let allHit = true;
     for (const w of words) {
-      const s = wordScore(task, listName, w, exact);
+      const s = wordScore(task, listName, w, exact, listNames);
       if (s === 0) {
         allHit = false;
         break;

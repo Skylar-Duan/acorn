@@ -109,6 +109,18 @@ export function byList(
       // 放弃的既不算完成也不算未完成，两栏都不加
       row.open++;
     }
+    for (const sub of t.subtasks) {
+      if (sub.deletedAt) continue;
+      for (const id of new Set(sub.listIds ?? [])) {
+        if (id === t.listId) continue;
+        const extra = rows.get(id);
+        if (!extra) continue;
+        if (sub.done && sub.doneAt) {
+          const date = localDateOfISO(sub.doneAt);
+          if (date >= startYMD && date <= endYMD) extra.done++;
+        } else if (!t.done && !isDropped(t) && !sub.done && !sub.droppedAt) extra.open++;
+      }
+    }
   }
   return [...rows.values()];
 }
@@ -134,6 +146,18 @@ export function byWho(
       } else if (!isDropped(t)) {
         // 同 byList：放弃的两栏都不加
         row.open++;
+      }
+    }
+    for (const sub of t.subtasks) {
+      if (sub.deletedAt) continue;
+      for (const who of new Set(sub.who ?? [])) {
+        if (t.who.includes(who)) continue;
+        const row = rows.get(who) ?? { who, done: 0, open: 0 };
+        rows.set(who, row);
+        if (sub.done && sub.doneAt) {
+          const date = localDateOfISO(sub.doneAt);
+          if (date >= startYMD && date <= endYMD) row.done++;
+        } else if (!t.done && !isDropped(t) && !sub.done && !sub.droppedAt) row.open++;
       }
     }
   }

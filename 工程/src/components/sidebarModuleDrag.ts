@@ -18,13 +18,15 @@ export function useSidebarModuleDrag(onMove: (from: string, to: string | null) =
       },
       onDragEnd: () => { setOver(null); setTimeout(() => { moved.current = false; }, 0); },
     }),
-    target: (id: string | null) => ({
+    target: (id: string | null, after?: string | null) => ({
       onDragOver: (e: React.DragEvent) => {
         if (!e.dataTransfer.types.includes(SIDEBAR_MODULE_MIME)) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
-        setOver(id ?? "end");
+        const box = e.currentTarget.getBoundingClientRect();
+        const target = after !== undefined && box.height > 0 && e.clientY > box.top + box.height / 2 ? after : id;
+        setOver(target ?? "end");
       },
       onDragLeave: (e: React.DragEvent) => {
         if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
@@ -36,7 +38,9 @@ export function useSidebarModuleDrag(onMove: (from: string, to: string | null) =
         e.stopPropagation();
         const from = e.dataTransfer.getData(SIDEBAR_MODULE_MIME);
         setOver(null);
-        if (from) onMove(from, id);
+        const box = e.currentTarget.getBoundingClientRect();
+        const target = after !== undefined && box.height > 0 && e.clientY > box.top + box.height / 2 ? after : id;
+        if (from) onMove(from, target);
       },
     }),
   };

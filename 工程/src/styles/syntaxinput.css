@@ -19,7 +19,7 @@
   color: var(--ink);
 }
 .si-input::placeholder { color: var(--ink-3); }
-/* multiline 那条路（v1.9.1，目前只有任务卡的「整句改」开）：底下是 textarea，
+/* multiline 那条路（v1.9.1，目前只有任务卡的标题编辑开）：底下是 textarea，
    高度由 JS 按内容算（autogrow.ts 的 growArea），这儿只管别让它自己长出滚动条和拖拽把手。
    字体不用管：base.css 有一条 `input, textarea, button { font: inherit }` 兜着 */
 textarea.si-input {

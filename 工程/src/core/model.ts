@@ -32,6 +32,10 @@ export interface Subtask {
    *  （见 store.advanceSub）；**故意不留已完成副本**——那份历史会堆在母任务卡片里，
    *  一条每周重复的子任务一年 52 行，卡片就没法看了。这一处跟整件事的行为不一致，是有意的 */
   repeat?: RepeatRule | null;
+  /** 子任务额外添加的归类。母任务的归类仍继承；这里仅存本步追加项。
+   *  可选且不补默认值：老账本读写不改形，旧客户端按未知字段保留。 */
+  who?: string[];
+  listIds?: string[];
 }
 
 export type RepeatRule =
@@ -94,6 +98,8 @@ export interface List {
   name: string;
   /** 主题色 token 名之一，见 themes.css 的 --list-*，如 'clay' | 'moss' | 'sea' | 'sand' | 'slate' | 'plum' */
   color: string;
+  /** 可选线条图标；旧客户端原样保留，缺省使用清单图标。 */
+  icon?: string;
   order: number;
   /** 同 Task.updatedAt */
   updatedAt: string;
@@ -135,6 +141,8 @@ export interface Settings {
    *  放在设置里 = 每台设备各排各的：需求方不是一条真实记录，只是任务上的一个名字，
    *  给它建一张会同步的表不值当 */
   whoOrder: string[];
+  /** 本机预建的需求方及外观；需求方仍以任务上的名字归类，不改变云端任务格式。 */
+  whoAppearance?: Record<string, { color: string; icon: string }>;
   /** 桌面侧栏模块的本机排布。缺省使用默认顺序，隐藏和别名不改任何任务记录。 */
   sidebar?: {
     order?: string[];

@@ -137,6 +137,17 @@ describe("行尾画多少：tail 开关（归类 / @ / 标签统一隐藏）", (
     expect(taskRowSource).toContain("{!leanTail && !hideList && !bundled && list && (");
   });
 
+  it("仅桌面子任务自己的追加归类显示只读尾签，父归类继续隐藏", () => {
+    expect(taskRowSource).toContain("!isMobile && !dateOnlyTail && sub &&");
+    const added = taskRowSource.slice(taskRowSource.indexOf('className="sub-row-categories"'), taskRowSource.indexOf("{/* .meta 整块"));
+    expect(added).toContain("sub.who");
+    expect(added).toContain("sub.listIds");
+    expect(added).not.toContain("task.who");
+    expect(added).not.toContain("<button");
+    expect(block(appCss, ".task-row .sub-row-categories {")).toContain("min-width: 0;");
+    expect(block(appCss, ".task-row .sub-row-categories > span {")).toContain("text-overflow: ellipsis;");
+  });
+
   it("重要性小旗留着（用户点名要「显示 ddl 和重要性」），它本来也不在 meta 里", () => {
     expect(taskRowSource).toContain('<span className={`flag p${priority}`}');
   });
@@ -235,21 +246,21 @@ describe("点开后多行：卡里的三个框都换成了自动撑高的 textar
   // 新口径钉在 tests/subtask-multiline.test.ts
   it("子任务标题一起做了多行", () => {
     expect(taskCardSource).toContain("ref={growArea}");
-    expect(taskCardSource).toContain("updateSubtask(task.id, s.id, { title: keepLines(e.target.value) });");
+    expect(taskCardSource).toContain("[s.id]: keepLines(e.target.value)");
   });
 
-  it("「整句改」也一起做了，而且**只有它**开 multiline", () => {
-    expect(taskCardSource).toContain("multiline");
+  it("标题编辑不再有第二个整句输入框，记一条入口仍保持单行", () => {
+    expect(taskCardSource).not.toContain("tc-sentence");
     // 解构那儿改名成 multilineProp（allowNewline 开了也算 multiline），默认值照旧是关
     expect(syntaxInputSource).toContain("multiline: multilineProp = false");
     // 随手记那条横条、快捷记那个固定大小的浮窗都没开：那两处长高了会把宿主的版式顶变形。
     // 认的是「单独一行的 multiline 这个 prop」，注释里提到这个词不算
     expect(readFileSync("src/components/QuickAddBar.tsx", "utf8")).not.toMatch(/^\s*multiline\s*$/m);
     expect(readFileSync("src/windows/quickadd.tsx", "utf8")).not.toMatch(/^\s*multiline\s*$/m);
-    expect(taskCardSource).toMatch(/^\s*multiline\s*$/m);
+    expect(taskCardSource).not.toMatch(/^\s*multiline\s*$/m);
   });
 
-  it("整句改那个框里回车还是「提交」不是「换行」", () => {
+  it("通用语法框里回车仍是提交", () => {
     const key = syntaxInputSource.slice(syntaxInputSource.indexOf('if (e.key === "Enter") {'));
     const body = key.slice(0, key.indexOf("submit(parsed);"));
     expect(body).toContain("e.preventDefault();");
@@ -262,9 +273,8 @@ describe("点开后多行：卡里的三个框都换成了自动撑高的 textar
     expect(appCss).toContain(".task-card .subs .sub-row textarea {");
   });
 
-  it("多行之后 .row1 / .sub-row / .tc-sentence 都改成顶部对齐", () => {
+  it("多行之后标题和子任务都改成顶部对齐", () => {
     expect(block(appCss, ".task-card .row1 {")).toContain("align-items: flex-start;");
     expect(block(appCss, ".task-card .subs .sub-row {")).toContain("align-items: flex-start;");
-    expect(block(appCss, ".tc-sentence {")).toContain("align-items: flex-start;");
   });
 });

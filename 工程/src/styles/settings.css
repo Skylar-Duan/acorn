@@ -173,6 +173,15 @@
    用 grid 0fr↔1fr 收高度，内容一直在树上。
    v1.14.1 起一次只摊开一节（手风琴，见 views/Settings.tsx 的 SET_GROUP）：
    收起的那几节各占一个标题行，整页从「一屏摊不完」变成「一眼看得全」 */
+.set-header { display: flex; align-items: center; gap: 12px; }
+.set-section .set-header .set-head { flex: 1; min-width: 0; width: auto; }
+.set-preview {
+  flex: none; padding: 4px 11px; border: 1px solid var(--hair);
+  border-radius: 999px; color: var(--accent); background: var(--bg);
+  font-size: var(--fs-xs); line-height: 1.6;
+}
+.set-preview:hover { border-color: var(--accent); background: var(--card); }
+.set-preview:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .set-section .set-head {
   width: 100%;
   display: flex;

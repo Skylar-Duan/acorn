@@ -384,10 +384,10 @@ describe("创建：解析出的 repeat 一路存进去", () => {
   });
 
   it("桌面那条路（TaskCard.addSubFromInput）把 repeat 一起存了", () => {
-    expect(taskCardSource).toContain("parseSubtaskInput(newSub");
+    expect(taskCardSource).toContain("parseEditedTitle(raw,");
     const start = taskCardSource.indexOf("function addSubFromInput");
     expect(start).toBeGreaterThan(0);
-    expect(taskCardSource.slice(start, start + 700)).toContain("repeat: r.repeat");
+    expect(taskCardSource.slice(start, taskCardSource.indexOf("async function commitTitle", start))).toContain("repeat: r.repeat");
   });
 
   it("手机那条路（TaskSheet.addSubFromInput）也把 repeat 一起存了", () => {

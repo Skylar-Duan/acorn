@@ -9,10 +9,11 @@ import { parseQuickAdd } from "../core/parse";
 import { deskDueRepeat, withOverride } from "../mobile/quickAddMerge";
 import type { Overrides, PickField } from "../mobile/quickAddMerge";
 import type { Priority, RepeatRule } from "../core/model";
-import { LIST_COLORS } from "../core/model";
 import { formatShort, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
-import { addList, addTask, allTags, allWho, useApp } from "../core/store";
+import { addTask, allTags, allWho, appStore, useApp } from "../core/store";
+import { createCategory, existingCategoryList, isTaskCategoryDialogOpen, prepareTaskCategories, taskCategoriesNeedConfirmation } from "../core/categoryCreation";
+import { CommitMark, useCommitFlash } from "./commitFlash";
 import SyntaxInput from "./SyntaxInput";
 import type { SyntaxInputEl } from "./SyntaxInput";
 import { describeRepeat } from "../core/recur";
@@ -91,6 +92,8 @@ export default function QuickAddBar({
   const dueFieldRef = useRef<DateFieldHandle | null>(null);
   /** 整条快速添加条（含那排点选按钮）。失焦提交时用来判「焦点是不是还在自己家里」 */
   const wrapRef = useRef<HTMLDivElement>(null);
+  const submitting = useRef(false);
+  const saved = useCommitFlash();
   const today = todayYMD();
   const whoNames = useMemo(() => allWho({ tasks, settings }).map((w) => w.who), [tasks, settings]);
   const tagNames = useMemo(() => allTags({ tasks }).map((t) => t.tag), [tasks]);
@@ -141,8 +144,8 @@ export default function QuickAddBar({
     setMenu(null);
   }
 
-  function submit(parsed: ParseResult) {
-    if (!parsed.title.trim()) return;
+  function submit(parsed: ParseResult): boolean {
+    if (!parsed.title.trim() || submitting.current || isTaskCategoryDialogOpen()) return false;
     // 📅 里刚选完、去抖还没烧到点的那一天：这条事必须带上它。
     // 不接这一手就是「点完日历格 350ms 内回车 → 这条事不带日期地建出来，
     // 而那个日期一会儿静默跟到下一条事身上」。点预设和「清空」都已经 cancel 过了，
@@ -155,25 +158,37 @@ export default function QuickAddBar({
     const defaultListId =
       defaults?.listId && lists.some((l) => l.id === defaults.listId) ? defaults.listId : null;
     const pickedListId = pick.listId && lists.some((l) => l.id === pick.listId) ? pick.listId : null;
-    let listId = pickedListId ?? defaultListId;
-    if (parsed.listName != null) {
-      const hit = lists.find((l) => l.name === parsed.listName);
-      listId = hit ? hit.id : addList(parsed.listName, LIST_COLORS[lists.length % LIST_COLORS.length]);
+    const baseListId = pickedListId ?? defaultListId;
+    const who = parsed.who.length ? parsed.who : pick.who.length ? pick.who : defaults?.who ?? [];
+    const commit = (listId: string | null, finalWho: string[]) => {
+      const current = appStore.getState();
+      if (!current.loaded || current.loadError || current.wiped) return;
+      // 等新名字确认时，原来点选/默认的清单可能已被云同步删除。
+      const liveListId = listId && current.data.lists.some((l) => l.id === listId) ? listId : null;
+      const id = addTask({
+        title: parsed.title.trim(),
+        listId: liveListId,
+        tags: parsed.tags,
+        // 打字写了 @谁 就以打字为准；没写才用点选的，再没有才用视图默认。
+        who: finalWho,
+        priority: parsed.priority || pick.priority,
+        due: dr.due,
+        dueTime: dr.dueTime,
+        repeat: dr.repeat,
+      });
+      setText("");
+      setOverrides({});
+      onAdded?.(id);
+    };
+    if (!taskCategoriesNeedConfirmation(parsed.listName, who, baseListId)) {
+      commit(parsed.listName ? existingCategoryList(parsed.listName, baseListId)?.id ?? null : baseListId, who);
+      return true;
     }
-    const id = addTask({
-      title: parsed.title.trim(),
-      listId,
-      tags: parsed.tags,
-      // 打字写了 @谁 就以打字为准；没写才用点选的，再没有才用视图默认（在某人名下新建）
-      who: parsed.who.length ? parsed.who : pick.who.length ? pick.who : defaults?.who ?? [],
-      priority: parsed.priority || pick.priority,
-      due: dr.due,
-      dueTime: dr.dueTime,
-      repeat: dr.repeat,
-    });
-    setText("");
-    setOverrides({});
-    onAdded?.(id);
+    submitting.current = true;
+    void prepareTaskCategories(parsed.listName, who, baseListId).then((categories) => {
+      if (categories) { commit(parsed.listName ? categories.listId : baseListId, categories.who); saved.flash(); }
+    }).finally(() => { submitting.current = false; });
+    return false;
   }
 
   /** A1「点走 = 提交」。但**点自己那排「点着选」的按钮不算点走**——
@@ -187,8 +202,7 @@ export default function QuickAddBar({
     const next = e.relatedTarget as Node | null;
     if (next && wrapRef.current?.contains(next)) return false;
     if (!parsed.title.trim()) return false;
-    submit(parsed);
-    return true;
+    return submit(parsed);
   }
 
   const picked = pick.due || pick.listId || pick.who.length || pick.priority || pick.repeat;
@@ -219,6 +233,7 @@ export default function QuickAddBar({
           showChips
         />
         <button className="qa-help" title="怎么写一句话" onClick={guide.open}>?</button>
+        <CommitMark on={saved.on} />
       </div>
       {guide.sheet}
 
@@ -269,6 +284,11 @@ export default function QuickAddBar({
                 {l.name}
               </button>
             ))}
+            <div className="sep" />
+            <button className="item" onClick={() => {
+              setMenu(null);
+              void createCategory("list").then((id) => { if (id) setPick((p) => ({ ...p, listId: id })); });
+            }}>＋ 新建清单</button>
           </Pick>
 
           {/* 需求方可以点好几个：点一下选中、再点一下取消，菜单不关，选完点别处收起 */}
@@ -303,8 +323,14 @@ export default function QuickAddBar({
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   const el = e.target as HTMLInputElement;
                   const v = el.value.trim();
-                  if (v && !pick.who.includes(v)) setPick({ ...pick, who: [...pick.who, v] });
-                  el.value = ""; // 接着加下一个
+                  if (v && !pick.who.includes(v)) {
+                    if (whoNames.includes(v)) setPick((p) => ({ ...p, who: [...p.who, v] }));
+                    else {
+                      setMenu(null);
+                      void createCategory("who", v).then((name) => { if (name) setPick((p) => ({ ...p, who: [...new Set([...p.who, name])] })); });
+                    }
+                  }
+                  el.value = "";
                 }
               }}
             />

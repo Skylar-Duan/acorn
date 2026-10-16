@@ -170,7 +170,7 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hi
     );
     // 展开的卡片按**任务 id** 认领 key，不跟着行 key 走：在卡里勾掉一条子任务，
     // openRows 会把那行剔出去、anchor 顺势落到下一条子任务行上，行 key 一变整张卡就被卸载重建——
-    // 已完成子任务的折叠开关、「＋子任务」草稿、「整句改」草稿会一起被清空
+    // 已完成子任务的折叠开关、「＋子任务」草稿、标题编辑草稿会一起被清空
     // （表现成「我展开已完成，勾一下，它自己又收回去了」）。
     // 行的 key 加了 `row:` 前缀正是为了跟它岔开：母任务行的 rowKey 就等于任务 id，会撞
     if (expanded || key === closing) {

@@ -157,7 +157,6 @@ describe("③ 任务详情改属性：每一笔都走 TaskCard 用的那个 stor
 
   it("标题 / 备注 / 清单 / 重要性 / 标签 都从 updateTask 走", () => {
     for (const call of [
-      "updateTask(task.id, { title:",
       "updateTask(task.id, { notes:",
       "updateTask(task.id, { listId: null })",
       "updateTask(task.id, { listId: l.id })",
@@ -167,6 +166,9 @@ describe("③ 任务详情改属性：每一笔都走 TaskCard 用的那个 stor
       expect(taskSheetSource, call).toContain(call);
       expect(taskCardSource, call).toContain(call);
     }
+    // 桌面标题先解析成差量补丁；手机标题仍按现有直接改名入口写同一个store。
+    expect(taskSheetSource).toContain("updateTask(task.id, { title:");
+    expect(taskCardSource).toContain("if (Object.keys(patch).length) updateTask(task.id, patch);");
     // 标题是一行字段：粘进来的换行照旧当空格吃掉
     expect(taskSheetSource).toContain("oneLine(");
   });
@@ -187,13 +189,14 @@ describe("③ 任务详情改属性：每一笔都走 TaskCard 用的那个 stor
   it("子任务四件事：勾 / 改名 / 放弃 / 删，都走 store（变量名不同，形状一样）", () => {
     for (const re of [
       /toggleSubtask\(task\.id, \w+\.id\)/,
-      /updateSubtask\(task\.id, \w+\.id, \{ title:/,
       /dropSubtask\(task\.id, \w+\.id, !\w+\.droppedAt\)/,
       /removeSubtask\(task\.id, \w+\.id\)/,
     ]) {
       expect(taskSheetSource, String(re)).toMatch(re);
       expect(taskCardSource, String(re)).toMatch(re);
     }
+    expect(taskSheetSource).toMatch(/updateSubtask\(task\.id, \w+\.id, \{ title:/);
+    expect(taskCardSource).toContain("updateSubtask(task.id, id, patch);");
     // 加子任务：这一处**保留**快捷语法（「不用背语法」说的是「记一条」那张纸）
     expect(taskSheetSource).toContain('import { parseSubtaskInput } from "../core/parse";');
     expect(taskSheetSource).toContain("addSubtask(task.id, title, {");

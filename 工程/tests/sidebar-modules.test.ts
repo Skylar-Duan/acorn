@@ -92,10 +92,17 @@ describe("模块偏好：兼容旧数据与未来字段", () => {
 });
 
 describe("桌面侧栏真实交互", () => {
-  it("清单/需求方/标签全部显示，不受老折叠记忆影响", () => {
-    for (const key of ["more", "lists", "who", "tags"]) localStorage.setItem(`acorn-side-${key}`, "0");
+  it("清单/需求方/标签独立收展，记住各自上次的状态", () => {
+    localStorage.setItem("acorn-side-lists", "0");
     render();
-    for (const id of ["lists", "who", "tags"]) expect(moduleElement(id).querySelectorAll("li")).toHaveLength(5);
+    expect(moduleElement("lists").querySelectorAll("li")).toHaveLength(0);
+    for (const id of ["who", "tags"]) expect(moduleElement(id).querySelectorAll("li")).toHaveLength(5);
+    const toggle = moduleElement("lists").querySelector<HTMLButtonElement>(".side-group-toggle")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    act(() => toggle.click());
+    expect(moduleElement("lists").querySelectorAll("li")).toHaveLength(5);
+    expect(localStorage.getItem("acorn-side-lists")).toBe("1");
+    expect(moduleElement("who").querySelectorAll("li")).toHaveLength(5);
     expect(host.querySelector(".side-more,.side-fold")).toBeNull();
     expect(moduleIds()).toContain("done");
     expect(host.querySelectorAll(".side-module-heading")).toHaveLength(3);
@@ -185,7 +192,7 @@ describe("桌面侧栏真实交互", () => {
     render();
     expect(moduleIds()).toEqual([]);
     expect(host.querySelector('button[title="设置"]')).not.toBeNull();
-    expect(button("编辑侧栏", host)).toBeDefined();
+    expect(button("功能区设置", host)).toBeDefined();
     render(SidebarSettings);
     expect(host.querySelectorAll(".hidden-module .sidebar-toggle")).toHaveLength(10);
   });

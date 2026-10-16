@@ -97,7 +97,7 @@ describe("Esc 得关得掉任务卡：两个内联框只在真有东西可丢弃
 
   it("口径跟同一批里别处一致：onEscape 没东西可丢就返回 false 放行", () => {
     expect(taskCardSource).toContain("if (!newSub) return false;");
-    expect(taskCardSource).toContain("if (live === baseText) return false;");
+    expect(taskCardSource).toContain("titleDraftRef.current = null;");
   });
 });
 
@@ -144,13 +144,13 @@ describe("「需求方」不许被提交两次：回车 / 失焦 / 点卡外只�
 
 describe("回执不许说谎：什么都没存就不闪 ✓", () => {
   it("「＋子任务」照实汇报——只打了日期没打标题时一条都没加，也就没有回执", () => {
-    expect(taskCardSource).toContain("function addSubFromInput(): boolean");
+    expect(taskCardSource).toContain("function addSubFromInput(): Promise<boolean>");
     expect(taskCardSource).toContain("if (!title) return false;");
     expect(taskCardSource).toContain("onBlurCommit={() => addSubFromInput()}");
   });
 
   it("flash 的决定权交给调用方：明说「没存」的那一下不闪", () => {
-    expect(syntaxInputSource).toContain("onSubmit: (parsed: ParseResult) => boolean | void;");
+    expect(syntaxInputSource).toContain("onSubmit: (parsed: ParseResult) => boolean | void | Promise<boolean | void>;");
     expect(syntaxInputSource).toContain("const stored = onSubmit(p);");
     expect(syntaxInputSource).toContain("if (stored !== false && value.trim()) flash();");
   });
@@ -474,7 +474,7 @@ describe("日期弹层：月/日段一路累加出来的中间值，一次都不
     // 回车落库前先把欠着的那一天接过来：点完日历格 350ms 内就回车，这条事不许不带日期，
     // 那个日期更不许静默跟到下一条事身上（点预设与「清空」都 cancel 了，这是对称的另一半）
     const submit = quickAddSource.slice(
-      quickAddSource.indexOf("function submit(parsed: ParseResult) {"),
+      quickAddSource.indexOf("function submit(parsed: ParseResult)"),
       quickAddSource.indexOf("function commitOnBlur"),
     );
     expect(submit).toContain("const pendingDue = dueFieldRef.current?.pending() ?? null;");
@@ -799,7 +799,6 @@ describe("「失焦即提交」不许把「窗口失焦」当成「点走」（a
   // 一道闸都不许漏：窗口失焦时**不提交、原样悬着**，等用户回来自己了结。
   // 新加任何一个 onBlur 落库口，都要在这儿添一行——这张表就是那份 grep 的落盘版
   const BLUR_COMMITS = [
-    ["侧栏 · 新建清单", sidebarSource],
     ["日历格 · 快记一条", calendarSource],
     ["习惯页 · 新增习惯", habitsSource],
     ["随手记 · 一句话记一条", quickAddSource],

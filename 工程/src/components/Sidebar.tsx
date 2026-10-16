@@ -1,23 +1,23 @@
-// 桌面侧栏按模块自由排序；清单、需求方和标签保留分组，组内全部展开。
+// 桌面侧栏按模块自由排序；分组独立收展，整组落点只画插入线。
 // 模块排布/隐藏/显示别名只在本机生效，任务拖入侧栏的原有动作照常保留。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { todayYMD, cmpYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
 import {
-  addList, addTasksWho, aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
+  addTasksWho, aliveTasks, allTags, allWho, appStore, categoryRows, deleteTasks, habitsOpenToday,
   moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
   setQuickAddOpen, setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
   trashedSubtaskRows, updateSettings,
 } from "../core/store";
-import { LIST_COLORS } from "../core/model";
+import { createCategory } from "../core/categoryCreation";
+import { categoryIcon } from "../core/categoryIcons";
 import { shortVersion } from "../core/version";
-import { forceFoldOpen } from "../core/useFold";
+import { forceFoldOpen, useFold } from "../core/useFold";
 import { moveSidebarModule, sidebarHidden, sidebarModules, sidebarName, SIDEBAR_MODULES, type SidebarModuleId } from "../core/sidebar";
 import SidebarIcon from "./SidebarIcon";
 import SidebarModuleMenu, { type SidebarMenuTarget } from "./SidebarModuleMenu";
 import { useSidebarModuleDrag } from "./sidebarModuleDrag";
 import "../styles/sidebar.css";
-import { CommitMark, useCommitFlash } from "./commitFlash";
 import DateField from "./DateField";
 import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
@@ -254,9 +254,12 @@ export default function Sidebar(
   // 同样克制：不弹框不弹 toast，就这行小字加一截
   const updCheck = useUpdate((s) => s.lastCheck);
   const upd = updateFootState(updCheck);
-  const [addingList, setAddingList] = useState(false);
-  /** 新建清单那个框的提交回执（A2） */
-  const newList = useCommitFlash();
+  /** 每个分组独立记住展开状态，折起不影响整组排序。 */
+  const [listsOpen, toggleLists] = useFold("lists", true);
+  const [whoOpen, toggleWho] = useFold("who", true);
+  const [tagsOpen, toggleTags] = useFold("tags", true);
+  const groupOpen = { lists: listsOpen, who: whoOpen, tags: tagsOpen };
+  const toggleGroup = { lists: toggleLists, who: toggleWho, tags: toggleTags };
   const [dropHint, setDropHint] = useState<string | null>(null);
   /** 侧栏内部换位置时，鼠标正悬在哪一条上（画一条落点线） */
   const [moveOver, setMoveOver] = useState<string | null>(null);
@@ -488,7 +491,7 @@ export default function Sidebar(
     lists: (
         <ul>
           {lists.map((l) => {
-            const n = open.filter((t) => t.listId === l.id).length;
+            const n = categoryRows({ tasks }, { listId: l.id }).length;
             return (
               <li
                 key={l.id}
@@ -505,53 +508,12 @@ export default function Sidebar(
                   reorderProps("list", l.id, (dragged) => moveList(dragged, l.id), moveHint),
                 )}
               >
-                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={ICONS.lists} color={`var(--list-${l.color})`} />
+                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("list", l.icon)} color={`var(--list-${l.color})`} />
                 <span className="side-label">{l.name}</span>
                 {n > 0 && <span className="n">{n}</span>}
               </li>
             );
           })}
-          {addingList && (
-            <li>
-              {/* A1：这里原来是「点走就丢」。改成**空的就丢、有字就建**——
-                  打了半个清单名去点了别处，回来它已经在了，而不是白打。
-                  回车之后框留在原地清空，可以接着建下一张（也才有地方给回执） */}
-              <input
-                className={`input${newList.on ? " commit-lit" : ""}`}
-                autoFocus
-                placeholder="清单名，回车创建"
-                style={{ padding: "3px 8px", fontSize: 13 }}
-                onKeyDown={(e) => {
-                  const el = e.target as HTMLInputElement;
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                    const v = el.value.trim();
-                    if (v) {
-                      addList(v, LIST_COLORS[rawLists.length % LIST_COLORS.length]);
-                      el.value = "";
-                      newList.flash();
-                    } else {
-                      setAddingList(false);
-                    }
-                  }
-                  // Esc 才是丢弃。先把框清空再关：万一 blur 还是来了，读到的也是空的
-                  if (e.key === "Escape") {
-                    el.value = "";
-                    setAddingList(false);
-                  }
-                }}
-                onBlur={(e) => {
-                  // A1 要的是「点走 = 存下」，**窗口失焦不是点走**：alt-tab 去别的程序时
-                  // 浏览器照样发 blur，落库就等于凭空多一张叫「工」的清单。整个悬着，
-                  // 等用户回来自己了结（回车建 / Esc 丢）
-                  if (!document.hasFocus()) return;
-                  const v = e.target.value.trim();
-                  if (v) addList(v, LIST_COLORS[rawLists.length % LIST_COLORS.length]);
-                  setAddingList(false);
-                }}
-              />
-              <CommitMark on={newList.on} />
-            </li>
-          )}
         </ul>
 
     ),
@@ -573,7 +535,7 @@ export default function Sidebar(
                     reorderProps("who", who, (dragged) => moveWho(dragged, who), moveHint),
                   )}
                 >
-                  <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={ICONS.who} />
+                  <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("who", settings.whoAppearance?.[who]?.icon)} color={settings.whoAppearance?.[who]?.color ? `var(--list-${settings.whoAppearance[who].color})` : undefined} />
                   <span className="side-label">{who}</span>
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
@@ -608,7 +570,7 @@ export default function Sidebar(
         <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>
         {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
             .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
-        <button className="gear" title="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
+        <button className="gear" title="设置" aria-label="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
       </div>
       {/* 记一条：整条侧栏最该一眼看见的那件事，所以是唯一一颗实心按钮。
           它**不是导航项**——记完还留在原来那一页，所以没有选中态，也不调 onNavigate
@@ -618,24 +580,32 @@ export default function Sidebar(
         记一条
       </button>
       <nav aria-label="侧栏">
-        {modules.map((m) => (
-          <section key={m.id} data-sidebar-module={m.id} className={`side-module${m.group ? " side-module-group" : ""}${moduleDrag.over === m.id ? " module-over" : ""}`} {...moduleDrag.target(m.id)}>
+        {modules.map((m, i) => (
+          <section key={m.id} data-sidebar-module={m.id} className={`side-module${m.group ? " side-module-group" : ""}${moduleDrag.over === m.id ? " module-over" : ""}`} {...moduleDrag.target(m.id, modules[i + 1]?.id ?? null)}>
             {m.group ? <>
               <div className="side-module-heading" tabIndex={0} title="拖动整组排序，右键编辑或隐藏"
                 {...moduleDrag.source(m.id)} onContextMenu={(e) => openModuleMenu(e, m.id)} onKeyDown={(e) => moduleKeys(e, m.id)}>
-                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={m.icon} />
-                <span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
-                {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
-                {m.id === "lists" && <button type="button" title="新建清单" aria-label="新建清单" onClick={(e) => { e.stopPropagation(); setAddingList(true); }} onDragStart={(e) => e.stopPropagation()}>＋</button>}
+                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span>
+                <button type="button" className="side-group-toggle" aria-expanded={groupOpen[m.id as keyof typeof groupOpen]} aria-controls={`side-group-${m.id}`} onClick={() => { if (!moduleDrag.swallowClick()) toggleGroup[m.id as keyof typeof toggleGroup](); }}>
+                  <SidebarIcon path={m.icon} /><span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
+                  {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
+                  <svg className={`side-group-chevron${groupOpen[m.id as keyof typeof groupOpen] ? " expanded" : ""}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
+                </button>
+                {(m.id === "lists" || m.id === "who") && <button type="button" className="side-group-add" title={m.id === "lists" ? "新建清单" : "新建需求方"} aria-label={m.id === "lists" ? "新建清单" : "新建需求方"} onClick={(e) => {
+                  e.stopPropagation();
+                  void createCategory(m.id === "lists" ? "list" : "who").then((created) => { if (created) forceFoldOpen(m.id); });
+                }} onDragStart={(e) => e.stopPropagation()}>＋</button>}
               </div>
-              {moduleBodies[m.id]}
-              {m.id === "who" && whoList.length === 0 && <p className="side-group-empty">暂无需求方</p>}
-              {m.id === "tags" && tagList.length === 0 && <p className="side-group-empty">暂无标签</p>}
+              {groupOpen[m.id as keyof typeof groupOpen] && <div id={`side-group-${m.id}`}>
+                {moduleBodies[m.id]}
+                {m.id === "who" && whoList.length === 0 && <p className="side-group-empty">暂无需求方</p>}
+                {m.id === "tags" && tagList.length === 0 && <p className="side-group-empty">暂无标签</p>}
+              </div>}
             </> : <ul>{moduleBodies[m.id]}</ul>}
           </section>
         ))}
         <div className={`side-module-end${moduleDrag.over === "end" ? " module-over" : ""}`} {...moduleDrag.target(null)}>
-          <button type="button" onClick={editSidebar}>编辑侧栏</button>
+          <button type="button" onClick={editSidebar}><SidebarIcon path="M4 6h16M4 18h16M4 12h16 M8 3v6M16 9v6M10 15v6" />功能区设置</button>
         </div>
         {planPop.shown && (
           <div

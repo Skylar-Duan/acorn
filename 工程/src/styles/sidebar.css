@@ -1,10 +1,9 @@
 /* 桌面可排序侧栏：顶部工具和底部状态固定，模块区独立滚动。 */
 .side.side-modules { overflow: hidden; min-height: 0; }
 .side-modules > .brand, .side-modules > .side-quickadd, .side-modules > .foot { flex: none; }
-.side-modules > nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; padding: 0 2px 10px; }
-.side-modules > nav::-webkit-scrollbar { display: block; width: 4px; }
-.side-modules > nav::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--hair); }
-.side-modules .side-module { min-width: 0; border-radius: 7px; }
+.side-modules > nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 0 2px 10px; }
+.side-modules > nav::-webkit-scrollbar { display: none; width: 0; }
+.side-modules .side-module { min-width: 0; border-radius: 7px; position: relative; }
 .side-modules .side-module-group { margin-top: 13px; }
 .side-modules .side-module-heading { display: flex; gap: 8px; align-items: center; min-height: 34px; padding: 7px 9px 7px 3px; color: var(--ink-2); font-size: 12px; border-radius: 7px; cursor: grab; }
 .side-modules .side-module-heading:hover { background: var(--card); }
@@ -16,12 +15,18 @@
 .side-module-heading:hover > .sidebar-drag-grip, .side-module-heading:focus-visible > .sidebar-drag-grip { opacity: .85; }
 .sidebar-drag-grip.spacer { visibility: hidden; }
 .side-modules .side-module-heading .n { margin-left: auto; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.side-modules .side-module-heading > button { color: var(--ink-3); padding: 1px 4px; border-radius: 5px; font-size: 15px; line-height: 1; cursor: pointer; }
-.side-modules .side-module-heading > button:hover { color: var(--accent); background: var(--accent-soft); }
+.side-modules .side-group-toggle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; color: inherit; font-size: 12px; padding: 0; text-align: left; background: none; cursor: pointer; }
+.side-group-toggle > .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.side-group-chevron { width: 12px; height: 12px; stroke: var(--ink-3); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--dur-1) var(--ease); flex: none; }
+.side-group-chevron.expanded { transform: rotate(90deg); }
+.side-modules .side-module-heading > .side-group-add { color: var(--ink-3); padding: 1px 4px; border-radius: 5px; font-size: 15px; line-height: 1; cursor: pointer; }
+.side-modules .side-module-heading > .side-group-add:hover { color: var(--accent); background: var(--accent-soft); }
 .side-modules .side-group-empty { margin: 1px 0 4px 37px; color: var(--ink-3); font-size: 11px; }
-.side-modules .module-over { box-shadow: inset 0 2px 0 var(--accent); background: var(--accent-soft); }
-.side-module-end { padding: 12px 5px 3px; min-height: 37px; text-align: center; border-radius: 6px; }
-.side-module-end button { color: var(--ink-3); font-size: 11px; padding: 3px 8px; border-radius: 5px; }
+.side-modules .module-over::before { content: ""; position: absolute; top: -2px; left: 12px; right: 4px; height: 2px; border-radius: 2px; background: var(--accent); pointer-events: none; }
+.side-modules .module-over::after { content: ""; position: absolute; top: -4px; left: 9px; width: 6px; height: 6px; border: 1.5px solid var(--accent); border-radius: 50%; background: var(--paper); pointer-events: none; }
+.side-module-end { padding: 12px 5px 3px; min-height: 37px; text-align: center; border-radius: 6px; position: relative; }
+.side-module-end button { color: var(--ink-3); font-size: 11px; padding: 3px 8px; border-radius: 5px; display: inline-flex; align-items: center; gap: 6px; }
+.side-module-end button .ico { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 .side-module-end button:hover { background: var(--card); color: var(--accent); }
 .sidebar-module-menu { z-index: 1000; width: 240px; max-width: calc(100vw - 16px); }
 .sidebar-module-menu form { padding: 9px; }

@@ -57,7 +57,7 @@ export default function SidebarModuleMenu({ target, onClose, onEditSidebar }: {
           onClose();
         }}>隐藏模块</button>
         <div className="sep" />
-        <button className="item" role="menuitem" onClick={() => { onClose(); onEditSidebar(); }}>编辑侧栏…</button>
+        <button className="item" role="menuitem" onClick={() => { onClose(); onEditSidebar(); }}>功能区设置</button>
       </>}
     </div>, document.body,
   );

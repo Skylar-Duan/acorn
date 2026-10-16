@@ -81,28 +81,11 @@ describe("根因：0fr↔1fr 折叠容器的 min-width 跟 min-height 是一对"
   });
 });
 
-describe("P0-1 任务卡：把卡顶宽的是「整句改」那排不可收缩的 chips", () => {
+describe("P0-1 子任务长标题和追加归类不能撑出窄屏", () => {
   const mobile = narrowPart(appCss);
-
-  it("窄屏让输入框和 chips 各占一整行、都能换行", () => {
-    expect(mobile).toContain(".tc-sentence .si-wrap { flex-wrap: wrap; }");
-    expect(mobile).toContain(".tc-sentence .si-input { min-width: 0; flex: 1 1 100%; }");
-    expect(mobile).toContain(".tc-sentence .si-chips { flex: 1 1 100%; flex-wrap: wrap; }");
-  });
-
-  it("这三条必须比 syntaxinput.css 里的本体多一层类，否则加载顺序在后面盖不住", () => {
-    // syntaxinput.css 是组件按需引入的，排在 app.css 之后；靠 specificity 赢，不靠顺序
-    for (const sel of [".tc-sentence .si-wrap", ".tc-sentence .si-input", ".tc-sentence .si-chips"]) {
-      expect(mobile).toContain(sel);
-    }
-  });
-
-  it("换行之后 999px 的圆角收成常规圆角，而且那条写在 .tc-sentence 本体**后面**", () => {
-    // 同为一个类名谁在后面谁赢，而上面那个窄屏大块在本体之前——.chain-caret 踩过一次
-    const body = appCss.indexOf(".tc-sentence {");
-    const narrow = appCss.indexOf(".tc-sentence { flex-wrap: wrap; border-radius: var(--r-md); }");
-    expect(body).toBeGreaterThan(-1);
-    expect(narrow).toBeGreaterThan(body);
+  it("追加归类允许换行，旧的第二标题输入框已移除", () => {
+    expect(appCss).toContain(".sub-categories { display: inline-flex; flex-wrap: wrap;");
+    expect(appCss).not.toContain(".tc-sentence");
   });
 
   it("子任务行给标题留了下限，多挂一个「已放弃」标签也不会把标题挤成三四个字", () => {

@@ -1,20 +1,17 @@
 // 展开的任务卡：原地编辑一切字段。Esc / 点击卡外收起。
-// v1.1：日期选择用草稿态（翻月不再立刻保存）；子任务可带自己的日期/优先级（默认继承）；
-// 底部「快捷改」——用快速添加同款语法改任务（出现哪类要素就改哪类，其余不动）。
+// 标题编辑支持快捷标记；Enter / 点走提交，Esc 丢弃本次标题草稿。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
-import { LIST_COLORS } from "../core/model";
 import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
 import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
-import type { ParseResult } from "../core/parse";
-import { parseQuickAdd, parseSubtaskInput, SUBTASK_SKIP } from "../core/parse";
-import { taskToSentence } from "../core/syntax";
+import { appendedSubCategories, editedCategoryPatch, editedTitlePatch, parseEditedTitle } from "../core/editSyntax";
+import { isTaskCategoryDialogOpen, prepareSubtaskCategories, prepareTaskCategories } from "../core/categoryCreation";
 import {
-  addList, addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
+  addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
   dropTasks, expandTask, foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks,
-  showToast, SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
+  SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
@@ -33,28 +30,11 @@ const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中",
  *  「这件事被往后推了几次」按弹层开→关整段算一次，落在 settleDuePopup 里 */
 const POPUP_WRITE = { noPostponeCount: true } as const;
 
-/** 这一句是不是「整段都是时间词，只是忘了打 ~」。
- *  按空白切段，每段单独补上 ~ 再解析一遍：段段都变成纯时间要素、一个字都不剩下，才算数。
- *  「报销单 重做」「复盘」这类正常标题里总有解析不掉的字，一段不成立整句就不成立——
- *  用户在「快捷改」里真心改标题照旧改得动。只给 applyQuickPatch 用，见那儿的注释 */
-function isBareTimeOnly(text: string, weekendDay: "sat" | "sun" | undefined): boolean {
-  const segs = text.trim().split(/\s+/).filter(Boolean);
-  if (segs.length === 0) return false;
-  return segs.every((s) => {
-    const r = parseQuickAdd(`~${s}`, { now: new Date(), listNames: [], weekendDay });
-    return (
-      r.title === "" &&
-      r.chips.length > 0 &&
-      r.chips.every((c) => c.kind === "date" || c.kind === "time" || c.kind === "repeat")
-    );
-  });
-}
-
 type MenuName = "date" | "repeat" | "list" | "priority" | "who" | "tags" | null;
 
 export default function TaskCard({ task }: { task: Task }) {
   // B8：只订阅真用得上的三片，派生也都缓存起来。以前是整份 data + 每次渲染重算一遍
-  // allWho/allTags——在「整句改」框里打一个字并不改数据，却照样把全库的需求方和标签数一遍
+  // allWho/allTags——在标题框里打一个字并不改数据，不该重复统计全库需求方和标签
   const lists = useApp((s) => s.data.lists);
   const tasks = useApp((s) => s.data.tasks);
   const settings = useApp((s) => s.data.settings);
@@ -69,14 +49,15 @@ export default function TaskCard({ task }: { task: Task }) {
   const menuPop = useLeaving(menu);
   const subPop = useLeaving(subMenu);
   const [newSub, setNewSub] = useState("");
+  const newSubRef = useRef("");
   /** 已完成子任务那堆展不展开。null = 还没表过态，跟自动规则走；
    *  用不得直接存 boolean：那样刚勾掉一条子任务、已完成刚够数的时候自动规则就再也不生效了。
    *  用户自己点过之后才锁成他选的那个 */
   const [showDone, setShowDone] = useState<boolean | null>(null);
-  /** 「整句改」输入框的草稿。null = 没动过，显示现算的那句。
-   *  **必须连底稿一起记**（base）：用户在框里打了一半，又去上面点了个日期/优先级，
-   *  这句底稿就过期了；不作废的话回车会拿过期的那句把刚点的改动盖回去。 */
-  const [draft, setDraft] = useState<{ base: string; text: string } | null>(null);
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const titleDraftRef = useRef<string | null>(null);
+  const [subDrafts, setSubDrafts] = useState<Record<string, string>>({});
+  const subDraftsRef = useRef<Record<string, string>>({});
   // 日期弹层里时间框的当前值。**不再是「攒着等确定」的草稿**（那个「确定」按钮已经撤了，
   // 见下面 commitDraft 一带的注释）：日历格一选就生效、时间一失焦就生效，
   // 这个 state 只是让输入框在弹层开着的时候记得自己显示什么。
@@ -95,7 +76,7 @@ export default function TaskCard({ task }: { task: Task }) {
   /** **这次弹层自己写进去的那个日子**（undefined = 这次弹层一个字都没写，null = 把日期清了）。
    *
    *  顺延结算只认它，不认 store 里当下那个 due——不然弹层开着的时候别处改了日期，
-   *  会被这一笔再数一遍。三条真路径：① 点开 📅 看了一眼没选，转头在底下「整句改」那栏
+   *  会被这一笔再数一遍。三条真路径：① 点开 📅 看了一眼没选，转头在底下标题编辑那栏
    *  把日期改晚（store 自己 +1），关弹层再 +1 → 用户只顺延了一次，行尾挂出「顺延×2」；
    *  ② 弹层开着时勾掉一件循环任务（完成会清零计数并把 due 推到下一个落点），关弹层凭空 +1，
    *  刚完成的循环任务进了周报的顺延名单；③ 弹层开着时按 Ctrl+→ 推明天，同样多数一次 */
@@ -127,7 +108,7 @@ export default function TaskCard({ task }: { task: Task }) {
   const taskIdRef = useRef(task.id);
   taskIdRef.current = task.id;
 
-  // 逐键落库的两个框（A7）：没有「提交」这个动作，停手 600ms 闪一下算回执
+  // 已提交的标题与逐键保存的备注有变化时，停手后闪一下回执。
   const titleFlash = useTypingFlash(task.title);
   const notesFlash = useTypingFlash(task.notes);
   /** 正在闪回执的那条子任务。同时只可能有一条在打字，不必一行一个计时器 */
@@ -143,6 +124,8 @@ export default function TaskCard({ task }: { task: Task }) {
       // 收起那一拍的收尾在 flushPending 里早就做过了，直接 return，不需要再做第二遍
       if (appStore.getState().ui.expandedId !== taskIdRef.current) return;
       if (!cardRef.current) return;
+      // 分类创建弹窗是这笔标题编辑的一部分，点它不应再提交或收起卡片。
+      if (isTaskCategoryDialogOpen()) return;
       if (!cardRef.current.contains(e.target as Node)) {
         // A1「点走 = 提交」：卡片马上就要没了，先把还悬着的输入落库再收
         flushRef.current();
@@ -166,6 +149,11 @@ export default function TaskCard({ task }: { task: Task }) {
       // 「丢弃」这条通道反而把用户从没想要的日子钉死了。
       // 所以先收尾再收卡：欠着的那一拍作废，这次弹层的记账清空（结算那儿直接 return）
       if (e.key === "Escape") {
+        if (isTaskCategoryDialogOpen()) return;
+        titleDraftRef.current = null;
+        subDraftsRef.current = {};
+        setTitleDraft(null);
+        setSubDrafts({});
         dueFieldRef.current?.cancel();
         subDueFieldRef.current?.cancel();
         dueWrittenRef.current = undefined;
@@ -182,17 +170,17 @@ export default function TaskCard({ task }: { task: Task }) {
   }, []);
 
   // 标题框的高度跟着内容走。自己打字那一路 onChange 里已经算过一遍了，这条管的是
-  // **别处改进来的**：底下「整句改」改了标题、撤销、云同步拉回一份、或者换了一件事
+  // **别处改进来的**：快捷标记、撤销、云同步拉回一份、或者换了一件事
   // （卡片按任务 id 认 key，同一件事换标题时组件是不重建的）
   useLayoutEffect(() => {
     growArea(titleRef.current);
-  }, [task.title]);
+  }, [task.title, titleDraft]);
   // 子任务那一堆同理。它们没有各自的 ref（是个 map 出来的列表），
-  // ref={growArea} 只在挂载那一下调一次，所以外部改动（撤销/同步/整句改）得在这儿补一遍。
+  // ref={growArea} 只在挂载那一下调一次，所以外部改动（撤销/同步/标题编辑）得在这儿补一遍。
   // 只扫这张卡自己的 .subs，不动别处
   useLayoutEffect(() => {
     cardRef.current?.querySelectorAll<HTMLTextAreaElement>(".subs textarea").forEach((el) => growArea(el));
-  }, [task.subtasks]);
+  }, [task.subtasks, subDrafts]);
 
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   const today = todayYMD();
@@ -212,20 +200,6 @@ export default function TaskCard({ task }: { task: Task }) {
   // 不够数时强制摊开：否则「先折起来、再取消勾选几条」会把已完成子任务锁成看不见又开不出来
   const canFoldDone = doneSubs.length >= SUB_DONE_PEEK;
   const doneShown = canFoldDone ? showDone ?? !autoFold : true;
-
-  // 这件事的「一整句话」。按当前状态现算，不存旧的输入——存了迟早跟字段对不上
-  const sentence = useMemo(
-    () =>
-      taskToSentence(task, {
-        listName: list?.name ?? null,
-        listNames: lists.map((l) => l.name),
-        weekendDay: settings.weekendDay,
-      }),
-    [task, list, lists, settings.weekendDay],
-  );
-  const baseText = sentence.safe ? sentence.text : "";
-  // 草稿的底稿跟现在这句对不上 = 期间任务被别处改过，草稿作废，重新以新句子为准
-  const live = draft && draft.base === baseText ? draft.text : baseText;
 
   function openDateMenu() {
     setDraftTime(task.dueTime ?? "");
@@ -261,7 +235,7 @@ export default function TaskCard({ task }: { task: Task }) {
    *
    *  **认的是「这次弹层自己写了什么」（dueWrittenRef），不是 store 里当下那个 due。**
    *  拿 store 的现值当依据会把别处的改动算到这一笔上：弹层开着不动它，转头在底下
-   *  「整句改」那栏把日期改晚（普通 updateTask，store 自己 +1），回头关弹层再 +1，
+   *  标题编辑那栏把日期改晚（普通 updateTask，store 自己 +1），回头关弹层再 +1，
    *  用户只顺延了一次却挂出「顺延×2」；弹层开着时勾掉一件循环任务（完成会清零计数、
    *  把 due 推到下一个落点）关弹层也会凭空 +1，刚做完的循环任务进了周报的顺延名单；
    *  弹层开着按 Ctrl+→ 推明天同理。这次弹层一个字都没写，就一次都不数。 */
@@ -313,99 +287,82 @@ export default function TaskCard({ task }: { task: Task }) {
    *  没写日期/重要性就还是继承母任务（存 null）。加完输入框清空，接着敲下一条。
    *  **返回「到底加上没有」**：只打了日期没打标题时一条都没加，回执就不许闪——
    *  A2 那个 ✓ 的全部价值在于它不能说谎 */
-  function addSubFromInput(): boolean {
+  async function addSubFromInput(): Promise<boolean> {
     // keepNewlines：栏里 Shift+Enter 敲的换行要一路留进标题（记一条那几条路不开，照旧压成空格）
-    const r = parseSubtaskInput(newSub, new Date(), [], settings.weekendDay, { keepNewlines: true });
+    const raw = newSubRef.current;
+    const r = parseEditedTitle(raw, { now: new Date(), listNames: lists.map((l) => l.name), weekendDay: settings.weekendDay, keepNewlines: true, skip: ["tag"] });
     const title = r.title.trim();
     if (!title) return false;
+    newSubRef.current = "";
+    setNewSub("");
+    const categories = await prepareSubtaskCategories(r.chips.filter((c) => c.kind === "list").map((c) => c.text), r.who,
+      () => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
+    if (!categories) {
+      // 取消创建仍保留这句草稿；等待期间若已打了下一句，就不覆盖新输入。
+      if (!newSubRef.current && appStore.getState().ui.expandedId === task.id) {
+        newSubRef.current = raw;
+        setNewSub(raw);
+      }
+      return false;
+    }
     addSubtask(task.id, title, {
       due: r.due,
       dueTime: r.dueTime,
       priority: r.priority || null,
       // 子任务自己的循环（v8）：「每周末 大扫除」记成一条每周重复的子任务，不是一次性的周末
       repeat: r.repeat,
+      who: categories.who,
+      listIds: categories.listIds,
     });
-    setNewSub("");
     return true;
   }
 
-  /** 名字 → 清单 id。**先认这件事现在待的那张**：允许重名，光按名字找会永远命中第一张，
-   *  于是「什么都没改直接回车」也能把任务从后建的那张同名清单搬到先建的那张去 */
-  function ensureListId(name: string): string {
-    if (list && list.name === name) return list.id;
-    const hit = lists.find((l) => l.name === name) ?? lists.find((l) => l.name.startsWith(name));
-    if (hit) return hit.id;
-    return addList(name, LIST_COLORS[lists.length % LIST_COLORS.length]);
-  }
-
-  /** 整句改：框里那句话**就是**这件事，写什么它就变成什么——
-   *  删掉「!高」就降级、删掉「@李哥」就把人摘了、日期改掉就改期。
-   *
-   *  两条保险：
-   *  ① 整句删光了不动手。一句里连标题都没有，那不是「我要清空这件事」，是手滑
-   *    （Ctrl+A Delete 回车太容易了），而且此时焦点还在输入框里，Ctrl+Z 走的是
-   *    浏览器的文本撤销、救不回来。
-   *  ② 只写**真的变了**的字段。全量写的话，一个已经响过、已经被清成 null 的提醒
-   *    会因为「due/dueTime 被传了」而重新算出来一个过去的时刻，几十秒后再轰你一次。 */
-  function applySentence(p: ParseResult, raw: string) {
-    if (!raw.trim() || !p.title.trim()) {
-      // 什么都不改，把框恢复成这件事本来那句
-      setDraft(null);
-      return;
-    }
-    const patch: Partial<Task> = {};
-    const title = p.title.trim();
-    if (title !== task.title) patch.title = title;
-    if (p.due !== task.due) patch.due = p.due;
-    if (p.dueTime !== (task.due ? task.dueTime : null)) patch.dueTime = p.dueTime;
-    if (JSON.stringify(p.repeat) !== JSON.stringify(task.repeat)) patch.repeat = p.repeat;
-    if (p.priority !== task.priority) patch.priority = p.priority;
-    if (JSON.stringify(p.who) !== JSON.stringify(task.who)) patch.who = p.who;
-    if (JSON.stringify(p.tags) !== JSON.stringify(task.tags)) patch.tags = p.tags;
-    const nextList = p.listName ? ensureListId(p.listName) : null;
-    if (nextList !== task.listId) patch.listId = nextList;
+  /** 标题只有提交时才解析。先确认新分类，取消整笔不写任务。 */
+  async function commitTitle() {
+    const raw = titleDraftRef.current;
+    if (raw === null) return;
+    titleDraftRef.current = null;
+    setTitleDraft(null);
+    const state = appStore.getState();
+    const current = state.data.tasks.find((t) => t.id === task.id && !t.deletedAt);
+    if (!current || raw === current.title || !raw.trim()) return;
+    const parsed = parseEditedTitle(raw, {
+      now: new Date(), listNames: state.data.lists.map((l) => l.name), weekendDay: state.data.settings.weekendDay,
+    });
+    const categories = await prepareTaskCategories(parsed.listName, parsed.who, current.listId,
+      () => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
+    if (!categories) return;
+    const latest = appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt);
+    if (!latest) return;
+    const patch = {
+      ...editedTitlePatch(latest, parsed),
+      ...editedCategoryPatch(latest, { ...parsed, who: categories.who }, categories.listId),
+    };
     if (Object.keys(patch).length) updateTask(task.id, patch);
-    setDraft(null);
   }
 
-  /** 兜底：这件事没法用一句话无损表达（标题里带 # / @，或清单名里有空格）时，
-   *  退回老口径——写出哪类要素就改哪类，没写的不动。
-   *
-   *  **这一档的框是空的**（baseText 是空串），用户对着提示从零打一句。时间严格模式之后
-   *  这里有个凶坑：漏打 ~ 的时间词不再被当成日期，而是原样落回 p.title，一回车
-   *  把原标题整条换掉（「报销 #12345」变成「明天 15点」，日期还一点没设）。
-   *  而且当场撤不出来——焦点还在框里，App 的 Ctrl+Z 被 inEditable() 挡着，
-   *  得先点到别处才轮得到撤销栈。所以下面拦一道，并如实说一声要打 ~。 */
-  function applyQuickPatch(p: ParseResult): boolean {
-    const kinds = new Set(p.chips.map((c) => c.kind));
-    const patch: Partial<Task> = {};
-    if (kinds.has("date")) patch.due = p.due;
-    if (kinds.has("time")) patch.dueTime = p.dueTime;
-    if (kinds.has("repeat")) {
-      patch.repeat = p.repeat;
-      // 只写「每周一」没写日期：任务本来无日期时要带上首个落点，否则循环永不触发
-      if (!kinds.has("date") && !task.due && p.due) patch.due = p.due;
+  async function commitSubTitle(id: string) {
+    const raw = subDraftsRef.current[id];
+    if (raw === undefined) return;
+    const drafts = { ...subDraftsRef.current };
+    delete drafts[id];
+    subDraftsRef.current = drafts;
+    setSubDrafts(drafts);
+    const state = appStore.getState();
+    const current = state.data.tasks.find((t) => t.id === task.id && !t.deletedAt);
+    const sub = current?.subtasks.find((s) => s.id === id && !s.deletedAt);
+    if (!current || !sub || raw === sub.title || !raw.trim()) return;
+    const parsed = parseEditedTitle(raw, { now: new Date(), listNames: state.data.lists.map((l) => l.name), weekendDay: state.data.settings.weekendDay, keepNewlines: true, skip: ["tag"] });
+    const categories = await prepareSubtaskCategories(parsed.chips.filter((c) => c.kind === "list").map((c) => c.text), parsed.who,
+      () => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((s) => s.id === id && !s.deletedAt));
+    if (!categories) return;
+    const latest = appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.find((s) => s.id === id && !s.deletedAt);
+    if (!latest) return;
+    const patch = { ...editedTitlePatch(latest, parsed), ...appendedSubCategories(latest, categories.who, categories.listIds) };
+    if (Object.keys(patch).length) {
+      updateSubtask(task.id, id, patch);
+      touchSub(id);
     }
-    if (kinds.has("priority")) patch.priority = p.priority;
-    if (kinds.has("who")) patch.who = [...new Set([...task.who, ...p.who])];
-    if (kinds.has("list") && p.listName) patch.listId = ensureListId(p.listName);
-    if (kinds.has("tag")) patch.tags = [...new Set([...task.tags, ...p.tags])];
-    // 剩下这段话整个都是「没打 ~ 的时间词」= 用户是想排期、不是想改名，标题一个字不动
-    const bareTime = isBareTimeOnly(p.title, settings.weekendDay);
-    if (p.title.trim() && !bareTime) patch.title = p.title.trim();
-    const wrote = Object.keys(patch).length > 0;
-    if (wrote) updateTask(task.id, patch);
-    if (bareTime) showToast("时间前面要打个 ~ 才算数，标题先没动", false);
-    setDraft(null);
-    return wrote; // 一个字没写就别闪那个 ✓（它的全部价值在于不说谎）
-  }
-
-  /** 整句改那一栏的提交口——回车、失焦、点卡外，三条路走的都是这一个函数。
-   *  绝不另写一条：applySentence 里那两条保险（删光了不动手、只写真的变了的字段）
-   *  一旦被绕过去，历史上出过的两个 bug 会一起回来 */
-  function commitSentence(p: ParseResult, raw: string): boolean | void {
-    if (sentence.safe) return applySentence(p, raw);
-    return applyQuickPatch(p);
   }
 
   /** 子任务标题的回执计时（A7）：停手 TYPING_IDLE_MS 才闪，闪 FLASH_MS 后收 */
@@ -425,14 +382,17 @@ export default function TaskCard({ task }: { task: Task }) {
    *  落完把框清空（它是非受控的，React 重渲染不会替我们清），下一条路读到的就是空的；
    *  whoSettled 再兜一层，免得同一个名字进两次撤销栈。
    *  又开始打字（onChange）或重新聚焦时闸门放回去，接着加下一个人 */
-  function commitWho() {
+  async function commitWho() {
     const el = whoInputRef.current;
     if (!el || whoSettled.current) return;
     whoSettled.current = true;
     const v = el.value.trim();
     if (!v) return;
-    addTasksWho([task.id], v);
     el.value = "";
+    const result = await prepareTaskCategories(null, [v], null,
+      () => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
+    if (!result || !appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)) return;
+    result.who.forEach((who) => addTasksWho([task.id], who));
   }
 
   /** 标签内联框的唯一落库口，跟 commitWho 一个路数：三条路只认第一次。
@@ -449,18 +409,9 @@ export default function TaskCard({ task }: { task: Task }) {
   /** 点到卡外面之前的收尾（A1）。卡片一卸载，React 就不会再给这些框发 blur 了，
    *  不在这儿捞一把，打了一半的字就真的白打。**Esc 不走这条路**——Esc 才是丢弃 */
   function flushPending() {
-    // ① 整句改的草稿。底稿对不上（期间任务被别处改过）的那份已经作废，不能拿它去写
-    if (draft && draft.base === baseText && draft.text.trim() && draft.text !== baseText) {
-      commitSentence(
-        parseQuickAdd(draft.text, {
-          now: new Date(),
-          listNames: lists.map((l) => l.name),
-          weekendDay: settings.weekendDay,
-        }),
-        draft.text,
-      );
-    }
-    // ② 打了一半还没回车的新子任务
+    void commitTitle();
+    for (const id of Object.keys(subDraftsRef.current)) void commitSubTitle(id);
+    // 打了一半还没回车的新子任务
     if (newSub.trim()) addSubFromInput();
     // ③④ 需求方 / 标签两个内联框，只在各自的弹层开着时才有值可捞
     if (menu === "who") commitWho();
@@ -510,12 +461,13 @@ export default function TaskCard({ task }: { task: Task }) {
           rows={1}
           ref={growArea}
           className={subFlash === s.id ? "commit-lit" : undefined}
-          value={s.title}
+          value={subDrafts[s.id] ?? s.title}
           onChange={(e) => {
             growArea(e.currentTarget);
             // 子任务标题可以是几行（用户要的）：换行留着，粘进来的也留着，只统一 \r\n
-            updateSubtask(task.id, s.id, { title: keepLines(e.target.value) });
-            touchSub(s.id);
+            const drafts = { ...subDraftsRef.current, [s.id]: keepLines(e.target.value) };
+            subDraftsRef.current = drafts;
+            setSubDrafts(drafts);
           }}
           // Enter 拦下来什么都不做（它不是「换行」也不是「收卡」，老规矩）。
           // **Shift+Enter 在子任务里是换行**，放给 textarea 自己插——跟母任务标题、备注那边
@@ -524,7 +476,9 @@ export default function TaskCard({ task }: { task: Task }) {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             if (e.shiftKey) return;
             e.preventDefault();
+            void commitSubTitle(s.id);
           }}
+          onBlur={() => { if (document.hasFocus()) void commitSubTitle(s.id); }}
         />
         <CommitMark on={subFlash === s.id} />
         {/* 放弃了的那一步：圈圈不动，只在旁边挂个灰标签 */}
@@ -570,6 +524,21 @@ export default function TaskCard({ task }: { task: Task }) {
           {s.droppedAt ? "↩" : "⊘"}
         </button>
         <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务">×</button>
+        {((s.who?.length ?? 0) > 0 || (s.listIds?.length ?? 0) > 0) && (
+          <span className="sub-categories" aria-label="子任务追加归类">
+            {(s.who ?? []).map((who) => (
+              <span className="sub-category" key={`who:${who}`}>
+                @{who}<button type="button" aria-label={`移除子任务需求方 ${who}`} onClick={() => updateSubtask(task.id, s.id, { who: s.who?.filter((w) => w !== who) })}>×</button>
+              </span>
+            ))}
+            {(s.listIds ?? []).map((id) => {
+              const ownList = lists.find((l) => l.id === id);
+              return ownList ? <span className="sub-category" key={`list:${id}`}>
+                /{ownList.name}<button type="button" aria-label={`移除子任务清单 ${ownList.name}`} onClick={() => updateSubtask(task.id, s.id, { listIds: s.listIds?.filter((l) => l !== id) })}>×</button>
+              </span> : null;
+            })}
+          </span>
+        )}
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
           <div className={`popmenu${subPop.leaving ? " leaving" : ""}`} style={{ top: "100%", right: 0 }}>
             {/* 预设跟任务卡那个日期弹层同一套（core/options.dateOptions），别在这儿另写一份；
@@ -630,11 +599,13 @@ export default function TaskCard({ task }: { task: Task }) {
           ref={titleRef}
           rows={1}
           className={`${task.droppedAt ? "dropped" : ""}${titleFlash ? " commit-lit" : ""}`.trim() || undefined}
-          value={task.title}
-          placeholder="任务标题"
+          value={titleDraft ?? task.title}
+          placeholder="任务标题，可加 ~明天 @人 /清单"
           onChange={(e) => {
             growArea(e.currentTarget);
-            updateTask(task.id, { title: oneLine(e.target.value) });
+            const text = oneLine(e.target.value);
+            titleDraftRef.current = text;
+            setTitleDraft(text);
           }}
           // A8「一路回车敲完一张卡」：回车不再是收卡片，而是走到下一个框（备注）。
           // 想收卡片按 Shift+Enter——收卡这件事从「最容易误触的键」挪成「要多按一个键」。
@@ -643,9 +614,11 @@ export default function TaskCard({ task }: { task: Task }) {
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             e.preventDefault();
+            void commitTitle();
             if (e.shiftKey) expandTask(null);
             else notesRef.current?.focus();
           }}
+          onBlur={() => { if (document.hasFocus()) void commitTitle(); }}
         />
         <CommitMark on={titleFlash} />
         {/* 放弃只在这儿露一个灰标签，圈圈那边一点不动 */}
@@ -676,13 +649,12 @@ export default function TaskCard({ task }: { task: Task }) {
         {openSubs.map(renderSub)}
 
         {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
-        {/* 子任务也能一句话记全：「明天 15点 !高 画趋势图」。
-            清单/标签/需求方归母任务管，在这儿写就是普通文字，不会被吃掉 */}
+        {/* 子任务同样认时间、需求方和清单；归类只追加到本步，#仍保留在正文。 */}
         <div className="sub-row">
           <span className="sb" style={{ opacity: 0.35 }} />
           <SyntaxInput
             value={newSub}
-            onChange={setNewSub}
+            onChange={(v) => { newSubRef.current = v; setNewSub(v); }}
             onSubmit={addSubFromInput}
             // A1：打了一半点走也算数（addSubFromInput 空标题自己会退回，不会加出空条）。
             // 照实汇报加上没有：只打了「明天」没打标题时一条都没加，右边就不该浮出 ✓
@@ -690,6 +662,7 @@ export default function TaskCard({ task }: { task: Task }) {
             // Esc 先擦掉这一条，第二下才轮到收卡片
             onEscape={() => {
               if (!newSub) return false;
+              newSubRef.current = "";
               setNewSub("");
               return true;
             }}
@@ -697,10 +670,10 @@ export default function TaskCard({ task }: { task: Task }) {
             // 所以这里不接 onShiftEnter：子任务里收卡按 Esc（有字时第二下）或点卡外
             allowNewline
             placeholder="＋ 子任务，回车添加（可以写「~明天 !高」）"
-            lists={[]}
+            lists={lists.map((l) => l.name)}
             tags={[]}
-            whos={[]}
-            skip={SUBTASK_SKIP}
+            whos={whoNames}
+            skip={["tag"]}
             weekendDay={settings.weekendDay}
             inputStyle={{ fontSize: 13 }}
           />
@@ -950,46 +923,7 @@ export default function TaskCard({ task }: { task: Task }) {
         )}
       </div>
 
-      {/* 整句改：这一栏里就是这件事的一句话（现算的，不是当初输入的那句）。改它就是改这件事 */}
-      <div className="tc-sentence">
-        <span className="tc-sentence-tag">{sentence.safe ? "整句改" : "快捷改"}</span>
-        <SyntaxInput
-          value={live}
-          onChange={(v) => setDraft({ base: baseText, text: v })}
-          onSubmit={(p) => commitSentence(p, live)}
-          // A1：点走 = 提交，走的还是 commitSentence 那一条路，两条保险一个不少
-          onBlurCommit={(p) => {
-            if (live === baseText) return false; // 没改过就别写
-            return commitSentence(p, live) !== false; // 快捷改一个字没写时不闪 ✓
-          }}
-          // A3 草稿保护：有草稿时第一下 Esc 只把这句还原（跟右边那个 ↺ 一个意思），
-          // 第二下才冒泡出去收卡片。手一抖不至于前功尽弃
-          onEscape={() => {
-            if (live === baseText) return false;
-            setDraft(null);
-            return true;
-          }}
-          onShiftEnter={() => expandTask(null)}
-          placeholder={
-            sentence.safe
-              ? "改这句话就是改这件事，回车生效"
-              : "快捷改：输入「~明天 ~15点 !高 #标签 /清单 @人」，写了哪类改哪类，回车生效"
-          }
-          lists={lists.map((l) => l.name)}
-          tags={tagNames}
-          whos={whoNames}
-          weekendDay={settings.weekendDay}
-          showChips
-          // 长句子在这儿换行显示，不再被右边界切掉半截（v1.9.1）。
-          // 只有这一处开：随手记那条是个一行高的横条、快捷记浮窗是固定大小的系统窗口，
-          // 那两处长高了会把宿主的版式顶变形
-          multiline
-          inputStyle={{ fontSize: 12.5, padding: "5px 9px" }}
-        />
-        {sentence.safe && live !== baseText && (
-          <button className="tc-restore" title="放弃当前编辑，退回这件事现在的样子" onClick={() => setDraft(null)}>↺</button>
-        )}
-      </div>
+
     </div>
   );
 }

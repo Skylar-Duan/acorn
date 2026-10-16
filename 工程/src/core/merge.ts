@@ -278,6 +278,7 @@ export function dedupeListsByName(data: AppData, at = new Date().toISOString()):
   const count = new Map<string, number>();
   for (const t of data.tasks) {
     if (t.listId) count.set(t.listId, (count.get(t.listId) ?? 0) + 1);
+    for (const sub of t.subtasks) for (const id of new Set(sub.listIds ?? [])) count.set(id, (count.get(id) ?? 0) + 1);
   }
 
   /** 被折掉的清单 id → 留下的那条的 id */
@@ -292,9 +293,15 @@ export function dedupeListsByName(data: AppData, at = new Date().toISOString()):
   let moved = 0;
   const tasks = data.tasks.map((t) => {
     const to = t.listId === null ? undefined : remap.get(t.listId);
-    if (to === undefined) return t;
+    let changedSub = false;
+    const subtasks = t.subtasks.map((s) => {
+      if (!s.listIds?.some((id) => remap.has(id))) return s;
+      changedSub = true;
+      return { ...s, listIds: [...new Set(s.listIds.map((id) => remap.get(id) ?? id))] };
+    });
+    if (to === undefined && !changedSub) return t;
     moved++;
-    return { ...t, listId: to, updatedAt: at };
+    return { ...t, listId: to ?? t.listId, ...(changedSub ? { subtasks } : {}), updatedAt: at };
   });
   // filter 保序：留下来的清单彼此的先后一个字都没动，用户看见的侧栏只是少了重复那条
   const lists = data.lists.filter((l) => !remap.has(l.id));

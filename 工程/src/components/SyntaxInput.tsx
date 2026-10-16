@@ -20,7 +20,7 @@ export interface SyntaxInputProps {
   /** 回车提交。**回执由调用方说了算**：明确返回 false = 这一下什么都没存
    *  （用法页那个只解析不落库的试写框、只写了日期没写标题的子任务栏），那就不闪 ✓。
    *  返回 true / 什么都不返回 = 存下了，照旧闪。A2 那个回执的全部价值在于它不能说谎 */
-  onSubmit: (parsed: ParseResult) => boolean | void;
+  onSubmit: (parsed: ParseResult) => boolean | void | Promise<boolean | void>;
   lists: string[];
   tags: string[];
   whos: string[];
@@ -34,19 +34,19 @@ export interface SyntaxInputProps {
   weekendDay?: "sat" | "sun";
   inputStyle?: CSSProperties;
   /** 失焦时怎么办（A1「点走 = 提交」）。**这里不写死任何一种语义**：
-   *  这个框被 4 处复用（记一条 / 整句改 / 加子任务 / 浮窗），
+   *  这个框由记一条、加子任务和浮窗复用，
    *  记一条那条要躲开自己那排点选按钮、浮窗根本不能在失焦时落库——各家自己判。
    *  不给这个 prop 就是老样子：失焦只关补全下拉，什么都不提交。
    *  返回 true = 真的存下去了，这边才闪回执 */
-  onBlurCommit?: (parsed: ParseResult, e: ReactFocusEvent<SyntaxInputEl>) => boolean;
+  onBlurCommit?: (parsed: ParseResult, e: ReactFocusEvent<SyntaxInputEl>) => boolean | Promise<boolean>;
   /** 补全下拉没开着时按 Esc。返回 true = 这一下我吃掉了（不再往外冒泡）。
-   *  整句改那处第一下 Esc 是「还原本句」，浮窗那处是「隐藏窗口」，语义各不相同 */
+   *  新子任务会丢弃草稿，浮窗会隐藏窗口，各处自行决定 */
   onEscape?: () => boolean;
   /** Shift+Enter（A8「一路回车敲完一张卡」里的收卡那一下）。不给就当普通回车 */
   onShiftEnter?: () => void;
   /** 长句子换行显示，不再单行截断（v1.9.1）。底下的元素从 input 换成自动撑高的 textarea。
    *
-   *  **默认关着，只有任务卡那条「整句改」开它**。记一条那条是个一行高的横条、
+   *  **默认关着**。记一条那条是个一行高的横条、
    *  快捷记浮窗更是一个固定大小的系统窗口——那两处长高了就会把宿主的版式顶变形。
    *  开着的时候语义一点不变：回车照旧是提交（在 textarea 里得自己拦掉默认的换行），
    *  粘进来的换行符照旧当空格吃掉（一句话就是一句话，不能是两行）。 */
@@ -107,6 +107,8 @@ export default function SyntaxInput({
 }: SyntaxInputProps) {
   const multiline = multilineProp || allowNewline;
   const inputRef = useRef<SyntaxInputEl | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const { on: flashOn, flash } = useCommitFlash();
   const [caret, setCaret] = useState(0);
   /** Esc 关掉的那个下拉的签名：签名不变就不再弹，继续敲字换了签名会重开 */
@@ -157,7 +159,7 @@ export default function SyntaxInput({
 
   // multiline 那条路的高度跟着内容走。ref 回调只在挂载那一下调一次，
   // 所以每次 value 变了都得再算一遍——**受控组件**，句子还会被调用方从外面改
-  // （任务卡的「整句改」按 ↺ 还原、改完别的字段之后那句话自己重算）
+  // （调用方还原草稿、提交后清空，都会从外部改值）
   useLayoutEffect(() => {
     if (!multiline) return;
     const el = inputRef.current;
@@ -212,7 +214,7 @@ export default function SyntaxInput({
       return;
     }
     if (e.key === "Escape" && onEscape && onEscape()) {
-      // 调用方吃掉了这一下（比如整句改还原本句），别再让外层收卡片
+      // 调用方吃掉了这一下（比如丢弃新子任务草稿），别再让外层收卡片
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -224,6 +226,10 @@ export default function SyntaxInput({
    *  调用方明说「没存」（返回 false）的同样不闪，见 onSubmit 那段注释 */
   function submit(p: ParseResult) {
     const stored = onSubmit(p);
+    if (stored instanceof Promise) {
+      void stored.then((result) => { if (mounted.current && result !== false && value.trim()) flash(); });
+      return;
+    }
     if (stored !== false && value.trim()) flash();
   }
 
@@ -232,11 +238,14 @@ export default function SyntaxInput({
     // 点补全项不会走到这儿：那边 onMouseDown 已经 preventDefault，焦点根本没离开。
     //
     // **窗口失焦不是点走**（A1 的统一口径，一处盖住所有 onBlurCommit 的调用方）：
-    // alt-tab 去别的程序时浏览器照样发 blur。任务卡那条「整句改」尤其凶——它做的是
-    // 整句全量对齐，打到一半失焦就会把日期/重要性/清单/需求方/标签整片写成空。
+    // alt-tab 去别的程序时浏览器照样发 blur，半句草稿不能被当成已经说完。
     // 正确的行为是**原样悬着**，等用户回来自己了结（回车提交 / Esc 丢弃）
     if (!document.hasFocus()) return;
-    if (onBlurCommit && value.trim() && onBlurCommit(parsed, e)) flash();
+    if (onBlurCommit && value.trim()) {
+      const stored = onBlurCommit(parsed, e);
+      if (stored instanceof Promise) void stored.then((result) => { if (mounted.current && result) flash(); });
+      else if (stored) flash();
+    }
   }
 
   function handleChange(e: ChangeEvent<SyntaxInputEl>) {

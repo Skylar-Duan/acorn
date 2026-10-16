@@ -6,8 +6,8 @@ import type { List, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
 import { taskDue } from "../core/taskDue";
 import {
-  aliveTasks, deleteList, navigate, purgeSubtask, purgeTask, purgeTrash, renameList,
-  restoreSubtask, restoreTask, rowPriority, setListColor, sortTasks, trashDaysLeft, trashedSubtaskRows, useApp,
+  aliveTasks, categoryRows, deleteList, navigate, purgeSubtask, purgeTask, purgeTrash, renameList,
+  restoreSubtask, restoreTask, rowPriority, setListColor, sortRows, sortTasks, trashDaysLeft, trashedSubtaskRows, useApp,
 } from "../core/store";
 import { isMobile } from "../core/platform";
 import type { ListGroup } from "../core/plan";
@@ -24,6 +24,7 @@ import MobileHead from "../mobile/MobileHead";
 import MobileRow from "../mobile/MobileRow";
 import { openSheet } from "../mobile/sheetStore";
 import { IcoDots } from "../mobile/icons";
+import RowList, { cardAnchor, planFold } from "../components/RowList";
 
 export type ListKind = "inbox" | "list" | "who" | "tag" | "trash";
 
@@ -95,6 +96,7 @@ function ListNameInput({ list }: { list: List }) {
 export default function ListView({ kind }: { kind: ListKind }) {
   const data = useApp((s) => s.data);
   const expandedId = useApp((s) => s.ui.expandedId);
+  const ui = useApp((s) => s.ui);
   const listId = useApp((s) => s.ui.listId);
   const who = useApp((s) => s.ui.who);
   const tag = useApp((s) => s.ui.tag);
@@ -145,7 +147,11 @@ export default function ListView({ kind }: { kind: ListKind }) {
 
   // 回收站里单列的子任务（v7）：母任务还活着、只删了这一步的那些，画在整件事那列后面，
   // 一行一条「母任务 › 子任务」。母任务整件事在回收站里时它的子任务不单列（跟着母任务走）
-  const subRows = useMemo(() => (kind === "trash" ? trashedSubtaskRows(data) : []), [data, kind]);
+  const subRows = useMemo(() => {
+    if (kind === "trash") return trashedSubtaskRows(data);
+    if (kind !== "list" && kind !== "who") return [];
+    return sortRows(categoryRows(data, kind === "list" ? { listId } : { who }).filter((r) => r.sub), sortMode);
+  }, [data, kind, listId, who, sortMode]);
   const trashHasStuff = tasks.length > 0 || subRows.length > 0;
 
   // 清单/需求方视图：按日期分组展示更有章法（分法在 core/plan.ts，纯函数、可单测）。
@@ -161,7 +167,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
   // 展开着的那件事钉在上一版的位置上（core/pin.ts）。这个视图犯的是同一种病：
   // 在卡里把日期改到今天、或者顺手改掉它的归属，这一行会当场换一组（甚至整个退出这个视图），
   // 而每一组各自一个 Fragment —— 卡片换了 React 父节点就是卸载重挂，
-  // 输入框焦点、「＋子任务」草稿、「整句改」草稿一起清空，用户看到的就是「卡片自己收回去了」。
+  // 输入框焦点、「＋子任务」草稿、标题编辑草稿一起清空，用户看到的就是「卡片自己收回去了」。
   // 兜底行池给的是**这个视图没过滤过**的那一份（还活着、还没了结的全部任务）：
   // 改到别的清单去之后，光靠上面那四组是捞不回来的。
   // 真勾掉 / 真删掉的不在池子里 —— 那种「真没了」就该让它没（跟「今天」视图同一个口径）
@@ -194,7 +200,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           right={
             kind === "list" && list ? (
               <>
-                <span className="mhead-count">{tasks.length} 件</span>
+                <span className="mhead-count">{tasks.length + subRows.length} 件</span>
                 <button
                   className="mhead-plain"
                   aria-label="清单设置"
@@ -319,6 +325,12 @@ export default function ListView({ kind }: { kind: ListKind }) {
             )}
           </Fragment>
         ))}
+        {kind !== "trash" && subRows.length > 0 && (
+          <>
+            <div className="group-head split"><span className="group-label">子任务</span></div>
+            <RowList rows={subRows} fold={planFold(subRows, ui)} anchor={cardAnchor(subRows, expandedId)} orderedIds={[...orderedIds, ...subRows.map((r) => r.task.id)]} fadeOnDone />
+          </>
+        )}
         {/* 回收站里单列的子任务（v7）：一行一条「母任务 › 子任务 · 还剩 N 天」，恢复 / 彻底删除。
             桌面和手机同一份标记——手机上这一页本来就用的是桌面那份 .task-row（套成卡的样子，
             见 mobile-shell.css），照抄上面整件事那行就行 */}

@@ -14,6 +14,7 @@ import QuickAddBar from "./QuickAddBar";
 import { useGuideEntry } from "./GuideSheet";
 import { useCommitFlash } from "./commitFlash";
 import { setQuickAddOpen } from "../core/store";
+import { isTaskCategoryDialogOpen } from "../core/categoryCreation";
 import "../styles/quickadd-dialog.css";
 
 export default function QuickAddDialog() {
@@ -36,6 +37,7 @@ export default function QuickAddDialog() {
   // 它那句 inEditable() 会先行返回，撞不上。这里的 stopPropagation 是多一道保险
   useEffect(() => {
     function onQuickAddKey(e: KeyboardEvent) {
+      if (isTaskCategoryDialogOpen()) return;
       if (e.key !== "Escape") return;
       e.stopPropagation();
       setQuickAddOpen(false);

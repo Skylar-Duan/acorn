@@ -1,6 +1,6 @@
 // 「随手记一条」浮窗：独立小窗，Alt+Space 唤起。
 // 不碰数据文件——解析后把结果发给主窗落库，用完即隐。补全候选（清单/标签/需求方）由主窗随 context 事件下发。
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "../styles/themes.css";
 import "../styles/base.css";
@@ -29,6 +29,7 @@ interface Ctx {
 function QuickAddApp() {
   const [text, setText] = useState("");
   const [ctx, setCtx] = useState<Ctx>({ listNames: [], tagNames: [], whoNames: [], theme: "forest", mode: "system" });
+  const pending = useRef<string | null>(null);
 
   useEffect(() => {
     applyThemeAttrs("forest", "system");
@@ -39,8 +40,21 @@ function QuickAddApp() {
         applyThemeAttrs(e.payload.theme, e.payload.mode);
       });
       await listen("quickadd:show", async () => {
+        if (pending.current) { await hide(); return; }
         setText("");
         await emitTo("main", "quickadd:pull", {});
+      });
+      await listen<{ requestId?: string; saved: boolean }>("quickadd:result", async (e) => {
+        if (e.payload.requestId !== pending.current) return;
+        pending.current = null;
+        if (e.payload.saved) setText("");
+        else {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const current = getCurrentWindow();
+          await current.show();
+          await current.setFocus();
+          document.querySelector<HTMLInputElement>(".si-wrap input")?.focus();
+        }
       });
       await emitTo("main", "quickadd:pull", {});
     })();
@@ -52,9 +66,14 @@ function QuickAddApp() {
   }
 
   async function submit(parsed: ParseResult) {
-    if (!parsed.title.trim()) return;
+    if (!parsed.title.trim() || pending.current) return;
     const { emitTo } = await import("@tauri-apps/api/event");
-    await emitTo("main", "quickadd:submit", {
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    pending.current = requestId;
+    try {
+      await hide();
+      await emitTo("main", "quickadd:submit", {
+      requestId,
       title: parsed.title.trim(),
       listName: parsed.listName,
       tags: parsed.tags,
@@ -63,9 +82,13 @@ function QuickAddApp() {
       due: parsed.due,
       dueTime: parsed.dueTime,
       repeat: parsed.repeat,
-    });
-    setText("");
-    await hide();
+      });
+    } catch {
+      pending.current = null;
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().show();
+      await getCurrentWindow().setFocus();
+    }
   }
 
   return (
@@ -93,6 +116,7 @@ function QuickAddApp() {
         onSubmit={(p) => {
           if (!p.title.trim()) return false;
           void submit(p);
+          return false;
         }}
         autoFocus
         placeholder="记一条…「~周五下午3点 提交周报 /工作 @李哥 #紧要 !高」"

@@ -591,7 +591,7 @@ export function addTask(input: AddTaskInput): string {
 /** 逐键落库那几个纯文本字段的合并键（A5）。**在这儿现推、不靠调用方传**：
  *  能打字的地方有十来处，靠一处处记得传参迟早漏一个。
  *  只认「一次只改一个字段、而且是 title/notes」——那就是有人正在框里打字；
- *  一次改好几个字段的（整句改、点日期）本来就是一下一张快照，不该并 */
+ *  一次改好几个字段的（标题编辑、点日期）本来就是一下一张快照，不该并 */
 function typingKey(scope: string, patch: object): string | undefined {
   const keys = Object.keys(patch);
   // 日期弹层是「连写」的另一种：那儿 due 和 dueTime 永远一起写（commitDraft 那一个出口），
@@ -1211,6 +1211,8 @@ export function addSubtask(
     dueTime?: string | null;
     priority?: Priority | null;
     repeat?: RepeatRule | null;
+    who?: string[];
+    listIds?: string[];
   },
 ) {
   const sub: Subtask = {
@@ -1227,6 +1229,8 @@ export function addSubtask(
   // 循环（v8）**只在真有的时候才写这个键**：跟 deletedAt 一个口径，缺失 = 不循环。
   // 不写进上面那个字面量，是为了让「没循环的子任务」在导出文件里一个多余的键都不多
   if (extra?.repeat) sub.repeat = extra.repeat;
+  if (extra?.who?.length) sub.who = [...new Set(extra.who)];
+  if (extra?.listIds?.length) sub.listIds = [...new Set(extra.listIds)];
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, sub] } : t)),
@@ -1386,11 +1390,11 @@ export function purgeSubtask(taskId: string, subId: string) {
 
 // ---------- 清单 ----------
 
-export function addList(name: string, color: string): string {
+export function addList(name: string, color: string, icon?: string): string {
   const id = newId();
   mutate((d) => ({
     ...d,
-    lists: [...d.lists, { id, name, color, order: d.lists.length, updatedAt: new Date().toISOString() }],
+    lists: [...d.lists, { id, name, color, ...(icon ? { icon } : {}), order: d.lists.length, updatedAt: new Date().toISOString() }],
   }));
   return id;
 }
@@ -1454,7 +1458,11 @@ export function deleteList(id: string) {
     (d) => ({
       ...d,
       lists: d.lists.filter((l) => l.id !== id),
-      tasks: d.tasks.map((t) => (t.listId === id ? { ...t, listId: null } : t)),
+      tasks: d.tasks.map((t) => {
+        const subtasks = t.subtasks.map((s) => s.listIds?.includes(id) ? { ...s, listIds: s.listIds.filter((x) => x !== id) } : s);
+        const changedSub = subtasks.some((s, index) => s !== t.subtasks[index]);
+        return t.listId === id || changedSub ? { ...t, listId: t.listId === id ? null : t.listId, ...(changedSub ? { subtasks } : {}) } : t;
+      }),
       graveyard: bury(d.graveyard, [id], at),
     }),
     // 说它**真做**的那件事：事一件没删，只是不归这张清单了（跟手机上删清单那张纸同一套说法）
@@ -1658,6 +1666,25 @@ export function habitsOpenToday(d: Pick<AppData, "tasks">, today = todayYMD()): 
 export interface DateRow {
   task: Task;
   sub: Subtask | null;
+}
+
+/** 归类页与角标共用：母归类命中只列母任务；仅子追加命中时单列相应子任务。 */
+export function categoryRows(d: Pick<AppData, "tasks">, category: { listId?: string | null; who?: string | null }): DateRow[] {
+  const rows: DateRow[] = [];
+  for (const task of aliveTasks(d)) {
+    if (task.done || task.droppedAt) continue;
+    const parentMatch = category.listId ? task.listId === category.listId : !!category.who && task.who.includes(category.who);
+    if (parentMatch) {
+      rows.push({ task, sub: null });
+      continue;
+    }
+    for (const sub of aliveSubtasks(task)) {
+      if (sub.done || sub.droppedAt) continue;
+      const match = category.listId ? sub.listIds?.includes(category.listId) : !!category.who && sub.who?.includes(category.who);
+      if (match) rows.push({ task, sub });
+    }
+  }
+  return rows;
 }
 
 /** 母任务身上「日期这一摊」。收窄成结构类型而不是整个 Task：
@@ -1891,10 +1918,19 @@ export function sortTasks(tasks: Task[], mode: "time" | "priority"): Task[] {
  *  否则手排完一加新任务，顺序又自己跳回去了 */
 export function allWho(d: Pick<AppData, "tasks" | "settings">): { who: string; open: number }[] {
   const map = new Map<string, number>();
+  // 点 ＋ 预建的人还没有任务，也应该留在侧栏和补全候选里。
+  for (const who of Object.keys(d.settings.whoAppearance ?? {})) if (who.trim()) map.set(who, 0);
   for (const t of aliveTasks(d)) {
     // 放弃跟完成同一个口径（v1.9.0 收口）：两种都是「了结了」，都不算未完成。
     // 这个数跟统计页 byWho 的 open 栏、跟点进去看到的条数是同一个算法，三处不许再劈叉
     for (const w of t.who) map.set(w, (map.get(w) ?? 0) + (t.done || t.droppedAt ? 0 : 1));
+    for (const sub of t.subtasks) {
+      if (sub.deletedAt) continue;
+      for (const w of sub.who ?? []) {
+        if (t.who.includes(w)) continue;
+        map.set(w, (map.get(w) ?? 0) + (t.done || t.droppedAt || sub.done || sub.droppedAt ? 0 : 1));
+      }
+    }
   }
   const all = [...map.entries()]
     .map(([who, open]) => ({ who, open }))
