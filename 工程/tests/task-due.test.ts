@@ -219,13 +219,15 @@ describe("用户实际看到的母任务安排", () => {
     expect(host.textContent).not.toContain("未安排");
   });
 
-  it("四象限以最近步骤判断紧急并显示相同日期", () => {
+  it("四象限只画待办子点，日期按本步并显示母归属", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 15, 12));
     put(parent({ priority: 3 }));
     const host = mount(createElement(QuadrantBoard));
-    expect(host.querySelector(".quad-iu .quad-title")?.textContent).toBe("整理项目");
-    expect(host.querySelector(".quad-iu .quad-due")?.textContent).toBe("今天");
+    const point = [...host.querySelectorAll<HTMLButtonElement>(".quad-point")].find((button) => button.getAttribute("aria-label")?.includes("今天"))!;
+    expect(point.getAttribute("aria-label")).toContain("整理项目 ›");
+    expect(Number.parseFloat(point.style.left)).toBeGreaterThan(50);
+    act(() => point.focus()); expect(document.querySelector(".quad-preview-values")?.textContent).toContain("今天");
   });
 
   it("日历把无手排日期的母任务列到最近步骤那天", () => {

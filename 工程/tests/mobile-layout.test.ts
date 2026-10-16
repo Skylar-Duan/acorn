@@ -179,14 +179,13 @@ describe("P0-6 安卓 15 起强制 edge-to-edge", () => {
 });
 
 describe("P0-7 / P1-1 四象限与日历：两个视图原来一条手机媒体查询都没有", () => {
-  it("四象限窄屏改单列四段，滚动交回给整页", () => {
+  it("四象限窄屏保留坐标平面，滚动交回给整页", () => {
     expect(quadrantCss).toContain(NARROW);
     const mobile = narrowPart(quadrantCss);
-    expect(mobile).toContain(".view-body.quad-body { overflow-y: auto; }");
-    expect(mobile).toContain("grid-template-columns: 1fr;");
-    expect(mobile).toContain("grid-template-rows: none;");
-    // 每格不再各自开一个小滚动区
-    expect(mobile).toContain(".quad-cell-body { overflow: visible; }");
+    expect(mobile).toContain(".view-body.quad-body.quad-coordinate { overflow-y: auto;");
+    expect(mobile).toContain(".quad-chart { flex: none;");
+    expect(mobile).toContain(".quad-plot { min-height: 455px; }");
+    expect(quadrantCss).toContain("touch-action: pan-y;");
   });
 
   it("日历窄屏：格子里只剩日期 + 圆点，条目标题藏起来", () => {

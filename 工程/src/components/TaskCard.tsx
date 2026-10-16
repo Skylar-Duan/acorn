@@ -42,7 +42,7 @@ const POPUP_WRITE = { noPostponeCount: true } as const;
 
 type MenuName = "date" | "repeat" | "list" | "priority" | "who" | "tags" | null;
 
-export default function TaskCard({ task }: { task: Task }) {
+export default function TaskCard({ task, locateSubId, detailMode = false }: { task: Task; locateSubId?: string; detailMode?: boolean }) {
   // B8：只订阅真用得上的三片，派生也都缓存起来。以前是整份 data + 每次渲染重算一遍
   // allWho/allTags——在标题框里打一个字并不改数据，不该重复统计全库需求方和标签
   const lists = useApp((s) => s.data.lists);
@@ -54,6 +54,8 @@ export default function TaskCard({ task }: { task: Task }) {
   const propertyAnchor = useRef<HTMLButtonElement | null>(null);
   const subPropertyAnchor = useRef<HTMLButtonElement | null>(null);
   const [subMenu, setSubMenu] = useState<{ id: string; kind: "date" | "prio" } | null>(null);
+  const escapeTop = useRef(false);
+  escapeTop.current = !!menu || !!subMenu;
   /** 循环弹层现在显示的是常用项（false）还是「自定义…」面板（true）。点 ↻ 那颗小签打开时一律回到常用项 */
   const [repeatCustom, setRepeatCustom] = useState(false);
   /** 弹层退场那一拍（B6）：关掉的时候得让它多活一会儿把动画演完，不然是「啪一下没了」。
@@ -75,6 +77,8 @@ export default function TaskCard({ task }: { task: Task }) {
    *  用户自己点过之后才锁成他选的那个 */
   const [showDone, setShowDone] = useState<boolean | null>(null);
   const [openFold, setOpenFold] = useState(() => ({ id: task.id, folded: taskSubtasksFolded(task.id) }));
+  const [dismissedLocate, setDismissedLocate] = useState<string | null>(null);
+  const locatingSubId = locateSubId && dismissedLocate !== locateSubId ? locateSubId : null;
   const openFolded = openFold.id === task.id ? openFold.folded : taskSubtasksFolded(task.id);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const titleDraftRef = useRef<string | null>(null);
@@ -174,6 +178,11 @@ export default function TaskCard({ task }: { task: Task }) {
       // 所以先收尾再收卡：欠着的那一拍作废，这次弹层的记账清空（结算那儿直接 return）
       if (e.key === "Escape") {
         if (isTaskCategoryDialogOpen()) return;
+        if (detailMode && escapeTop.current) {
+          e.preventDefault(); e.stopPropagation();
+          dueFieldRef.current?.cancel(); subDueFieldRef.current?.cancel(); dueWrittenRef.current = undefined;
+          setMenu(null); setSubMenu(null); return;
+        }
         titleDraftRef.current = null;
         subDraftsRef.current = {};
         setTitleDraft(null);
@@ -199,6 +208,19 @@ export default function TaskCard({ task }: { task: Task }) {
   useLayoutEffect(() => {
     growArea(titleRef.current);
   }, [task.title, titleDraft]);
+  // 非空备注也从一行起步；内容或窗口宽度变化时重算，长备注仍受CSS最大高度约束。
+  useLayoutEffect(() => { growArea(notesRef.current); }, [task.notes]);
+  useLayoutEffect(() => {
+    const notes = notesRef.current;
+    if (!notes || typeof ResizeObserver === "undefined") return;
+    let width = notes.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (notes.clientWidth === width) return;
+      width = notes.clientWidth; growArea(notes);
+    });
+    observer.observe(notes);
+    return () => observer.disconnect();
+  }, []);
   // 子任务那一堆同理。它们没有各自的 ref（是个 map 出来的列表），
   // ref={growArea} 只在挂载那一下调一次，所以外部改动（撤销/同步/标题编辑）得在这儿补一遍。
   // 只扫这张卡自己的 .subs，不动别处
@@ -219,6 +241,17 @@ export default function TaskCard({ task }: { task: Task }) {
     () => splitSubtasks(task.subtasks, task),
     [task.subtasks, task.due, task.dueTime],
   );
+  const canFoldOpen = openSubs.length > 3;
+  const previewFolded = canFoldOpen && openFolded && !locatingSubId;
+  const visibleOpenSubs = previewFolded ? openSubs.slice(0, 3) : openSubs;
+  useLayoutEffect(() => {
+    if (!locatingSubId) return;
+    const frame = requestAnimationFrame(() => {
+      const row = [...(cardRef.current?.querySelectorAll<HTMLElement>("[data-subtask-id]") ?? [])].find((element) => element.dataset.subtaskId === locatingSubId);
+      row?.scrollIntoView?.({ block: "center", behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [task.id, locatingSubId]);
   const autoFold = foldDoneSubs(task.subtasks);
   // 够数才给折叠开关（只勾掉一两条时摊开就是了，不必多一行按钮）。
   // 不够数时强制摊开：否则「先折起来、再取消勾选几条」会把已完成子任务锁成看不见又开不出来
@@ -490,7 +523,7 @@ export default function TaskCard({ task }: { task: Task }) {
       subInputCallbacks.current.set(s.id, inputRef);
     }
     return (
-      <div key={s.id} className={`sub-row${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}`} style={{ position: "relative" }}>
+      <div key={s.id} data-subtask-id={s.id} className={`sub-row${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}${locatingSubId === s.id ? " quad-located" : ""}`} style={{ position: "relative" }}>
         <button className={`sb${s.done ? " done" : ""}`} aria-label={`${s.done ? "标记未完成" : "完成子任务"} ${s.title}`} onClick={() => toggleSubtask(task.id, s.id)} />
         {/* 子任务标题跟母任务标题同一个待遇：长了就换行，不再单行截断（v1.9.1）。
             ref按子任务复用，挂载时量高度并记录图片输入目标。 */}
@@ -678,7 +711,7 @@ export default function TaskCard({ task }: { task: Task }) {
           className={`notes${notesFlash ? " commit-lit" : ""}`}
           value={task.notes}
           placeholder="备注…"
-          rows={task.notes ? undefined : 1}
+          rows={1}
           onChange={(e) => updateTask(task.id, { notes: e.target.value })}
           // 备注里回车照旧是换行（它就是给人写几行字的）；Shift+Enter 收卡，跟标题那边一个规矩
           onKeyDown={(e) => {
@@ -699,12 +732,13 @@ export default function TaskCard({ task }: { task: Task }) {
         canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
         onChange={(images) => updateTask(task.id, { images })} />
       <div className="subs">
-        {openSubs.length > 0 && <button type="button" className="tc-openfold" aria-expanded={!openFolded} aria-controls={`pending-subs-${task.id}`}
-          onClick={() => { const folded = !openFolded; rememberTaskSubtasksFolded(task.id, folded); setOpenFold({ id: task.id, folded }); }}>
-          <span className={`tc-openfold-chevron${openFolded ? " folded" : ""}`} aria-hidden="true">⌄</span>
+        {canFoldOpen ? <button type="button" className="tc-openfold" aria-expanded={!previewFolded} aria-controls={`pending-subs-${task.id}`}
+          onClick={() => { const folded = !previewFolded; setDismissedLocate(locateSubId ?? null); rememberTaskSubtasksFolded(task.id, folded); setOpenFold({ id: task.id, folded }); }}>
+          <span className={`tc-openfold-chevron${previewFolded ? " folded" : ""}`} aria-hidden="true">⌄</span>
           待办子任务 <span className="tc-openfold-count">{openSubs.length}</span>
-        </button>}
-        <div id={`pending-subs-${task.id}`}>{!openFolded && openSubs.map(renderSub)}</div>
+          <span className="tc-openfold-action">{previewFolded ? `展开其余 ${openSubs.length - 3} 条` : "收起，仅看前3条"}</span>
+        </button> : openSubs.length > 0 && <div className="tc-openfold tc-openfold-static">待办子任务 <span className="tc-openfold-count">{openSubs.length}</span></div>}
+        <div id={`pending-subs-${task.id}`}>{visibleOpenSubs.map(renderSub)}</div>
 
         {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
         {/* 子任务同样认时间、需求方和清单；归类只追加到本步，#仍保留在正文。 */}

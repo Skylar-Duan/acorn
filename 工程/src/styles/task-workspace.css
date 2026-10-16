@@ -23,14 +23,16 @@
 .tw-card .row1 > .cb { width: 20px; height: 20px; margin-top: 4px; }
 .tw-card .row1 textarea { font-family: var(--sans); font-size: 18px; font-weight: 600; line-height: 1.6; letter-spacing: -.01em; border-radius: 4px; }
 .tw-card .row1 textarea:focus { background: var(--bg); box-shadow: 0 0 0 4px var(--bg); }
-.tw-card .tc-notes-wrap { margin: 10px 0 16px 43px; }
-.tw-card textarea.notes { font-size: 13px; line-height: 1.75; max-height: 200px; min-height: 24px; color: var(--ink-2); border-radius: 4px; }
+.tw-card.task-card .tc-notes-wrap { margin: 6px 0 6px 43px; }
+.tw-card.task-card textarea.notes { display: block; font-size: 13px; line-height: 1.65; max-height: 200px; min-height: 24px; color: var(--ink-2); border-radius: 4px; }
 .tw-card textarea.notes:focus { background: var(--bg); box-shadow: 0 0 0 4px var(--bg); }
-.tw-card .subs { margin: 16px 0 0 43px; }
+.tw-card.task-card .subs { margin: 6px 0 0 43px; }
 .tw-card .tc-openfold, .tw-card .subs .tc-donefold { min-height: 36px; gap: 8px; margin: 0 0 4px; padding: 6px 0; color: var(--ink-2); font-size: 12px; font-weight: 600; }
 .tw-card .subs .tc-donefold { margin-top: 12px; color: var(--ink-3); }
 .tw-card .tc-openfold-count { display: inline-flex; align-items: center; justify-content: center; min-width: 23px; padding: 1px 6px; border-radius: 5px; background: var(--bg); font-size: 11px; font-variant-numeric: tabular-nums; }
 .tw-card .tc-openfold-chevron { width: 16px; text-align: center; }
+.tw-card .tc-openfold-action { margin-left: 6px; color: var(--ink-3); font-size: 11px; font-weight: 400; }
+.tw-card .tc-openfold-static { display: flex; align-items: center; cursor: default; }
 .tw-card .subs .sub-row { flex-wrap: wrap; gap: 4px 8px; min-height: 38px; padding: 6px 0; border-radius: 6px; }
 .tw-card .subs .sub-row:focus-within { background: var(--bg); box-shadow: 0 0 0 4px var(--bg); }
 .tw-card .subs .sub-row > .sb { width: 15px; height: 15px; margin-top: 5px; border-radius: 4px; }
@@ -87,7 +89,7 @@
 
 @media (max-width: 1000px) {
   .tw-card.task-card { padding: 18px 18px 14px; }
-  .tw-card .tc-notes-wrap, .tw-card .subs, .tw-card .tc-properties.chips { margin-left: 33px; }
+  .tw-card.task-card .tc-notes-wrap, .tw-card.task-card .subs, .tw-card .tc-properties.chips { margin-left: 33px; }
   .tw-row .sub-row-categories { max-width: 18%; }
 }
 @media (hover: none) {
@@ -96,7 +98,7 @@
 }
 @media (max-width: 600px) {
   .tw-card.task-card { padding: 16px 12px; }
-  .tw-card .tc-notes-wrap, .tw-card .subs, .tw-card .tc-properties.chips { margin-left: 0; }
+  .tw-card.task-card .tc-notes-wrap, .tw-card.task-card .subs, .tw-card .tc-properties.chips { margin-left: 0; }
   .tw-row .meta { gap: 6px; }
   .tw-row .sub-row-categories { max-width: 34%; }
 }

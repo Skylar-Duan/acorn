@@ -6,6 +6,7 @@ import TaskRow from "../src/components/TaskRow";
 import { finishCategoryDraft, useCategoryCreation } from "../src/core/categoryCreation";
 import { defaultData, newTask } from "../src/core/model";
 import { appStore, deleteTasks, flushSave, toggleSubtask, undo, useApp } from "../src/core/store";
+import { rememberTaskSubtasksFolded } from "../src/core/subtaskFold";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -161,14 +162,32 @@ describe("任务卡直接编辑标题", () => {
     expect(panel().querySelectorAll("textarea")).toHaveLength(133);
     expect(toggle().getAttribute("aria-expanded")).toBe("true");
     act(() => toggle().click());
-    expect(panel().querySelectorAll("textarea")).toHaveLength(0);
+    expect(panel().querySelectorAll("textarea")).toHaveLength(3);
+    expect(toggle().textContent).toContain("展开其余 130 条");
     const input = document.querySelector<HTMLTextAreaElement>('.subs .si-input')!;
     type(input, "收起时也能添加下一步"); await enter(input);
-    expect(count()).toBe("134"); expect(panel().querySelectorAll("textarea")).toHaveLength(0);
+    expect(count()).toBe("134"); expect(panel().querySelectorAll("textarea")).toHaveLength(3);
     act(() => toggleSubtask("parent", "many-0")); expect(count()).toBe("133");
+    expect([...panel().querySelectorAll("textarea")].map((el) => el.value)).toEqual(["第2步", "第3步", "第4步"]);
     act(() => root.render(createElement(Harness, { key: "reopen-card" })));
-    expect(toggle().getAttribute("aria-expanded")).toBe("false"); expect(panel().querySelectorAll("textarea")).toHaveLength(0);
+    expect(toggle().getAttribute("aria-expanded")).toBe("false"); expect(panel().querySelectorAll("textarea")).toHaveLength(3);
     act(() => toggle().click()); expect(panel().querySelectorAll("textarea")).toHaveLength(133);
     expect(getTask().subtasks).toHaveLength(134);
+  });
+  it.each([0, 1, 2, 3, 4, 133])("%i条待办：少于四条全部可见，收起也保留前三条", (size) => {
+    rememberTaskSubtasksFolded("parent", true);
+    act(() => { const task = getTask(); appStore.setState({ data: { ...appStore.getState().data, tasks: [{ ...task, subtasks: Array.from({ length: size }, (_, i) => ({ id: `size-${i}`, title: `预览${i + 1}`, done: false })) }] } }); });
+    act(() => root.render(createElement(Harness, { key: `remembered-${size}` })));
+    const panel = document.getElementById("pending-subs-parent")!;
+    const toggle = document.querySelector<HTMLButtonElement>('button.tc-openfold');
+    if (size > 3) {
+      expect(toggle).not.toBeNull();
+      expect(panel.querySelectorAll("textarea")).toHaveLength(3);
+      expect(toggle!.textContent).toContain(`展开其余 ${size - 3} 条`);
+      act(() => toggle!.click()); expect(panel.querySelectorAll("textarea")).toHaveLength(size);
+    } else {
+      expect(toggle).toBeNull(); expect(panel.querySelectorAll("textarea")).toHaveLength(size);
+    }
+    expect(document.querySelector('.new-sub-row textarea')).not.toBeNull();
   });
 });

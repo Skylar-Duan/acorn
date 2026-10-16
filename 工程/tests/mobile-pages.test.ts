@@ -207,7 +207,7 @@ describe("③ 四象限：手机上自己一页", () => {
 
   it("手机上自己带顶栏，桌面上还是只画格子", () => {
     expect(nl(stripComments(quadrantSource))).toMatch(
-      /if \(isMobile\) \{\s*return \(\s*<section className="main">\s*<MobileHead/,
+      /if \(isMobile\) return <section className="main"><MobileHead/,
     );
     expect(quadrantSource).toContain("search={false}");
     expect(quadrantSource).toContain("return board;");
@@ -230,12 +230,12 @@ describe("③ 四象限：手机上自己一页", () => {
     expect(planSource).toContain("<QuadrantBoard />");
   });
 
-  it("单列四段那套还在 quadrant.css 的窄屏块里（这份没动它，只补手感）", () => {
+  it("新四象限窄屏保留可滚坐标平面，不恢复四段文字框", () => {
     const quadCss = read("src/styles/quadrant.css");
     expect(quadCss).toContain("@media (max-width: 760px)");
-    expect(quadCss).toContain("grid-template-columns: 1fr;");
-    expect(pagesCss).toContain(".mshell .quad-row {");
-    expect(pagesCss).toContain("min-height: var(--m-touch, 44px);");
+    expect(quadCss).toContain(".quad-plot { min-height: 455px; }");
+    expect(quadCss).toContain("touch-action: pan-y;");
+    expect(quadCss).toContain(".quad-point");
   });
 });
 
@@ -359,7 +359,7 @@ describe("⑦ 桌面一个像素不许变", () => {
     // 习惯页桌面那套、四象限桌面那套都还在原处
     expect(read("src/styles/habits.css")).toContain(".hb-add");
     expect(shellCss).toContain(".mshell .hb-add,");
-    expect(read("src/styles/quadrant.css")).toContain(".quad-grid {");
+    expect(read("src/styles/quadrant.css")).toContain(".quad-chart {");
   });
 
   it("桌面路由 / 桌面顶栏没有被手机这一轮碰到", () => {

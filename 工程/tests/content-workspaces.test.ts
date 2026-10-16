@@ -92,13 +92,12 @@ describe("习惯周进度保持独立规则", () => {
 });
 
 describe("四象限可访问性与原属性变更", () => {
-  it("拖到不紧急格只改变日期，重要性不被重写；键盘仍打开同一任务", () => {
+  it("键盘向远期移三天只改变日期，重要性不被重写；仍打开同一任务", () => {
     const task = newTask({ title: "合成跨格任务", priority: 3, due: todayYMD() }); dataWith([task]); render(createElement(Quadrant));
-    const target = host.querySelector(".quad-in")!;
-    const event = new Event("drop", { bubbles: true, cancelable: true }); Object.defineProperty(event, "dataTransfer", { value: { getData: () => task.id } });
-    act(() => target.dispatchEvent(event));
+    const target = host.querySelector(".quad-point")!;
+    for (const key of [" ", "ArrowLeft", "ArrowLeft", "ArrowLeft", "Enter"]) act(() => target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })));
     expect(appStore.getState().data.tasks[0]).toMatchObject({ due: addDays(todayYMD(), 3), priority: 3 });
-    act(() => target.querySelector(".quad-row")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    act(() => target.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
     expect(appStore.getState().ui.expandedId).toBe(task.id);
   });
 });

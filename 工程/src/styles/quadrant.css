@@ -1,134 +1,66 @@
-/* 四象限视图：2×2 纸卡铺满主区，格与格之间留白呼吸。前缀 .quad- */
-
-/* view-body 在这里不滚动，滚动交给每个格子内部 */
-.view-body.quad-body {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding-bottom: 16px;
-}
-.quad-legend { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: none; padding-bottom: 14px; color: var(--ink-3); font-size: var(--fs-xs); }
-.quad-legend > span:first-child { display: inline-flex; gap: 7px; align-items: center; }
-
-.quad-grid {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 16px;
-}
-
-.quad-cell {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--card);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-md);
-  padding: 0;
-  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
-}
-
-/* 拖拽悬停：格子轻轻亮起接住它 */
-.quad-cell.quad-dropping {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-/* ---------- 格头 ---------- */
-.quad-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--hair);
-}
-.quad-heading { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.quad-name {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--ink);
-}
-/* 唯一的点缀：重要且紧急 */
-.quad-iu .quad-name { color: var(--warn); }
-.quad-count {
-  margin-left: auto;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.quad-hint {
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-}
-
-/* ---------- 格内 ---------- */
-.quad-cell-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 6px;
-}
-
-.quad-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--r-sm);
-  font-size: var(--fs-sm);
-  transition: background var(--dur-1) var(--ease);
-}
-.quad-row:hover { background: var(--bg); }
-.quad-row > .flag { margin-top: 5px; }
-.quad-row > .cb { margin-top: 1px; }
-.quad-copy { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
-.quad-row .quad-title {
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  overflow-wrap: anywhere;
-  line-height: 1.55;
-}
-.quad-row .quad-due {
-  flex: none;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-.quad-row .quad-due.overdue { color: var(--warn); font-weight: 600; }
-
-.quad-empty {
-  padding: 28px 10px;
-  text-align: center;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-}
-.mshell .quad-row .quad-copy { order: 3; }
-.mshell .quad-row .quad-copy .quad-title { flex: none; order: 0; }
-.mshell .quad-row .quad-copy .quad-due { padding-left: 0; order: 0; }
-
-/* ---------- 窄屏（手机）：2×2 改成单列四段 ----------
-   390px 上每格只有 175px，标题被砍成三四个字（「把上…」「更」），
-   日期比标题还占地方，四格还各自留半屏空白——这个视图在手机上等于不可用。
-   改成四段挨个往下铺、每段一个象限标题 + 行，滚动交回给整页 */
+/* 任务坐标平面：只在四象限场景生效。 */
+.view-body.quad-body.quad-coordinate { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; padding-bottom: 16px; }
+.quad-coordinate .quad-legend { display: flex; align-items: center; justify-content: space-between; flex: none; gap: 12px; min-height: 24px; color: var(--ink-3); font-size: 11px; }
+.quad-coordinate .quad-legend > span:first-child { display: inline-flex; align-items: center; gap: 7px; }
+.quad-chart { display: flex; flex-direction: column; flex: 1; position: relative; min-height: 440px; padding: 25px 26px 58px 45px; border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--card); }
+.quad-plot { position: relative; flex: 1; min-height: 330px; isolation: isolate; touch-action: pan-y; }
+.quad-region { position: absolute; width: 50%; height: 50%; pointer-events: none; color: var(--ink-3); background: transparent; }
+.quad-region > span { position: absolute; top: 14px; left: 16px; font-size: 11px; letter-spacing: .04em; opacity: .7; }
+.quad-in { top: 0; left: 0; background: color-mix(in srgb, var(--accent-soft) 24%, transparent); }
+.quad-iu { top: 0; left: 50%; background: color-mix(in srgb, var(--warn) 4%, transparent); }
+.quad-nn { top: 50%; left: 0; }
+.quad-nu { top: 50%; left: 50%; background: color-mix(in srgb, var(--bg) 40%, transparent); }
+.quad-axis { position: absolute; pointer-events: none; z-index: 1; }
+.quad-axis-x { top: 50%; left: 0; right: 0; border-top: 1px solid var(--control-edge, var(--hair)); }
+.quad-axis-y { left: 50%; top: 0; bottom: 0; border-left: 1px solid var(--control-edge, var(--hair)); }
+.quad-axis-x::after { content: ""; position: absolute; right: -2px; top: -3px; width: 5px; height: 5px; border-top: 1px solid var(--ink-3); border-right: 1px solid var(--ink-3); transform: rotate(45deg); }
+.quad-axis-y::after { content: ""; position: absolute; left: -3px; top: -2px; width: 5px; height: 5px; border-top: 1px solid var(--ink-3); border-left: 1px solid var(--ink-3); transform: rotate(45deg); }
+.quad-y-title { position: absolute; left: 14px; top: 9px; display: flex; align-items: center; gap: 3px; color: var(--ink-3); font-size: 10px; }
+.quad-y-tick { position: absolute; left: -25px; transform: translateY(-50%); color: var(--ink-3); font-size: 11px; pointer-events: none; }
+.quad-undated-guide { position: absolute; top: 0; bottom: 0; left: 8%; border-left: 1px dashed var(--hair); pointer-events: none; }
+.quad-x-ticks { position: absolute; height: 18px; left: 45px; right: 26px; bottom: 32px; color: var(--ink-3); font-size: 10px; white-space: nowrap; pointer-events: none; }
+.quad-x-ticks > span { position: absolute; transform: translateX(-50%); }
+.quad-x-ticks > span::before { content: ""; display: block; height: 5px; width: 1px; margin: -8px auto 3px; background: var(--hair); }
+.quad-x-title { display: flex; align-items: center; justify-content: center; gap: 5px; position: absolute; left: 45px; right: 26px; bottom: 10px; color: var(--ink-2); font-size: 11px; }
+.quad-point { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: 50%; transform: translate(-50%, -50%); background: transparent; cursor: grab; touch-action: none; z-index: 2; outline: none; }
+.quad-point > span { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--ink-3); box-shadow: 0 0 0 2px var(--card); transition: box-shadow var(--dur-1), scale var(--dur-1); pointer-events: none; }
+.quad-point.p3 > span { background: var(--warn); }
+.quad-point.p2 > span { background: var(--accent); }
+.quad-point.p1 > span { background: var(--ink-3); }
+.quad-point.p0 > span { background: var(--card); border: 2px solid var(--ink-3); }
+.quad-sub-point > span { border-radius: 4px; }
+.quad-point:hover, .quad-point:focus-visible { z-index: 4; }
+.quad-point:hover > span, .quad-point:focus-visible > span { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 5px var(--accent); scale: 1.14; }
+.quad-point.moving { cursor: grabbing; z-index: 5; }
+.quad-point.moving > span { scale: 1.25; box-shadow: 0 0 0 6px var(--accent-soft), 0 2px 5px #0002; }
+.quad-dragging .quad-plot { cursor: grabbing; }
+.quad-coordinate .quad-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: var(--ink-3); font-size: 12px; pointer-events: none; }
+.quad-footnote { margin: 0; color: var(--ink-3); font-size: 10px; line-height: 1.6; }
+.quad-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.quad-preview { position: fixed; z-index: 1900; width: 284px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--hair); border-radius: 10px; box-shadow: var(--shadow); background: var(--card); color: var(--ink); pointer-events: none; }
+.quad-preview.adjusting { border-color: var(--accent); }
+.quad-preview > strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; font-weight: 600; }
+.quad-preview-parent { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; color: var(--ink-3); font-size: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.quad-preview-values { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 9px; font-size: 11px; color: var(--ink-2); }
+.quad-preview-values > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.quad-preview-values b { font-weight: 500; color: var(--accent); }
+.quad-preview > small { display: block; margin-top: 8px; color: var(--ink-3); font-size: 10px; }
+.quad-detail-layer { position: fixed; inset: 0; z-index: 1050; display: flex; align-items: flex-start; justify-content: center; padding: clamp(28px, 8vh, 80px) 32px 28px; background: #131a2440; overflow-y: auto; }
+.quad-detail { position: relative; width: min(880px, 100%); max-height: calc(100dvh - 100px); overflow-y: auto; border-radius: var(--r-lg); box-shadow: var(--shadow); background: var(--card); overscroll-behavior: contain; }
+.quad-detail .task-card { margin: 0; border: 0; box-shadow: none; padding-top: 30px; }
+.quad-detail-close { position: absolute; right: 10px; top: 8px; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 6px; color: var(--ink-3); background: var(--card); }
+.quad-detail-close:hover { color: var(--ink); background: var(--bg); }
+.quad-detail .sub-row.quad-located { background: var(--accent-soft); box-shadow: 0 0 0 5px var(--accent-soft); }
 @media (max-width: 760px) {
-  .view-body.quad-body { overflow-y: auto; }
-  .quad-grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    grid-auto-rows: min-content;
-    gap: 10px;
-  }
-  /* 每格高度随内容长，不再各自开一个小滚动区——手机上嵌套滚动最难伺候 */
-  .quad-cell-body { overflow: visible; }
-  .quad-row { padding: 12px 10px; gap: 10px; }
-  .quad-head { padding: 16px; }
+  .view-body.quad-body.quad-coordinate { overflow-y: auto; padding-bottom: 20px; gap: 8px; }
+  .quad-chart { flex: none; min-height: 540px; padding: 25px 14px 58px 30px; }
+  .quad-plot { min-height: 455px; }
+  .quad-region > span { font-size: 10px; left: 10px; }
+  .quad-y-title { left: 4px; font-size: 9px; }
+  .quad-y-tick { left: -21px; font-size: 10px; }
+  .quad-x-ticks, .quad-x-title { left: 30px; right: 14px; }
+  .quad-coordinate .quad-legend { font-size: 10px; }
+  .quad-detail-layer { padding: 16px; }
+  .quad-detail { max-height: calc(100dvh - 32px); }
 }
+@media (prefers-reduced-motion: reduce) { .quad-point > span { transition: none; } }

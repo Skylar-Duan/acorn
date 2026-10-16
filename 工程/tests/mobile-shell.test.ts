@@ -584,11 +584,11 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     const quad = read("src/views/Quadrant.tsx");
     // v1.11.2：手机上它独立成页（ViewId "quadrant"），顶部安全区只在 MobileHead 里留了一份
     expect(quad).toContain('import MobileHead from "../mobile/MobileHead";');
-    expect(nl(stripComments(quad))).toMatch(/if \(isMobile\) \{\s*return \(\s*<section className="main">\s*<MobileHead/);
+    expect(nl(stripComments(quad))).toMatch(/if \(isMobile\) return <section className="main"><MobileHead/);
     expect(quad).toContain('title="四象限"');
-    expect(quad).toContain('sub="按重要和紧急分四格"');
+    expect(quad).toContain('sub="重要向上，截止越近越靠右"');
     // 桌面那条路原样：只返回格子本身，外面那层 section 和标题栏归 Plan 管
-    expect(quad).toContain('<div className="view-body quad-body">');
+    expect(quad).toContain('<div className="view-body quad-body quad-coordinate">');
     expect(quad).toContain("return board;");
     expect(shellCss).toContain(".mshell .view-body.quad-body,");
   });
