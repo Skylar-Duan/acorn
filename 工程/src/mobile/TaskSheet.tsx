@@ -16,6 +16,7 @@ import type { CSSProperties } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
+import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { parseSubtaskInput } from "../core/parse";
 import {
@@ -206,8 +207,10 @@ function TaskSheetBody({ task }: { task: Task }) {
     setSeg((cur) => (cur === name ? null : name));
   }
 
-  const dueText = task.due
-    ? `${formatShort(task.due)}${task.dueTime ? ` ${task.dueTime}` : ""}${task.repeat ? ` · ${describeRepeat(task.repeat)}` : ""}`
+  const shownDue = taskDue(task);
+  const shownTime = taskTime(task);
+  const dueText = shownDue
+    ? `${formatShort(shownDue)}${shownTime ? ` ${shownTime}` : ""}${task.repeat ? ` · ${describeRepeat(task.repeat)}` : ""}${!task.due ? " · 最近子任务" : ""}`
     : task.repeat
       ? describeRepeat(task.repeat)
       : "没有日期";
@@ -329,7 +332,7 @@ function TaskSheetBody({ task }: { task: Task }) {
           <button className={`msh-prop${seg === "date" ? " open" : ""}`} onClick={() => toggleSeg("date")}>
             <IconDate />
             <span className="msh-prop-k">日期</span>
-            <span className={`msh-prop-v${task.due || task.repeat ? "" : " off"}`}>{dueText}</span>
+            <span className={`msh-prop-v${shownDue || task.repeat ? "" : " off"}`}>{dueText}</span>
             <span className="msh-caret"><ChevronRight /></span>
           </button>
           {seg === "date" && (
