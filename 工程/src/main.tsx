@@ -8,6 +8,9 @@ import { addTask, appStore, initStore, showToast } from "./core/store";
 import { finishCategoryDraft, prepareTaskCategories, taskCategoriesNeedConfirmation, useCategoryCreation } from "./core/categoryCreation";
 import { startThemeSync } from "./core/themeCtl";
 import { windowContext } from "./core/windowCtx";
+import { IS_ULTRA } from "./core/version";
+import { imageWindowContext } from "./core/imageWindowContext";
+import { imageListUpdateError } from "./core/taskImages";
 import { startReminderLoop } from "./core/reminders";
 import { startEyeCareLoop } from "./core/eyeCare";
 import { wireFocusCommands } from "./core/focusCtl";
@@ -113,7 +116,7 @@ void (async () => {
     await listen("guide:pull", async () => {
       await emitTo("guide", "guide:context", windowContext());
     });
-    await listen<AddTaskInput & { listName?: string | null; requestId?: string }>("quickadd:submit", async (e) => {
+    await listen<AddTaskInput & { listName?: string | null; requestId?: string; imageContextId?: string }>("quickadd:submit", async (e) => {
       const respond = (saved: boolean) => emitTo("quickadd", "quickadd:result", { requestId: e.payload.requestId, saved });
       let saved = false;
       let request: ReturnType<typeof useCategoryCreation.getState>["pending"] = null;
@@ -126,9 +129,15 @@ void (async () => {
         showToast("数据尚未就绪（数据文件夹不可用），这一条没有保存", false);
         return;
       }
-      const { listName, requestId: _requestId, ...input } = e.payload;
+      const { listName, requestId: _requestId, imageContextId, ...input } = e.payload;
+      const validImageContext = () => !input.images?.length || IS_ULTRA && !!imageContextId && imageWindowContext().imageContextId === imageContextId && !imageListUpdateError(appStore.getState().data, [], input.images);
+      if (input.images?.length && !validImageContext()) {
+        showToast(IS_ULTRA ? "图片未保存：账号或账本已改变，或图片容量不足" : "这个版本不支持添加图片", false);
+        await emitTo("quickadd", "quickadd:context", windowContext());
+        return;
+      }
       const needsConfirmation = taskCategoriesNeedConfirmation(listName, input.who ?? []);
-      const preparation = prepareTaskCategories(listName, input.who ?? []);
+      const preparation = prepareTaskCategories(listName, input.who ?? [], undefined, validImageContext);
       request = useCategoryCreation.getState().pending;
       if (needsConfirmation && request) {
         // 浮窗暂藏着草稿，确认在主窗完成；取消后由回执把原句送回浮窗。
@@ -138,7 +147,7 @@ void (async () => {
         await main.setFocus();
       }
       const categories = await preparation;
-      if (!categories) return;
+      if (!categories || !validImageContext()) return;
       addTask({ ...input, listId: categories.listId, who: categories.who });
       saved = true;
       showToast("已记录", false);

@@ -13,6 +13,7 @@ const versionTable = JSON.parse(readFileSync(resolve(__dirname, "versions.json")
 const buildStamp = {
   platform: process.env.ACORN_BUILD_PLATFORM ?? "",
   version: process.env.ACORN_BUILD_VERSION ?? "",
+  edition: process.env.ACORN_BUILD_EDITION === "ultra" ? "ultra" : "normal",
 };
 
 /** 网页版挂在 acorn.cdpandas.com 的这个路径下。2026-09-21 起是根路径 /（原来是 /app/，

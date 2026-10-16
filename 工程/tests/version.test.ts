@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  APP_PLATFORM, APP_VERSION, IS_BETA, compareVersions, displayVersion, isBeta, pickVersion, shortVersion,
+  APP_PLATFORM, APP_VERSION, IS_BETA, APP_EDITION, compareVersions, displayVersion, isBeta, pickVersion, pickEdition, shortVersion,
 } from "../src/core/version";
 import { isNewer, shouldOffer, parseManifest } from "../src/core/updater";
 
@@ -12,6 +12,15 @@ const table = JSON.parse(readFileSync("versions.json", "utf8")) as {
 };
 
 describe("号码从哪来", () => {
+  it("图片只属于显式 Windows Ultra 构建，普通版与其他端始终隐藏", () => {
+    expect(APP_EDITION).toBe("normal");
+    expect(pickEdition("desktop")).toBe("normal");
+    expect(pickEdition("desktop", {platform:"desktop",edition:"ultra"})).toBe("ultra");
+    expect(pickEdition("desktop", {platform:"web",edition:"ultra"})).toBe("normal");
+    for (const platform of ["android", "web"] as const) {
+      expect(pickEdition(platform, {platform,edition:"ultra"})).toBe("normal");
+    }
+  });
   it("versions.json 三端都有公开的号，也都有测试版计数", () => {
     for (const p of ["desktop", "android", "web"]) {
       expect(table.public[p], p).toMatch(/^\d+\.\d+\.\d+$/);

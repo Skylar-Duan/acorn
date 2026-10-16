@@ -96,7 +96,7 @@ describe("Esc 得关得掉任务卡：两个内联框只在真有东西可丢弃
   });
 
   it("口径跟同一批里别处一致：onEscape 没东西可丢就返回 false 放行", () => {
-    expect(taskCardSource).toContain("if (!newSub) return false;");
+    expect(taskCardSource).toContain("if (!newSub && !newSubImagesRef.current.length) return false;");
     expect(taskCardSource).toContain("titleDraftRef.current = null;");
   });
 });

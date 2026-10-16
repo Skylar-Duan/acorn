@@ -33,6 +33,7 @@ afterEach(() => {
   document.body.innerHTML = "";
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function render(component = Sidebar) { act(() => root.render(createElement(component))); }
@@ -46,6 +47,19 @@ function drop(el: Element, payload: Record<string, string>) {
 }
 function button(text: string, container: ParentNode = document) {
   return [...container.querySelectorAll<HTMLButtonElement>("button")].find((e) => e.textContent?.trim() === text)!;
+}
+
+function pointer(target: EventTarget, type: string, x: number, y: number) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, { pointerId: { value: 7 }, button: { value: 0 }, clientX: { value: x }, clientY: { value: y } });
+  act(() => target.dispatchEvent(event));
+}
+function measureRows() {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const index = moduleIds().indexOf(this.closest<HTMLElement>("[data-sidebar-module]")?.dataset.sidebarModule);
+    const top = index < 0 ? 0 : 20 + index * 40;
+    return { x: 0, y: top, top, left: 0, right: 220, bottom: this.tagName === "NAV" ? 600 : top + 36, width: 220, height: this.tagName === "NAV" ? 600 : 36, toJSON() {} };
+  });
 }
 
 describe("模块偏好：兼容旧数据与未来字段", () => {
@@ -92,6 +106,49 @@ describe("模块偏好：兼容旧数据与未来字段", () => {
 });
 
 describe("桌面侧栏真实交互", () => {
+  it("指针拖动实时改变相邻模块次序，松手之前不写设置，松手后才持久化整组", () => {
+    render(); measureRows();
+    const settings = appStore.getState().data.settings;
+    pointer(moduleElement("who").querySelector(".side-module-heading")!, "pointerdown", 90, 350);
+    pointer(window, "pointermove", 90, 25);
+    expect(moduleIds().slice(0, 2)).toEqual(["who", "plan"]);
+    expect(appStore.getState().data.settings).toBe(settings);
+    expect(document.querySelector(".sidebar-module-floating")!.textContent).toContain("需求方");
+    expect(moduleElement("who").classList.contains("module-lifted")).toBe(true);
+    pointer(window, "pointerup", 90, 25);
+    expect(appStore.getState().data.settings.sidebar?.order?.[0]).toBe("who");
+    expect(moduleIds().slice(0, 2)).toEqual(["who", "plan"]);
+    expect(document.querySelector(".sidebar-module-floating")).toBeNull();
+  });
+
+  it.each(["pointercancel", "lostpointercapture", "Escape", "outside"])("拖动后%s回滚预览，原设置与组内清单保持原样", (reason) => {
+    render(); measureRows();
+    const before = appStore.getState().data; const order = moduleIds();
+    pointer(moduleElement("lists").querySelector(".side-module-heading")!, "pointerdown", 90, 315);
+    pointer(window, "pointermove", 90, 25);
+    expect(moduleIds()[0]).toBe("lists");
+    if (reason === "Escape") act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    else if (reason === "outside") pointer(window, "pointerup", 500, 25);
+    else pointer(window, reason, 90, 25);
+    expect(moduleIds()).toEqual(order);
+    expect(appStore.getState().data).toBe(before);
+    expect(document.querySelector(".sidebar-module-floating")).toBeNull();
+    expect(document.body.classList.contains("sidebar-module-dragging")).toBe(false);
+  });
+
+  it("行首交互按钮不开始排序，普通点击仍能切换导航与折叠", () => {
+    render(); measureRows(); const order = moduleIds();
+    const toggle = moduleElement("lists").querySelector<HTMLButtonElement>(".side-group-toggle")!;
+    pointer(toggle, "pointerdown", 10, 315); pointer(window, "pointermove", 90, 25);
+    expect(document.querySelector(".sidebar-module-floating")).toBeNull();
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const calendar = moduleElement("calendar").querySelector<HTMLLIElement>("li")!;
+    pointer(calendar, "pointerdown", 90, 75); pointer(window, "pointerup", 90, 75);
+    act(() => calendar.click());
+    expect(appStore.getState().ui.view).toBe("calendar"); expect(moduleIds()).toEqual(order);
+  });
+
   it("清单/需求方/标签独立收展，记住各自上次的状态", () => {
     localStorage.setItem("acorn-side-lists", "0");
     render();
@@ -194,6 +251,16 @@ describe("桌面侧栏真实交互", () => {
     expect(host.querySelector('button[title="设置"]')).not.toBeNull();
     expect(button("功能区设置", host)).toBeDefined();
     render(SidebarSettings);
-    expect(host.querySelectorAll(".hidden-module .sidebar-toggle")).toHaveLength(10);
+    expect(host.querySelectorAll(".sidebar-setting-chip.hidden-module")).toHaveLength(10);
+    expect(host.querySelector("[draggable=true],.sidebar-order-key")).toBeNull();
+    act(() => host.querySelector<HTMLButtonElement>('[aria-label="添加计划"]')!.click());
+    expect(host.querySelectorAll(".sidebar-setting-chip.hidden-module")).toHaveLength(9);
+    expect(host.querySelectorAll('.sidebar-setting-chip:not(.hidden-module)')).toHaveLength(1);
+    expect(host.querySelector('[aria-label="隐藏计划"]')).not.toBeNull();
+    act(() => host.querySelector<HTMLButtonElement>('[aria-label="隐藏计划"]')!.click());
+    expect(host.querySelectorAll(".sidebar-setting-chip.hidden-module")).toHaveLength(10);
+    act(() => [...host.querySelectorAll<HTMLButtonElement>(".hidden-module")].forEach((el) => el.click()));
+    render();
+    expect(moduleIds()).toEqual(sidebarModules().map((m) => m.id));
   });
 });

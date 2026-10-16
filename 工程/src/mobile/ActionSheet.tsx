@@ -14,6 +14,7 @@
 // README 上「安排日期只有一套规矩」这句承诺，得是全仓每个入口都算数。
 
 import { useState } from "react";
+import { listColor } from "../core/colors";
 import type { ReactNode } from "react";
 import type { Priority } from "../core/model";
 import { todayYMD } from "../core/dates";
@@ -166,7 +167,7 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
               className={`msheet-chip${task.listId === l.id ? " on" : ""}`}
               onClick={() => setTasksList([task.id], l.id)}
             >
-              <span className="msheet-dot" style={{ background: `var(--list-${l.color})` }} />
+              <span className="msheet-dot" style={{ background: listColor(l.color) }} />
               {l.name}
             </button>
           ))}

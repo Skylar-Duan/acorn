@@ -1,5 +1,6 @@
 // 统计与每周回顾：数字卡 + 完成热力图 + 14 天趋势 + 分布两栏 + 周报导出。图全部用 CSS 画。
 import "../styles/statsview.css";
+import { listColor as categoryColor } from "../core/colors";
 import { useMemo } from "react";
 import { addDays, formatCN, fromYMD, todayYMD, weekStart } from "../core/dates";
 import { byList, byWho, completionByDay, exportWeekMarkdown, weeklyReview } from "../core/stats";
@@ -65,7 +66,7 @@ export default function StatsView() {
   const whoMax = Math.max(1, ...whoRows.map((r) => r.done));
 
   const listColor = (id: string | null): string =>
-    id === null ? "var(--ink-3)" : `var(--list-${data.lists.find((l) => l.id === id)?.color ?? "slate"})`;
+    id === null ? "var(--ink-3)" : categoryColor(data.lists.find((l) => l.id === id)?.color ?? "slate");
 
   async function onExport() {
     const md = exportWeekMarkdown(review);

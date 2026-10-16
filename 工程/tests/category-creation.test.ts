@@ -154,7 +154,9 @@ describe("新建弹窗与入口真实交互", () => {
     let result!: Promise<string | null>;
     await act(async () => { result = createCategory("list"); });
     const dialog = document.querySelector('[role="dialog"]')!;
-    expect(dialog.querySelectorAll(".category-icon-options button")).toHaveLength(8);
+    expect(dialog.querySelectorAll(".category-icon-options button")).toHaveLength(16);
+    expect(dialog.querySelector(".category-icon-options")!.textContent).toBe("");
+    expect(CATEGORY_ICONS.who).toHaveLength(16);
     for (const icon of CATEGORY_ICONS.who) expect(CATEGORY_ICONS.list.map((i) => i.id as string)).not.toContain(icon.id);
     input(dialog.querySelector("input")!, "合成读书计划");
     act(() => dialog.querySelector<HTMLButtonElement>('[aria-label="海蓝"]')!.click());
@@ -162,6 +164,21 @@ describe("新建弹窗与入口真实交互", () => {
     await act(async () => { dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     const id = await result;
     expect(appStore.getState().data.lists.find((l) => l.id === id)).toMatchObject({ color: "sea", icon: "book" });
+  });
+
+  it("最后一枚颜色选择器支持自选十六进制颜色，预览与保存保持一致", async () => {
+    act(() => root.render(createElement(CategoryCreationHost)));
+    let result!: Promise<string | null>;
+    await act(async () => { result = createCategory("who", "自选色联系人"); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const color = dialog.querySelector<HTMLInputElement>('input[type="color"]')!;
+    expect(color.getAttribute("aria-label")).toBe("自选颜色");
+    input(color, "#426b87");
+    expect(dialog.querySelector<HTMLElement>(".category-create-preview")!.style.color).toBe("rgb(66, 107, 135)");
+    expect(dialog.querySelector(".category-custom-color.selected")).not.toBeNull();
+    await act(async () => { dialog.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(await result).toBe("自选色联系人");
+    expect(appStore.getState().data.settings.whoAppearance?.["自选色联系人"].color).toBe("#426b87");
   });
 
   it("侧栏加号可创建需求方；Esc只取消这层且零写入", async () => {

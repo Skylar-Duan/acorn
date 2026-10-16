@@ -1,17 +1,22 @@
 // 展开的任务卡：原地编辑一切字段。Esc / 点击卡外收起。
 // 标题编辑支持快捷标记；Enter / 点走提交，Esc 丢弃本次标题草稿。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
+import type { Priority, RepeatRule, Subtask, Task, TaskImage } from "../core/model";
 import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
 import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { appendedSubCategories, editedCategoryPatch, editedTitlePatch, parseEditedTitle } from "../core/editSyntax";
 import { isTaskCategoryDialogOpen, prepareSubtaskCategories, prepareTaskCategories } from "../core/categoryCreation";
+import { IS_ULTRA } from "../core/version";
+import { imageListUpdateError, taskImages } from "../core/taskImages";
+import { imageEditContext } from "../core/imageEditContext";
+import { rememberTaskSubtasksFolded, taskSubtasksFolded } from "../core/subtaskFold";
+import { listColor } from "../core/colors";
 import {
   addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
   dropTasks, expandTask, foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks,
-  SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
+  showToast, SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
@@ -23,6 +28,7 @@ import RepeatPicker from "./RepeatPicker";
 import RepeatMenu from "./RepeatMenu";
 import { useLeaving } from "./motion";
 import { CommitMark, FLASH_MS, TYPING_IDLE_MS, useTypingFlash } from "./commitFlash";
+import ImageAttachments from "./ImageAttachments";
 
 const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
 
@@ -50,10 +56,16 @@ export default function TaskCard({ task }: { task: Task }) {
   const subPop = useLeaving(subMenu);
   const [newSub, setNewSub] = useState("");
   const newSubRef = useRef("");
+  const [newSubImages, setNewSubImages] = useState<TaskImage[]>([]);
+  const newSubImagesRef = useRef<TaskImage[]>([]);
+  const newSubImageBusy = useRef(false);
+  const newSubImageRevision = useRef(0);
   /** 已完成子任务那堆展不展开。null = 还没表过态，跟自动规则走；
    *  用不得直接存 boolean：那样刚勾掉一条子任务、已完成刚够数的时候自动规则就再也不生效了。
    *  用户自己点过之后才锁成他选的那个 */
   const [showDone, setShowDone] = useState<boolean | null>(null);
+  const [openFold, setOpenFold] = useState(() => ({ id: task.id, folded: taskSubtasksFolded(task.id) }));
+  const openFolded = openFold.id === task.id ? openFold.folded : taskSubtasksFolded(task.id);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const titleDraftRef = useRef<string | null>(null);
   const [subDrafts, setSubDrafts] = useState<Record<string, string>>({});
@@ -126,6 +138,7 @@ export default function TaskCard({ task }: { task: Task }) {
       if (!cardRef.current) return;
       // 分类创建弹窗是这笔标题编辑的一部分，点它不应再提交或收起卡片。
       if (isTaskCategoryDialogOpen()) return;
+      if (e.target instanceof Element && e.target.closest("[data-image-dialog]")) return;
       if (!cardRef.current.contains(e.target as Node)) {
         // A1「点走 = 提交」：卡片马上就要没了，先把还悬着的输入落库再收
         flushRef.current();
@@ -288,15 +301,20 @@ export default function TaskCard({ task }: { task: Task }) {
    *  **返回「到底加上没有」**：只打了日期没打标题时一条都没加，回执就不许闪——
    *  A2 那个 ✓ 的全部价值在于它不能说谎 */
   async function addSubFromInput(): Promise<boolean> {
+    if (newSubImageBusy.current) { showToast("图片还在处理，请稍候再保存", false); return false; }
     // keepNewlines：栏里 Shift+Enter 敲的换行要一路留进标题（记一条那几条路不开，照旧压成空格）
     const raw = newSubRef.current;
+    const images = newSubImagesRef.current;
+    const revision = newSubImageRevision.current;
+    const capacity = imageListUpdateError(appStore.getState().data, [], IS_ULTRA ? images : []);
+    if (capacity) { showToast(capacity, false); return false; }
     const r = parseEditedTitle(raw, { now: new Date(), listNames: lists.map((l) => l.name), weekendDay: settings.weekendDay, keepNewlines: true, skip: ["tag"] });
     const title = r.title.trim();
     if (!title) return false;
     newSubRef.current = "";
     setNewSub("");
     const categories = await prepareSubtaskCategories(r.chips.filter((c) => c.kind === "list").map((c) => c.text), r.who,
-      () => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
+      () => newSubImageRevision.current === revision && !imageListUpdateError(appStore.getState().data, [], IS_ULTRA ? images : []) && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
     if (!categories) {
       // 取消创建仍保留这句草稿；等待期间若已打了下一句，就不覆盖新输入。
       if (!newSubRef.current && appStore.getState().ui.expandedId === task.id) {
@@ -313,7 +331,9 @@ export default function TaskCard({ task }: { task: Task }) {
       repeat: r.repeat,
       who: categories.who,
       listIds: categories.listIds,
+      ...(IS_ULTRA && images.length ? { images } : {}),
     });
+    if (newSubImagesRef.current === images) { newSubImagesRef.current = []; setNewSubImages([]); newSubImageRevision.current++; }
     return true;
   }
 
@@ -539,6 +559,9 @@ export default function TaskCard({ task }: { task: Task }) {
             })}
           </span>
         )}
+        {IS_ULTRA && <div className="sub-images"><ImageAttachments images={taskImages(s.images)} label="这一步的图片"
+          canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
+          onChange={(images) => updateSubtask(task.id, s.id, { images })} /></div>}
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
           <div className={`popmenu${subPop.leaving ? " leaving" : ""}`} style={{ top: "100%", right: 0 }}>
             {/* 预设跟任务卡那个日期弹层同一套（core/options.dateOptions），别在这儿另写一份；
@@ -645,8 +668,16 @@ export default function TaskCard({ task }: { task: Task }) {
         {notesFlash && <span className="commit-ok tc-notes-ok">✓</span>}
       </div>
 
+      <ImageAttachments images={taskImages(task.images)}
+        canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
+        onChange={(images) => updateTask(task.id, { images })} />
       <div className="subs">
-        {openSubs.map(renderSub)}
+        {openSubs.length > 0 && <button type="button" className="tc-openfold" aria-expanded={!openFolded} aria-controls={`pending-subs-${task.id}`}
+          onClick={() => { const folded = !openFolded; rememberTaskSubtasksFolded(task.id, folded); setOpenFold({ id: task.id, folded }); }}>
+          <span className={`tc-openfold-chevron${openFolded ? " folded" : ""}`} aria-hidden="true">⌄</span>
+          待办子任务 <span className="tc-openfold-count">{openSubs.length}</span>
+        </button>}
+        <div id={`pending-subs-${task.id}`}>{!openFolded && openSubs.map(renderSub)}</div>
 
         {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
         {/* 子任务同样认时间、需求方和清单；归类只追加到本步，#仍保留在正文。 */}
@@ -661,9 +692,10 @@ export default function TaskCard({ task }: { task: Task }) {
             onBlurCommit={() => addSubFromInput()}
             // Esc 先擦掉这一条，第二下才轮到收卡片
             onEscape={() => {
-              if (!newSub) return false;
+              if (!newSub && !newSubImagesRef.current.length) return false;
               newSubRef.current = "";
               setNewSub("");
+              newSubImagesRef.current = []; setNewSubImages([]); newSubImageRevision.current++;
               return true;
             }}
             // 长句子折行、框跟着长高（不再单行一直往左推）；Shift+Enter 是换行，写进这条子任务的标题。
@@ -677,6 +709,11 @@ export default function TaskCard({ task }: { task: Task }) {
             weekendDay={settings.weekendDay}
             inputStyle={{ fontSize: 13 }}
           />
+          {IS_ULTRA && <div className="sub-images"><ImageAttachments images={newSubImages} label="新子任务图片" draft
+            onBusyChange={(busy) => { newSubImageBusy.current = busy; }}
+            canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
+            createContext={() => { const revision = newSubImageRevision.current; return imageEditContext(() => newSubImageRevision.current === revision && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)); }}
+            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} /></div>}
         </div>
 
         {/* 阈值跟自动折叠同一个，见上面的 canFoldDone */}
@@ -769,7 +806,7 @@ export default function TaskCard({ task }: { task: Task }) {
         <button className="pill" onClick={() => setMenu(menu === "list" ? null : "list")}>
           {list ? (
             <>
-              <span style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${list.color})`, display: "inline-block" }} />
+              <span style={{ width: 7, height: 7, borderRadius: 99, background: listColor(list.color), display: "inline-block" }} />
               {list.name}
             </>
           ) : (
@@ -781,7 +818,7 @@ export default function TaskCard({ task }: { task: Task }) {
             <button className="item" onClick={() => { updateTask(task.id, { listId: null }); setMenu(null); }}>不归清单</button>
             {lists.map((l) => (
               <button key={l.id} className="item" onClick={() => { updateTask(task.id, { listId: l.id }); setMenu(null); }}>
-                <span style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${l.color})`, display: "inline-block" }} />
+                <span style={{ width: 7, height: 7, borderRadius: 99, background: listColor(l.color), display: "inline-block" }} />
                 {l.name}
               </button>
             ))}

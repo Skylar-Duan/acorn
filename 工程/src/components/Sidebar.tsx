@@ -1,6 +1,7 @@
 // 桌面侧栏按模块自由排序；分组独立收展，整组落点只画插入线。
 // 模块排布/隐藏/显示别名只在本机生效，任务拖入侧栏的原有动作照常保留。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { todayYMD, cmpYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
 import {
@@ -11,7 +12,8 @@ import {
 } from "../core/store";
 import { createCategory } from "../core/categoryCreation";
 import { categoryIcon } from "../core/categoryIcons";
-import { shortVersion } from "../core/version";
+import { listColor } from "../core/colors";
+import { shortVersion, IS_ULTRA } from "../core/version";
 import { forceFoldOpen, useFold } from "../core/useFold";
 import { moveSidebarModule, sidebarHidden, sidebarModules, sidebarName, SIDEBAR_MODULES, type SidebarModuleId } from "../core/sidebar";
 import SidebarIcon from "./SidebarIcon";
@@ -371,12 +373,13 @@ export default function Sidebar(
   const tagList = useMemo(() => allTags({ tasks }), [tasks]);
 
   const lists = useMemo(() => [...rawLists].sort((a, b) => a.order - b.order), [rawLists]);
-  const modules = sidebarModules(settings.sidebar).filter((m) => !sidebarHidden(m.id, settings.sidebar));
+  const storedModules = sidebarModules(settings.sidebar).filter((m) => !sidebarHidden(m.id, settings.sidebar));
   const [moduleMenu, setModuleMenu] = useState<SidebarMenuTarget | null>(null);
   const moduleDrag = useSidebarModuleDrag((from, to) => {
     const next = moveSidebarModule(appStore.getState().data.settings.sidebar, from, to);
     if (next) updateSettings({ sidebar: next });
   });
+  const modules = moduleDrag.previewOrder ? [...storedModules].sort((a, b) => moduleDrag.previewOrder!.indexOf(a.id) - moduleDrag.previewOrder!.indexOf(b.id)) : storedModules;
   function editSidebar() {
     navigate("settings");
     onNavigate?.();
@@ -508,7 +511,7 @@ export default function Sidebar(
                   reorderProps("list", l.id, (dragged) => moveList(dragged, l.id), moveHint),
                 )}
               >
-                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("list", l.icon)} color={`var(--list-${l.color})`} />
+                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("list", l.icon)} color={listColor(l.color)} />
                 <span className="side-label">{l.name}</span>
                 {n > 0 && <span className="n">{n}</span>}
               </li>
@@ -535,7 +538,7 @@ export default function Sidebar(
                     reorderProps("who", who, (dragged) => moveWho(dragged, who), moveHint),
                   )}
                 >
-                  <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("who", settings.whoAppearance?.[who]?.icon)} color={settings.whoAppearance?.[who]?.color ? `var(--list-${settings.whoAppearance[who].color})` : undefined} />
+                  <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("who", settings.whoAppearance?.[who]?.icon)} color={settings.whoAppearance?.[who]?.color ? listColor(settings.whoAppearance[who].color) : undefined} />
                   <span className="side-label">{who}</span>
                   {n > 0 && <span className="n">{n}</span>}
                 </li>
@@ -564,7 +567,7 @@ export default function Sidebar(
     <aside className={`side side-modules${drawerOpen ? " open" : ""}`}>
       <div className="brand">
         <img src={iconUrl} alt="" />
-        橡果
+        {IS_ULTRA ? "橡果 Ultra" : "橡果"}
         {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
             跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
         <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>
@@ -581,20 +584,21 @@ export default function Sidebar(
       </button>
       <nav aria-label="侧栏">
         {modules.map((m, i) => (
-          <section key={m.id} data-sidebar-module={m.id} className={`side-module${m.group ? " side-module-group" : ""}${moduleDrag.over === m.id ? " module-over" : ""}`} {...moduleDrag.target(m.id, modules[i + 1]?.id ?? null)}>
+          <section key={m.id} data-sidebar-module={m.id} className={`side-module${m.group ? " side-module-group" : ""}${moduleDrag.over === m.id ? " module-over" : ""}${moduleDrag.floating?.id === m.id ? " module-lifted" : ""}`} {...moduleDrag.target(m.id, modules[i + 1]?.id ?? null)}>
             {m.group ? <>
-              <div className="side-module-heading" tabIndex={0} title="拖动整组排序，右键编辑或隐藏"
-                {...moduleDrag.source(m.id)} onContextMenu={(e) => openModuleMenu(e, m.id)} onKeyDown={(e) => moduleKeys(e, m.id)}>
-                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span>
-                <button type="button" className="side-group-toggle" aria-expanded={groupOpen[m.id as keyof typeof groupOpen]} aria-controls={`side-group-${m.id}`} onClick={() => { if (!moduleDrag.swallowClick()) toggleGroup[m.id as keyof typeof toggleGroup](); }}>
-                  <SidebarIcon path={m.icon} /><span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
-                  {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
-                  <svg className={`side-group-chevron${groupOpen[m.id as keyof typeof groupOpen] ? " expanded" : ""}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
-                </button>
-                {(m.id === "lists" || m.id === "who") && <button type="button" className="side-group-add" title={m.id === "lists" ? "新建清单" : "新建需求方"} aria-label={m.id === "lists" ? "新建清单" : "新建需求方"} onClick={(e) => {
+              <div className="side-module-heading" tabIndex={0} role="button" aria-expanded={groupOpen[m.id as keyof typeof groupOpen]} title="拖动整组排序，右键编辑或隐藏"
+                {...moduleDrag.source(m.id)} onClick={() => { if (!moduleDrag.swallowClick()) toggleGroup[m.id as keyof typeof toggleGroup](); }} onContextMenu={(e) => openModuleMenu(e, m.id)} onKeyDown={(e) => { moduleKeys(e, m.id); if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroup[m.id as keyof typeof toggleGroup](); } }}>
+                <span className="side-group-controls">
+                  <button type="button" className="side-group-toggle" aria-label={`${groupOpen[m.id as keyof typeof groupOpen] ? "收起" : "展开"}${sidebarName(m.id, settings.sidebar)}`} aria-expanded={groupOpen[m.id as keyof typeof groupOpen]} aria-controls={`side-group-${m.id}`} onClick={(e) => { e.stopPropagation(); toggleGroup[m.id as keyof typeof toggleGroup](); }}>
+                    <svg className={`side-group-chevron${groupOpen[m.id as keyof typeof groupOpen] ? " expanded" : ""}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
+                  </button>
+                  {(m.id === "lists" || m.id === "who") && <button type="button" className="side-group-add" title={m.id === "lists" ? "新建清单" : "新建需求方"} aria-label={m.id === "lists" ? "新建清单" : "新建需求方"} onClick={(e) => {
                   e.stopPropagation();
                   void createCategory(m.id === "lists" ? "list" : "who").then((created) => { if (created) forceFoldOpen(m.id); });
-                }} onDragStart={(e) => e.stopPropagation()}>＋</button>}
+                  }}>＋</button>}
+                </span>
+                <SidebarIcon path={m.icon} /><span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
+                {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
               </div>
               {groupOpen[m.id as keyof typeof groupOpen] && <div id={`side-group-${m.id}`}>
                 {moduleBodies[m.id]}
@@ -643,6 +647,9 @@ export default function Sidebar(
         )}
       </nav>
       {moduleMenu && <SidebarModuleMenu key={moduleMenu.id} target={moduleMenu} onClose={() => setModuleMenu(null)} onEditSidebar={editSidebar} />}
+      {moduleDrag.floating && createPortal(<div className="sidebar-module-floating" style={{ left: moduleDrag.floating.x, top: moduleDrag.floating.y, width: moduleDrag.floating.width, height: moduleDrag.floating.height }}>
+        <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={ICONS[moduleDrag.floating.id as SidebarModuleId]} /><span className="side-label">{sidebarName(moduleDrag.floating.id as SidebarModuleId, settings.sidebar)}</span>
+      </div>, document.body)}
       <div className="foot">
         {loadError ? <span className="bad" title={loadError} /> : <span className="ok" />}
         {/* 「数据异常」点得动：跟旁边那行「同步失败」一个口径——出了问题就得有地方可去。

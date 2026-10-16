@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { DATA_VERSION } from "../core/model";
 import { showToast } from "../core/store";
-import { CHECK_FAILED_MSG, checkUpdateNow, type ManualCheck } from "../core/updateCtl";
+import { CHECK_AUTH_MSG, CHECK_FAILED_MSG, checkUpdateNow, type ManualCheck } from "../core/updateCtl";
 import { updaterSupported } from "../core/updater";
 
 export default function NewerDataDialog({
@@ -66,6 +66,7 @@ export default function NewerDataDialog({
         {stage === "failed" && (
           <p className="nd-fail">{CHECK_FAILED_MSG}。先取消照常用也行，有网了再来设置里更新。</p>
         )}
+        {stage === "auth" && <p className="nd-fail">{CHECK_AUTH_MSG}。先取消也能照常使用。</p>}
         <div className="nd-acts">
           {/* 浏览器版没有更新通道，只留「取消」 */}
           {updaterSupported && (

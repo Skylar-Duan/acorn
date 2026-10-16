@@ -1,5 +1,6 @@
 // 全局搜索：Ctrl+F 呼出。输入即搜，回车直达任务的「家」并展开它。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { Task } from "../core/model";
 import { cmpYMD, formatShort, todayYMD } from "../core/dates";
 import { searchTasks } from "../core/search";
@@ -107,7 +108,7 @@ export default function SearchOverlay() {
                 <span className="so-meta">
                   {list && (
                     <span className="so-list-tag">
-                      <span className="so-dot" style={{ background: `var(--list-${list.color})` }} />
+                      <span className="so-dot" style={{ background: listColor(list.color) }} />
                       {list.name}
                     </span>
                   )}

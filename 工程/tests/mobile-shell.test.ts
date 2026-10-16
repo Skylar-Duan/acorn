@@ -647,7 +647,7 @@ describe("⑦ 清单页：顶栏收干净，颜色和删除进「···」那张
 
   it("只剩 返回 · 色点 + 名字 · N 件 · 「···」", () => {
     expect(head).toContain("onBack=");
-    expect(head).toContain("dot={kind === \"list\" && list ? `var(--list-${list.color})` : null}");
+    expect(head).toContain('dot={kind === "list" && list ? listColor(list.color) : null}');
     expect(head).toContain("{tasks.length + subRows.length} 件");
     expect(head).toContain('openSheet({ kind: "listSettings", listId: list.id })');
     // 返回回今天：手机上没有「上一页」这回事

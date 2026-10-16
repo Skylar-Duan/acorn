@@ -6,6 +6,9 @@ import "../styles/themes.css";
 import "../styles/base.css";
 import type { ParseResult } from "../core/parse";
 import SyntaxInput from "../components/SyntaxInput";
+import ImageAttachments from "../components/ImageAttachments";
+import type { TaskImage } from "../core/model";
+import { IS_ULTRA } from "../core/version";
 
 function applyThemeAttrs(theme: string, mode: string) {
   const el = document.documentElement;
@@ -24,10 +27,16 @@ interface Ctx {
   mode: string;
   /** 「周末」指周六还是周日，主窗随 context 一起下发；还没收到时当周日 */
   weekendDay?: "sat" | "sun";
+  imageContextId?: string;
+  imageBudgetUsed?: number;
 }
 
 function QuickAddApp() {
   const [text, setText] = useState("");
+  const [images, setImages] = useState<TaskImage[]>([]);
+  const ctxRef = useRef<Ctx | null>(null);
+  const imageRevision = useRef(0);
+  const imageBusy = useRef(false);
   const [ctx, setCtx] = useState<Ctx>({ listNames: [], tagNames: [], whoNames: [], theme: "forest", mode: "system" });
   const pending = useRef<string | null>(null);
 
@@ -36,18 +45,21 @@ function QuickAddApp() {
     void (async () => {
       const { listen, emitTo } = await import("@tauri-apps/api/event");
       await listen<Ctx>("quickadd:context", (e) => {
+        if (ctxRef.current?.imageContextId !== e.payload.imageContextId) { setImages([]); imageRevision.current++; }
+        ctxRef.current = e.payload;
         setCtx(e.payload);
         applyThemeAttrs(e.payload.theme, e.payload.mode);
       });
       await listen("quickadd:show", async () => {
         if (pending.current) { await hide(); return; }
         setText("");
+        setImages([]); imageRevision.current++;
         await emitTo("main", "quickadd:pull", {});
       });
       await listen<{ requestId?: string; saved: boolean }>("quickadd:result", async (e) => {
         if (e.payload.requestId !== pending.current) return;
         pending.current = null;
-        if (e.payload.saved) setText("");
+        if (e.payload.saved) { setText(""); setImages([]); imageRevision.current++; }
         else {
           const { getCurrentWindow } = await import("@tauri-apps/api/window");
           const current = getCurrentWindow();
@@ -66,7 +78,7 @@ function QuickAddApp() {
   }
 
   async function submit(parsed: ParseResult) {
-    if (!parsed.title.trim() || pending.current) return;
+    if (!parsed.title.trim() || pending.current || imageBusy.current) return;
     const { emitTo } = await import("@tauri-apps/api/event");
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     pending.current = requestId;
@@ -82,6 +94,7 @@ function QuickAddApp() {
       due: parsed.due,
       dueTime: parsed.dueTime,
       repeat: parsed.repeat,
+      ...(IS_ULTRA ? { images, imageContextId: ctxRef.current?.imageContextId } : {}),
       });
     } catch {
       pending.current = null;
@@ -99,7 +112,7 @@ function QuickAddApp() {
         display: "flex", flexDirection: "column", gap: 10,
       }}
       onKeyDown={(e) => {
-        if (e.key === "Escape") void hide();
+        if (e.key === "Escape") { imageRevision.current++; setImages([]); void hide(); }
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }} data-tauri-drag-region>
@@ -127,6 +140,11 @@ function QuickAddApp() {
         showChips
         inputStyle={{ fontSize: 15, padding: "10px 14px" }}
       />
+      <ImageAttachments images={images} draft label="这件事的图片"
+        onBusyChange={(busy) => { imageBusy.current = busy; }}
+        createContext={() => { const revision = imageRevision.current; const context = ctxRef.current?.imageContextId; return { valid: () => !!context && revision === imageRevision.current && context === ctxRef.current?.imageContextId && !pending.current, dispose: () => {} }; }}
+        usedBytes={() => ctxRef.current?.imageBudgetUsed ?? 0}
+        onChange={setImages} />
     </div>
   );
 }

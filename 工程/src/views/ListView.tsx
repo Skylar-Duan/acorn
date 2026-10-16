@@ -2,6 +2,7 @@
 // 「已完成」不在这儿——它要按完成时间分段、要显示完成日期，自成一个视图（views/Done.tsx）。
 // 「随手记」是全应用的记录入口：打字用语法，不想背语法就用下面那排按钮。
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { List, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
 import { taskDue } from "../core/taskDue";
@@ -193,7 +194,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           title={kind === "inbox" ? "还没有清单的事" : kind === "list" && list ? list.name : title}
           sub={kind === "list" ? "" : kind === "inbox" ? "没有日期、也没有归入清单的" : sub}
           small={kind === "list"}
-          dot={kind === "list" && list ? `var(--list-${list.color})` : null}
+          dot={kind === "list" && list ? listColor(list.color) : null}
           // 每一页都得有路回去：这几页手机上都不是常驻位，进来了就要走得掉
           onBack={() => navigate("today")}
           search={kind !== "list"}
@@ -223,7 +224,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           <>
             <span
               className="dot"
-              style={{ width: 12, height: 12, borderRadius: 99, background: `var(--list-${list.color})` }}
+              style={{ width: 12, height: 12, borderRadius: 99, background: listColor(list.color) }}
             />
             {/* key：切到另一张清单要重开一个框，否则上一张的草稿会串过来 */}
             <ListNameInput key={list.id} list={list} />

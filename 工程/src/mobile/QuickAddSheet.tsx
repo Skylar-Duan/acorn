@@ -18,6 +18,7 @@
 //     不然「点完日历格 350ms 内按记下」这条事会不带日期地建出来，而那个日期一会儿静默跟到下一条上；
 //   · 记完**只清那句话、不清点选**——跟桌面「选中的会保持生效，方便连续记录」同一个口径。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { Priority } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { parseQuickAdd } from "../core/parse";
@@ -316,7 +317,7 @@ function QuickAddBody({ listId }: { listId: string | null }) {
           {eff.due ? `${formatShort(eff.due)}${eff.dueTime ? ` ${eff.dueTime}` : ""}` : "日期"}
         </button>
         <button className={`msh-pick${effList ? " on" : ""}`} onClick={() => toggleSeg("list")}>
-          <span className="msh-dot" style={{ background: effList?.color ? `var(--list-${effList.color})` : "var(--ink-3)" }} />
+          <span className="msh-dot" style={{ background: effList?.color ? listColor(effList.color) : "var(--ink-3)" }} />
           {effList ? effList.name : "清单"}
         </button>
         <button className={`msh-pick${eff.who.length ? " on" : ""}`} onClick={() => toggleSeg("who")}>
@@ -384,7 +385,7 @@ function QuickAddBody({ listId }: { listId: string | null }) {
                 className={`msh-opt${effList?.id === l.id ? " on" : ""}`}
                 onClick={() => changePick("list", { listId: l.id })}
               >
-                <span className="msh-dot" style={{ background: `var(--list-${l.color})` }} />
+                <span className="msh-dot" style={{ background: listColor(l.color) }} />
                 {l.name}
               </button>
             ))}

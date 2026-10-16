@@ -18,6 +18,7 @@
 // 开关就在 MobileShell 的一个本地 state 里，点走任何一项它自己就收了（onNavigate）。
 
 import { useEffect, useReducer, useState } from "react";
+import { listColor } from "../core/colors";
 import { LIST_COLORS } from "../core/model";
 import {
   addList, aliveTasks, allTags, allWho, moveList, moveWho, navigate, trashedSubtaskRows, useApp,
@@ -299,7 +300,7 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
               onClick={go(() => navigate("list", { listId: l.id }))}
               {...listSort.props(l.id)}
             >
-              <span className="msheet-dot" style={{ background: `var(--list-${l.color})` }} />
+              <span className="msheet-dot" style={{ background: listColor(l.color) }} />
               {l.name}
               <span className="n">{open.filter((t) => t.listId === l.id).length || ""}</span>
             </button>

@@ -1,5 +1,6 @@
 // 主窗外壳：侧栏 + 视图路由 + 全局快捷键 + 撤销 toast + 批量操作条。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listColor } from "./core/colors";
 import type { CSSProperties } from "react";
 import Sidebar from "./components/Sidebar";
 import LoadingScreen from "./components/LoadingScreen";
@@ -467,7 +468,7 @@ export default function App() {
                 <button className="item" onClick={() => { setTasksList(selectedIds, null); setBulkListMenu(false); }}>移出清单</button>
                 {lists.map((l) => (
                   <button key={l.id} className="item" onClick={() => { setTasksList(selectedIds, l.id); setBulkListMenu(false); }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${l.color})`, display: "inline-block" }} />
+                    <span style={{ width: 7, height: 7, borderRadius: 99, background: listColor(l.color), display: "inline-block" }} />
                     {l.name}
                   </button>
                 ))}

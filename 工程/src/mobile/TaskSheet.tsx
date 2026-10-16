@@ -12,6 +12,7 @@
 //   · 子任务的「放弃 / 删除」不靠 hover 显形，**左滑**露出来（useSwipeRow）；
 //   · 「放弃 / 删除」钉在纸底，跟上面改属性的那些隔开——这两个是仅有的「按下去它就不在清单里了」的键。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { CSSProperties } from "react";
 import type { Priority, RepeatRule, Subtask, Task } from "../core/model";
 import { cmpYMD, formatShort, isPlausibleYMD, todayYMD } from "../core/dates";
@@ -384,7 +385,7 @@ function TaskSheetBody({ task }: { task: Task }) {
 
           {/* ---- 清单 ---- */}
           <button className={`msh-prop${seg === "list" ? " open" : ""}`} onClick={() => toggleSeg("list")}>
-            <span className="msh-dot" style={{ background: list ? `var(--list-${list.color})` : "var(--ink-3)" }} />
+            <span className="msh-dot" style={{ background: list ? listColor(list.color) : "var(--ink-3)" }} />
             <span className="msh-prop-k">清单</span>
             <span className={`msh-prop-v${list ? "" : " off"}`}>{list ? list.name : "没有清单"}</span>
             <span className="msh-caret"><ChevronRight /></span>
@@ -404,7 +405,7 @@ function TaskSheetBody({ task }: { task: Task }) {
                     className={`msh-opt${task.listId === l.id ? " on" : ""}`}
                     onClick={() => updateTask(task.id, { listId: l.id })}
                   >
-                    <span className="msh-dot" style={{ background: `var(--list-${l.color})` }} />
+                    <span className="msh-dot" style={{ background: listColor(l.color) }} />
                     {l.name}
                   </button>
                 ))}

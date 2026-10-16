@@ -117,6 +117,26 @@ let lastSeenData: AppData | null = null;
  *  闸门（syncNowChecked）靠它区分「内存里这份就是刚上传的那份」和
  *  「上传之后又变了」——只看 dirty 不够，applyRemoteData 换掉引用也是常事 */
 let syncedRef: AppData | null = null;
+let sessionEpoch = 0;
+
+/** 长请求返回时只许落回原账号和原账本，登出再登入也不能复活旧同步。 */
+function syncContext(session: Session) {
+  const epoch = sessionEpoch;
+  const matches = () => {
+    const current = syncStore.getState().session;
+    return !!current && current.token === session.token && current.email === session.email;
+  };
+  let invalid = false;
+  const offSession = syncStore.subscribe(() => { if (!matches()) invalid = true; });
+  const offData = appStore.subscribe((s) => { if (!s.loaded || s.loadError || s.rescue || s.wiped) invalid = true; });
+  return {
+    valid: () => {
+      const s = appStore.getState();
+      return !invalid && epoch === sessionEpoch && matches() && s.loaded && !s.loadError && !s.rescue && !s.wiped;
+    },
+    dispose: () => { offSession(); offData(); },
+  };
+}
 
 function set(patch: Partial<SyncStore>) {
   syncStore.setState({ ...syncStore.getState(), ...patch });
@@ -336,6 +356,7 @@ function adoptLegacyProfileNow(session: Session): void {
  *  的路用（loginCtl.signInWithLocalData）：那条路要的正是不合并，
  *  默认这一下 syncNow 恰恰是它要避免的动作。调用方自己负责随后走覆盖或走合并。 */
 export async function adoptSession(session: Session, opts?: { sync?: boolean }): Promise<void> {
+  sessionEpoch++;
   await cloud.saveSession(session);
   set({
     session, phase: "idle", message: idleMessage(session),
@@ -345,7 +366,7 @@ export async function adoptSession(session: Session, opts?: { sync?: boolean }):
   watchData();
   startAutoPull();
   if (opts?.sync === false) return;
-  await syncNow();
+  await syncNow({ force: true });
 }
 
 /** 断开登录态：清防抖、停监听、删令牌、把同步状态归零。**只管登录态，不碰任何本机数据**。
@@ -354,6 +375,7 @@ export async function adoptSession(session: Session, opts?: { sync?: boolean }):
  *  的副作用：401 令牌过期是**非自愿登出**，那一刻恰恰同步不上去，
  *  一次过期就无声抹掉全部本地数据，用户找都没处找。 */
 export async function signOut(): Promise<void> {
+  sessionEpoch++;
   if (debounce) {
     clearTimeout(debounce);
     debounce = null;
@@ -371,6 +393,7 @@ export async function signOut(): Promise<void> {
  *  同步和设置页发反馈撞上 401 都走这一条，两处的样子得一致——
  *  不然反馈那边红字说「登录已经过期」，账号卡却还显示登录着 */
 export async function expireSession(): Promise<void> {
+  sessionEpoch++;
   await cloud.saveSession(null);
   stopWatching();
   stopAutoPull();
@@ -393,15 +416,18 @@ export async function syncNowChecked(): Promise<SyncGate> {
   if (upgradeBlocked(before)) return { ok: false, why: before.message };
   const a = appStore.getState();
   // **dataFromNewer 不在这里**：那份数据是真读进来的账本，推得上去也判得了
-  if (!a.loaded || a.loadError || a.rescue) {
+  if (!a.loaded || a.loadError || a.rescue || a.wiped) {
     return { ok: false, why: "数据还没正常读进来，这会儿判断不了云端是不是全了" };
   }
   // 闸门要的是「**当前这份**上去了」，所以走 force：不许搭一轮早就在飞的旧同步，
   // 那一轮的快照是起飞那一刻的数据，之后记的东西一个字都不在里面
   const beforeData = appStore.getState().data;
+  const context = syncContext(before.session);
+  try {
   await syncNow({ force: true });
   const after = syncStore.getState();
   if (!after.session) return { ok: false, why: "登录状态过期了，重新登录再试一次" };
+  if (!context.valid()) return { ok: false, why: "账号或数据位置已经变化，请重新检查后再清空" };
   if (after.phase === "error") return { ok: false, why: after.message };
   // 同步过程中又改了东西：那部分还没上去，这次不算数
   if (after.dirty) return { ok: false, why: "还有改动没有上传，等这一轮同步完成后再试" };
@@ -413,6 +439,7 @@ export async function syncNowChecked(): Promise<SyncGate> {
     return { ok: false, why: "同步过程中数据又变了，再点一次把这次改动也传上去" };
   }
   return { ok: true, rev: after.session.rev };
+  } finally { context.dispose(); }
 }
 
 /** 每天至少同步一次：当天（本地日期）还没成功同步过就补一轮。
@@ -426,6 +453,8 @@ export async function syncNowChecked(): Promise<SyncGate> {
  *  **调用方一律 void 不 await**：这是后台行为，挡不得启动；没网就静默跳过，不打扰。 */
 export async function dailySyncIfNeeded(today = todayYMD()): Promise<boolean> {
   const st = syncStore.getState();
+  const dataState = appStore.getState();
+  if (!dataState.loaded || dataState.loadError || dataState.rescue || dataState.wiped) return false;
   if (!st.session || upgradeBlocked(st) || st.phase === "syncing" || exclusive > 0) return false;
   const last = st.session.syncedAt;
   if (last && toYMD(new Date(last)) === today) return false;
@@ -466,12 +495,30 @@ let autoPullOff: (() => void) | null = null;
  */
 export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
   const st = syncStore.getState();
+  const dataState = appStore.getState();
+  if (!dataState.loaded || dataState.loadError || dataState.rescue || dataState.wiped) return false;
   if (!st.session || upgradeBlocked(st, now) || st.phase === "syncing" || running || exclusive > 0) return false;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
   const last = st.session.syncedAt ? Date.parse(st.session.syncedAt) : NaN;
   if (Number.isFinite(last) && now - last < AUTO_PULL_GAP_MS) return false;
   if (now - lastAutoPullAt < AUTO_PULL_GAP_MS) return false;
   lastAutoPullAt = now; // 先记再发：focus 和 visibilitychange 常常前后脚一起来
+  const snapshot = appStore.getState().data;
+  if (!st.dirty && syncedRef === snapshot && st.phase === "idle") {
+    const context = syncContext(st.session);
+    try {
+      const remote = await cloud.whoAmI(st.session.token);
+      if (!context.valid() || exclusive > 0 || running || syncStore.getState().phase === "syncing") return true;
+      const current = syncStore.getState();
+      if (!current.dirty && syncedRef === snapshot && appStore.getState().data === snapshot && remote.rev === current.session?.rev) return true;
+    } catch (e) {
+      if (!context.valid()) return true;
+      const err = e as cloud.ApiError;
+      if (err?.needsLogin) await expireSession();
+      else set({ phase: "error", message: `自动检查失败：${err?.message || "稍后重试"}` });
+      return true;
+    } finally { context.dispose(); }
+  }
   await syncNow();
   return true;
 }
@@ -534,8 +581,9 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
   // 这两种状态下 loaded 都是 true，光看 loaded 拦不住，会把一本空账本合并进云端再 PUT 回去。
   // **dataFromNewer 已从这里去掉**（v1.9.1）：更新版本写的那份是真账本，
   // 未知字段合并不丢、推上去信封盖的是 max 后的 schema，拦着它反而是把用户的两台设备切断
-  if (!state.loaded || state.loadError || state.rescue) return Promise.resolve();
+  if (!state.loaded || state.loadError || state.rescue || state.wiped) return Promise.resolve();
 
+  const context = syncContext(session);
   set({ phase: "syncing", message: "正在同步…" });
   /** 这一轮结束后要不要立刻再跑一轮：往返期间用户又改了东西，那部分还没上云 */
   let followUp = false;
@@ -544,6 +592,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
       // 快照：这一轮**推上去的就是这一份**，往返期间的改动一个字都不在里面
       const snap = appStore.getState().data;
       const outcome = await cloud.syncOnce(session, snap);
+      if (!context.valid()) return;
       // 必须在 applyRemoteData 之前判：它会拿旧快照的合并结果整份替换内存那份，
       // 把往返期间用户刚记的那条盖掉，判在后面就看不见「又改过」了
       let drifted = appStore.getState().data !== snap;
@@ -570,6 +619,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
         syncedAt: new Date().toISOString(),
       };
       await cloud.saveSession(next);
+      if (!context.valid()) return;
       // saveSession 也是一次 await，这段窗口里同样可能改过
       if (appStore.getState().data !== settled) drifted = true;
       syncedRef = drifted ? null : settled;
@@ -590,6 +640,7 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
         message: `${idleMessage(next)}${detail}`,
       });
     } catch (e) {
+      if (!context.valid()) return;
       // 这一轮没成，什么都没确知在云端
       syncedRef = null;
       const err = e as cloud.ApiError;
@@ -614,9 +665,11 @@ export function syncNow(opts?: { force?: boolean; chained?: boolean }): Promise<
         message: err?.message ? `同步失败：${err.message}` : "同步失败，请稍后重试",
       });
     } finally {
+      const sameContext = context.valid();
+      context.dispose();
       running = null;
       // 必须排在 running 清空之后：否则会被当成「搭在飞的那一轮」原地返回
-      if (followUp) void syncNow({ chained: true });
+      if (followUp && sameContext) void syncNow({ chained: true });
     }
   })();
   return running;

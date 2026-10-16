@@ -1,6 +1,7 @@
 // 自定义右键菜单：作用于单条或多选任务（ui.ctxMenu.ids）。
 // App.tsx 常驻渲染 <ContextMenu/>；打开/关闭走 store 的 openCtxMenu/closeCtxMenu。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { Priority, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
@@ -393,7 +394,7 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
             </button>
             {lists.map((l) => (
               <button key={l.id} className="ctx-item" onClick={() => run(() => setTasksList(ids, l.id))}>
-                <span className="ctx-dot" style={{ background: `var(--list-${l.color})` }} />
+                <span className="ctx-dot" style={{ background: listColor(l.color) }} />
                 {l.name}
               </button>
             ))}

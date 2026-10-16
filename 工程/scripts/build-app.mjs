@@ -28,9 +28,14 @@ const PKG_DIR = resolve(HERE, "..", "安装包");
 
 const [platform, ...flags] = process.argv.slice(2);
 const beta = flags.includes("--beta");
+const ultra = flags.includes("--ultra");
 const publish = beta && !flags.includes("--no-publish");
 if (!["desktop", "android"].includes(platform)) {
   console.error("用法：node scripts/build-app.mjs <desktop|android> [--beta]（网页版走 server/deploy/publish-web.sh）");
+  process.exit(1);
+}
+if (ultra && platform !== "desktop") {
+  console.error("Ultra 仅提供 Windows 安装包");
   process.exit(1);
 }
 
@@ -54,7 +59,7 @@ if (beta) {
 const label = { desktop: "桌面版", android: "安卓版" }[platform];
 console.log(`=== ${label} ${beta ? `测试版 ${n}（号 ${version}，接在 v${pub} 之后）` : `正式包 v${version}`}`);
 
-const env = { ...process.env, ACORN_BUILD_PLATFORM: platform, ACORN_BUILD_VERSION: version };
+const env = { ...process.env, ACORN_BUILD_PLATFORM: platform, ACORN_BUILD_VERSION: version, ACORN_BUILD_EDITION: ultra ? "ultra" : "normal" };
 // cargo 装在 ~/.cargo/bin，但不一定在当前会话的 PATH 里（两台机器都遇到过）。
 // Windows 上环境变量名不分大小写，展开成普通对象后却分了——找到原来那个键再往前插，别另起一个 PATH
 const cargoBin = join(homedir(), ".cargo", "bin");
@@ -67,21 +72,29 @@ function run(cmd, args, opts = {}) {
   // npx 在 Windows 上是 .cmd，要 shell 才叫得动；bash 脚本的参数里有带空格的中文路径，走 shell 会被拆开
   const r = spawnSync(cmd, args, { cwd: HERE, env, stdio: "inherit", shell: cmd === "npx", ...opts });
   if (r.status !== 0) {
-    console.error(`\n✗ ${cmd} ${args.join(" ")} 失败（退出码 ${r.status}）`);
-    process.exit(r.status || 1);
+    // 交给调用方的 finally 清理临时覆盖；process.exit 会直接跳过它。
+    throw new Error(`\n✗ ${cmd} ${args.join(" ")} 失败（退出码 ${r.status}）`, { cause: r.error });
   }
 }
 
 let artifact;
 if (platform === "desktop") {
   const override = join(HERE, "src-tauri", "tauri.version.json");
-  writeFileSync(override, JSON.stringify({ version }));
+  const config = JSON.parse(readFileSync(join(HERE, "src-tauri", "tauri.conf.json"), "utf8"));
+  const windows = config.app.windows.map((w) => ultra && w.label === "quickadd" ? { ...w, height: 330 } : w);
+  writeFileSync(override, JSON.stringify({ version, app: { windows } }));
   try {
     run("npx", ["tauri", "build", "--config", "src-tauri/tauri.version.json"]);
   } finally {
     rmSync(override, { force: true });
   }
   artifact = join(HERE, "src-tauri", "target", "release", "bundle", "nsis", `Acorn_${version}_x64-setup.exe`);
+  if (ultra && existsSync(artifact)) {
+    const ultraArtifact = join(dirname(artifact), `AcornUltra_${version}_x64-setup.exe`);
+    // 同一产物只保留 Ultra 文件名，避免私有包以普通包的名字留在公开发布候选中。
+    renameSync(artifact, ultraArtifact);
+    artifact = ultraArtifact;
+  }
 } else {
   run("bash", ["scripts/build-android.sh"]);
   artifact = join(HERE, "src-tauri", "target", "release", "bundle", "android", `Acorn_${version}_arm64.apk`);
@@ -110,7 +123,7 @@ mkdirSync(PKG_DIR, { recursive: true });
 const ext = platform === "desktop" ? "exe" : "apk";
 // 跟以前的命名一样：「橡果 v1.15.0 安装包.exe」「橡果 v1.15.0 安卓版.apk」，测试版把号换成 beta
 const kind = platform === "desktop" ? "安装包" : "安卓版";
-const dest = join(PKG_DIR, `橡果 ${beta ? "beta" : `v${version}`} ${kind}.${ext}`);
+const dest = join(PKG_DIR, `橡果 ${ultra ? "Ultra " : ""}${beta ? "beta" : `v${version}`} ${kind}.${ext}`);
 const temporaryPackage = `${dest}.${process.pid}.tmp`;
 try {
   copyFileSync(artifact, temporaryPackage);
@@ -123,13 +136,16 @@ console.log(`\n✓ 产物：${artifact}\n✓ 复制到：${dest}`);
 // 推到测试版通道：更新说明取 changelog-data.json 里这一端 beta 那段的小标题
 if (publish) {
   const log = JSON.parse(readFileSync(join(HERE, "src", "core", "changelog-data.json"), "utf8"));
-  const titles = (log.beta?.[platform]?.highlights ?? []).map((h) => h.title);
-  const notesFile = join(tmpdir(), `acorn-beta-notes-${platform}.txt`);
-  writeFileSync(notesFile, titles.length ? `测试版：${titles.join("；")}` : "测试版");
-  const script = platform === "desktop" ? "server/deploy/publish-exe.sh" : "server/deploy/publish-apk.sh";
+  const titles = (log.beta?.[platform]?.highlights ?? []).filter((h) => !h.edition || h.edition === (ultra ? "ultra" : "normal")).map((h) => h.title);
+  const notesFile = join(tmpdir(), `acorn-beta-notes-${platform}-${ultra ? "ultra" : "normal"}-${process.pid}.txt`);
+  const script = platform === "desktop" ? ultra ? "server/deploy/publish-ultra-exe.sh" : "server/deploy/publish-exe.sh" : "server/deploy/publish-apk.sh";
   console.log("\n=== 推到测试版通道（只有管理员看得到）");
   // 交给 bash 的路径要写成 /s/... 的样子：scp 会把「S:\...」里的冒号当成「主机名:路径」
   const posix = (p) => p.replace(/^([A-Za-z]):[\\/]/, (_, d) => `/${d.toLowerCase()}/`).split("\\").join("/");
-  run("bash", [script, posix(artifact), posix(notesFile), "--beta"]);
-  rmSync(notesFile, { force: true });
+  try {
+    writeFileSync(notesFile, titles.length ? `测试版：${titles.join("；")}` : "测试版");
+    run("bash", [script, posix(artifact), posix(notesFile), "--beta"]);
+  } finally {
+    rmSync(notesFile, { force: true });
+  }
 }

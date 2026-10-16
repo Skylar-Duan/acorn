@@ -999,6 +999,11 @@ button.chain-more.plain:hover { color: var(--accent); border-color: var(--accent
 @keyframes badge-in { from { opacity: 0; transform: scale(.7); } }
 
 .sub-categories { display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: 100%; align-items: center; }
+.tc-openfold { display: flex; width: 100%; align-items: center; gap: 7px; padding: 7px 0; margin: 4px 0 2px; color: var(--ink-2); font-size: 12px; font-weight: 500; text-align: left; }
+.tc-openfold:hover { color: var(--accent); }
+.tc-openfold-chevron { display: inline-block; width: 15px; font-size: 16px; line-height: 1; transform: rotate(0deg); transition: transform var(--dur-1) var(--ease); }
+.tc-openfold-chevron.folded { transform: rotate(-90deg); }
+.tc-openfold-count { color: var(--ink-3); font-size: 11px; font-weight: 400; }
 .sub-category { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--ink-2); font-size: 11px; overflow-wrap: anywhere; }
 .sub-category button { flex: none; padding: 0 2px; color: var(--ink-3); font-size: 12px; }
 .sub-category button:hover { color: var(--danger); }

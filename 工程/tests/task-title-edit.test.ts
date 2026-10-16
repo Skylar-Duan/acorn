@@ -5,7 +5,7 @@ import TaskCard from "../src/components/TaskCard";
 import TaskRow from "../src/components/TaskRow";
 import { finishCategoryDraft, useCategoryCreation } from "../src/core/categoryCreation";
 import { defaultData, newTask } from "../src/core/model";
-import { appStore, deleteTasks, flushSave, undo, useApp } from "../src/core/store";
+import { appStore, deleteTasks, flushSave, toggleSubtask, undo, useApp } from "../src/core/store";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -148,5 +148,27 @@ describe("任务卡直接编辑标题", () => {
     expect(document.querySelector(".sub-row-categories")).toBeNull();
     act(() => root.render(createElement(TaskRow, { task, sub: task.subtasks[0], tail: "date", orderedIds: [task.id] })));
     expect(document.querySelector(".sub-row-categories")).toBeNull();
+  });
+
+  it("133条真实待办子任务可折叠且记忆每任务偏好，收起仍可新增并正确更新完成计数", async () => {
+    act(() => {
+      const task = getTask();
+      appStore.setState({ data: { ...appStore.getState().data, tasks: [{ ...task, subtasks: Array.from({ length: 133 }, (_, i) => ({ id: `many-${i}`, title: `第${i + 1}步`, done: false })) }] } });
+    });
+    const toggle = () => document.querySelector<HTMLButtonElement>(".tc-openfold")!;
+    const count = () => toggle().querySelector(".tc-openfold-count")!.textContent;
+    const panel = () => document.getElementById("pending-subs-parent")!;
+    expect(panel().querySelectorAll("textarea")).toHaveLength(133);
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    act(() => toggle().click());
+    expect(panel().querySelectorAll("textarea")).toHaveLength(0);
+    const input = document.querySelector<HTMLTextAreaElement>('.subs .si-input')!;
+    type(input, "收起时也能添加下一步"); await enter(input);
+    expect(count()).toBe("134"); expect(panel().querySelectorAll("textarea")).toHaveLength(0);
+    act(() => toggleSubtask("parent", "many-0")); expect(count()).toBe("133");
+    act(() => root.render(createElement(Harness, { key: "reopen-card" })));
+    expect(toggle().getAttribute("aria-expanded")).toBe("false"); expect(panel().querySelectorAll("textarea")).toHaveLength(0);
+    act(() => toggle().click()); expect(panel().querySelectorAll("textarea")).toHaveLength(133);
+    expect(getTask().subtasks).toHaveLength(134);
   });
 });

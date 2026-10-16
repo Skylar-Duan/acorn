@@ -3,6 +3,7 @@
 // 有未完成子任务的任务在日期/总览视图里被分拆成若干子任务行（母任务行收起），
 // 日期/重要性没单独设的子任务显示的是继承自母任务的那份（口径统一走 store 的 row* 系列）。
 import { useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { Subtask, Task } from "../core/model";
 import { doneRowMs } from "../core/motion";
 import { formatShort, formatDoneShort, doneShortIsWide, todayYMD, cmpYMD } from "../core/dates";
@@ -393,7 +394,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         ))}
         {!leanTail && !hideList && !bundled && list && (
           <span className="list-tag">
-            <span className="dot" style={{ width: 7, height: 7, borderRadius: 99, background: `var(--list-${list.color})`, display: "inline-block" }} />
+            <span className="dot" style={{ width: 7, height: 7, borderRadius: 99, background: listColor(list.color), display: "inline-block" }} />
             {list.name}
           </span>
         )}

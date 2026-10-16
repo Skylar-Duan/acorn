@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { displayVersion } from "../core/version";
 import { isAndroid } from "../core/platform";
-import { CHECK_FAILED_MSG, HANDOFF_MSG, useUpdateRun } from "../core/updateCtl";
+import { CHECK_FAILED_MSG, HANDOFF_MSG, updateCheckMessage, useUpdateRun } from "../core/updateCtl";
 import {
   fallbackText, fetchUpdate, isRequiredForSync, openFallback, shouldOffer, updaterSupported,
   type FallbackResult,
@@ -22,6 +22,7 @@ function mb(n: number): string {
 
 export default function UpdatePanel() {
   const [stage, setStage] = useState<Stage>("idle");
+  const [checkError, setCheckError] = useState(CHECK_FAILED_MSG);
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   /** 「改用浏览器下载」点完的回话：开了 / 复制了地址 / 都不行把地址给你 */
   const [fb, setFb] = useState<FallbackResult | null>(null);
@@ -30,6 +31,7 @@ export default function UpdatePanel() {
   // **查不到和已是最新是两回事**：断网时绝不能显示「已经是最新版了」，那是骗人
   function apply(res: UpdateCheck) {
     if (!res.ok) {
+      setCheckError(updateCheckMessage(res.reason));
       setInfo(null);
       setStage("check-failed");
       return;
@@ -73,7 +75,7 @@ export default function UpdatePanel() {
       </div>
 
       {stage === "latest" && <p className="hint">当前已是最新版本。</p>}
-      {stage === "check-failed" && <p className="hint">{CHECK_FAILED_MSG}。</p>}
+      {stage === "check-failed" && <p className="hint">{checkError}。</p>}
 
       {stage === "found" && info && (
         <>

@@ -18,9 +18,10 @@
 // beta 那段清空，下一轮重新攒。
 
 import data from "./changelog-data.json";
-import { APP_PLATFORM, APP_VERSION, IS_BETA, compareVersions, type Platform } from "./version";
+import { APP_PLATFORM, APP_VERSION, APP_EDITION, IS_BETA, compareVersions, type Platform, type Edition } from "./version";
 
 export type Highlight = {
+  edition?: string;
   /** 功能名，短 */
   title: string;
   /** 一两句：能做什么、怎么用，最好带个日常例子 */
@@ -57,11 +58,18 @@ export const BETA_NOTES: Partial<Record<Platform, BetaNotes>> = data.beta;
  */
 export function changelogFor(
   platform: Platform = APP_PLATFORM,
-  opts: { beta?: boolean; betaVersion?: string } = {},
+  opts: { beta?: boolean; betaVersion?: string; edition?: Edition } = {},
 ): ChangelogEntry[] {
-  const released = [...CHANGELOG[platform]].sort((a, b) => compareVersions(b.version, a.version));
+  const edition = opts.edition ?? APP_EDITION;
+  const visible = (h: Highlight) => !h.edition || h.edition === edition;
+  const released = CHANGELOG[platform]
+    .map((entry) => ({ ...entry, highlights: entry.highlights.filter(visible) }))
+    .filter((entry) => entry.highlights.length > 0)
+    .sort((a, b) => compareVersions(b.version, a.version));
   const beta = opts.beta ?? IS_BETA;
   const notes = BETA_NOTES[platform];
   if (!beta || !notes) return released;
-  return [{ ...notes, version: opts.betaVersion ?? APP_VERSION }, ...released];
+  const highlights = notes.highlights.filter(visible);
+  if (!highlights.length) return released;
+  return [{ ...notes, highlights, version: opts.betaVersion ?? APP_VERSION }, ...released];
 }

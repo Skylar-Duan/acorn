@@ -2,6 +2,16 @@
 
 export type Priority = 0 | 1 | 2 | 3; // 0 无 · 1 低 · 2 中 · 3 高
 
+/** 图片随账本内联保存。普通版不展示这个可选字段，读写和同步仍原样保留。 */
+export interface TaskImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+  bytes: number;
+}
+
 export interface Subtask {
   id: string;
   title: string;
@@ -36,6 +46,7 @@ export interface Subtask {
    *  可选且不补默认值：老账本读写不改形，旧客户端按未知字段保留。 */
   who?: string[];
   listIds?: string[];
+  images?: TaskImage[];
 }
 
 export type RepeatRule =
@@ -69,6 +80,7 @@ export interface Task {
   reminder: string | null;
   repeat: RepeatRule | null;
   subtasks: Subtask[];
+  images?: TaskImage[];
   done: boolean;
   /** ISO 完成时刻 */
   doneAt: string | null;

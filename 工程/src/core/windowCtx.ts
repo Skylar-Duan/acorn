@@ -5,6 +5,8 @@
 // （themeCtl），否则开着的说明窗会一直停在打开那一刻的配色。两处必须发同一份东西，
 // 各写一份迟早分家。
 import { allTags, allWho, appStore } from "./store";
+import { IS_ULTRA } from "./version";
+import { imageWindowContext } from "./imageWindowContext";
 
 export interface WindowContext {
   listNames: string[];
@@ -14,6 +16,8 @@ export interface WindowContext {
   mode: string;
   /** 「周末」指周六还是周日：小窗里的解析也得跟主窗的设置一致 */
   weekendDay: "sat" | "sun";
+  imageContextId?: string;
+  imageBudgetUsed?: number;
 }
 
 export function windowContext(): WindowContext {
@@ -25,5 +29,6 @@ export function windowContext(): WindowContext {
     theme: d.settings.theme,
     mode: d.settings.mode,
     weekendDay: d.settings.weekendDay === "sat" ? "sat" : "sun",
+    ...(IS_ULTRA ? imageWindowContext() : {}),
   };
 }

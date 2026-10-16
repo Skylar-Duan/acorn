@@ -24,7 +24,10 @@ export const API_BASE: string =
 export const CLIENT_SCHEMA = DATA_VERSION;
 
 const AUTH_LS_KEY = "acorn-auth";
+let sessionSaveQueue: Promise<void> = Promise.resolve();
 const SYNC_TIMEOUT_MS = 20000;
+/** 大账本的收发和响应正文共用一个超时，账号请求仍保持较短等待。 */
+export const VAULT_TRANSFER_TIMEOUT_MS = 120000;
 
 export interface Session {
   token: string;
@@ -54,6 +57,7 @@ async function inv<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 
 export async function loadSession(): Promise<Session | null> {
   try {
+    await sessionSaveQueue.catch(() => {});
     const raw = inTauri
       ? await inv<string | null>("load_auth")
       : localStorage.getItem(AUTH_LS_KEY);
@@ -67,12 +71,12 @@ export async function loadSession(): Promise<Session | null> {
 
 export async function saveSession(s: Session | null): Promise<void> {
   const text = s ? JSON.stringify(s) : null;
-  if (inTauri) {
-    await inv("save_auth", { json: text });
-    return;
-  }
-  if (text) localStorage.setItem(AUTH_LS_KEY, text);
-  else localStorage.removeItem(AUTH_LS_KEY);
+  sessionSaveQueue = sessionSaveQueue.catch(() => {}).then(async () => {
+    if (inTauri) { await inv("save_auth", { json: text }); return; }
+    if (text) localStorage.setItem(AUTH_LS_KEY, text);
+    else localStorage.removeItem(AUTH_LS_KEY);
+  });
+  await sessionSaveQueue;
 }
 
 // ---------- HTTP ----------
@@ -98,10 +102,9 @@ async function call<T>(
   opts: { method?: string; body?: unknown; token?: string } = {},
 ): Promise<T> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), SYNC_TIMEOUT_MS);
-  let res: Response;
+  const timer = setTimeout(() => ctrl.abort(), path === "/api/sync" ? VAULT_TRANSFER_TIMEOUT_MS : SYNC_TIMEOUT_MS);
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${API_BASE}${path}`, {
       method: opts.method ?? "GET",
       headers: {
         ...(opts.body ? { "Content-Type": "application/json" } : {}),
@@ -110,24 +113,22 @@ async function call<T>(
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       signal: ctrl.signal,
     });
+    const text = await res.text();
+    let body: unknown = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    if (!res.ok) {
+      const b = (body ?? {}) as { error?: string; message?: string };
+      throw new ApiError(res.status, b.error ?? "error", b.message ?? `服务器出错（${res.status}）`);
+    }
+    return body as T;
   } catch (e) {
-    throw new ApiError(0, "offline", "连不上服务器，这次没有同步");
+    if (e instanceof ApiError) throw e;
+    throw new ApiError(0, "offline", ctrl.signal.aborted
+      ? (path === "/api/sync" ? "同步等待超时，本机数据已保留，稍后再试" : "连接超时，稍后再试")
+      : "连不上服务器，这次没有同步");
   } finally {
     clearTimeout(timer);
   }
-
-  const text = await res.text();
-  let body: unknown = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = null;
-  }
-  if (!res.ok) {
-    const b = (body ?? {}) as { error?: string; message?: string };
-    throw new ApiError(res.status, b.error ?? "error", b.message ?? `服务器出错（${res.status}）`);
-  }
-  return body as T;
 }
 
 // ---------- 账号 ----------

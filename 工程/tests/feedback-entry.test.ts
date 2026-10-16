@@ -96,7 +96,7 @@ afterEach(() => {
 // ---------------------------------------------------------------- ① 挂在哪
 
 describe("① 设置页最下面一节，三端同一份", () => {
-  it("「反馈」在通用、版本和关于之后", () => {
+  it("「反馈」在通用和版本之后、关于之前", () => {
     const cloudAt = settingsCode.indexOf('<SetSection\n          id="cloud"');
     const fbAt = settingsCode.indexOf('<SetSection\n          id="feedback"');
     const generalAt = settingsCode.indexOf('<SetSection\n          id="general"');
@@ -104,14 +104,16 @@ describe("① 设置页最下面一节，三端同一份", () => {
     expect(fbAt).toBeGreaterThan(cloudAt);
     expect(generalAt).toBeGreaterThan(cloudAt);
     expect(fbAt).toBeGreaterThan(generalAt);
-    expect(fbAt).toBeGreaterThan(settingsCode.indexOf("set-about"));
+    expect(fbAt).toBeLessThan(settingsCode.indexOf("set-about"));
+    expect(fbAt).toBeGreaterThan(settingsCode.indexOf('id="update"'));
     expect(fbAt).toBe(settingsCode.lastIndexOf("<SetSection"));
     expect(settingsCode).toContain('title="反馈"');
     expect(settingsCode).toContain("<FeedbackPanel />");
   });
 
   it("不包在任何平台判断里（三端都有）", () => {
-    const before = settingsCode.slice(settingsCode.indexOf('id="feedback"') - 200, settingsCode.indexOf('id="feedback"'));
+    const clean = settingsCode.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+    const before = clean.slice(clean.indexOf('id="feedback"') - 64, clean.indexOf('id="feedback"'));
     for (const gate of ["isMobile &&", "isDesktopShell &&", "isWeb &&", "inTauri &&", "hasDesktopFeatures &&"]) {
       expect(before).not.toContain(gate);
     }

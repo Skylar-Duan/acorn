@@ -3,15 +3,16 @@
 // withPickers = 再挂一排「点着选」的按钮（日期/清单/需求方/优先级/循环），
 // 不背语法的人纯点也能把一条事记全；两边同时给了以打字为准。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listColor } from "../core/colors";
 import type { FocusEvent as ReactFocusEvent } from "react";
 import type { ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
 import { deskDueRepeat, withOverride } from "../mobile/quickAddMerge";
 import type { Overrides, PickField } from "../mobile/quickAddMerge";
-import type { Priority, RepeatRule } from "../core/model";
+import type { Priority, RepeatRule, TaskImage } from "../core/model";
 import { formatShort, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
-import { addTask, allTags, allWho, appStore, useApp } from "../core/store";
+import { addTask, allTags, allWho, appStore, showToast, useApp } from "../core/store";
 import { createCategory, existingCategoryList, isTaskCategoryDialogOpen, prepareTaskCategories, taskCategoriesNeedConfirmation } from "../core/categoryCreation";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import SyntaxInput from "./SyntaxInput";
@@ -23,6 +24,10 @@ import RepeatPicker from "./RepeatPicker";
 import RepeatMenu from "./RepeatMenu";
 import { useLeaving } from "./motion";
 import { useGuideEntry } from "./GuideSheet";
+import ImageAttachments from "./ImageAttachments";
+import { IS_ULTRA } from "../core/version";
+import { imageEditContext } from "../core/imageEditContext";
+import { imageListUpdateError } from "../core/taskImages";
 
 export interface QuickAddBarProps {
   /** 视图上下文默认值：如清单视图里默认加进该清单 */
@@ -81,6 +86,12 @@ export default function QuickAddBar({
   const tasks = useApp((s) => s.data.tasks);
   const settings = useApp((s) => s.data.settings);
   const [text, setText] = useState("");
+  const [images, setImages] = useState<TaskImage[]>([]);
+  const imagesRef = useRef<TaskImage[]>([]);
+  const imageBusy = useRef(false);
+  const imageRevision = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; imageRevision.current++; }; }, []);
   const [pick, setPick] = useState<Picks>(EMPTY);
   const [menu, setMenu] = useState<MenuId | null>(null);
   /** 🔁 那个菜单现在是常用项（false）还是「自定义…」面板（true） */
@@ -146,6 +157,11 @@ export default function QuickAddBar({
 
   function submit(parsed: ParseResult): boolean {
     if (!parsed.title.trim() || submitting.current || isTaskCategoryDialogOpen()) return false;
+    if (imageBusy.current) { showToast("图片还在处理，请稍候再保存", false); return false; }
+    const draftImages = IS_ULTRA ? imagesRef.current : [];
+    const revision = imageRevision.current;
+    const capacity = imageListUpdateError(appStore.getState().data, [], draftImages);
+    if (capacity) { showToast(capacity, false); return false; }
     // 📅 里刚选完、去抖还没烧到点的那一天：这条事必须带上它。
     // 不接这一手就是「点完日历格 350ms 内回车 → 这条事不带日期地建出来，
     // 而那个日期一会儿静默跟到下一条事身上」。点预设和「清空」都已经 cancel 过了，
@@ -160,9 +176,11 @@ export default function QuickAddBar({
     const pickedListId = pick.listId && lists.some((l) => l.id === pick.listId) ? pick.listId : null;
     const baseListId = pickedListId ?? defaultListId;
     const who = parsed.who.length ? parsed.who : pick.who.length ? pick.who : defaults?.who ?? [];
-    const commit = (listId: string | null, finalWho: string[]) => {
+    const commit = (listId: string | null, finalWho: string[]): boolean => {
       const current = appStore.getState();
-      if (!current.loaded || current.loadError || current.wiped) return;
+      if (!mounted.current || imageRevision.current !== revision || !current.loaded || current.loadError || current.wiped) return false;
+      const imageError = imageListUpdateError(current.data, [], draftImages);
+      if (imageError) { showToast(imageError, false); return false; }
       // 等新名字确认时，原来点选/默认的清单可能已被云同步删除。
       const liveListId = listId && current.data.lists.some((l) => l.id === listId) ? listId : null;
       const id = addTask({
@@ -175,18 +193,21 @@ export default function QuickAddBar({
         due: dr.due,
         dueTime: dr.dueTime,
         repeat: dr.repeat,
+        ...(draftImages.length ? { images: draftImages } : {}),
       });
+      if (imagesRef.current === draftImages) { imagesRef.current = []; setImages([]); imageRevision.current++; }
       setText("");
       setOverrides({});
       onAdded?.(id);
+      return true;
     };
     if (!taskCategoriesNeedConfirmation(parsed.listName, who, baseListId)) {
-      commit(parsed.listName ? existingCategoryList(parsed.listName, baseListId)?.id ?? null : baseListId, who);
-      return true;
+      return commit(parsed.listName ? existingCategoryList(parsed.listName, baseListId)?.id ?? null : baseListId, who);
     }
     submitting.current = true;
-    void prepareTaskCategories(parsed.listName, who, baseListId).then((categories) => {
-      if (categories) { commit(parsed.listName ? categories.listId : baseListId, categories.who); saved.flash(); }
+    void prepareTaskCategories(parsed.listName, who, baseListId,
+      () => mounted.current && imageRevision.current === revision && !imageListUpdateError(appStore.getState().data, [], draftImages)).then((categories) => {
+      if (categories && commit(parsed.listName ? categories.listId : baseListId, categories.who)) saved.flash();
     }).finally(() => { submitting.current = false; });
     return false;
   }
@@ -219,8 +240,9 @@ export default function QuickAddBar({
           onBlurCommit={commitOnBlur}
           onEscape={() => {
             // Esc 才是丢弃：把还没记的这句擦掉，留在原地接着打
-            if (!text) return false;
+            if (!text && !imagesRef.current.length) return false;
             setText("");
+            imagesRef.current = []; setImages([]); imageRevision.current++;
             setOverrides({});
             return true;
           }}
@@ -235,6 +257,10 @@ export default function QuickAddBar({
         <button className="qa-help" title="怎么写一句话" onClick={guide.open}>?</button>
         <CommitMark on={saved.on} />
       </div>
+      <ImageAttachments images={images} draft label="这件事的图片"
+        onBusyChange={(busy) => { imageBusy.current = busy; }}
+        createContext={() => { const revision = imageRevision.current; return imageEditContext(() => mounted.current && imageRevision.current === revision); }}
+        onChange={(next) => { if (!next.length) imageRevision.current++; imagesRef.current = next; setImages(next); }} />
       {guide.sheet}
 
       {withPickers && (
@@ -274,13 +300,13 @@ export default function QuickAddBar({
             id="list"
             on={!!pickedList}
             label={pickedList
-              ? <><span className="dot" style={{ background: `var(--list-${pickedList.color})` }} /> {pickedList.name}</>
+              ? <><span className="dot" style={{ background: listColor(pickedList.color) }} /> {pickedList.name}</>
               : <>🗂 清单</>}
           >
             <button className="item" onClick={() => { setPick({ ...pick, listId: null }); setMenu(null); }}>不归清单</button>
             {lists.map((l) => (
               <button key={l.id} className="item" onClick={() => { setPick({ ...pick, listId: l.id }); setMenu(null); }}>
-                <span className="dot" style={{ background: `var(--list-${l.color})` }} />
+                <span className="dot" style={{ background: listColor(l.color) }} />
                 {l.name}
               </button>
             ))}

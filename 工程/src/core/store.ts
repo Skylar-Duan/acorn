@@ -3,7 +3,7 @@
 
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task, TaskKind } from "./model";
+import type { AppData, List, Priority, RepeatRule, Settings, Subtask, Task, TaskImage, TaskKind } from "./model";
 import { defaultData, newId, newTask, normalizeWho } from "./model";
 import { bury } from "./merge";
 import { doneOn, isDueOn, sortHabitsForDay, toggleCheck, DEFAULT_HABIT_REPEAT } from "./habits";
@@ -14,6 +14,7 @@ import * as persist from "./persist";
 // 只用它一个 loadSession（读令牌在不在，不发网络请求）。cloud 不回头依赖 store，没有环
 import * as cloud from "./cloud";
 import { isMobile } from "./platform";
+import { imageListUpdateError, taskImages } from "./taskImages";
 
 // 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
 // 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换。
@@ -533,8 +534,7 @@ export async function initStore(): Promise<void> {
 /** 用户在「找回数据」屏做了选择：接管某个文件夹，或坚持从空的开始 */
 export async function resolveRescue(dir: string | null): Promise<void> {
   if (dir) {
-    await persist.setDataDir(dir); // 目标已有数据时不会被覆盖，只改指针
-    location.reload();
+    await switchDataDirectory(dir);
     return;
   }
   // 「数据打不开」那一屏上也能开这张卡（v1.15.0：那一屏原来只有重试和一颗死按钮）。
@@ -546,6 +546,28 @@ export async function resolveRescue(dir: string | null): Promise<void> {
   appStore.setState({ rescue: null });
   await persist.saveData(appStore.getState().data);
   await persist.ensureDailyBackup();
+}
+
+/** 更换目录前等原账本同步/落盘结束，再使旧响应失效，防止写进新指针指向的目录。 */
+export async function switchDataDirectory(dir: string): Promise<void> {
+  const { holdAutoSync } = await import("./syncCtl");
+  const release = await holdAutoSync();
+  let loadedBefore = appStore.getState().loaded;
+  let switching = false;
+  try {
+    await flushSave();
+    loadedBefore = appStore.getState().loaded;
+    appStore.setState({ loaded: false });
+    switching = true;
+    // 目标已有数据时 Rust 不覆盖它，只更换指针；旧主窗的任何落盘从此停止。
+    await persist.setDataDir(dir);
+    location.reload();
+  } catch (e) {
+    if (switching) appStore.setState({ loaded: loadedBefore });
+    throw e;
+  } finally {
+    release(); // 成功时 loaded=false 一直保留到 reload；失败时恢复正常后台同步。
+  }
 }
 
 // ---------- 任务动作 ----------
@@ -560,6 +582,7 @@ export interface AddTaskInput {
   dueTime?: string | null;
   repeat?: RepeatRule | null;
   notes?: string;
+  images?: TaskImage[];
 }
 
 /** 日期变化后提醒的再生规则：dueTime 是第一来源（响过而被清空的提醒随新日期复活），
@@ -571,6 +594,10 @@ function regenReminder(t: Task, newDue: string): string | null {
 }
 
 export function addTask(input: AddTaskInput): string {
+  if (input.images?.length) {
+    const error = imageListUpdateError(appStore.getState().data, [], input.images);
+    if (error) throw new Error(error);
+  }
   const t = newTask({
     ...input,
     listId: input.listId ?? null,
@@ -616,6 +643,13 @@ export interface UpdateTaskOpts {
 }
 
 export function updateTask(id: string, patch: Partial<Task>, opts: UpdateTaskOpts = {}) {
+  if (patch.images) {
+    const current = appStore.getState().data.tasks.find((t) => t.id === id);
+    if (current) {
+      const error = imageListUpdateError(appStore.getState().data, taskImages(current.images), patch.images);
+      if (error) throw new Error(error);
+    }
+  }
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) => {
@@ -1213,8 +1247,13 @@ export function addSubtask(
     repeat?: RepeatRule | null;
     who?: string[];
     listIds?: string[];
+    images?: TaskImage[];
   },
 ) {
+  if (extra?.images?.length) {
+    const error = imageListUpdateError(appStore.getState().data, [], extra.images);
+    if (error) throw new Error(error);
+  }
   const sub: Subtask = {
     id: newId(),
     title,
@@ -1231,6 +1270,7 @@ export function addSubtask(
   if (extra?.repeat) sub.repeat = extra.repeat;
   if (extra?.who?.length) sub.who = [...new Set(extra.who)];
   if (extra?.listIds?.length) sub.listIds = [...new Set(extra.listIds)];
+  if (extra?.images?.length) sub.images = extra.images;
   mutate((d) => ({
     ...d,
     tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: [...t.subtasks, sub] } : t)),
@@ -1320,6 +1360,13 @@ export function toggleSubtask(taskId: string, subId: string) {
 /** 子任务字段更新（自己的日期/优先级/标题；带 done 时连完成时刻一起管，见 applySubPatch）。
  *  勾的是一条带循环的（v8）就变成推进，提示语跟 toggleSubtask 同一句 */
 export function updateSubtask(taskId: string, subId: string, patch: Partial<Subtask>) {
+  if (patch.images) {
+    const current = appStore.getState().data.tasks.find((t) => t.id === taskId)?.subtasks.find((s) => s.id === subId);
+    if (current) {
+      const error = imageListUpdateError(appStore.getState().data, taskImages(current.images), patch.images);
+      if (error) throw new Error(error);
+    }
+  }
   const advanced = subAdvanceFor(peekSub(taskId, subId), patch);
   mutate((d) => ({
     ...d,

@@ -11,14 +11,14 @@
 import { useEffect, useState } from "react";
 import type { AppData, Priority, Settings as AppSettings, Task, ThemeName } from "../core/model";
 import { APP_VERSION, DATA_VERSION } from "../core/model";
-import { shortVersion } from "../core/version";
+import { shortVersion, IS_ULTRA } from "../core/version";
 import { toJsonFile, unpack } from "../core/transfer";
 import { pad2, todayYMD, toYMD } from "../core/dates";
-import { aliveTasks, navigate, setChangelogOpen, showToast, updateSettings, useApp } from "../core/store";
+import { aliveTasks, navigate, setChangelogOpen, showToast, switchDataDirectory, updateSettings, useApp } from "../core/store";
 import { preferFoldOpen, useFold } from "../core/useFold";
 import {
   dataStatus, downloadTextFile, getDataDir, inTauri, listBackups, pickTextFile, readTextFile,
-  restoreBackup, saveData, setDataDir, writeTextFile,
+  restoreBackup, saveData, writeTextFile,
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
@@ -266,8 +266,7 @@ export default function Settings() {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const dir = await open({ directory: true });
       if (typeof dir !== "string") return;
-      await setDataDir(dir);
-      location.reload();
+      await switchDataDirectory(dir);
     } catch (e) {
       showToast(`更换失败：${String(e)}`, false);
     }
@@ -572,7 +571,7 @@ export default function Settings() {
         )}
 
         {hasDesktopFeatures && (
-          <SetSection id="sidebar" title="功能区设置" anchorId="set-sidebar" summary="拖动整组排序 · 添加与隐藏模块">
+          <SetSection id="sidebar" title="功能区设置" anchorId="set-sidebar" summary="选择显示的入口 · 在左侧拖动排序">
             <SidebarSettings />
           </SetSection>
         )}
@@ -712,9 +711,18 @@ export default function Settings() {
 
         {/* 回收站那一节 v1.10.0 撤了：侧栏「更多」里已经挂着它，设置页再放一个「打开回收站」是重复入口（用户点名） */}
 
-        {/* ---------- 关于（不折叠） ---------- */}
+        <SetSection
+          id="feedback"
+          title="反馈"
+          summary={session ? "哪里不好用、想要什么，写给我们" : "登录后就能发反馈"}
+        >
+          <div className="set-desc">每一条都会有人看。</div>
+          <FeedbackPanel />
+        </SetSection>
+
+        {/* ---------- 关于（不折叠，始终在最后） ---------- */}
         <div className="set-section set-about">
-          <span className="set-about-brand">橡果 Acorn</span>
+          <span className="set-about-brand">{IS_ULTRA ? "橡果 Acorn Ultra" : "橡果 Acorn"}</span>
           {/* 「保存在你自己的磁盘上」这句在网页版是假的：那儿的账本在浏览器里。
               这一页别处都已经如实说了，这一行也得跟上 */}
           <span className="set-about-line">
@@ -725,14 +733,6 @@ export default function Settings() {
           <button className="btn ghost" onClick={() => setChangelogOpen(true)}>查看更新日志</button>
         </div>
 
-        <SetSection
-          id="feedback"
-          title="反馈"
-          summary={session ? "哪里不好用、想要什么，写给我们" : "登录后就能发反馈"}
-        >
-          <div className="set-desc">每一条都会有人看。</div>
-          <FeedbackPanel />
-        </SetSection>
       </div>
     </section>
   );

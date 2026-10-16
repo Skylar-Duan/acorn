@@ -22,15 +22,33 @@ export interface UpdateInfo {
   publishedAt: string;
   /** 备用：App 内装不上时让用户自己去下 */
   pageUrl: string;
+  edition?: "normal" | "ultra";
+  requiresAuth?: boolean;
+  downloadId?: string;
 }
 
 /** 比版本号（认得测试版的 `-beta.N`）。实现挪到了 core/version.ts，这里转手导出，
  *  原来从 updater 引它的地方不用改 */
 export { compareVersions } from "./version";
-import { compareVersions } from "./version";
+import { compareVersions, IS_ULTRA } from "./version";
 
 export function isNewer(remote: string, local: string = APP_VERSION): boolean {
   return compareVersions(remote, local) > 0;
+}
+
+/** 只允许本次构建配置的同源、单个 ticket 下载端点；查询串、跳转及其它 API 不接收令牌。 */
+function ultraDownloadUrl(raw: string): boolean {
+  try {
+    const base = new URL(`${API_BASE}/api/ultra/download/`);
+    const target = new URL(raw);
+    return target.origin === base.origin && !target.username && !target.password && !target.search && !target.hash &&
+      target.pathname.startsWith(base.pathname) && /^[A-Za-z0-9_-]+$/.test(target.pathname.slice(base.pathname.length));
+  } catch { return false; }
+}
+
+function ultraInfo(info: Pick<UpdateInfo, "edition" | "requiresAuth" | "downloadId" | "sha256" | "url" | "size">): boolean {
+  return info.edition === "ultra" && info.requiresAuth === true && !!info.downloadId &&
+    /^[a-f0-9]{64}$/i.test(info.sha256) && Number.isSafeInteger(info.size) && info.size > 0 && ultraDownloadUrl(info.url);
 }
 
 /** 把服务器返回的清单校成 UpdateInfo；缺斤少两就当没有更新（宁可不提示，也不给个下不动的按钮） */
@@ -38,9 +56,13 @@ export function parseManifest(raw: unknown): UpdateInfo | null {
   if (!raw || typeof raw !== "object") return null;
   const m = raw as Record<string, unknown>;
   if (m.available !== true) return null;
+  if (IS_ULTRA ? m.edition !== "ultra" : m.edition === "ultra") return null;
   const version = typeof m.version === "string" ? m.version : "";
   const url = typeof m.url === "string" ? m.url : "";
   if (!version || !url) return null;
+  if (IS_ULTRA && !ultraInfo({ edition: m.edition as UpdateInfo["edition"], requiresAuth: m.requiresAuth === true,
+    downloadId: typeof m.downloadId === "string" ? m.downloadId : "", sha256: typeof m.sha256 === "string" ? m.sha256 : "", url,
+    size: typeof m.size === "number" ? m.size : 0 })) return null;
   // 只认自家服务器的下载地址：清单要是被人改过，也不能把用户引到别处去装东西
   if (!url.startsWith(`${API_BASE}/`) && !url.startsWith("https://acorn.cdpandas.com/")) return null;
   return {
@@ -52,6 +74,7 @@ export function parseManifest(raw: unknown): UpdateInfo | null {
     notes: typeof m.notes === "string" ? m.notes : "",
     publishedAt: typeof m.publishedAt === "string" ? m.publishedAt : "",
     pageUrl: typeof m.pageUrl === "string" ? m.pageUrl : "",
+    ...(IS_ULTRA ? { edition: "ultra" as const, requiresAuth: true, downloadId: m.downloadId as string } : {}),
   };
 }
 
@@ -85,7 +108,7 @@ export const UPDATE_CHANNEL: "android" | "desktop" = isAndroid ? "android" : "de
  */
 export type UpdateCheck =
   | { ok: true; info: UpdateInfo | null }
-  | { ok: false; reason: "offline" | "timeout" | "http" };
+  | { ok: false; reason: "offline" | "timeout" | "http" | "auth" };
 
 const CHECK_TIMEOUT_MS = 12000;
 
@@ -104,7 +127,8 @@ export function pickNewest(a: UpdateInfo | null, b: UpdateInfo | null): UpdateIn
 async function fetchBeta(token: string | null | undefined, signal: AbortSignal): Promise<UpdateInfo | null> {
   if (!token) return null;
   try {
-    const res = await fetch(`${API_BASE}/api/${UPDATE_CHANNEL}/beta`, {
+    const endpoint = IS_ULTRA ? "/api/ultra/desktop/beta" : `/api/${UPDATE_CHANNEL}/beta`;
+    const res = await fetch(`${API_BASE}${endpoint}`, {
       signal,
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -129,15 +153,21 @@ export async function fetchUpdate(opts: { token?: string | null } = {}): Promise
     ctrl.abort();
   }, CHECK_TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE}/api/${UPDATE_CHANNEL}/latest`, { signal: ctrl.signal });
-    if (!res.ok) return { ok: false, reason: "http" };
+    let token = opts.token;
+    if (IS_ULTRA && token === undefined) token = (await loadSession())?.token;
+    if (IS_ULTRA && !token) return { ok: false, reason: "auth" };
+    const endpoint = IS_ULTRA ? "/api/ultra/desktop/latest" : `/api/${UPDATE_CHANNEL}/latest`;
+    const res = await fetch(`${API_BASE}${endpoint}`, { signal: ctrl.signal,
+      ...(IS_ULTRA ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    });
+    if (!res.ok) return { ok: false, reason: IS_ULTRA && (res.status === 401 || res.status === 403) ? "auth" : "http" };
     let raw: unknown;
     try {
       raw = await res.json();
     } catch {
       return { ok: false, reason: "http" }; // 清单读不成 JSON：服务端出的事，别栽给网络
     }
-    const token = opts.token !== undefined ? opts.token : (await loadSession())?.token;
+    if (!IS_ULTRA && token === undefined) token = (await loadSession())?.token;
     const beta = await fetchBeta(token, ctrl.signal);
     return { ok: true, info: pickNewest(parseManifest(raw), beta) };
   } catch {
@@ -160,7 +190,7 @@ export interface DownloadProgress {
 
 /** 下下来的包叫什么。安卓是 APK，桌面是 NSIS 安装器 */
 export function packageName(version: string): string {
-  return `Acorn_${version}.${isAndroid ? "apk" : "exe"}`;
+  return `${IS_ULTRA ? "AcornUltra" : "Acorn"}_${version}.${isAndroid ? "apk" : "exe"}`;
 }
 
 /**
@@ -231,7 +261,15 @@ export async function downloadPackage(
 
   try {
     bump(); // 连响应头都没回来的那一段同样算「卡住」，所以看门狗从 fetch 之前就开始走
-    const res = await fetch(info.url, { signal: ctrl.signal });
+    if ((IS_ULTRA || info.edition === "ultra" || info.requiresAuth) && (!IS_ULTRA || !ultraInfo(info))) {
+      throw new Error("更新包的版本类型或下载地址不正确");
+    }
+    const token = info.requiresAuth ? (await loadSession())?.token : null;
+    if (info.requiresAuth && !token) throw new Error("登录后才能下载 Ultra 更新");
+    const res = await fetch(info.url, { signal: ctrl.signal,
+      ...(info.requiresAuth ? { redirect: "error" as const, cache: "no-store" as const } : {}),
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    });
     if (!res.ok) throw new Error(`下载失败（HTTP ${res.status}）`);
     const total = Number(res.headers.get("content-length")) || info.size || 0;
 
@@ -246,9 +284,14 @@ export async function downloadPackage(
       bump();
       chunks.push(value);
       received += value.length;
+      if (info.requiresAuth && received > info.size) {
+        await reader.cancel();
+        throw new Error("安装包大小与更新信息不一致，已中止安装，请重新检查更新");
+      }
       onProgress({ received, total });
     }
     disarm(); // 字节收齐了；后面校验和落盘慢一点是正常的，别再让看门狗掺和
+    if (info.requiresAuth && received !== info.size) throw new Error("安装包未完整收到，已中止安装，请重试");
 
     const bytes = new Uint8Array(received);
     let at = 0;
@@ -266,7 +309,19 @@ export async function downloadPackage(
       }
     }
 
-    return await savePackage(packageName(info.version), bytes);
+    const saved = await savePackage(packageName(info.version), bytes);
+    if (info.requiresAuth && info.downloadId) {
+      if (signal?.aborted) throw new Error(DOWNLOAD_CANCELLED);
+      signal?.addEventListener("abort", relay);
+      bump();
+      const completed = await fetch(`${API_BASE}/api/ultra/download/${encodeURIComponent(info.downloadId)}/complete`, {
+        method: "POST", signal: ctrl.signal, redirect: "error", cache: "no-store",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sha256: info.sha256 }),
+      });
+      if (!completed.ok) throw new Error("安装包已收到，但下载确认未完成，请重新检查更新后重试");
+    }
+    return saved;
   } catch (e) {
     // 三种断法要分开报：用户点的取消根本不是错误，看门狗踢掉的得说清是网络卡住了
     if (signal?.aborted) throw new Error(DOWNLOAD_CANCELLED);

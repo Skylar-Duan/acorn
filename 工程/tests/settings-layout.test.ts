@@ -134,10 +134,10 @@ describe("③ 顺序按主流 App 的习惯来", () => {
     expect(code).not.toContain("云账号");
   });
 
-  it("「关于」在反馈之前（它不折叠，是一张单独的卡）", () => {
+  it("反馈在最后一张可折叠卡，不能折叠的关于始终垫底", () => {
     const feedback = code.indexOf('id="feedback"');
     const about = code.indexOf("set-about");
-    expect(about).toBeLessThan(feedback);
+    expect(about).toBeGreaterThan(feedback);
     expect(about).toBeGreaterThan(code.indexOf('id="update"'));
   });
 

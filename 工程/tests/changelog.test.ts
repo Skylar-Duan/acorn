@@ -66,6 +66,33 @@ describe("分端：每一端只列它真拿到、且看得见变化的版本", (
 });
 
 describe("测试版：第一块是比上一个正式版多了什么", () => {
+  it("转入正式历史后仍按 edition 过滤，专属版本不会空壳出现在普通版", () => {
+    const original = [...CHANGELOG.desktop];
+    const mixed: ChangelogEntry = { version: "99.0.0", date: "2026-10-16", headline: "共同改动与专属功能", highlights: [
+      { title: "共同改动", body: "两版都能使用。" },
+      { title: "专属功能", body: "仅 Ultra 使用。", edition: "ultra" },
+    ] };
+    const exclusive: ChangelogEntry = { version: "99.0.1", date: "2026-10-16", headline: "专属功能", highlights: [mixed.highlights[1]] };
+    try {
+      CHANGELOG.desktop.unshift(exclusive, mixed);
+      const normal = changelogFor("desktop", { beta: false, edition: "normal" });
+      const ultra = changelogFor("desktop", { beta: false, edition: "ultra" });
+      expect(normal.find(e => e.version === exclusive.version)).toBeUndefined();
+      expect(normal.find(e => e.version === mixed.version)?.highlights).toEqual([mixed.highlights[0]]);
+      expect(ultra.find(e => e.version === mixed.version)?.highlights).toEqual(mixed.highlights);
+      expect(ultra[0].version).toBe(exclusive.version);
+      expect(mixed.highlights).toHaveLength(2);
+    } finally {
+      CHANGELOG.desktop.splice(0, CHANGELOG.desktop.length, ...original);
+    }
+  });
+  it("Ultra 专属改动仅在 Ultra 日志出现，普通版仍显示共同更新", () => {
+    const normal = changelogFor("desktop", {beta:true,edition:"normal"})[0].highlights;
+    const ultra = changelogFor("desktop", {beta:true,edition:"ultra"})[0].highlights;
+    expect(normal.every(h => h.edition !== "ultra")).toBe(true);
+    expect(ultra.some(h => h.edition === "ultra")).toBe(true);
+    expect(ultra.filter(h => !h.edition)).toEqual(normal.filter(h => !h.edition));
+  });
   it("装着测试版时，第一块是这个测试版，上一个正式版挪进后面", () => {
     // 哪一端刚发过正式版，那一端的 beta 就是空的（发布时清掉、下一轮重新攒），所以对每个攒着改动的端都核一遍
     const withNotes = PLATFORMS.filter((p) => BETA_NOTES[p]);

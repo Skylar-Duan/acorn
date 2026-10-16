@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CATEGORY_COLORS, CATEGORY_ICONS, categoryIcon } from "../core/categoryIcons";
+import { listColor } from "../core/colors";
 import { finishCategoryDraft, useCategoryCreation, type CategoryDraft } from "../core/categoryCreation";
 import SidebarIcon from "./SidebarIcon";
 import "../styles/category-creation.css";
@@ -41,7 +42,7 @@ function CategoryCreationDialog({ initial }: { initial: CategoryDraft }) {
         <button type="button" className="category-create-close" aria-label={`取消新建${noun}`} onClick={() => finishCategoryDraft(null)}>×</button>
       </header>
       <div className="category-create-name">
-        <span className="category-create-preview" style={{ color: `var(--list-${draft.color})`, background: `color-mix(in srgb, var(--list-${draft.color}) 13%, transparent)` }}>
+        <span className="category-create-preview" style={{ color: listColor(draft.color), background: `color-mix(in srgb, ${listColor(draft.color)} 13%, transparent)` }}>
           <SidebarIcon path={categoryIcon(draft.kind, draft.icon)} />
         </span>
         <label><span>{noun}名称</span><input className="input" value={draft.name} maxLength={80} placeholder={person ? "例如：李哥、设计团队" : "例如：工作、读书计划"}
@@ -51,11 +52,15 @@ function CategoryCreationDialog({ initial }: { initial: CategoryDraft }) {
         {CATEGORY_COLORS.map((color) => <button key={color.id} type="button" title={color.name} aria-label={color.name} aria-pressed={draft.color === color.id}
           className={draft.color === color.id ? "selected" : ""} style={{ "--category-color": `var(--list-${color.id})` } as React.CSSProperties}
           onClick={() => setDraft({ ...draft, color: color.id })}><span>{draft.color === color.id ? "✓" : ""}</span></button>)}
+        <label className={`category-custom-color${draft.color.startsWith("#") ? " selected" : ""}`} title="自选颜色" style={{ "--category-custom": draft.color.startsWith("#") ? draft.color : "#b86f52" } as React.CSSProperties}>
+          <input type="color" aria-label="自选颜色" value={/^#[0-9a-f]{6}$/i.test(draft.color) ? draft.color : "#b86f52"} onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 3 6 6-9 9-7 1 1-7z M13 5l6 6 M5 19l-2 2" /></svg>
+        </label>
       </div></fieldset>
       <fieldset><legend>{person ? "人物图标" : "清单图标"}</legend><div className="category-icon-options">
         {CATEGORY_ICONS[draft.kind].map((icon) => <button key={icon.id} type="button" title={icon.name} aria-label={icon.name} aria-pressed={draft.icon === icon.id}
           className={draft.icon === icon.id ? "selected" : ""} onClick={() => setDraft({ ...draft, icon: icon.id })}>
-          <SidebarIcon path={icon.path} /><span>{icon.name}</span>
+          <SidebarIcon path={icon.path} />
         </button>)}
       </div></fieldset>
       <footer><button type="button" className="btn" onClick={() => finishCategoryDraft(null)}>取消</button><button type="submit" className="btn primary" disabled={!draft.name.trim()}>创建{noun}</button></footer>
