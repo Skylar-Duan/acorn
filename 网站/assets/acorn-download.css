@@ -1,0 +1,60 @@
+/* 橡果专用下载弹窗，沿用工具页主题；不影响其它工具。 */
+.acdl-dialog { border: 1px solid var(--line); border-radius: 22px; padding: 0; margin: auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); background: var(--panel); color: var(--fg); box-shadow: 0 24px 80px #0003; overflow: auto; }
+.acdl-dialog::backdrop { background: #121c2b80; backdrop-filter: blur(4px); }
+.acdl-dialog * { box-sizing: border-box; }
+.acdl-dialog button, .acdl-dialog input { font: inherit; }
+.acdl-dialog button { cursor: pointer; }
+.acdl-dialog button:disabled { cursor: default; opacity: .55; }
+.acdl-dialog :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.acdl-head { display: flex; align-items: flex-start; gap: 12px; padding: 26px 28px 18px; }
+.acdl-head h2 { font-size: 23px; margin: 2px 0 0; }
+.acdl-eyebrow { color: var(--brand-ink); font: 11px var(--mono); letter-spacing: .12em; margin-bottom: 6px; }
+.acdl-close { margin-left: auto; border: 0; background: transparent; color: var(--fg2); border-radius: 8px; padding: 2px 7px; font-size: 25px !important; line-height: 1; }
+.acdl-close:hover { background: var(--sunken); color: var(--fg); }
+.acdl-body { padding: 0 28px 26px; }
+.acdl-intro { color: var(--fg2); font-size: 13px; margin: 0 0 18px; line-height: 1.75; }
+.acdl-group { margin: 20px 0 10px; font-size: 11px; color: var(--fg2); letter-spacing: .06em; }
+.acdl-choice { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 13px; margin-top: 9px; }
+.acdl-choice.ultra { background: linear-gradient(115deg, var(--sunken), var(--panel)); }
+.acdl-icon { width: 26px; height: 26px; flex: none; color: var(--fg2); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.acdl-choice-main { flex: 1; min-width: 0; }
+.acdl-choice-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.acdl-tag { font: 10px var(--mono); border: 1px solid var(--line); padding: 2px 6px; border-radius: 5px; color: var(--brand-ink); }
+.acdl-choice-meta { font: 11px var(--mono); color: var(--fg2); margin-top: 4px; }
+.acdl-choice-desc { font-size: 11px; color: var(--fg2); margin-top: 3px; }
+.acdl-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: none; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); text-decoration: none; font-size: 12px !important; line-height: 1.5; font-weight: 600; }
+.acdl-action:hover { border-color: var(--brand); color: var(--brand-ink); }
+.acdl-action.primary { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+.acdl-action.primary:hover { filter: brightness(1.06); }
+.acdl-choice-foot { margin-top: 20px; color: var(--fg2); font-size: 11px; line-height: 1.75; }
+.acdl-back { border: 0; background: transparent; color: var(--fg2); padding: 0; margin-bottom: 18px; font-size: 12px !important; }
+.acdl-back:hover { color: var(--brand-ink); }
+.acdl-account { color: var(--fg2); font-size: 12px; margin: -4px 0 20px; overflow-wrap: anywhere; }
+.acdl-status { background: var(--sunken); padding: 16px 18px; border-radius: 12px; margin-bottom: 20px; }
+.acdl-status strong { display: block; font-size: 14px; font-weight: 600; }
+.acdl-status p { color: var(--fg2); font-size: 12px; line-height: 1.8; margin-top: 5px; }
+.acdl-code-label { display: block; color: var(--fg2); font-size: 12px; margin: 0 0 7px; }
+.acdl-code { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; color: var(--fg); padding: 12px 14px; font-family: var(--mono) !important; font-size: 22px !important; letter-spacing: .3em; min-width: 0; }
+.acdl-code::placeholder { letter-spacing: normal; font-family: var(--sans); font-size: 13px; color: var(--fg2); }
+.acdl-wide { width: 100%; margin-top: 12px; padding: 11px 16px; font-size: 13px !important; }
+.acdl-policy { margin-top: 21px; border-top: 1px solid var(--line); padding-top: 15px; }
+.acdl-policy summary { color: var(--fg2); font-size: 11px; cursor: pointer; }
+.acdl-policy p { color: var(--fg2); font-size: 11px; line-height: 1.9; margin-top: 8px; }
+.acdl-alert { border: 1px solid #b7655566; background: #b765550a; border-radius: 9px; color: var(--fg); padding: 11px 13px; font-size: 12px; margin: 14px 0; overflow-wrap: anywhere; }
+.acdl-live { color: var(--fg2); font-size: 12px; min-height: 21px; margin-top: 11px; }
+.acdl-progress { width: 100%; height: 5px; appearance: none; margin: 12px 0 4px; border-radius: 5px; overflow: hidden; }
+.acdl-progress::-webkit-progress-bar { background: var(--sunken); }
+.acdl-progress::-webkit-progress-value { background: var(--brand); }
+.acdl-progress::-moz-progress-bar { background: var(--brand); }
+.acdl-success { color: var(--brand-ink); font-size: 13px; margin: 12px 0 4px; }
+.acdl-retry { margin-top: 6px; }
+@media (max-width: 480px) {
+  .acdl-head { padding: 22px 20px 16px; }
+  .acdl-body { padding: 0 20px 22px; }
+  .acdl-choice { gap: 10px; padding: 13px 11px; }
+  .acdl-icon { width: 21px; height: 21px; }
+  .acdl-choice-title { font-size: 14px; }
+  .acdl-choice .acdl-action { padding: 7px 10px; }
+  .acdl-head h2 { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) { .acdl-dialog * { scroll-behavior: auto; } }

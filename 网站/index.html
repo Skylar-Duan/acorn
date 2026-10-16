@@ -19,6 +19,7 @@
        根路径 / 让给网页版本体；旧址 cdpandas.com/utilities/acorn/ 自动跳过来）。
        尾斜杠不能省：图片是相对路径 assets/...，只有在 /intro/ 下才解析到 /intro/assets/。 -->
 <link rel="stylesheet" href="/utilities/_shared/tool-page.css">
+<link rel="stylesheet" href="assets/acorn-download.css">
 </head>
 <body>
 
@@ -48,7 +49,7 @@
         <!-- 下载是一个按钮 + 一个弹窗，不是并排堆平台按钮：平台只会越来越多
              （将来还有 iOS / macOS），首屏也不该替访客猜他在什么设备上。
              弹窗的内容源是下面那个 [data-download-dialog]，逻辑在
-             /utilities/_shared/tool-download.js。 -->
+             assets/acorn-download.js；只在橡果页处理普通版 / Ultra，不改共用组件。 -->
         <button class="btn" type="button" data-download-open>↓ 下载</button>
         <!-- 根路径 / 是橡果 App 本体（网页版，v1.15.0 起；2026-09-21 从 /app/ 挪到根，旧址 301 过来），
              不是另一张介绍页；它由橡果自己的 publish-web.sh 发到 /var/www/acorn-web/，不走 publish_utility.py -->
@@ -67,19 +68,26 @@
            data-note="装完会自己检查更新，查到新版就地下载安装。数据存在你自己的设备上，电脑和手机登同一个邮箱看到的是同一份事。">
         <div data-download-item
              data-label="Windows"
+             data-edition="normal"
              data-sub="Windows 10 / 11 · x64"
              data-href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe"
              data-api="https://acorn.cdpandas.com/api/desktop/latest"
              data-version="1.16.0"
              data-size="7299065"></div>
         <div data-download-item
+             data-label="Windows Ultra"
+             data-edition="ultra"
+             data-sub="Windows 10 / 11 · x64 · 需登录并获取验证码"></div>
+        <div data-download-item
              data-label="安卓"
+             data-edition="normal"
              data-sub="Android · arm64"
              data-href="https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"
              data-api="https://acorn.cdpandas.com/api/android/latest"
              data-version="1.15.0"
              data-size="13235033"></div>
       </div>
+      <noscript><p class="meta">直接下载：<a href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe">Windows 普通版</a> · <a href="https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk">安卓普通版</a>。Ultra 下载需要启用 JavaScript 后登录验证。</p></noscript>
     </div>
   </div>
 </header>
@@ -534,7 +542,7 @@
   </div>
 </footer>
 
-<script src="/utilities/_shared/tool-download.js" defer></script>
+<script src="assets/acorn-download.js" defer></script>
 <script src="/utilities/_shared/tool-release.js" defer></script>
 <script src="/utilities/_shared/tool-board.js" defer></script>
 <!-- 必须放在 assets/ 下：线上 /intro/ 只有 index.html 和 /intro/assets/* 会被映射到页面目录，放根上会 404 -->
