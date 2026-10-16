@@ -218,6 +218,8 @@ function TaskSheetBody({ task }: { task: Task }) {
 
   return (
     <>
+      {/* 标题、备注和正文共用滚区，长备注不能挤掉子任务与属性。底部动作留在滚区外。 */}
+      <div className="msh-scroll">
       <div className="msh-head">
         <button
           className={`msh-cb${task.done ? " done" : ""}`}
@@ -288,7 +290,6 @@ function TaskSheetBody({ task }: { task: Task }) {
         </button>
       </div>
 
-      <div className="msh-scroll">
         <div className="msh-subs">
           <div className="msh-sec">
             <span className="msh-sec-t">

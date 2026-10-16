@@ -55,6 +55,21 @@ afterEach(async () => {
 });
 
 describe("手机任务详情的母任务显示日期", () => {
+  it("长备注和133个子任务处于同一滚区，日期仍在其中、底部动作留在滚区外", () => {
+    const notes = "长备注仍可完整阅读。\n".repeat(80);
+    renderTask(mother({ notes, subtasks: Array.from({ length: 133 }, (_, i) => ({ id: `long-${i}`, title: `步骤 ${i + 1}`, done: false })) }));
+    const scroll = document.querySelector<HTMLElement>(".msh-task .msh-scroll")!;
+    expect(scroll).not.toBeNull();
+    expect(scroll.contains(document.querySelector(".msh-head"))).toBe(true);
+    expect(scroll.querySelector(".msh-notes")?.textContent).toBe(notes);
+    expect(scroll.querySelectorAll(".msh-subwrap")).toHaveLength(133);
+    expect(scroll.contains(dateRow())).toBe(true);
+    const footer = document.querySelector<HTMLElement>(".msh-foot")!;
+    expect(footer).not.toBeNull();
+    expect(scroll.contains(footer)).toBe(false);
+    expect(appStore.getState().data.tasks[0].notes).toBe(notes);
+  });
+
   it("母任务没手排日期，日期行显示今天、钟点和最近子任务来源", () => {
     renderTask();
     const value = dateRow().querySelector(".msh-prop-v")!;

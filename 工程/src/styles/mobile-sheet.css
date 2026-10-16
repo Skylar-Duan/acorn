@@ -8,9 +8,8 @@
 
 /* ═══════════ 两张纸共用 ═══════════ */
 
-/* 纸里分「头 / 能滚的正文 / 钉在底下的那条」三段。
-   外壳那层 .msheet-body 本身就是滚动区，底部的「放弃 / 删除」要钉住不跟着滚，
-   就得把滚动权从它手里收到里面这一层来——只对挂了 .msh-sheet 的纸生效，别的抽屉照旧 */
+/* 标题、备注、子任务与属性共用 .msh-scroll，长内容按同一顺序滚动。
+   底部「放弃 / 删除」留在滚区外；只对 .msh-sheet 生效，别的抽屉照旧。 */
 .msheet.msh-sheet > .msheet-body { display: flex; flex-direction: column; overflow: hidden; }
 .msh-scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
