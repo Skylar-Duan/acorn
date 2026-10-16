@@ -1,4 +1,4 @@
-// 桌面侧栏按模块自由排序；分组独立收展，整组落点只画插入线。
+// 桌面侧栏按模块自由排序；分组独立收展，实体横条拖动时邻项实时让位。
 // 模块排布/隐藏/显示别名只在本机生效，任务拖入侧栏的原有动作照常保留。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -13,7 +13,7 @@ import {
 import { createCategory } from "../core/categoryCreation";
 import { categoryIcon } from "../core/categoryIcons";
 import { listColor } from "../core/colors";
-import { shortVersion, IS_ULTRA } from "../core/version";
+import { shortVersion } from "../core/version";
 import { forceFoldOpen, useFold } from "../core/useFold";
 import { moveSidebarModule, sidebarHidden, sidebarModules, sidebarName, SIDEBAR_MODULES, type SidebarModuleId } from "../core/sidebar";
 import SidebarIcon from "./SidebarIcon";
@@ -568,7 +568,7 @@ export default function Sidebar(
     <aside className={`side side-modules${drawerOpen ? " open" : ""}`}>
       <div className="brand">
         <img src={iconUrl} alt="" />
-        <span className="brand-name">橡果{IS_ULTRA && <span className="brand-edition">Ultra</span>}</span>
+        <span className="brand-name">橡果</span>
         {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
             跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
         <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>

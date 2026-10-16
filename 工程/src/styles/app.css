@@ -89,7 +89,6 @@ body.side-resizing { user-select: none; cursor: col-resize; }
 }
 .side .brand img { width: 22px; height: 22px; }
 .brand-name { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; min-width: 0; }
-.brand-edition { font-size: 10px; font-weight: 600; letter-spacing: .2px; color: var(--accent); }
 /* 设置齿轮靠右贴在标题这一行。no-drag 不能省：.brand 整块是窗口拖拽区，
    不排除的话点击会被系统当成拖窗口吃掉——按钮看得见、按不动 */
 /* 版本号小标签（v1.9.1）。同样在拖拽区里，no-drag 不能省；

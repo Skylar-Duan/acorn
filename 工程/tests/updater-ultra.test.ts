@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (cmd: string, _data?: unk
   return null;
 } }));
 import { downloadPackage, fetchUpdate, packageName, parseManifest, type UpdateInfo } from "../src/core/updater";
-import { CHECK_AUTH_MSG, CHECK_FAILED_MSG, checkUpdateNow, checkUpdateOnBoot, updateFootState, updateStore } from "../src/core/updateCtl";
+import { CHECK_UNAVAILABLE_MSG, CHECK_FAILED_MSG, checkUpdateNow, checkUpdateOnBoot, updateFootState, updateStore } from "../src/core/updateCtl";
 import UpdatePanel from "../src/components/UpdatePanel";
 
 const BASE = "https://acorn.cdpandas.com";
@@ -94,7 +94,7 @@ describe("Ultra固定鉴权通道", () => {
   it("下载未登录不发请求；complete被拒绝时不能返回可安装成功路径", async () => {
     const fetcher = vi.fn(async (url: string) => url.endsWith("/complete") ? response({}, 403) : stream()); vi.stubGlobal("fetch", fetcher);
     flags.token = "";
-    await expect(downloadPackage(parseManifest(manifest())!, () => {})).rejects.toThrow("登录后"); expect(fetcher).not.toHaveBeenCalled();
+    await expect(downloadPackage(parseManifest(manifest())!, () => {})).rejects.toThrow("暂时无法下载更新"); expect(fetcher).not.toHaveBeenCalled();
     flags.token = "synthetic-ultra-token";
     await expect(downloadPackage(parseManifest(manifest())!, () => {})).rejects.toThrow("下载确认未完成");
   });
@@ -108,27 +108,31 @@ describe("Ultra固定鉴权通道", () => {
   });
 });
 
-describe("Ultra鉴权提示与缓存隔离", () => {
-  it("手动/开机/侧栏都说明账号资格，网络失败仍保留原文案", async () => {
+describe("Ultra静默授权与缓存隔离", () => {
+  it("手动检查不要求登录授权账号，开机与侧栏保持安静；网络失败仍保留原文案", async () => {
     flags.token = "";
-    expect(await checkUpdateNow()).toBe("auth");
-    expect(updateFootState(updateStore.getState().lastCheck)?.text).toBe("需登录授权账号");
-    await checkUpdateOnBoot();
     const { appStore } = await import("../src/core/store");
-    expect(appStore.getState().ui.toast?.msg).toBe(CHECK_AUTH_MSG);
+    appStore.setState({ ui: { ...appStore.getState().ui, toast: null } });
+    expect(await checkUpdateNow()).toBe("unavailable");
+    expect(updateFootState(updateStore.getState().lastCheck)).toBeNull();
+    expect(updateFootState({ kind: "failed", reason: "auth" })).toBeNull();
+    await checkUpdateOnBoot();
+    expect(appStore.getState().ui.toast).toBeNull();
+    expect(updateStore.getState().pending).toBeNull();
     flags.token = "synthetic-ultra-token"; vi.stubGlobal("fetch", () => Promise.reject(new TypeError("offline")));
     expect(await checkUpdateNow()).toBe("failed");
     expect(CHECK_FAILED_MSG).toContain("网络");
   });
 
-  it("设置手动检查真实组件显示授权提示", async () => {
+  it("设置自动检查不显示授权提示，主动检查只给通用重试信息", async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     flags.token = "";
     const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
     await act(async () => root.render(createElement(UpdatePanel)));
-    expect(host.textContent).toContain(CHECK_AUTH_MSG); expect(host.textContent).not.toContain(CHECK_FAILED_MSG);
+    expect(host.textContent).not.toMatch(/登录|授权|Ultra|暂时无法|检测失败/);
     await act(async () => { (host.querySelector("button") as HTMLButtonElement).click(); });
-    expect(host.textContent).toContain(CHECK_AUTH_MSG);
+    expect(host.textContent).toContain(CHECK_UNAVAILABLE_MSG);
+    expect(host.textContent).not.toMatch(/登录|授权|Ultra/);
     act(() => root.unmount()); host.remove();
   });
 

@@ -80,9 +80,7 @@ function run(cmd, args, opts = {}) {
 let artifact;
 if (platform === "desktop") {
   const override = join(HERE, "src-tauri", "tauri.version.json");
-  const config = JSON.parse(readFileSync(join(HERE, "src-tauri", "tauri.conf.json"), "utf8"));
-  const windows = config.app.windows.map((w) => ultra && w.label === "quickadd" ? { ...w, height: 330 } : w);
-  writeFileSync(override, JSON.stringify({ version, app: { windows } }));
+  writeFileSync(override, JSON.stringify({ version }));
   try {
     run("npx", ["tauri", "build", "--config", "src-tauri/tauri.version.json"]);
   } finally {

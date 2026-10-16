@@ -14,7 +14,7 @@ import { displayVersion, shortVersion } from "../core/version";
 import { isAndroid } from "../core/platform";
 import { useApp } from "../core/store";
 import {
-  CHECK_FAILED_MSG, checkUpdateNow, dismissUpdate, HANDOFF_MSG, skipVersion,
+  CHECK_UNAVAILABLE_MSG, CHECK_FAILED_MSG, checkUpdateNow, dismissUpdate, HANDOFF_MSG, skipVersion,
   useUpdate, useUpdateRun, type ManualCheck,
 } from "../core/updateCtl";
 import {
@@ -177,6 +177,7 @@ export function UpdateNudge() {
       </button>
       {/* 查不到跟已是最新是两回事，断网时不能骗人说「已经是最新版了」 */}
       {stage === "failed" && <span>{CHECK_FAILED_MSG}。</span>}
+      {stage === "unavailable" && <span>{CHECK_UNAVAILABLE_MSG}。</span>}
       {stage === "latest" && <span>服务器上还没有更新的版本，请稍后再试。</span>}
     </>
   );

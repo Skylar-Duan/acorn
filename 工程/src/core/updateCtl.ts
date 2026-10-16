@@ -186,8 +186,8 @@ export function dismissUpdate(): void {
 
 /** 按用户原话写的那条小消息。注意是 toast 不是弹窗——查不到更新不值得占一整块屏 */
 export const CHECK_FAILED_MSG = "版本更新检测失败，请检查网络连接";
-export const CHECK_AUTH_MSG = "请登录已获 Ultra 下载资格的账号后检查更新";
-export function updateCheckMessage(reason?: string): string { return reason === "auth" ? CHECK_AUTH_MSG : CHECK_FAILED_MSG; }
+export const CHECK_UNAVAILABLE_MSG = "暂时无法检查更新，请稍后再试";
+export function updateCheckMessage(reason?: string): string { return reason === "auth" ? CHECK_UNAVAILABLE_MSG : CHECK_FAILED_MSG; }
 
 /**
  * 开机自动查一次。
@@ -199,8 +199,12 @@ export async function checkUpdateOnBoot(): Promise<void> {
   if (!updaterSupported) return;
   const res = await fetchUpdate();
   if (!res.ok) {
+    if (res.reason === "auth") {
+      updateStore.setState({ lastCheck: null, found: null, pending: null });
+      return;
+    }
     showToast(updateCheckMessage(res.reason), false);
-    updateStore.setState({ lastCheck: res.reason === "auth" ? { kind: "failed", reason: "auth" } : { kind: "failed" } });
+    updateStore.setState({ lastCheck: { kind: "failed" } });
     return;
   }
   const info = res.info;
@@ -234,7 +238,7 @@ export function updateFootState(
   supported: boolean = updaterSupported,
 ): UpdateFoot | null {
   if (!supported || last === null) return null;
-  if (last.kind === "failed") return { bad: true, text: last.reason === "auth" ? "需登录授权账号" : "版本检查失败", openable: false };
+  if (last.kind === "failed") return last.reason === "auth" ? null : { bad: true, text: "版本检查失败", openable: false };
   if (last.kind === "found") {
     return { bad: false, text: `有新版本 ${shortVersion(last.version)}`, openable: true };
   }
@@ -250,7 +254,7 @@ export function openFoundUpdate(): void {
 }
 
 /** 用户自己点「检查更新」的结果。跟开机那次的差别：不看「这一版不再提醒」——是他自己要查的 */
-export type ManualCheck = "found" | "latest" | "failed" | "auth" | "unsupported";
+export type ManualCheck = "found" | "latest" | "failed" | "unavailable" | "unsupported";
 
 /**
  * 手动查一次，查到就把弹窗顶出来。
@@ -263,8 +267,12 @@ export async function checkUpdateNow(): Promise<ManualCheck> {
   if (!updaterSupported) return "unsupported";
   const res = await fetchUpdate();
   if (!res.ok) {
-    updateStore.setState({ lastCheck: res.reason === "auth" ? { kind: "failed", reason: "auth" } : { kind: "failed" } });
-    return res.reason === "auth" ? "auth" : "failed";
+    if (res.reason === "auth") {
+      updateStore.setState({ lastCheck: null, found: null, pending: null });
+      return "unavailable";
+    }
+    updateStore.setState({ lastCheck: { kind: "failed" } });
+    return "failed";
   }
   const info = res.info;
   if (!info || !shouldOffer(info)) {

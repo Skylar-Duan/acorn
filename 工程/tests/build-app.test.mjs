@@ -20,12 +20,13 @@ function fixture(t, status) {
   assert.ok(source.includes('import { spawnSync } from "node:child_process";'));
   write(script, source.replace('import { spawnSync } from "node:child_process";', 'import { spawnSync } from "./synthetic-child.mjs";'));
   write(join(project, "scripts", "synthetic-child.mjs"), `
-    import { mkdirSync, writeFileSync } from "node:fs";
+    import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
     import { join } from "node:path";
     export function spawnSync(command, args, options) {
       if (command !== "npx") throw new Error("测试不允许发布/其它子进程");
       const { ACORN_BUILD_PLATFORM, ACORN_BUILD_EDITION, ACORN_BUILD_VERSION } = options.env;
-      writeFileSync(join(options.cwd, "synthetic-stamp.json"), JSON.stringify({ ACORN_BUILD_PLATFORM, ACORN_BUILD_EDITION, ACORN_BUILD_VERSION }));
+      const config = JSON.parse(readFileSync(join(options.cwd, "src-tauri/tauri.version.json"), "utf8"));
+      writeFileSync(join(options.cwd, "synthetic-stamp.json"), JSON.stringify({ ACORN_BUILD_PLATFORM, ACORN_BUILD_EDITION, ACORN_BUILD_VERSION, config }));
       if (${status} === 0) {
         const folder = join(options.cwd, "src-tauri/target/release/bundle/nsis");
         mkdirSync(folder, { recursive: true });
@@ -64,4 +65,5 @@ test("Ultra 成功产物不残留普通文件名，构建戳和共享 beta 计�
   assert.equal(stamp.ACORN_BUILD_PLATFORM, "desktop");
   assert.equal(stamp.ACORN_BUILD_EDITION, "ultra");
   assert.equal(stamp.ACORN_BUILD_VERSION, "1.2.4-beta.1");
+  assert.deepEqual(stamp.config, { version: "1.2.4-beta.1" }); // 两版沿用相同的窗口配置，图片区有内容时自行扩展。
 });

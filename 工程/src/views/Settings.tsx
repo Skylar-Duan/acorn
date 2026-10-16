@@ -735,7 +735,7 @@ export default function Settings() {
 
         {/* ---------- 关于（不折叠，始终在最后） ---------- */}
         <div className="set-section set-about">
-          <span className="set-about-brand">{IS_ULTRA ? "橡果 Acorn Ultra" : "橡果 Acorn"}</span>
+          <span className="set-about-brand">橡果 Acorn</span>
           {/* 「保存在你自己的磁盘上」这句在网页版是假的：那儿的账本在浏览器里。
               这一页别处都已经如实说了，这一行也得跟上 */}
           <span className="set-about-line">

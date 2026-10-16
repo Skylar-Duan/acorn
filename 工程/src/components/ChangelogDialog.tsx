@@ -15,7 +15,7 @@ import { changelogFor, type ChangelogEntry } from "../core/changelog";
 import { APP_PLATFORM, APP_VERSION, IS_BETA, shortVersion } from "../core/version";
 import { setChangelogOpen } from "../core/store";
 import {
-  CHECK_AUTH_MSG, CHECK_FAILED_MSG, checkUpdateNow, checkedToday, entriesSince, useUpdate, type ManualCheck,
+  CHECK_UNAVAILABLE_MSG, CHECK_FAILED_MSG, checkUpdateNow, checkedToday, entriesSince, useUpdate, type ManualCheck,
 } from "../core/updateCtl";
 import { updaterSupported } from "../core/updater";
 
@@ -49,7 +49,7 @@ function CheckControl() {
 
   if (stage === "checking") return <span className="cl-check cl-check-wait">检查中…</span>;
 
-  if (today?.result === "latest" && stage !== "failed" && stage !== "auth") {
+  if (today?.result === "latest" && stage !== "failed" && stage !== "unavailable") {
     return (
       // 用户 9/3 定的顺序与叫法：按钮叫「检查更新」，放在那句话前面
       <span className="cl-check cl-check-ok" title="今天已经查过一次">
@@ -59,7 +59,7 @@ function CheckControl() {
       </span>
     );
   }
-  if (today?.result === "found" && stage !== "failed" && stage !== "auth") {
+  if (today?.result === "found" && stage !== "failed" && stage !== "unavailable") {
     return (
       <button className="btn primary cl-check" onClick={() => void go()}>
         有新版本 {shortVersion(today.version)}，去更新
@@ -69,9 +69,9 @@ function CheckControl() {
   return (
     <span className="cl-check">
       {stage === "failed" && <span className="cl-check-fail">{CHECK_FAILED_MSG}</span>}
-      {stage === "auth" && <span className="cl-check-fail">{CHECK_AUTH_MSG}</span>}
+      {stage === "unavailable" && <span className="cl-check-fail">{CHECK_UNAVAILABLE_MSG}</span>}
       <button className="btn" onClick={() => void go()}>
-        {stage === "failed" || stage === "auth" ? "再试一次" : "检查新版本"}
+        {stage === "failed" || stage === "unavailable" ? "再试一次" : "检查新版本"}
       </button>
     </span>
   );

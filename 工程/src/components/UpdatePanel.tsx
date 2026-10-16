@@ -29,11 +29,11 @@ export default function UpdatePanel() {
   const run = useUpdateRun();
 
   // **查不到和已是最新是两回事**：断网时绝不能显示「已经是最新版了」，那是骗人
-  function apply(res: UpdateCheck) {
+  function apply(res: UpdateCheck, requested = false) {
     if (!res.ok) {
       setCheckError(updateCheckMessage(res.reason));
       setInfo(null);
-      setStage("check-failed");
+      setStage(res.reason === "auth" && !requested ? "idle" : "check-failed");
       return;
     }
     setInfo(res.info);
@@ -56,7 +56,7 @@ export default function UpdatePanel() {
 
   async function check() {
     setStage("checking");
-    apply(await fetchUpdate());
+    apply(await fetchUpdate(), true);
   }
 
   const required = isRequiredForSync(info);

@@ -265,7 +265,7 @@ export async function downloadPackage(
       throw new Error("更新包的版本类型或下载地址不正确");
     }
     const token = info.requiresAuth ? (await loadSession())?.token : null;
-    if (info.requiresAuth && !token) throw new Error("登录后才能下载 Ultra 更新");
+    if (info.requiresAuth && !token) throw new Error("暂时无法下载更新，请稍后再试");
     const res = await fetch(info.url, { signal: ctrl.signal,
       ...(info.requiresAuth ? { redirect: "error" as const, cache: "no-store" as const } : {}),
       ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
