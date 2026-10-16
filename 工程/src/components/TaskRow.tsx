@@ -17,6 +17,7 @@ import {
   overdueSubRows,
 } from "../core/store";
 import PostponeButton from "./PostponeMenu";
+import "../styles/task-workspace.css";
 
 export function WhoBadge({ who }: { who: string }) {
   return (
@@ -283,7 +284,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
     // 行本身一个属性都没改，hover / 拖拽 / 右键那些老规矩原样还在
     <div className={`row-slot${leaving ? " leaving" : ""}${collapsed ? " shut" : ""}`}>
     <div
-      className={`task-row${willDone ? " done-row" : ""}${isDropped ? " dropped-row" : ""}${selected ? " selected" : ""}`}
+      className={`task-row tw-row${willDone ? " done-row" : ""}${isDropped ? " dropped-row" : ""}${selected ? " selected" : ""}`}
       onClick={onRowClick}
       onContextMenu={onCtx}
       onPointerDown={onPointerDown}

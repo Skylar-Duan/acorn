@@ -2,7 +2,7 @@
 // /清单 不存在时自动新建；# 只管标签。
 // withPickers = 再挂一排「点着选」的按钮（日期/清单/需求方/优先级/循环），
 // 不背语法的人纯点也能把一条事记全；两边同时给了以打字为准。
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { listColor } from "../core/colors";
 import type { FocusEvent as ReactFocusEvent } from "react";
 import type { ParseResult } from "../core/parse";
@@ -28,6 +28,9 @@ import ImageAttachments from "./ImageAttachments";
 import { IS_ULTRA } from "../core/version";
 import { imageEditContext } from "../core/imageEditContext";
 import { imageListUpdateError } from "../core/taskImages";
+import TaskPropertyPopover from "./TaskPropertyPopover";
+import Icon from "./Icon";
+import "../styles/task-workspace.css";
 
 export interface QuickAddBarProps {
   /** 视图上下文默认值：如清单视图里默认加进该清单 */
@@ -56,22 +59,24 @@ type MenuId = "due" | "list" | "who" | "prio" | "repeat";
 
 /** 一枚选择按钮 + 它自己的小菜单：没选是淡的，选了就变成主题色小签。
  *  必须放在组件外——写在 render 里每次渲染都是新组件类型，菜单里的输入框会被卸载重建 */
-function Pick({ id, on, label, menu, setMenu, children }: {
+function Pick({ id, on, label, menu, setMenu, children, owner }: {
   id: MenuId;
   on: boolean;
   label: React.ReactNode;
   menu: MenuId | null;
   setMenu: (m: MenuId | null) => void;
   children: React.ReactNode;
+  owner: string;
 }) {
   // 关掉的时候让弹层多活一拍把退场演完（B6），不然是「啪一下没了」
   const pop = useLeaving(menu === id ? id : null);
+  const anchor = useRef<HTMLButtonElement>(null);
   return (
     <span className="qa-slot">
-      <button className={`qa-pick${on ? " on" : ""}`} onClick={() => setMenu(menu === id ? null : id)}>
+      <button ref={anchor} className={`qa-pick${on ? " on" : ""}`} aria-expanded={menu === id} onClick={() => setMenu(menu === id ? null : id)}>
         {label}
       </button>
-      {pop.shown && <div className={`popmenu qa-pop${pop.leaving ? " leaving" : ""}`}>{children}</div>}
+      {pop.shown && <TaskPropertyPopover anchor={anchor.current} qaOwner={owner} leaving={pop.leaving}>{children}</TaskPropertyPopover>}
     </span>
   );
 }
@@ -103,6 +108,7 @@ export default function QuickAddBar({
   const dueFieldRef = useRef<DateFieldHandle | null>(null);
   /** 整条快速添加条（含那排点选按钮）。失焦提交时用来判「焦点是不是还在自己家里」 */
   const wrapRef = useRef<HTMLDivElement>(null);
+  const popupOwner = useId();
   const submitting = useRef(false);
   const saved = useCommitFlash();
   const today = todayYMD();
@@ -134,7 +140,9 @@ export default function QuickAddBar({
   useEffect(() => {
     if (!menu) return;
     function onDoc(e: MouseEvent) {
-      if (!(e.target as HTMLElement).closest(".qa-picks")) setMenu(null);
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest("[data-qa-popover]")?.getAttribute("data-qa-popover") === popupOwner) return;
+      if (!target?.closest(".qa-picks")) setMenu(null);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setMenu(null);
@@ -222,6 +230,7 @@ export default function QuickAddBar({
     if (!document.hasFocus()) return false;
     const next = e.relatedTarget as Node | null;
     if (next && wrapRef.current?.contains(next)) return false;
+    if (next instanceof Element && next.closest("[data-qa-popover]")?.getAttribute("data-qa-popover") === popupOwner) return false;
     if (!parsed.title.trim()) return false;
     return submit(parsed);
   }
@@ -230,9 +239,9 @@ export default function QuickAddBar({
   const pickedList = lists.find((l) => l.id === pick.listId);
 
   return (
-    <div className={`quick-add${withPickers ? " tall" : ""}`} ref={wrapRef}>
+    <div className={`quick-add tw-quickadd${withPickers ? " tall" : ""}`} ref={wrapRef}>
       <div className="qa-line">
-        <span className="plus">＋</span>
+        <span className="plus"><Icon name="plus" size={18} /></span>
         <SyntaxInput
           value={text}
           onChange={(v) => { setText(v); if (!v) setOverrides({}); }}
@@ -254,7 +263,7 @@ export default function QuickAddBar({
           weekendDay={settings.weekendDay}
           showChips
         />
-        <button className="qa-help" title="怎么写一句话" onClick={guide.open}>?</button>
+        <button className="qa-help" title="怎么写一句话" aria-label="怎么写一句话" onClick={guide.open}><Icon name="help" /></button>
         <CommitMark on={saved.on} />
       </div>
       <ImageAttachments images={images} draft label="这件事的图片"
@@ -265,9 +274,9 @@ export default function QuickAddBar({
 
       {withPickers && (
         <div className="qa-picks">
-          <span className="qa-hint">也可以点选：</span>
+          <span className="qa-hint">属性</span>
 
-          <Pick menu={menu} setMenu={setMenu} id="due" on={!!pick.due} label={<>📅 {pick.due ? formatShort(pick.due) : "日期"}</>}>
+          <Pick owner={popupOwner} menu={menu} setMenu={setMenu} id="due" on={!!pick.due} label={<><Icon name="calendar" /> {pick.due ? formatShort(pick.due) : "日期"}</>}>
             {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
                 下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
             {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
@@ -288,6 +297,7 @@ export default function QuickAddBar({
                 // 收了那一下 click 就落在正在退场的弹层上了
                 const next = e.relatedTarget as HTMLElement | null;
                 if (next && next.closest(".qa-picks")) return;
+                if (next && next.closest("[data-qa-popover]")?.getAttribute("data-qa-popover") === popupOwner) return;
                 setMenu(null);
               }}
             />
@@ -295,13 +305,14 @@ export default function QuickAddBar({
           </Pick>
 
           <Pick
+            owner={popupOwner}
             menu={menu}
             setMenu={setMenu}
             id="list"
             on={!!pickedList}
             label={pickedList
               ? <><span className="dot" style={{ background: listColor(pickedList.color) }} /> {pickedList.name}</>
-              : <>🗂 清单</>}
+              : <><Icon name="folder" /> 清单</>}
           >
             <button className="item" onClick={() => { setPick({ ...pick, listId: null }); setMenu(null); }}>不归清单</button>
             {lists.map((l) => (
@@ -319,11 +330,12 @@ export default function QuickAddBar({
 
           {/* 需求方可以点好几个：点一下选中、再点一下取消，菜单不关，选完点别处收起 */}
           <Pick
+            owner={popupOwner}
             menu={menu}
             setMenu={setMenu}
             id="who"
             on={pick.who.length > 0}
-            label={<>👤 {pick.who.length ? pick.who.join("、") : "需求方"}</>}
+            label={<><Icon name="person" /> {pick.who.length ? pick.who.join("、") : "需求方"}</>}
           >
             <button className="item" onClick={() => { setPick({ ...pick, who: [] }); setMenu(null); }}>不指定</button>
             {whoNames.map((w) => {
@@ -363,6 +375,7 @@ export default function QuickAddBar({
           </Pick>
 
           <Pick
+            owner={popupOwner}
             menu={menu}
             setMenu={setMenu}
             id="prio"
@@ -378,12 +391,13 @@ export default function QuickAddBar({
           </Pick>
 
           <Pick
+            owner={popupOwner}
             menu={menu}
             // 每次点开都先回到常用项那一页，不停在上回的自定义面板上
             setMenu={(m) => { if (m === "repeat") setRepeatCustom(false); setMenu(m); }}
             id="repeat"
             on={!!pick.repeat}
-            label={<>🔁 {pick.repeat ? describeRepeat(pick.repeat) : "重复"}</>}
+            label={<><Icon name="repeat" /> {pick.repeat ? describeRepeat(pick.repeat) : "重复"}</>}
           >
             {repeatCustom ? (
               <RepeatPicker

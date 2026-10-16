@@ -3,12 +3,12 @@
 // 「随手记」是全应用的记录入口：打字用语法，不想背语法就用下面那排按钮。
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { listColor } from "../core/colors";
-import type { List, Task } from "../core/model";
+import type { List, Subtask, Task } from "../core/model";
 import { todayYMD } from "../core/dates";
 import { taskDue } from "../core/taskDue";
 import {
   aliveTasks, categoryRows, deleteList, navigate, purgeSubtask, purgeTask, purgeTrash, renameList,
-  restoreSubtask, restoreTask, rowPriority, setListColor, sortRows, sortTasks, trashDaysLeft, trashedSubtaskRows, useApp,
+  restoreSubtask, restoreTask, setListColor, sortRows, sortTasks, trashDaysLeft, trashedSubtaskRows, useApp,
 } from "../core/store";
 import { isMobile } from "../core/platform";
 import type { ListGroup } from "../core/plan";
@@ -26,6 +26,8 @@ import MobileRow from "../mobile/MobileRow";
 import { openSheet } from "../mobile/sheetStore";
 import { IcoDots } from "../mobile/icons";
 import RowList, { cardAnchor, planFold } from "../components/RowList";
+import Icon from "../components/Icon";
+import "../styles/trash.css";
 
 export type ListKind = "inbox" | "list" | "who" | "tag" | "trash";
 
@@ -92,6 +94,24 @@ function ListNameInput({ list }: { list: List }) {
       <CommitMark on={on} />
     </>
   );
+}
+
+function TrashRow({ task, sub }: { task: Task; sub?: Subtask }) {
+  const deleted = sub?.deletedAt ?? task.deletedAt;
+  const days = deleted ? trashDaysLeft(deleted) : null;
+  const title = (sub ? sub.title : task.title) || "（未命名）";
+  return <div className={`task-row trash-row${sub ? " trash-sub" : ""}`}>
+    <span className="trash-kind"><Icon name={sub ? "list" : "file"} size={18} /></span>
+    <span className="trash-copy">
+      {sub && <span className="trash-parent" title={task.title}>{task.title || "（未命名）"}<Icon name="chevronRight" size={11} />子任务</span>}
+      <span className="title" title={title}>{title}</span>
+    </span>
+    <span className={`trash-expiry${days !== null && days <= 3 ? " soon" : ""}`} title={deleted ? `删除于 ${deleted.slice(0, 10)}` : undefined}>{days !== null ? `还剩 ${days} 天` : ""}</span>
+    <span className="trash-actions">
+      <button className="btn trash-restore" onClick={() => sub ? restoreSubtask(task.id, sub.id) : restoreTask(task.id)} aria-label={`恢复${title}`}><Icon name="restore" size={14} />恢复</button>
+      <button className="btn ghost trash-purge" title="不等 30 天，立即彻底删除" aria-label={`彻底删除${title}`} onClick={() => sub ? purgeSubtask(task.id, sub.id) : purgeTask(task.id)}>彻底删除</button>
+    </span>
+  </div>;
 }
 
 export default function ListView({ kind }: { kind: ListKind }) {
@@ -183,7 +203,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
   const orderedIds = useMemo(() => shown.map((t) => t.id), [shown]);
 
   return (
-    <section className="main">
+    <section className={`main${kind === "trash" ? " trash-page" : ""}`}>
       {isMobile ? (
         // 清单页的手机版顶栏（画板 ⑤）：返回 · 色点 + 名字 · N 件 · 「···」。
         // 原来摊在这一行上的六颗颜色点和红色的「删除清单」全收进「···」那张纸里
@@ -192,7 +212,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           // 手机上没有「随手记」这个词了（2026-09-03）：那些事在 今天 / 计划 / 日历 里照常排着，
           // 只是不再单开一个叫「随手记」的地方。搜索结果仍可能落到这一页，所以它得有个说人话的名字
           title={kind === "inbox" ? "还没有清单的事" : kind === "list" && list ? list.name : title}
-          sub={kind === "list" ? "" : kind === "inbox" ? "没有日期、也没有归入清单的" : sub}
+          sub={kind === "list" ? "" : kind === "inbox" ? "没有日期、也没有归入清单的" : kind === "trash" ? `${tasks.length + subRows.length} 项 · 删除后保留30天` : sub}
           small={kind === "list"}
           dot={kind === "list" && list ? listColor(list.color) : null}
           // 每一页都得有路回去：这几页手机上都不是常驻位，进来了就要走得掉
@@ -214,7 +234,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           }
           extra={
             kind === "trash" && trashHasStuff ? (
-              <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
+              <button className="btn ghost trash-clear" onClick={() => purgeTrash()}><Icon name="trash" size={14} />清空回收站</button>
             ) : undefined
           }
         />
@@ -232,7 +252,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
         ) : (
           <h1>{title}</h1>
         )}
-        {sub && <span className="sub">{sub}</span>}
+        {sub && <span className="sub">{kind === "trash" ? `${tasks.length + subRows.length} 项 · 删除后保留30天` : sub}</span>}
         <span className="spacer" />
         {kind === "list" && list && (
           <>
@@ -253,7 +273,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           </>
         )}
         {kind === "trash" && trashHasStuff && (
-          <button className="btn danger" onClick={() => purgeTrash()}>清空回收站</button>
+          <button className="btn ghost trash-clear" onClick={() => purgeTrash()}><Icon name="trash" size={14} />清空回收站</button>
         )}
       </div>
       )}
@@ -289,23 +309,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
             ) : (
             g.rows.map((t) =>
               kind === "trash" ? (
-                <div key={t.id} className="task-row">
-                  {/* 跟别的视图的任务行左边缘对齐（那边行首有个折叠小三角） */}
-                  <span className="chain-caret ghost" />
-                  <span className={`flag p${t.priority}`} />
-                  <span className="title" style={{ color: "var(--ink-2)" }}>{t.title || "（未命名）"}</span>
-                  <span className="meta">
-                    {t.deletedAt && (
-                      <span title={`删除于 ${t.deletedAt.slice(0, 10)}`}>
-                        还剩 {trashDaysLeft(t.deletedAt)} 天
-                      </span>
-                    )}
-                    <button className="btn ghost" onClick={() => restoreTask(t.id)}>恢复</button>
-                    <button className="btn ghost" title="不等 30 天，立即彻底删除" onClick={() => purgeTask(t.id)}>
-                      彻底删除
-                    </button>
-                  </span>
-                </div>
+                <TrashRow key={t.id} task={t} />
               ) : (
                 <RowCard
                   key={t.id}
@@ -337,37 +341,15 @@ export default function ListView({ kind }: { kind: ListKind }) {
             见 mobile-shell.css），照抄上面整件事那行就行 */}
         {kind === "trash" &&
           subRows.map((r) => (
-            <div key={`${r.task.id}/${r.sub!.id}`} className="task-row trash-sub">
-              <span className="chain-caret ghost" />
-              <span className={`flag p${rowPriority(r)}`} />
-              {/* 三段跟 TaskRow 的子任务行同一副标记（chain-parent / chain-sep / chain-self）：
-                  窄屏下 app.css 让母任务名和子任务名各自省略，「›」永远看得见 */}
-              <span className="title" style={{ color: "var(--ink-2)" }}>
-                <span className="chain-parent">{r.task.title || "（未命名）"}</span>
-                <span className="chain-sep"> › </span>
-                <span className="chain-self">{r.sub!.title || "（未命名）"}</span>
-              </span>
-              <span className="meta">
-                {r.sub!.deletedAt && (
-                  <span title={`删除于 ${r.sub!.deletedAt.slice(0, 10)}`}>
-                    还剩 {trashDaysLeft(r.sub!.deletedAt)} 天
-                  </span>
-                )}
-                <button className="btn ghost" onClick={() => restoreSubtask(r.task.id, r.sub!.id)}>恢复</button>
-                <button className="btn ghost" title="不等 30 天，立即彻底删除" onClick={() => purgeSubtask(r.task.id, r.sub!.id)}>
-                  彻底删除
-                </button>
-              </span>
-            </div>
+            <TrashRow key={`${r.task.id}/${r.sub!.id}`} task={r.task} sub={r.sub!} />
           ))}
         {/* 按**这一版真画出来的行**算，不按过滤出来的 tasks 算：展开期间钉在这儿的那一件
             已经不在 tasks 里了（比如在卡里改了归属），照 tasks 判会出现
             「卡片明明摆在页面上，底下写着这里没有任务」 */}
         {shown.length === 0 && subRows.length === 0 && (
-          <div className="empty">
+          kind === "trash" ? <div className="empty trash-empty"><Icon name="trash" size={28} /><strong>回收站是空的。</strong><span>删除的任务会在这里保留30天，可随时恢复。</span></div> : <div className="empty">
             {/* 「在上面记一条」说的是那条输入栏。手机上没有它，得指向右下角那颗 ＋ */}
-            {kind === "trash" ? "回收站是空的。"
-              : kind === "inbox" ? (isMobile ? "没有还缺清单的事，点右下角的 ＋ 记一条。" : "还没有记录，在上面记一条。")
+            {kind === "inbox" ? (isMobile ? "没有还缺清单的事，点右下角的 ＋ 记一条。" : "还没有记录，在上面记一条。")
               : "这里没有任务。"}
           </div>
         )}

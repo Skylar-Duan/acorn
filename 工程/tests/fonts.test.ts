@@ -29,8 +29,9 @@ describe("字体子集", () => {
     expect(baseCss).toMatch(/--sans:\s*"Noto Sans SC"/);
   });
 
-  it("粗细映射：正文 500–900 一档、文楷 501–900 一档（文楷没有 Bold，Medium 顶上）", () => {
-    expect(fontsCss).toMatch(/font-weight:\s*500 900;[\s\S]*notosanssc-bold/);
+  it("粗细映射：正文控件保持常规字重，501–900 使用粗体；文楷保持原映射", () => {
+    expect(fontsCss).toMatch(/font-weight:\s*100 500;[\s\S]*notosanssc-regular/);
+    expect(fontsCss).toMatch(/font-weight:\s*501 900;[\s\S]*notosanssc-bold/);
     expect(fontsCss).toMatch(/font-weight:\s*501 900;[\s\S]*lxgwwenkai-medium/);
   });
 });

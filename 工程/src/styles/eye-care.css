@@ -3,7 +3,7 @@ body { background: var(--bg); overflow: hidden; }
 .eye-close { position: absolute; top: 10px; right: 14px; font-size: 26px; color: var(--ink-2); width: 36px; height: 36px; border-radius: 50%; }
 .eye-close:hover, .eye-close:focus-visible { background: var(--accent-soft); }
 .eye-leaf { color: var(--accent); font-size: 24px; line-height: 1; }
-.eye-care h1 { font-family: var(--serif); font-size: 22px; font-weight: 600; color: var(--ink); }
+.eye-care h1 { font-family: var(--heading); font-size: 22px; font-weight: 600; color: var(--ink); }
 .eye-care p { color: var(--ink-2); font-size: 12px; line-height: 1.6; }
 .eye-count { font-size: 42px; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--accent); }
 .eye-count span { font-size: 13px; margin-left: 6px; color: var(--ink-2); }

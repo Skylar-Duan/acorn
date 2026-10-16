@@ -50,9 +50,10 @@ describe("右键「调整日期 ▸」往左弹", () => {
 });
 
 describe("习惯页「今天不用做」那组的周期菜单", () => {
-  it("淡的是行头，不是整行", () => {
+  it("淡的是标题颜色，行头和周期菜单不使用整层透明度", () => {
     expect(habitsCss).not.toMatch(/\n\.hb-row\.off\s*\{/);
-    expect(block(habitsCss, ".hb-row.off > .hb-head")).toContain("opacity: .62");
+    expect(habitsCss).not.toMatch(/\n\.hb-row\.off\s*>\s*\.hb-head\s*\{/);
+    expect(block(habitsCss, ".hb-row.off > .hb-head .hb-title")).toContain("color: var(--ink-2)");
   });
   it("展开的那一行压在后面几行上面", () => {
     const open = habitsCss.slice(habitsCss.indexOf("\n.hb-row.open { position"));

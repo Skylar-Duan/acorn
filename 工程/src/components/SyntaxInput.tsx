@@ -12,6 +12,8 @@ import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import { growArea, keepLines, oneLine } from "./autogrow";
+import Icon from "./Icon";
+import type { IconName } from "./Icon";
 import "../styles/syntaxinput.css";
 
 export interface SyntaxInputProps {
@@ -64,8 +66,8 @@ export interface SyntaxInputProps {
 export type SyntaxInputEl = HTMLInputElement | HTMLTextAreaElement;
 
 // chips 图标：与 QuickAddBar 保持一致
-const CHIP_ICON: Record<ParseChip["kind"], string> = {
-  date: "📅", time: "🕒", repeat: "↻", list: "▤", tag: "#", who: "＠", priority: "⚑",
+const CHIP_ICON: Record<ParseChip["kind"], IconName> = {
+  date: "calendar", time: "clock", repeat: "repeat", list: "folder", tag: "tag", who: "person", priority: "flag",
 };
 
 // 触发字符 → 候选类别
@@ -107,6 +109,9 @@ export default function SyntaxInput({
 }: SyntaxInputProps) {
   const multiline = multilineProp || allowNewline;
   const inputRef = useRef<SyntaxInputEl | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [dropStyle, setDropStyle] = useState<CSSProperties>({});
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const { on: flashOn, flash } = useCommitFlash();
@@ -141,6 +146,24 @@ export default function SyntaxInput({
 
   const dropKey = drop === null ? null : `${drop.trigger}${drop.start}:${drop.prefix}`;
   const open = drop !== null && dropKey !== dismissedKey;
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const el = dropRef.current;
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (!el || !rect) return;
+      const below = window.innerHeight - rect.bottom - 14;
+      const above = rect.top - 14;
+      const up = below < Math.min(el.scrollHeight, 280) && above > below;
+      const left = Math.max(8 - rect.left, Math.min(0, window.innerWidth - rect.left - el.offsetWidth - 8));
+      const next: CSSProperties = { left, top: up ? "auto" : "calc(100% + 6px)", bottom: up ? "calc(100% + 6px)" : "auto", maxHeight: Math.max(36, Math.min(280, up ? above : below)) };
+      setDropStyle((old) => JSON.stringify(old) === JSON.stringify(next) ? old : next);
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open, dropKey]);
   const activeIdx = drop === null ? 0 : Math.min(active, drop.items.length - 1);
 
   // 候选集换了（换 token / 前缀变化）就回到第一项
@@ -273,7 +296,7 @@ export default function SyntaxInput({
   };
 
   return (
-    <div className="si-wrap">
+    <div className="si-wrap" ref={wrapRef}>
       {multiline ? (
         <textarea
           ref={(el) => {
@@ -291,13 +314,13 @@ export default function SyntaxInput({
         <span className="si-chips">
           {parsed.chips.map((c, i) => (
             <span key={`${c.kind}-${i}`} className="chip">
-              {CHIP_ICON[c.kind]} {c.text}
+              <Icon name={CHIP_ICON[c.kind]} size={13} /> <span>{c.text}</span>
             </span>
           ))}
         </span>
       )}
       {open && drop !== null && (
-        <div className="si-drop">
+        <div className="si-drop" ref={dropRef} style={dropStyle}>
           {drop.items.map((it, i) => (
             <button
               key={it}
@@ -309,7 +332,7 @@ export default function SyntaxInput({
               }}
               onMouseEnter={() => setActive(i)}
             >
-              <span className="si-mark">{CHIP_ICON[TRIGGER_KIND[drop.trigger]]}</span>
+              <span className="si-mark"><Icon name={CHIP_ICON[TRIGGER_KIND[drop.trigger]]} size={14} /></span>
               {it}
             </button>
           ))}

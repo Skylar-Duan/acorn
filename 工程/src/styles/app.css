@@ -38,7 +38,7 @@
 /* ---------- 侧栏 ---------- */
 .side {
   background-color: var(--bg-side);
-  background-image: var(--paper), linear-gradient(180deg, var(--accent-soft), transparent 62%);
+  background-image: none;
   border-right: 1px solid var(--hair);
   display: flex;
   flex-direction: column;
@@ -77,22 +77,25 @@
 /* 拖动途中：整页不许选字，鼠标一直是左右箭头（拖出把手范围也不变回去） */
 body.side-resizing { user-select: none; cursor: col-resize; }
 .side .brand {
-  font-family: var(--serif);
-  font-size: 18px;
-  letter-spacing: 3px;
+  font-family: var(--heading);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -.4px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px 12px;
+  gap: 7px;
+  padding: 10px 8px 18px;
   -webkit-app-region: drag;
 }
 .side .brand img { width: 22px; height: 22px; }
+.brand-name { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; min-width: 0; }
+.brand-edition { font-size: 10px; font-weight: 600; letter-spacing: .2px; color: var(--accent); }
 /* 设置齿轮靠右贴在标题这一行。no-drag 不能省：.brand 整块是窗口拖拽区，
    不排除的话点击会被系统当成拖窗口吃掉——按钮看得见、按不动 */
 /* 版本号小标签（v1.9.1）。同样在拖拽区里，no-drag 不能省；
    .brand 的 3px 字距会把「v1.9.1」拉散，得复位 */
 .side .brand .ver {
-  margin-left: 6px;
+  margin-left: 1px;
   font-family: var(--sans);
   font-size: 10.5px;
   letter-spacing: 0;
@@ -109,6 +112,7 @@ body.side-resizing { user-select: none; cursor: col-resize; }
 /* margin-right:-4px 抵掉自己的 padding-right，⚙ 字形右缘才跟下面 .side nav li .n 那些数字
    的右缘落在同一条竖线上（用户 2026-09-01 点名要对齐；手机段早就这么写了，桌面段漏了） */
 .side .brand .gear {
+  display: grid; place-items: center; width: 26px; height: 26px; flex: none;
   margin-left: auto;
   margin-right: -4px;
   color: var(--ink-3);
@@ -162,7 +166,7 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .side nav li:hover { background: var(--card); }
-.side nav li.on { background: var(--card); box-shadow: var(--shadow-sm); font-weight: 600; }
+.side nav li.on { background: var(--accent-soft); color: var(--accent); box-shadow: none; font-weight: 600; }
 .side nav li.dropping { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }
 .side nav li .ico { width: 15px; height: 15px; stroke: var(--ink-2); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .side nav li.on .ico { stroke: var(--accent); }
@@ -206,14 +210,14 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 22px 30px 0;
+  padding: 26px 28px 0;
 }
-.view-head { display: flex; align-items: baseline; gap: 12px; flex: none; }
-.view-head h1 { font-family: var(--serif); font-size: var(--fs-title); font-weight: 600; }
+.view-head { display: flex; align-items: center; gap: 12px; flex: none; min-height: 40px; flex-wrap: wrap; }
+.view-head h1 { font-family: var(--heading); font-size: var(--fs-title); font-weight: 650; line-height: 1.35; letter-spacing: -.7px; }
 /* 清单名那个可改的框（A4）。字体/字号/字重不能靠上面那条 h1 规则捡了，得自己写全一份。
    平时看不出是输入框，鼠标扫过才露一圈淡边框——「能改」这件事说出来，但不喧宾夺主 */
 .view-head .list-name {
-  font-family: var(--serif); font-size: var(--fs-title); font-weight: 600;
+  font-family: var(--heading); font-size: var(--fs-title); font-weight: 650;
   color: var(--ink); background: transparent; outline: none;
   border: 1px solid transparent; border-radius: var(--r-sm);
   padding: 0 4px; margin: 0 -4px; min-width: 60px; max-width: 42vw;
@@ -231,15 +235,15 @@ body.side-resizing { user-select: none; cursor: col-resize; }
 .main { animation: page-in var(--dur-2) var(--ease); }
 @keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
 .view-body {
-  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px 30px; margin-top: 6px;
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 2px 30px; margin-top: 16px;
   animation: view-in var(--dur-2) var(--ease);
 }
 @keyframes view-in { from { transform: translateY(4px); } to { transform: none; } }
 
 /* ---------- 任务组 ---------- */
 .group-head {
-  font-size: 11.5px;
-  letter-spacing: 1.5px;
+  font-size: 12px;
+  letter-spacing: .1px;
   color: var(--ink-3);
   font-weight: 600;
   margin: 16px 2px 6px;
@@ -708,7 +712,7 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   height: 100%; display: flex; flex-direction: column; gap: 12px;
   align-items: center; justify-content: center; color: var(--ink-2); font-size: var(--fs-md);
 }
-.center-note .big { font-family: var(--serif); font-size: 22px; color: var(--ink); }
+.center-note .big { font-family: var(--heading); font-size: 22px; color: var(--ink); }
 
 .loading-screen { gap: 16px; padding: 28px; text-align: center; animation: page-in var(--dur-2) var(--ease); }
 .loading-emblem { position: relative; width: 76px; height: 76px; display: grid; place-items: center; color: var(--accent); }

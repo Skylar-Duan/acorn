@@ -155,7 +155,7 @@ function LoginPage() {
       <div className="login-mark" aria-hidden>
         <img src={appIconUrl} alt="" />
       </div>
-      <div className="login-title serif">你好，这里是橡果。</div>
+      <div className="login-title serif"><span>你好，</span><span>这里是橡果。</span></div>
       <p className="login-sub">电脑上记的，手机上接着做。登录一次，两边就是同一本。</p>
     </>
   );

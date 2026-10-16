@@ -65,7 +65,7 @@ describe("根因：0fr↔1fr 折叠容器的 min-width 跟 min-height 是一对"
 
   it(".set-fold > .set-fold-inner 两个方向都写了（漏了的话云账号那节宽 429px）", () => {
     expect(settingsCss).toContain(
-      ".set-fold > .set-fold-inner { min-height: 0; min-width: 0; padding-top: 3px; }",
+      ".set-fold > .set-fold-inner { min-height: 0; min-width: 0; padding-top: 12px; }",
     );
   });
 
@@ -275,7 +275,7 @@ describe("P1-4 / P1-5 给手机用户看的东西，别指他做不到的操作"
   it("统计页导出：安卓上 save() 给回的是 content:// URI，fs::write 写不了，改成复制", () => {
     expect(statsSource).toContain("if (!canSaveFile) {");
     expect(statsSource).toContain('showToast("本周小结已复制到剪贴板", false);');
-    expect(statsSource).toContain('{canSaveFile ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}');
+    expect(statsSource).toContain('{canSaveFile ? "导出本周小结" : "复制本周小结"}');
   });
 
   it("🔴 按钮上那几个字和真干活那句必须是同一个判据，不许各判各的", () => {

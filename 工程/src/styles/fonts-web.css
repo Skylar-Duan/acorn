@@ -20,15 +20,15 @@
 @font-face {
   font-family: "Noto Sans SC";
   font-style: normal;
-  font-weight: 400;
+  font-weight: 100 500;
   font-display: swap;
   src: url("../assets/fonts/notosanssc-regular.woff2") format("woff2");
 }
 @font-face {
   font-family: "Noto Sans SC";
   font-style: normal;
-  /* 500–900 全落到这一档，跟 fonts.css 保持一致 */
-  font-weight: 500 900;
+  /* 普通控件 500 使用常规字重，跟 fonts.css 保持一致。 */
+  font-weight: 501 900;
   font-display: swap;
   src: url("../assets/fonts/notosanssc-bold.woff2") format("woff2");
 }

@@ -1,0 +1,9 @@
+.task-quickadd-window { display: flex; flex-direction: column; gap: 14px; margin: 8px; padding: 18px 20px; border: 1px solid var(--hair); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
+.task-quickadd-window-head { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.task-quickadd-window-hint { margin-left: auto; color: var(--ink-3); font-size: 11px; font-weight: 400; }
+.task-quickadd-window > .si-wrap { padding: 5px 0; }
+.task-quickadd-window .si-input { font-size: 16px; line-height: 1.7; }
+.task-quickadd-window .si-chips { width: 100%; }
+.task-quickadd-window .task-images { margin: 0; }
+.task-quickadd-window .task-image-thumb { width: 72px; height: 60px; }
+@media (max-width: 480px) { .task-quickadd-window { padding: 16px; } .task-quickadd-window-hint { font-size: 10px; } }

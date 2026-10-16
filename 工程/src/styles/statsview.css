@@ -1,6 +1,9 @@
 /* 统计视图专属样式（StatsView.tsx），前缀 .stats-。图全部纯 CSS，无图表库。 */
 
-.stats-body { display: flex; flex-direction: column; gap: 28px; padding-top: 14px; }
+.stats-body { display: flex; flex-direction: column; gap: 20px; padding-top: 0; }
+.stats-analysis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.stats-panel { min-width: 0; background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md); padding: 22px; }
+.stats-chart-caption { margin-top: 12px; color: var(--ink-3); font-size: var(--fs-xs); text-align: center; }
 
 /* ---------- 数字卡 ---------- */
 .stats-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -10,41 +13,41 @@
 .stats-cards.n4 { grid-template-columns: repeat(4, 1fr); }
 .stats-card {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
-  box-shadow: var(--shadow-sm); padding: 15px 18px 13px;
+  padding: 20px 22px;
   display: flex; flex-direction: column; gap: 3px;
 }
 .stats-num {
-  font-family: var(--serif); font-size: 30px; font-weight: 600; color: var(--ink);
+  font-family: var(--sans); font-size: 32px; font-weight: 600; color: var(--ink);
   font-variant-numeric: tabular-nums; line-height: 1.15;
 }
 .stats-num em {
   font-style: normal; font-family: var(--sans); font-weight: 400;
   font-size: var(--fs-sm); color: var(--ink-2); margin-left: 5px;
 }
-.stats-label { font-size: var(--fs-xs); color: var(--ink-2); letter-spacing: 1px; }
+.stats-label { font-size: var(--fs-sm); color: var(--ink-2); }
 
 /* ---------- 小节标题（与 group-head 同气质） ---------- */
 .stats-sec-head {
-  font-size: 11.5px; letter-spacing: 1.5px; color: var(--ink-3); font-weight: 600;
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  font-size: var(--fs-sm); color: var(--ink); font-weight: 600;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
 }
-.stats-sec-sub { font-weight: 400; letter-spacing: 0; }
+.stats-sec-sub { font-weight: 400; color: var(--ink-3); font-size: var(--fs-xs); }
 
 /* ---------- 完成热力图：列=周、行=周一~周日 ---------- */
-.stats-hm { display: flex; gap: 8px; align-items: flex-start; }
+.stats-hm { display: flex; gap: 8px; align-items: flex-start; justify-content: center; overflow-x: auto; }
 .stats-hm-days {
-  display: grid; grid-template-rows: repeat(7, 13px); row-gap: 3px;
+  display: grid; grid-template-rows: repeat(7, 18px); row-gap: 4px;
   font-size: 10px; color: var(--ink-3);
 }
-.stats-hm-days span { line-height: 13px; }
+.stats-hm-days span { line-height: 18px; }
 .stats-hm-days span:nth-child(2) { grid-row: 4; }
 .stats-hm-days span:nth-child(3) { grid-row: 7; }
 .stats-hm-grid {
-  display: grid; grid-template-rows: repeat(7, 13px); grid-auto-flow: column;
-  grid-auto-columns: 13px; gap: 3px;
+  display: grid; grid-template-rows: repeat(7, 18px); grid-auto-flow: column;
+  grid-auto-columns: 18px; gap: 4px; flex: none;
 }
 .stats-hm-cell {
-  width: 13px; height: 13px; border-radius: 3px;
+  width: 18px; height: 18px; border-radius: 3px;
   background: color-mix(in srgb, var(--hair) 55%, transparent);
 }
 /* --ok 四档透明度 */
@@ -60,13 +63,13 @@
 .stats-hm-legend .stats-hm-cell { width: 10px; height: 10px; }
 
 /* ---------- 最近 14 天完成趋势 ---------- */
-.stats-trend { display: flex; gap: 8px; max-width: 560px; }
+.stats-trend { display: flex; gap: 8px; width: 100%; }
 .stats-trend-col {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
 }
 .stats-trend-track {
-  height: 96px; width: 100%;
+  height: 150px; width: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px;
 }
 .stats-trend-val { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -78,9 +81,9 @@
 .stats-trend-day { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ---------- 分布两栏 ---------- */
-.stats-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+.stats-duo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .stats-dist { display: flex; flex-direction: column; gap: 8px; }
-.stats-dist-row { display: grid; grid-template-columns: 118px 1fr 26px; gap: 10px; align-items: center; }
+.stats-dist-row { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr) 26px; gap: 12px; align-items: center; min-height: 28px; }
 .stats-dist-name {
   display: flex; align-items: center; gap: 6px; min-width: 0;
   font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden;
@@ -104,15 +107,18 @@
 /* ---------- 每周回顾卡 ---------- */
 .stats-week {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm); padding: 17px 20px;
+  padding: 20px 22px;
   display: flex; align-items: center; gap: 16px; margin-bottom: 6px;
 }
 .stats-week-info { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .stats-week-titlerow { display: flex; align-items: baseline; gap: 10px; }
-.stats-week-title { font-family: var(--serif); font-size: var(--fs-h2); font-weight: 600; }
+.stats-week-title { font-family: var(--sans); font-size: var(--fs-md); font-weight: 600; }
 .stats-week-range { font-size: var(--fs-xs); color: var(--ink-3); }
 .stats-week-sum { font-size: var(--fs-sm); color: var(--ink-2); }
 .stats-week > .btn { margin-left: auto; flex: none; }
+@media (max-width: 1050px) {
+  .stats-analysis, .stats-duo { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ---------- 窄屏（手机） ----------
    「每周回顾」四个字被折成两行、日期区间也折行、按钮挤在旁边。
@@ -124,7 +130,9 @@
   /* 三枚数字卡挤在 390px 上每格只剩 110，数字都换行了 */
   .stats-cards, .stats-cards.n3, .stats-cards.n4 { grid-template-columns: repeat(2, 1fr); }
   .stats-duo { grid-template-columns: 1fr; gap: 22px; }
-  .stats-dist-row { grid-template-columns: 84px 1fr 24px; gap: 8px; }
+  .stats-dist-row { grid-template-columns: minmax(0, 42%) minmax(0, 1fr) 24px; gap: 8px; }
+  .stats-panel { padding: 18px 16px; }
+  .stats-hm { justify-content: flex-start; }
   /* 热力图 13 周 × 16px 一列 = 208px，加上左边星期条正好在窄屏溢出，交给横滑 */
   .stats-hm { overflow-x: auto; scrollbar-width: none; }
   .stats-hm::-webkit-scrollbar { display: none; }

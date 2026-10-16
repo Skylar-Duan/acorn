@@ -1,26 +1,27 @@
 /* 设置视图（前缀 .set-）：分节卡片，纸上调旋钮。主题变量见 themes.css */
 
-.set-body { max-width: 660px; }
+.set-body { max-width: 860px; width: 100%; }
 
 /* ---------- 分节卡片 ---------- */
 .set-section {
   background: var(--card);
   border: 1px solid var(--hair);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 16px 20px 14px;
-  margin: 14px 0;
+  box-shadow: none;
+  padding: 16px 20px;
+  margin: 10px 0;
 }
 .set-section h2 {
-  font-family: var(--serif);
-  font-size: var(--fs-h2);
+  font-family: var(--heading);
+  font-size: 16px;
   font-weight: 600;
   margin-bottom: 3px;
 }
-.set-desc { font-size: var(--fs-sm); color: var(--ink-3); }
+.set-desc { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; }
+.set-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--accent); background: var(--accent-soft); flex: none; }
 
 /* 行：左标签右控件，行间发丝线 */
-.set-row { display: flex; align-items: center; gap: 12px; padding: 10px 0 8px; }
+.set-row { display: flex; align-items: center; gap: 16px; padding: 13px 0; }
 .set-row + .set-row { border-top: 1px solid var(--hair); }
 .set-row-label { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-md); color: var(--ink); }
 .set-hint { font-size: var(--fs-xs); color: var(--ink-3); }
@@ -60,10 +61,10 @@
 /* ---------- 分段控件 ---------- */
 .set-seg {
   display: inline-flex; gap: 2px; padding: 3px;
-  background: var(--bg); border: 1px solid var(--hair); border-radius: 999px;
+  background: var(--surface-hover); border: 1px solid transparent; border-radius: 10px;
 }
 .set-seg button {
-  border-radius: 999px; padding: 4px 12px;
+  border-radius: 7px; padding: 6px 12px;
   font-size: var(--fs-sm); color: var(--ink-2);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
@@ -94,6 +95,9 @@
   font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-2);
   word-break: break-all; user-select: text;
 }
+.set-storage-usage { margin-left: auto; display: flex; flex-direction: column; gap: 7px; width: 170px; min-width: 110px; font-size: var(--fs-xs); text-align: right; font-variant-numeric: tabular-nums; }
+.set-storage-track { height: 4px; background: var(--surface-hover); border-radius: 4px; overflow: hidden; }
+.set-storage-track i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
 
 .set-backups { margin-top: 4px; }
 .set-backup-row {
@@ -113,8 +117,8 @@
 .set-shortcut { width: 170px; text-align: center; font-family: var(--mono); font-size: var(--fs-sm); }
 
 /* ---------- 关于 ---------- */
-.set-about { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 24px 20px; }
-.set-about-brand { font-family: var(--serif); font-size: 20px; letter-spacing: 2px; color: var(--ink); }
+.set-section.set-about { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 24px 4px; border: 0; background: transparent; }
+.set-about-brand { font-family: var(--heading); font-size: 16px; font-weight: 600; letter-spacing: 0; color: var(--ink); }
 .set-about-line { font-size: var(--fs-sm); color: var(--ink-2); }
 
 
@@ -185,7 +189,7 @@
 .set-section .set-head {
   width: 100%;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   text-align: left;
   padding: 0;
@@ -226,7 +230,7 @@
    grid 子项默认 min-width: auto = 收不到内容最小宽度以下。桌面看不出来，
    390px 的手机上这块被撑到 429px —— 「立即同步」整颗在屏幕外、「注销账号」被切一半、
    每一句说明都断在半截。而云账号正是手机端「把电脑那份拉下来」的唯一入口 */
-.set-fold > .set-fold-inner { min-height: 0; min-width: 0; padding-top: 3px; }
+.set-fold > .set-fold-inner { min-height: 0; min-width: 0; padding-top: 12px; }
 .set-fold.shut { grid-template-rows: 0fr; }
 /* 收起的那一节内容仍在树上（见上面「为什么不用条件渲染」），只是高度被压成 0：
    不关掉命中与朗读的话，看不见的按钮照样能被摸到。写法跟 app.css 的 .side-fold 一致——

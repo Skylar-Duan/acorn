@@ -5,19 +5,19 @@
    不压任何一页的内容——标题行右边本来有按钮的那几页（日历、已完成、计划）由 app.css 让位 */
 .acct-corner {
   position: fixed;
-  top: 16px;
-  right: 30px;
+  top: 28px;
+  right: 28px;
   /* 压在正文之上；抽屉的遮罩（89）、弹层（100）、网页版顶上那条（100）、
      写盘停手的红条（300）都比它高，谁都不会被它盖住 */
   z-index: 50;
 }
 /* 网页版没登录时顶上多一条：整个界面往下让，这颗也跟着让 */
-.shell.web-note-on .acct-corner { top: calc(var(--web-note-h) + env(safe-area-inset-top, 0px) + 16px); }
+.shell.web-note-on .acct-corner { top: calc(var(--web-note-h) + env(safe-area-inset-top, 0px) + 28px); }
 
 .acct-fab {
   width: 34px; height: 34px; padding: 0; overflow: hidden;
   border-radius: 50%; border: 1px solid var(--hair);
-  background: var(--accent-soft); color: var(--accent);
+  background: var(--card); color: var(--accent);
   font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1;
   display: grid; place-items: center;
   box-shadow: var(--shadow-sm);
@@ -33,12 +33,12 @@
   background: var(--card); color: var(--ink);
   border: 1px solid var(--hair); border-radius: var(--r-lg);
   box-shadow: var(--shadow);
-  padding: 16px 16px 12px;
+  padding: 20px 20px 16px;
   display: flex; flex-direction: column; gap: 12px;
   animation: card-in var(--dur-1) var(--ease);
 }
 
-.acct-pop-top { display: flex; align-items: center; gap: 12px; }
+.acct-pop-top { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--hair); }
 /* 头像本身就是「换一张」的按钮：右下角压一颗小「换」字，平时淡、指上去才显 */
 .acct-pop-pic {
   position: relative;

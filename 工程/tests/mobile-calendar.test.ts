@@ -78,8 +78,8 @@ describe("② 日历的手机分支：一格只有日期和点，底下常驻「
     expect(mobileCell).toContain("const shownDay = picked ?? today;");
     // v1.15.0：切月/周之后仍然回到今天，只是周视图那边要写实今天那一天
     // （picked 在周视图里兼当「摊开的是哪张卡」，置空等于七张全收起来）——见 mobile-calendar-week 的 ⑤
-    expect(calendarSource).toContain('if (isMobile) setPicked(m === "week" ? today : null);');
-    expect(calendarSource).toContain('if (isMobile) setPicked(mode === "week" ? todayYMD() : null);');
+    expect(calendarSource).toContain('setPicked(isMobile && m === "week" ? today : null);');
+    expect(calendarSource).toContain('setPicked(isMobile && mode === "month" ? null : day);');
     // 窄桌面那条「再点一次收起来」的老路原样还在
     expect(calendarSource).toContain("setPicked((cur) => (cur === ymd ? null : ymd))");
   });

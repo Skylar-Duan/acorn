@@ -64,12 +64,12 @@ describe("右侧那条线：定宽只许挂在日期那一格上", () => {
   });
 
   it("🔴 .task-row .meta 自己一个字的宽度都不许写死", () => {
-    // ListView 那个手搓的回收站行共用 .meta，里面装的是「还剩 N 天」+ 恢复 + 彻底删除两个按钮。
-    // 定宽写到 .meta 上会当场把那一行挤烂——这是这一轮最容易漏的联动处
+    // 尾部还有进度/循环等信息；只让when拥有日期列宽，不能把整块meta定宽。
     const body = block(appCss, ".task-row .meta {");
     expect(body).not.toMatch(/(^|[^-])width:/);
-    // 回收站行确实还共用着 .meta 和那两个按钮（哪天它自己搬走了，上面这条才可以松）
-    expect(listViewSource).toContain('<div key={t.id} className="task-row">');
+    // 回收站已用自己的结构行，恢复/删除不再混进任务日期列。
+    expect(listViewSource).toContain('function TrashRow({ task, sub }');
+    expect(listViewSource).toContain('className="trash-actions"');
     expect(listViewSource).toContain("彻底删除");
   });
 

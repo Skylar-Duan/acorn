@@ -49,12 +49,12 @@ const ruleBody = (css: string, selector: string) => {
   return text.slice(at, end + 2);
 };
 
-describe("① 方向 A 的那批 --m-* token：名字和值都不许悄悄改", () => {
+describe("① 手机共用尺度：保留触控高度，卡片采用新办公圆角", () => {
   // 名字是**跨文件的约定**：mobile-pages.css（习惯 / 四象限 / 更多）引的就是这几个。
   // 值抄自画板 方案/手机端设计稿/PolishA.dc.html
   const EXPECT: [string, string][] = [
     ["--m-row-h", "60px"],
-    ["--m-card-radius", "22px"],
+    ["--m-card-radius", "16px"],
     ["--m-sheet-radius", "26px"],
     ["--m-cb", "26px"],
     ["--m-cb-bw", "2px"],
@@ -87,7 +87,7 @@ describe("① 方向 A 的那批 --m-* token：名字和值都不许悄悄改", 
     const root = ruleBody(mobileCss, ":root");
     // 先钉住「真的切出东西来了」：切空了下面那条 not.toContain 会恒真（v1.15.0 复核踩过）
     expect(root.length, ":root 那一段切空了").toBeGreaterThan(1000);
-    expect(root).toContain("--m-card-radius: 22px;");
+    expect(root).toContain("--m-card-radius: 16px;");
     expect(root).not.toContain("color-mix");
     // 深色那份也是自定义属性，同一条铁律
     expect(ruleBody(mobileCss, '[data-mode="dark"]')).not.toContain("color-mix");
@@ -225,13 +225,8 @@ describe("② A 的长相铺到了列表、段标题、顶栏、导航、＋", (
     expect(fab).toContain("bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 16px);");
   });
 
-  it("页底那抹柔光挂在 .shell.mobile 上（挂 .mshell 会把顶栏后面那片风景盖住）", () => {
-    expect(nl(shellCss)).toContain(
-      "background-image: radial-gradient(120% 70% at 85% -8%, var(--accent-soft), transparent 58%);",
-    );
-    const glow = shellCss.slice(shellCss.indexOf("radial-gradient(120% 70%") - 400,
-                                shellCss.indexOf("radial-gradient(120% 70%"));
-    expect(glow).toContain(".shell.mobile {");
+  it("手机办公底面保持简洁，顶部风景仍由原头部负责", () => {
+    expect(ruleBody(shellCss, ".shell.mobile")).toContain("background-image: none;");
   });
 
   it("抽屉顶部圆角跟卡片一个语言（26），纸上不再铺颗粒", () => {
@@ -242,7 +237,7 @@ describe("② A 的长相铺到了列表、段标题、顶栏、导航、＋", (
   });
 });
 
-describe("③ 纸纹撤干净了，但桌面一个字没动", () => {
+describe("③ 办公界面统一干净底面", () => {
   it("手机端那几张纸都不再叠 var(--paper)", () => {
     // 整个 mobile-*.css 里只剩「明确写 none」这一种用法
     for (const [name, css] of [["mobile.css", mobileCss], ["mobile-sheet.css", sheetCss]] as const) {
@@ -252,11 +247,10 @@ describe("③ 纸纹撤干净了，但桌面一个字没动", () => {
     expect(shellCss).toContain("background-image: none;");
   });
 
-  it("🔴 桌面那几张纸的颗粒原样还在（base.css / themes.css 一个字没动）", () => {
-    expect(read("src/styles/base.css")).toContain("background-image: var(--paper); }");
-    expect(read("src/styles/themes.css")).toContain("--paper:");
-    // 侧栏底纸也照旧
-    expect(appCss).toContain("background-image: var(--paper), linear-gradient(180deg, var(--accent-soft), transparent 62%);");
+  it("桌面卡片和侧栏使用干净底面，主题仍保留纸纹变量供旧组件兼容", () => {
+    expect(read("src/styles/base.css")).toContain("background-image: none; }");
+    expect(read("src/styles/themes.css")).toContain("--paper: none;");
+    expect(appCss).not.toContain("background-image: var(--paper), linear-gradient");
   });
 });
 

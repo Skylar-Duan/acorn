@@ -2,7 +2,7 @@
 //
 // 2026-08-31 起做完的事也进日历，按**实际完成日**落格（不是原计划日——逾期补做的事
 // 得落在真正做完那天）。头上三选一：全部 / 计划 / 已完成。
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Task } from "../core/model";
 import { addDays, cmpYMD, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
 import type { DateRow } from "../core/store";
@@ -17,6 +17,7 @@ import TaskCard from "../components/TaskCard";
 import { isMobile } from "../core/platform";
 import MobileHead from "../mobile/MobileHead";
 import MobileRow from "../mobile/MobileRow";
+import Icon from "../components/Icon";
 import "../styles/calendar.css";
 
 const WEEK_HEAD = ["一", "二", "三", "四", "五", "六", "日"];
@@ -159,6 +160,10 @@ function loadFilter(): CalFilter {
 export default function Calendar() {
   const data = useApp((s) => s.data);
   const expandedId = useApp((s) => s.ui.expandedId);
+  const detail = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isMobile && expandedId) detail.current?.scrollIntoView?.({ block: "nearest", behavior: "auto" });
+  }, [expandedId]);
   const today = todayYMD();
   const [mode, setMode] = useState<CalMode>(loadMode);
   /** 月视图：当前展示月份的一号；周视图：当前展示那一周的周一 */
@@ -179,7 +184,7 @@ export default function Calendar() {
     // 手机：切了月/周，选中的日子回到今天——不然它可能停在一个新视图里根本看不见的日子上。
     // 周视图里 picked 还兼当「哪张日卡摊开着」（v1.15.0），所以切过去得明确落在今天那张上：
     // 置成 null 的话七张卡全是收着的，下半屏又变回一片留白（v1.12.0 那个老毛病）
-    if (isMobile) setPicked(m === "week" ? today : null);
+    setPicked(isMobile && m === "week" ? today : null);
     try {
       localStorage.setItem(MODE_KEY, m);
     } catch {
@@ -201,9 +206,7 @@ export default function Calendar() {
       /* 存不了就这次会话记得 */
     }
   };
-  /** 点开了哪一天（v1.10.0，窄屏用）。窄屏格子只有 51px 宽，条目标题只显示得下一个字，
-   *  所以格子里改画圆点，点一格在网格下面列出当天的事。
-   *  这块在桌面上由 calendar.css 关掉——桌面格子里本来就写得下标题，不需要二级列表。
+  /** 选中日。桌面在旁边/下面显示完整议程，解决拥挤日的小格不能列全的问题。
    *  手机周视图（v1.15.0）借同一个值当「摊开的是哪一张日卡」：单值 = 同时只摊开一张。
    *  初值在周视图下就是今天，一进来今天那张是开着的 */
   const [picked, setPicked] = useState<string | null>(() =>
@@ -266,9 +269,11 @@ export default function Calendar() {
   })();
 
   function goPrev() {
+    if (!isMobile) setPicked(null);
     setAnchor((a) => (mode === "week" ? addDays(a, -7) : monthStart(addDays(a, -1))));
   }
   function goNext() {
+    if (!isMobile) setPicked(null);
     // 月视图：一号加上当月天数正好落到下月一号
     setAnchor((a) =>
       mode === "week" ? addDays(a, 7) : addDays(a, daysInMonth(Number(a.slice(0, 4)), Number(a.slice(5, 7)))),
@@ -298,11 +303,12 @@ export default function Calendar() {
   // 这两组控件桌面上跟标题挤在同一行，手机上放不下，交给顶栏另起一行摆（MobileHead 的 extra）。
   // **同一份 JSX 喂给两边**：分成两份写，早晚有一边少一个按钮
   const filters = (
-    <div className="all-sort">
+    <div className="all-sort" aria-label="日历记录">
       {FILTERS.map((f) => (
         <button
           key={f.id}
           className={filter === f.id ? "on" : undefined}
+          aria-pressed={filter === f.id}
           onClick={() => pickFilter(f.id)}
         >
           {f.name}
@@ -310,30 +316,31 @@ export default function Calendar() {
       ))}
     </div>
   );
+  const modes = <div className="all-sort" aria-label="日历视图">
+    <button className={mode === "month" ? "on" : undefined} aria-pressed={mode === "month"} onClick={() => pickMode("month")}>月</button>
+    <button className={mode === "week" ? "on" : undefined} aria-pressed={mode === "week"} onClick={() => pickMode("week")}>周</button>
+  </div>;
   const nav = (
     <div className="cal-nav">
-      {/* 月 / 周 跟前后翻页放一起：都是「我在看哪一段时间」 */}
-      <div className="all-sort">
-        <button className={mode === "month" ? "on" : undefined} onClick={() => pickMode("month")}>月</button>
-        <button className={mode === "week" ? "on" : undefined} onClick={() => pickMode("week")}>周</button>
-      </div>
-      <button className="arr" onClick={goPrev} title={mode === "week" ? "上一周" : "上个月"}>‹</button>
+      {isMobile && modes}
+      <button className="arr" onClick={goPrev} aria-label={mode === "week" ? "上一周" : "上个月"} title={mode === "week" ? "上一周" : "上个月"}><Icon name="arrowLeft" size={15} /></button>
       <button
         onClick={() => {
-          setAnchor(normalizeAnchor(todayYMD(), mode));
+          const day = todayYMD();
+          setAnchor(normalizeAnchor(day, mode));
           // 手机：选中的日子也一起回到今天。月视图 picked 为空就是今天（见下面 .cal-daylist）；
           // 周视图得写实今天那一天，否则七张卡会全收起来
-          if (isMobile) setPicked(mode === "week" ? todayYMD() : null);
+          setPicked(isMobile && mode === "month" ? null : day);
         }}
       >
         今天
       </button>
-      <button className="arr" onClick={goNext} title={mode === "week" ? "下一周" : "下个月"}>›</button>
+      <button className="arr" onClick={goNext} aria-label={mode === "week" ? "下一周" : "下个月"} title={mode === "week" ? "下一周" : "下个月"}><Icon name="arrowRight" size={15} /></button>
     </div>
   );
 
   return (
-    <section className="main">
+    <section className={`main calendar-page${isMobile ? "" : " cal-desktop"}`}>
       {/* 手机上走 MobileHead：顶部安全区统一在它那儿留。
           「哪一个月」当副标题，月/周 与 全部/计划/已完成 落到顶栏第二行（那一行横着能滑） */}
       {isMobile ? (
@@ -352,18 +359,19 @@ export default function Calendar() {
           }
         />
       ) : (
-        <div className="view-head">
-          <h1>日历</h1>
-          <span className="cal-ym">{ymLabel}</span>
-          <span className="spacer" />
-          {filters}
-          {nav}
-        </div>
+        <>
+          <div className="view-head"><h1>日历</h1><span className="sub">安排与完成记录</span></div>
+          <div className="cal-toolbar">
+            <div className="cal-period"><span className="cal-ym">{ymLabel}</span>{nav}</div>
+            <div className="cal-tools">{modes}{filters}</div>
+          </div>
+        </>
       )}
 
       {/* 模式挂在容器上：窄屏周视图要把七列拍成七行，那时候上面那排「一二三…」的
           列头就没有意义了，得能选中它关掉，而列头自己不知道现在是月还是周 */}
-      <div className={`view-body cal-body${mode === "week" ? " cal-week-mode" : ""}`}>
+      <div className={`view-body cal-body${mode === "week" ? " cal-week-mode" : ""}${!isMobile && picked ? " cal-has-agenda" : ""}${expanded ? " cal-has-detail" : ""}`}>
+        <div className="cal-board">
         <div className="cal-week">
           {WEEK_HEAD.map((w) => (
             <span key={w}>{w}</span>
@@ -496,10 +504,17 @@ export default function Calendar() {
             return (
               <div
                 key={ymd}
+                data-day={ymd}
                 className={`cal-cell${inMonth ? "" : " dim"}${dropYmd === ymd ? " cal-dropping" : ""}${picked === ymd ? " cal-picked" : ""}`}
-                // 点一格 = 在下面那块列出这天的事（窄屏才画得出来，见 .cal-daylist）。
-                // 再点一次收起来：一格既是开关也是当前位置，手机上不另放一颗关闭键
+                tabIndex={0}
+                role="group"
+                aria-label={`${mdLabel(ymd, true)}的安排`}
                 onClick={() => setPicked((cur) => (cur === ymd ? null : ymd))}
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault(); setPicked((cur) => cur === ymd ? null : ymd);
+                  }
+                }}
                 onDoubleClick={() => {
                   setQuickYmd(ymd);
                   setQuickText("");
@@ -527,7 +542,7 @@ export default function Calendar() {
                         {doneCount}
                       </span>
                     )}
-                    {hidden > 0 && <span className="cal-more" title={`还有 ${hidden} 条没列出来`}>+{hidden}</span>}
+                    {hidden > 0 && <button type="button" className="cal-more" aria-label={`查看${mdLabel(ymd, false)}的全部${open.length + done.length}条安排`} onClick={(e) => { e.stopPropagation(); setPicked(ymd); }}>+{hidden}</button>}
                   </span>
                 </div>
                 {/* 补记输入框排在条目之前：排最后会被挤出可视区，得靠浏览器滚一下才露出来，
@@ -561,7 +576,7 @@ export default function Calendar() {
                   </div>
                 )}
                 {shownOpen.map((t) => (
-                  <div
+                  <button type="button"
                     key={t.id}
                     className="cal-task"
                     title={t.title}
@@ -578,13 +593,14 @@ export default function Calendar() {
                     onDragEnd={() => setDropYmd(null)}
                   >
                     <span className={`flag p${t.priority}`} />
+                    {taskTime(t) && <span className="cal-task-time">{taskTime(t)}</span>}
                     <span className="cal-title">{t.title || "（未命名）"}</span>
-                  </div>
+                  </button>
                 ))}
                 {shownDone.map((r) => {
                   const title = r.sub ? `${r.task.title} › ${r.sub.title}` : r.task.title;
                   return (
-                    <div
+                    <button type="button"
                       key={rowKey(r)}
                       className="cal-task cal-task-done"
                       title={`已完成：${title}`}
@@ -599,12 +615,13 @@ export default function Calendar() {
                       <span className="cal-title">
                         {(r.sub ? r.sub.title : r.task.title) || "（未命名）"}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             );
           })}
+        </div>
         </div>
 
         {/* 手机月视图（v1.12.1）：网格底下**常驻**「这一天」的列表。默认今天，点别的格子切过去，
@@ -636,15 +653,13 @@ export default function Calendar() {
             );
           })()}
 
-        {/* 点开那天的清单（窄屏专用，桌面由 calendar.css 关掉；手机走上面那块常驻的）。
-            窄屏格子里只剩「日期 + 圆点 + 计数」，事情叫什么名字全靠这一块交代；
-            点其中一条照旧展开下面那张任务卡 */}
+        {/* 桌面选中日完整议程。宽屏侧列，窄窗下排，所有未展示的记录都有持续入口。 */}
         {!isMobile && picked && (
-          <div className="cal-daylist">
+          <div className="cal-daylist" role="region" aria-label="当天议程">
             <div className="cal-daylist-head">
               <b>{mdLabel(picked, picked.slice(0, 4) !== today.slice(0, 4))}</b>
               <span className="cal-daylist-wd">周{WEEK_HEAD[(dayOfWeek(picked) + 6) % 7]}</span>
-              <button className="cal-daylist-x" title="收起这天" onClick={() => setPicked(null)}>×</button>
+              <button className="cal-daylist-x" aria-label="收起当天议程" onClick={() => setPicked(null)}><Icon name="close" size={16} /></button>
             </div>
             {(() => {
               const slot = byDay.get(picked);
@@ -682,7 +697,7 @@ export default function Calendar() {
         )}
 
         {expanded && (
-          <div className="cal-detail">
+          <div className="cal-detail" ref={detail}>
             {/* key 必不可少：不给 key，切换展开的任务时 React 会复用同一个实例，
                 已完成子任务的折叠状态、标题编辑草稿都会从上一张卡串到下一张 */}
             <TaskCard key={expanded.id} task={expanded} />

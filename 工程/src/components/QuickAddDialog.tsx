@@ -15,7 +15,9 @@ import { useGuideEntry } from "./GuideSheet";
 import { useCommitFlash } from "./commitFlash";
 import { setQuickAddOpen } from "../core/store";
 import { isTaskCategoryDialogOpen } from "../core/categoryCreation";
+import Icon from "./Icon";
 import "../styles/quickadd-dialog.css";
+import "../styles/task-workspace.css";
 
 export default function QuickAddDialog() {
   const guide = useGuideEntry();
@@ -62,9 +64,9 @@ export default function QuickAddDialog() {
       <div className="modal qad-modal" role="dialog" aria-labelledby="qad-title" ref={boxRef}>
         <header className="qad-head">
           <h2 id="qad-title">记一条</h2>
-          <button className="qad-help" title="怎么写一句话" onClick={guide.open}>?</button>
+          <button className="qad-help" title="怎么写一句话" aria-label="怎么写一句话" onClick={guide.open}><Icon name="help" /></button>
           <button className="qad-x" aria-label="关闭" title="关闭" onClick={() => setQuickAddOpen(false)}>
-            ×
+            <Icon name="close" size={20} />
           </button>
         </header>
         {/* 记完不关窗：连着记好几条是这个框最常见的用法，
@@ -73,7 +75,7 @@ export default function QuickAddDialog() {
         <div className={`qad-body${flash.on ? " lit" : ""}`}>
           <QuickAddBar withPickers autoFocus onAdded={() => flash.flash()} />
         </div>
-        <p className="qad-foot">回车记下；连着记几条不用重开；Esc 关</p>
+        <p className="qad-foot"><span><kbd>Enter</kbd> 记下，继续记录</span><span><kbd>Esc</kbd> 关闭</span></p>
         {guide.sheet}
       </div>
     </div>

@@ -18,6 +18,7 @@ import {
 import { isMobile } from "../core/platform";
 import MobileHead from "../mobile/MobileHead";
 import TaskCard from "../components/TaskCard";
+import Icon from "../components/Icon";
 import "../styles/quadrant.css";
 import "../styles/mobile-pages.css";
 
@@ -92,6 +93,7 @@ export default function QuadrantBoard() {
 
   const board = (
     <div className="view-body quad-body">
+      {!isMobile && <div className="quad-legend"><span><Icon name="flag" size={14} />按重要性与紧急程度安排</span><span>紧急：明天及以前</span></div>}
       <div className="quad-grid" onDragEnd={() => setDropKey(null)}>
       {QUADRANTS.map((q) => {
         const items = groups.get(q.key)!;
@@ -112,9 +114,8 @@ export default function QuadrantBoard() {
             onDrop={(e) => onDrop(e, q)}
           >
             <div className="quad-head">
-              <span className="quad-name">{q.name}</span>
+              <div className="quad-heading"><span className="quad-name">{q.name}</span><span className="quad-hint">{q.hint}</span></div>
               <span className="quad-count">{items.length}</span>
-              <span className="quad-hint">{q.hint}</span>
             </div>
             <div className="quad-cell-body">
               {items.map((t) =>
@@ -161,6 +162,9 @@ function QuadRow({ task, today }: { task: Task; today: string }) {
   return (
     <div
       className="quad-row"
+      tabIndex={0}
+      role="group"
+      aria-label={task.title || "未命名任务"}
       draggable
       data-task-id={task.id}
       onDragStart={(e) => {
@@ -168,23 +172,26 @@ function QuadRow({ task, today }: { task: Task; today: string }) {
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => expandTask(task.id)}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); expandTask(task.id); } }}
     >
       <span className={`flag p${task.priority}`} />
       <button
         className="cb"
         title="完成"
+        aria-label={`完成${task.title || "未命名任务"}`}
         onClick={(e) => {
           e.stopPropagation();
           completeTask(task.id);
         }}
       />
-      <span className="quad-title">{task.title || "（未命名）"}</span>
+      <span className="quad-copy"><span className="quad-title" title={task.title}>{task.title || "（未命名）"}</span>
       {due && (
         <span className={`quad-due${overdue ? " overdue" : ""}`}>
           {formatShort(due)}
           {time ? ` ${time}` : ""}
         </span>
       )}
+      </span>
     </div>
   );
 }

@@ -3,6 +3,54 @@
    让人一眼知道「这屏是养成，不是待办」。颜色全部走主题 token，六套主题自动成立。 */
 
 .hb-body { padding-bottom: 40px; }
+.hb-section { margin-top: 24px; }
+.hb-section-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 16px 10px; }
+.hb-section-head h2 { font: 600 var(--fs-sm) var(--sans); color: var(--ink); margin: 0; }
+.hb-section-head h2 > span { margin-left: 10px; font-size: var(--fs-xs); font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.hb-week-labels { display: grid; grid-template-columns: repeat(7, 24px); gap: 4px; flex: none; color: var(--ink-3); font-size: var(--fs-xs); text-align: center; }
+.hb-table { border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--card); }
+.hb-table .hb-row { border: 0; border-radius: 0; margin: 0; background: transparent; }
+.hb-table .hb-row + .hb-row { border-top: 1px solid var(--hair); }
+.hb-table .hb-row:first-child { border-radius: var(--r-md) var(--r-md) 0 0; }
+.hb-table .hb-row:last-child { border-radius: 0 0 var(--r-md) var(--r-md); }
+.hb-table .hb-row.open { box-shadow: none; }
+.hb-table .hb-head { display: grid; grid-template-columns: 28px minmax(0, 1fr) 76px 192px; gap: 12px; padding: 14px 16px; }
+.hb-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; text-align: left; padding: 0; }
+.hb-main .hb-title { width: 100%; font-size: var(--fs-md); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb-meta { display: flex; align-items: center; gap: 12px; max-width: 100%; overflow: hidden; }
+.hb-meta .hb-rule, .hb-meta .hb-next { min-width: 0; font-size: var(--fs-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb-meta .hb-next { text-align: left; }
+.hb-streak-slot { text-align: right; }
+.hb-streak-slot .hb-streak { font-size: var(--fs-xs); color: var(--ink-2); font-weight: 400; white-space: nowrap; }
+.hb-table .hb-week { gap: 4px; }
+.hb-table .hb-week .hb-dot { position: relative; width: 24px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
+.hb-table .hb-dot::after { content: ""; width: 13px; height: 13px; border: 1.4px solid var(--hair); border-radius: 50%; }
+.hb-table .hb-dot.done::after { background: var(--ok); border-color: var(--ok); }
+.hb-table .hb-dot.missed::after { border-color: var(--ink-3); }
+.hb-table .hb-dot.todo::after { border-color: var(--accent); border-style: dashed; }
+.hb-table .hb-dot.off::after { width: 5px; height: 5px; background: var(--hair); border: 0; }
+.hb-table .hb-dot.now { background: var(--accent-soft); }
+.hb-table .hb-dot:not(:disabled):hover { background: var(--accent-soft); transform: none; }
+.hb-table .hb-detail { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px 24px; padding: 20px; background: color-mix(in srgb, var(--bg) 45%, var(--card)); }
+.hb-table .hb-detail > .hb-month { grid-column: 1; grid-row: 1 / span 4; max-width: none; align-self: start; }
+.hb-table .hb-detail > .hb-stats { grid-column: 2; grid-row: 1; gap: 12px 20px; font-size: var(--fs-xs); }
+.hb-table .hb-detail > .hb-edit, .hb-table .hb-detail > .hb-notes-wrap, .hb-table .hb-detail > .hb-actions { grid-column: 2; min-width: 0; }
+.hb-table .hb-stats b { display: block; font-size: var(--fs-h2); margin: 0 0 2px; font-weight: 600; }
+.hb-table .hb-notes { min-height: 80px; }
+.hb-table .hb-actions { align-self: end; justify-content: flex-end; }
+@media (max-width: 1120px) {
+  .hb-table .hb-head { grid-template-columns: 28px minmax(0, 1fr) 58px 164px; gap: 8px; padding: 14px 12px; }
+  .hb-week-labels { grid-template-columns: repeat(7, 20px); }
+  .hb-table .hb-week .hb-dot { width: 20px; }
+  .hb-table .hb-detail { grid-template-columns: 220px minmax(0, 1fr); gap: 16px; padding: 16px; }
+}
+@media (max-width: 950px) {
+  .hb-table .hb-head { grid-template-columns: 28px minmax(0, 1fr) 164px; }
+  .hb-streak-slot { display: none; }
+  .hb-table .hb-detail { grid-template-columns: minmax(0, 1fr); }
+  .hb-table .hb-detail > .hb-month { grid-column: 1; grid-row: auto; width: min(100%, 280px); }
+  .hb-table .hb-detail > .hb-stats, .hb-table .hb-detail > .hb-edit, .hb-table .hb-detail > .hb-notes-wrap, .hb-table .hb-detail > .hb-actions { grid-column: 1; grid-row: auto; }
+}
 
 /* ---------- 新建 ---------- */
 
@@ -60,7 +108,7 @@
 .hb-row.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 /* 淡下去的只是这一行的头：整行设 opacity 会把展开后详情里的周期菜单一起变半透明，
    还会让每一行各成一层、菜单被后面的行盖住（09-22） */
-.hb-row.off > .hb-head { opacity: .62; }
+.hb-row.off > .hb-head .hb-title { color: var(--ink-2); }
 /* 展开的那一行压在后面几行上面，里面弹出的周期菜单 / 自定义面板不被挡 */
 .hb-row.open { position: relative; z-index: 1; }
 

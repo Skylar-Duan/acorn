@@ -32,6 +32,7 @@ import RowList, { cardAnchor, type FoldPlan } from "../components/RowList";
 import { CommitMark, useCommitFlash, useTypingFlash } from "../components/commitFlash";
 import { isMobile } from "../core/platform";
 import MobileHead from "../mobile/MobileHead";
+import Icon from "../components/Icon";
 import { openSheet } from "../mobile/sheetStore";
 import "../styles/habits.css";
 import "../styles/mobile-pages.css";
@@ -140,6 +141,8 @@ function WeekStrip({ habit, today }: { habit: Task; today: string }) {
           key={m.ymd}
           className={`hb-dot ${m.mark}${m.ymd === today ? " now" : ""}`}
           title={`${WEEK_LABEL[i]} · ${markTitle(m.mark, m.ymd)}${m.mark === "off" ? "" : "（点一下可以补打/取消）"}`}
+          aria-label={`${habit.title}，周${WEEK_LABEL[i]}，${markTitle(m.mark, m.ymd)}`}
+          aria-pressed={m.mark === "done"}
           disabled={m.mark === "future" || m.mark === "off"}
           onClick={(e) => {
             e.stopPropagation();
@@ -165,10 +168,12 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
 
   return (
     <div className={`hb-row${done ? " done" : ""}${due ? "" : " off"}${expanded ? " open" : ""}`}>
-      <div className="hb-head" onClick={onToggleExpand}>
+      <div className="hb-head">
         <button
           className={`hb-check${done ? " on" : ""}`}
           title={done ? "撤销今天的打卡" : due ? "打卡" : "今天不在计划内，也可以补打一次"}
+          aria-label={done ? `撤销「${habit.title}」今天的打卡` : `给「${habit.title}」打卡`}
+          aria-pressed={done}
           onClick={(e) => {
             e.stopPropagation();
             toggleHabitCheck(habit.id, today);
@@ -176,19 +181,31 @@ function HabitRow({ habit, today, expanded, onToggleExpand }: {
         >
           {done ? "✓" : ""}
         </button>
-        <span className="hb-title">{habit.title || "（未命名）"}</span>
-        <span className="hb-rule">{describeHabitRule(habit)}</span>
+        <button type="button" className="hb-main" aria-expanded={expanded} onClick={onToggleExpand} title={habit.title}>
+          <span className="hb-title">{habit.title || "（未命名）"}</span>
+          <span className="hb-meta"><span className="hb-rule">{describeHabitRule(habit)}</span>{next && <span className="hb-next">{next}</span>}</span>
+        </button>
+        <span className="hb-streak-slot">
         {n > 0 && (
           <span className="hb-streak" title={`已连续 ${n} 次`}>
-            🔥 {n}
+            连续 {n} 次
           </span>
         )}
-        {next && <span className="hb-next">{next}</span>}
+        </span>
         <WeekStrip habit={habit} today={today} />
       </div>
       {expanded && <HabitDetail habit={habit} today={today} />}
     </div>
   );
+}
+
+function HabitGroup({ label, progress, habits, today, expandedId, onToggle }: {
+  label: string; progress?: string; habits: Task[]; today: string; expandedId: string | null; onToggle: (id: string) => void;
+}) {
+  return <section className="hb-section" aria-label={label}>
+    <div className="hb-section-head"><h2>{label}{progress && <span>{progress}</span>}</h2><span className="hb-week-labels" aria-hidden="true">{WEEK_LABEL.map((day) => <span key={day}>{day}</span>)}</span></div>
+    <div className="hb-table">{habits.map((habit) => <HabitRow key={habit.id} habit={habit} today={today} expanded={expandedId === habit.id} onToggleExpand={() => onToggle(habit.id)} />)}</div>
+  </section>;
 }
 
 /** 最近 7 天（含今天），从早到晚。手机那一行右边的七个小点用它。
@@ -278,13 +295,14 @@ function HabitDetail({ habit, today }: { habit: Task; today: string }) {
 
       <div className="hb-month">
         <div className="hb-month-head">
-          <button onClick={() => setMonth(monthStart(addDays(month, -1)))}>‹</button>
+          <button aria-label="上个月的打卡" onClick={() => setMonth(monthStart(addDays(month, -1)))}><Icon name="arrowLeft" size={15} /></button>
           <span>{month.slice(0, 4)} 年 {Number(month.slice(5, 7))} 月</span>
           <button
             onClick={() => setMonth(monthStart(addDays(month, 32)))}
             disabled={month >= monthStart(today)}
+            aria-label="下个月的打卡"
           >
-            ›
+            <Icon name="arrowRight" size={15} />
           </button>
         </div>
         <div className="hb-grid">
@@ -394,7 +412,7 @@ export default function Habits() {
           : `今天 ${doneCount}/${dueToday.length}`;
 
   return (
-    <section className="main">
+    <section className="main habits-page">
       {/* 手机上必须走 MobileHead：顶部安全区只在它那儿留了一份。
           v1.11.0 这一页还挂着桌面那个 .view-head，而手机上 .main 的内边距是 0——
           标题直接顶到系统状态栏底下（用户真机截图点名的就是这一条） */}
@@ -460,7 +478,7 @@ export default function Habits() {
       ) : (
       <div className="view-body hb-body">
         <div className="hb-add">
-          <span className="plus">＋</span>
+          <span className="plus"><Icon name="plus" size={17} /></span>
           <input
             className={`hb-add-input${addFlash.on ? " commit-lit" : ""}`}
             placeholder="加一个习惯，比如「喝水 2L」"
@@ -493,18 +511,7 @@ export default function Habits() {
         </div>
 
         {dueToday.length > 0 && (
-          <>
-            <div className="group-head">今天要做的 {doneCount}/{dueToday.length}</div>
-            {dueToday.map((h) => (
-              <HabitRow
-                key={h.id}
-                habit={h}
-                today={today}
-                expanded={expandedId === h.id}
-                onToggleExpand={() => setExpandedId(expandedId === h.id ? null : h.id)}
-              />
-            ))}
-          </>
+          <HabitGroup label="今天要做的" progress={`${doneCount}/${dueToday.length}`} habits={dueToday} today={today} expandedId={expandedId} onToggle={(id) => setExpandedId(expandedId === id ? null : id)} />
         )}
 
         {planRows.length > 0 && (
@@ -516,18 +523,7 @@ export default function Habits() {
         )}
 
         {restToday.length > 0 && (
-          <>
-            <div className="group-head">今天不用做</div>
-            {restToday.map((h) => (
-              <HabitRow
-                key={h.id}
-                habit={h}
-                today={today}
-                expanded={expandedId === h.id}
-                onToggleExpand={() => setExpandedId(expandedId === h.id ? null : h.id)}
-              />
-            ))}
-          </>
+          <HabitGroup label="今天不用做" habits={restToday} today={today} expandedId={expandedId} onToggle={(id) => setExpandedId(expandedId === id ? null : id)} />
         )}
 
         {nothing && (

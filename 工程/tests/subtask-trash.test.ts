@@ -351,14 +351,13 @@ describe("循环推进：回收站里的那步不进副本、本体上原样不�
 describe("回收站页（views/ListView）真的画了子任务那一列", () => {
   it("一行一条「母 › 子 · 还剩 N 天」，带恢复和彻底删除", () => {
     expect(listViewSource).toContain("trashedSubtaskRows(data)");
-    expect(listViewSource).toContain('className="task-row trash-sub"');
-    expect(listViewSource).toContain("restoreSubtask(r.task.id, r.sub!.id)");
-    expect(listViewSource).toContain("purgeSubtask(r.task.id, r.sub!.id)");
-    expect(listViewSource).toContain("trashDaysLeft(r.sub!.deletedAt)");
-    // 「母 › 子」三段跟 TaskRow 的子任务行同一副标记：窄屏下两段各自省略、「›」永远看得见
-    expect(listViewSource).toContain('<span className="chain-parent">{r.task.title || "（未命名）"}</span>');
-    expect(listViewSource).toContain('<span className="chain-sep"> › </span>');
-    expect(listViewSource).toContain('<span className="chain-self">{r.sub!.title || "（未命名）"}</span>');
+    expect(listViewSource).toContain('function TrashRow({ task, sub }');
+    expect(listViewSource).toContain('task={r.task} sub={r.sub!}');
+    expect(listViewSource).toContain("restoreSubtask(task.id, sub.id)");
+    expect(listViewSource).toContain("purgeSubtask(task.id, sub.id)");
+    expect(listViewSource).toContain("trashDaysLeft(deleted)");
+    expect(listViewSource).toContain('className="trash-parent"');
+    expect(listViewSource).toContain('name="chevronRight"');
   });
 
   it("空态和「清空回收站」都把子任务算进去", () => {
@@ -374,18 +373,11 @@ describe("回收站页（views/ListView）真的画了子任务那一列", () =>
     // 是一个不带 data-task-id 的裸 .task-row；App 的 ↑↓ / Delete 只认 `.task-row[data-task-id]`——
     // 回收站这一页从来就没有键盘选行，子任务行跟整件事那行口径一致，不是漏了
     expect(appSource).toContain('document.querySelectorAll<HTMLElement>(".task-row[data-task-id]")');
-    const wholeRow = listViewSource.slice(
-      listViewSource.indexOf('<div key={t.id} className="task-row">'),
-      listViewSource.indexOf("purgeTask(t.id)"),
-    );
-    const subRow = listViewSource.slice(
-      listViewSource.indexOf('className="task-row trash-sub"'),
-      listViewSource.indexOf("purgeSubtask(r.task.id, r.sub!.id)"),
-    );
-    expect(wholeRow.length).toBeGreaterThan(0);
-    expect(subRow.length).toBeGreaterThan(0);
-    expect(wholeRow).not.toContain("data-task-id");
-    expect(subRow).not.toContain("data-task-id");
+    const row = listViewSource.slice(listViewSource.indexOf("function TrashRow("), listViewSource.indexOf("export default function ListView"));
+    expect(row.length).toBeGreaterThan(0);
+    expect(row).not.toContain("data-task-id");
+    expect(listViewSource).toContain('<TrashRow key={t.id} task={t} />');
+    expect(listViewSource).toContain('task={r.task} sub={r.sub!}');
   });
 });
 

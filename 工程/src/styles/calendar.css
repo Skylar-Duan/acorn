@@ -1,15 +1,20 @@
 /* 日历视图（前缀 .cal-）：整月网格 + 拖拽改期 + 双击补记。通用布局见 app.css */
 
-/* 头部：年月（serif）与切月按钮 */
-.cal-ym { font-family: var(--serif); font-size: 15px; color: var(--ink-2); }
+/* 年月和导航有独立工具栏，页头只保留页面层级。 */
+.cal-ym { font-family: var(--sans); font-size: var(--fs-lg); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.cal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 0 0 18px; flex: none; }
+.cal-period, .cal-tools { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.cal-tools { gap: 10px; }
+.cal-board { display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; }
+.mshell .cal-board { flex: none; }
 .cal-nav { align-self: center; display: flex; align-items: center; gap: 4px; }
 .cal-nav button {
-  min-width: 28px; height: 26px; padding: 0 9px;
+  min-width: var(--control-h); height: var(--control-h); padding: 0 9px;
   border-radius: var(--r-sm); color: var(--ink-2); font-size: var(--fs-sm);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .cal-nav button:hover { background: var(--card); color: var(--accent); }
-.cal-nav .arr { font-size: 16px; line-height: 1; }
+.cal-nav .arr { display: inline-grid; place-items: center; line-height: 1; }
 
 /* 撑满主区：列头 + 网格 + 底部详情卡 */
 .view-body.cal-body { display: flex; flex-direction: column; overflow: hidden; padding: 4px 2px 18px; }
@@ -47,7 +52,7 @@
 .cal-num {
   width: 22px; height: 22px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  font-family: var(--serif); font-size: 13px; color: var(--ink-2);
+  font-family: var(--sans); font-size: 13px; color: var(--ink-2);
   border-radius: 50%; font-variant-numeric: tabular-nums;
 }
 /* 「周三」这种标签只有窄屏的周视图用得上（那时七列拍成七行、列头关掉了） */
@@ -105,6 +110,43 @@
 /* 月 / 周 切换（v1.9.1）。周视图一行七格、格子高，一格能列的条目多得多 */
 .cal-nav .all-sort { margin-right: 6px; }
 .cal-nav .all-sort button { padding: 3px 10px; }
+.cal-task { width: 100%; text-align: left; }
+.cal-task-time { flex: none; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.cal-more:hover { color: var(--accent); background: var(--accent-soft); }
+.cal-desktop .view-body.cal-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: min-content; align-content: start; gap: 16px; overflow-y: auto; padding: 0 0 20px; }
+.cal-desktop .cal-board { min-height: 540px; }
+.cal-desktop .cal-grid { grid-auto-rows: minmax(100px, 1fr); flex: 1 0 auto; }
+.cal-desktop .cal-grid.week { grid-auto-rows: minmax(400px, 1fr); }
+.cal-desktop .cal-week { font-size: var(--fs-xs); letter-spacing: 0; padding: 0 0 10px; }
+.cal-desktop .cal-week span:nth-last-child(-n+2) { color: var(--ink-3); font-weight: 400; }
+.cal-desktop .cal-cell { padding: 8px; gap: 4px; }
+.cal-desktop .cal-cell.dim { background: color-mix(in srgb, var(--card) 70%, var(--bg)); }
+.cal-desktop .cal-cell.dim .cal-task { opacity: 1; color: var(--ink-3); }
+.cal-desktop .cal-cell.cal-picked { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cal-desktop .cal-num { font-size: var(--fs-xs); width: 25px; height: 25px; border-radius: 7px; }
+.cal-desktop .cal-task { min-height: 20px; padding: 3px 4px; gap: 4px; background: color-mix(in srgb, var(--accent) 6%, var(--card)); border-radius: 4px; line-height: 1.3; }
+.cal-desktop .cal-task-done { background: transparent; }
+.cal-desktop .cal-task .flag { width: 2px; }
+.cal-desktop .cal-more { padding: 2px 4px; border-radius: 4px; font-size: var(--fs-xs); }
+.cal-desktop .cal-daylist { display: flex; flex-direction: column; min-width: 0; max-height: 250px; overflow-y: auto; border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--card); padding: 16px; }
+.cal-desktop .cal-daylist-head { display: flex; align-items: center; gap: 8px; flex: none; padding-bottom: 10px; border-bottom: 1px solid var(--hair); font-size: var(--fs-sm); }
+.cal-desktop .cal-daylist-wd { color: var(--ink-3); font-size: var(--fs-xs); }
+.cal-desktop .cal-daylist-x { margin-left: auto; width: 28px; height: 28px; font-size: 18px; color: var(--ink-3); border-radius: 6px; }
+.cal-desktop .cal-daylist-x:hover { background: var(--accent-soft); color: var(--accent); }
+.cal-desktop .cal-day-row { display: flex; align-items: center; gap: 8px; padding: 12px 0; text-align: left; flex: none; border-bottom: 1px solid var(--hair); font-size: var(--fs-sm); color: var(--ink); }
+.cal-desktop .cal-day-row:last-child { border: 0; }
+.cal-desktop .cal-day-row:hover { color: var(--accent); }
+.cal-desktop .cal-day-title { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.6; }
+.cal-desktop .cal-day-time { flex: none; font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cal-desktop .cal-day-row.done .cal-day-title { color: var(--ink-3); text-decoration: line-through; }
+.cal-desktop .cal-daylist-empty { padding: 24px 0; color: var(--ink-3); font-size: var(--fs-xs); }
+.cal-desktop .cal-detail { max-height: none; margin: 0; overflow: visible; min-width: 0; }
+@media (min-width: 1280px) {
+  .cal-desktop .cal-has-agenda { grid-template-columns: minmax(0, 1fr) 280px; }
+  .cal-desktop .cal-has-agenda .cal-board { grid-column: 1; grid-row: 1; }
+  .cal-desktop .cal-has-agenda .cal-daylist { grid-column: 2; grid-row: 1; max-height: 630px; }
+  .cal-desktop .cal-detail { grid-column: 1 / -1; }
+}
 .cal-grid.week .cal-cell { padding: 8px 9px; }
 .cal-grid.week .cal-num { font-size: 15px; }
 
@@ -162,7 +204,7 @@
     display: flex; align-items: baseline; gap: 8px;
     padding: 7px 2px 6px; border-bottom: 1px solid var(--hair);
   }
-  .cal-daylist-head b { font-family: var(--serif); font-size: var(--fs-md); }
+  .cal-daylist-head b { font-family: var(--heading); font-size: var(--fs-md); }
   .cal-daylist-wd { font-size: var(--fs-xs); color: var(--ink-3); }
   .cal-daylist-x {
     margin-left: auto; width: 30px; height: 30px; border-radius: 50%;

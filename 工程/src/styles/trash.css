@@ -1,0 +1,30 @@
+/* 恢复是回收站的主要动作，不复用待办行的优先级和尾部操作堆叠。 */
+.trash-page .view-body { padding-top: 0; }
+.trash-page .task-row.trash-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) 84px 176px; align-items: center; column-gap: 16px; padding: 18px 16px; min-height: 76px; border-radius: 0; border-bottom: 1px solid var(--hair); background: var(--card); box-shadow: none; }
+.trash-page .trash-row:first-child { border-radius: var(--r-md) var(--r-md) 0 0; }
+.trash-page .trash-row:last-of-type { border-radius: 0 0 var(--r-md) var(--r-md); }
+.trash-kind { color: var(--ink-3); display: flex; align-items: center; }
+.trash-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.trash-page .trash-row .trash-copy .title { display: block; flex: none; overflow-wrap: anywhere; white-space: normal; font-size: var(--fs-sm); color: var(--ink); line-height: 1.6; cursor: default; }
+.trash-parent { min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-3); font-size: var(--fs-xs); }
+.trash-expiry { white-space: nowrap; text-align: right; font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.trash-expiry.soon { color: var(--warn); }
+.trash-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; white-space: nowrap; }
+.trash-actions .btn { padding: 6px 9px; font-size: var(--fs-xs); }
+.trash-actions .trash-restore { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.trash-actions .trash-purge, .trash-page .trash-clear { color: var(--ink-3); }
+.trash-actions .trash-purge:hover, .trash-page .trash-clear:hover { color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, var(--card)); }
+.trash-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 28px 0; padding: 70px 20px; background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md); }
+.trash-empty > .ui-icon { color: var(--ink-3); }
+.trash-empty strong { font: 500 var(--fs-md) var(--sans); color: var(--ink-2); }
+.trash-empty > span { font-size: var(--fs-sm); color: var(--ink-3); }
+@media (max-width: 1000px) {
+  .trash-page .task-row.trash-row { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px 12px; }
+  .trash-copy { grid-column: 2 / -1; }
+  .trash-expiry { grid-column: 2; grid-row: 2; text-align: left; }
+  .trash-actions { grid-column: 3; grid-row: 2; }
+}
+.mshell .trash-page .task-row.trash-row { grid-template-columns: 18px minmax(0, 1fr) auto; padding: 18px 16px; min-height: 104px; margin-bottom: 10px; border: 1px solid var(--hair); border-radius: var(--r-md); }
+.mshell .trash-page .trash-copy { grid-column: 2 / -1; }
+.mshell .trash-page .trash-expiry { grid-column: 2; grid-row: 2; text-align: left; }
+.mshell .trash-page .trash-actions { grid-column: 3; grid-row: 2; }

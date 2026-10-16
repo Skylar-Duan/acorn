@@ -6,14 +6,14 @@
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  background: var(--bg);
-  border: 1px solid var(--hair);
-  border-radius: 999px;
+  background: var(--surface-hover);
+  border: 1px solid transparent;
+  border-radius: 10px;
   align-self: center;
 }
 .all-sort button {
-  border-radius: 999px;
-  padding: 4px 12px;
+  border-radius: 7px;
+  padding: 6px 12px;
   font-size: var(--fs-sm);
   color: var(--ink-2);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
@@ -32,13 +32,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 30px 6px;
-  padding: 0 10px;
+  margin: 10px 0 4px;
+  padding: 0 13px;
   background: var(--card);
   border: 1px solid var(--hair);
-  border-radius: 999px;
+  border-radius: 10px;
 }
-.plan-search .ps-glyph { font-size: 13px; opacity: .6; flex: none; }
+.plan-search .ps-glyph { display: grid; place-items: center; color: var(--ink-3); flex: none; }
 .plan-search input.input {
   flex: 1;
   min-width: 0;
@@ -57,7 +57,7 @@
 }
 .plan-search .ps-clear:hover { color: var(--accent); background: var(--bg); }
 @media (max-width: 760px) {
-  .plan-search { margin: 0 14px 6px; }
+  .plan-search { margin: 8px 14px 6px; }
   /* 「列表 / 四象限」「按时间 / 按重要性」这些分段键量出来只有 24px 高，手指按不准。
      写在这个文件里：plan.css 是视图按需引入的，加载顺序在 app.css 之后 */
   .all-sort button { padding-top: 7px; padding-bottom: 7px; }

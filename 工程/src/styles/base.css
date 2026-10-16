@@ -3,14 +3,16 @@
 @import "./fonts.css";
 
 :root {
-  /* 标题文楷、正文思源黑体（v1.11.0，两端一致，见 fonts.css）。后面是子集外生僻字的回落 */
+  /* 办公标题与正文共用现代黑体；旧文楷栈保留给兼容内容。后面是生僻字回落。 */
   --serif: "LXGW WenKai", "LXGW WenKai Screen", "KaiTi", "楷体", serif;
   --sans: "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "微软雅黑", system-ui, sans-serif;
+  --heading: var(--sans);
   --mono: "Cascadia Mono", Consolas, monospace;
   --side-w: 232px;
-  --r-sm: 7px; --r-md: 10px; --r-lg: 14px;
-  --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 15.5px;
-  --fs-title: 26px; --fs-h2: 17px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px;
+  --fs-title: 28px; --fs-h2: 17px;
+  --control-h: 34px;
   /* 网页版没登录时顶上那条提示的高度。两处要对齐：提示条自己、和 .shell 让出来的那一口 */
   --web-note-h: 30px;
 
@@ -61,13 +63,11 @@ html, body, #root { height: 100%; }
 body {
   font-family: var(--sans);
   font-size: var(--fs-md);
+  line-height: 1.5;
   color: var(--ink);
-  /* 底纸三层：噪点纸纹 + 右上与左下两团极淡的主题色光晕 + 底色 */
+  /* 干净底面，主题色用于控件与选择。 */
   background-color: var(--bg);
-  background-image:
-    var(--paper),
-    radial-gradient(118% 76% at 88% -10%, var(--accent-soft), transparent 60%),
-    radial-gradient(86% 60% at -10% 110%, var(--accent-soft), transparent 64%);
+  background-image: none;
   overflow: hidden;
   /* 别让人把整页往下拽（v1.15.0 网页版）：手机浏览器默认「下拉刷新」，
      而这个应用里往下拽是列表在滚、横着划是一行事的动作——手指稍微斜一点就触发整页刷新。
@@ -82,6 +82,8 @@ body {
 }
 
 input, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex="0"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button:disabled { cursor: default; }
 input, textarea { user-select: text; }
 button { cursor: pointer; background: none; border: none; }
 a { color: var(--accent); }
@@ -100,11 +102,11 @@ a { color: var(--accent); }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* 大块「纸」也带上同一层颗粒：卡片、弹窗、输入条——近看有纸纹，远看只是不那么塑料 */
-.modal, .task-card, .set-section, .quick-add { background-image: var(--paper); }
+/* 卡片、弹窗和输入条共用干净底面。 */
+.modal, .task-card, .set-section, .quick-add { background-image: none; }
 
-/* 标题（霞鹜文楷） */
-.serif { font-family: var(--serif); }
+/* 旧标题类继续兼容，办公标题统一现代无衬线。 */
+.serif { font-family: var(--heading); }
 
 /* 通用小签 */
 .pill {
@@ -130,7 +132,8 @@ a { color: var(--accent); }
 
 /* 按钮 */
 .btn {
-  border-radius: var(--r-sm); padding: 6px 14px; font-size: var(--fs-sm);
+  display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: var(--control-h);
+  border-radius: var(--r-sm); padding: 6px 13px; font-size: var(--fs-sm); font-weight: 500; line-height: 1.4;
   color: var(--ink-2); border: 1px solid var(--hair); background: var(--card);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
@@ -140,6 +143,7 @@ a { color: var(--accent); }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover { background: var(--accent-soft); color: var(--accent); }
 .btn.danger:hover { color: #C0564A; border-color: #C0564A; background: transparent; }
+.btn:disabled { opacity: .45; }
 
 kbd {
   border: 1px solid var(--hair); background: var(--card); border-radius: 4px;
@@ -149,7 +153,7 @@ kbd {
 /* 输入框 */
 .input {
   width: 100%; border: 1px solid var(--hair); background: var(--card);
-  border-radius: var(--r-sm); padding: 7px 11px; outline: none;
+  border-radius: var(--r-sm); padding: 8px 11px; min-height: var(--control-h); outline: none;
   transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -195,7 +199,8 @@ kbd {
    这里一次把默认值改对，以后新加的浮层不会再重犯 */
 .modal {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg);
-  box-shadow: var(--shadow); margin-top: 12vh;
+  box-shadow: var(--shadow); margin-top: min(10vh, 72px);
+  max-height: calc(100dvh - 40px);
   min-width: min(480px, calc(100vw - 24px)); max-width: 640px;
   overflow: hidden;
 }

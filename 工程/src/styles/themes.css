@@ -1,150 +1,69 @@
-/* 六款自然主题 × 深浅双模式。
-   应用方式：<html data-theme="forest" data-mode="light">
-   命名约定：
-   --bg 窗口底纸 · --bg-side 侧栏 · --card 卡片 · --ink 墨 · --ink-2 淡墨 · --ink-3 极淡
-   --hair 发丝线 · --accent 强调 · --accent-soft 强调底 · --on-accent 强调色上的前景
-   --ok 完成 · --warn 逾期/顺延 · --shadow 大投影 · --shadow-sm 小投影
-   清单色（跨主题一致，仅按明暗微调）：--list-clay/moss/sea/sand/slate/plum */
+/* 六款自然主题共用干净底面，主题色用于操作和选择。无纸纹；浅深模式整体瞬切。 */
+[data-mode="light"] {
+  color-scheme: light;
+  --bg: #F5F6F8; --bg-side: #EEF0F3; --card: #FFFFFF;
+  --ink: #202631; --ink-2: #566272; --ink-3: #626D7D;
+  --hair: #DFE3E9; --on-accent: #FFFFFF; --warn: #9B681F;
+  --shadow: 0 24px 70px #17243A24, 0 3px 12px #17243A0A;
+  --shadow-sm: 0 2px 8px #17243A08;
+  --surface-hover: #F0F2F5; --surface-inset: #F5F6F8;
+  --control-edge: #C7CED8; --danger: #B74747;
+  --list-clay: #AD563C; --list-moss: #607B46; --list-sea: #397796;
+  --list-sand: #936D31; --list-slate: #627184; --list-plum: #8E5B83;
+  --paper: none; --scene-a: .045;
+}
+[data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #15191F; --bg-side: #11151A; --card: #20262E;
+  --ink: #EFF2F6; --ink-2: #BCC5D1; --ink-3: #98A5B5;
+  --hair: #343D49; --on-accent: #142018; --warn: #E2BC78;
+  --shadow: 0 24px 70px #00000066, 0 3px 12px #00000026;
+  --shadow-sm: 0 2px 8px #00000024;
+  --surface-hover: #2A323D; --surface-inset: #191E25;
+  --control-edge: #596675; --danger: #F29696;
+  --list-clay: #EAA28B; --list-moss: #AEC997; --list-sea: #92C8E4;
+  --list-sand: #DABE8B; --list-slate: #B1C0D1; --list-plum: #D3A5CB;
+  --paper: none; --scene-a: .035;
+}
 
-/* ---------- 森林（默认）：晨雾里的针叶林 ---------- */
 [data-theme="forest"][data-mode="light"] {
-  --bg: #F4F3EB; --bg-side: #EDECE1; --card: #FDFCF7;
-  --ink: #2E3129; --ink-2: #6C7263; --ink-3: #A2A795;
-  --hair: #DFDDCE;
-  --accent: #66875A; --accent-soft: #E4EADD; --on-accent: #FDFCF7;
-  --ok: #66875A; --warn: #A8852E;
-  --shadow: 0 18px 48px rgba(62, 74, 52, .14), 0 2px 8px rgba(62, 74, 52, .07);
-  --shadow-sm: 0 1px 4px rgba(62, 74, 52, .08);
+  --accent: #46775B; --accent-soft: #EAF2ED; --ok: #46775B;
 }
 [data-theme="forest"][data-mode="dark"] {
-  --bg: #20241E; --bg-side: #1A1D18; --card: #292E26;
-  --ink: #E2E4D8; --ink-2: #A0A692; --ink-3: #666C5B;
-  --hair: #363B31;
-  --accent: #92B283; --accent-soft: #34402E; --on-accent: #1A1D18;
-  --ok: #92B283; --warn: #C9A054;
-  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+  --accent: #9AC5AA; --accent-soft: #293E32; --ok: #9AC5AA;
 }
 
-/* ---------- 海洋：退潮后的浅滩 ---------- */
 [data-theme="ocean"][data-mode="light"] {
-  --bg: #F1F4F2; --bg-side: #E9EEEC; --card: #FBFDFC;
-  --ink: #293234; --ink-2: #64737a; --ink-3: #9AA8AD;
-  --hair: #D9E1DF;
-  --accent: #56879B; --accent-soft: #DFEAEE; --on-accent: #FBFDFC;
-  --ok: #629489; --warn: #A8852E;
-  --shadow: 0 18px 48px rgba(43, 66, 76, .13), 0 2px 8px rgba(43, 66, 76, .07);
-  --shadow-sm: 0 1px 4px rgba(43, 66, 76, .08);
+  --accent: #296E96; --accent-soft: #E8F1F7; --ok: #296E96;
 }
 [data-theme="ocean"][data-mode="dark"] {
-  --bg: #1B2225; --bg-side: #161C1F; --card: #232C30;
-  --ink: #DCE4E4; --ink-2: #93A5AA; --ink-3: #5B6B70;
-  --hair: #2F3A3E;
-  --accent: #83AFC2; --accent-soft: #293A42; --on-accent: #161C1F;
-  --ok: #85B3A8; --warn: #C9A054;
-  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+  --accent: #8EC4E6; --accent-soft: #233B4B; --ok: #8EC4E6;
 }
 
-/* ---------- 星空：暮色与远光 ---------- */
 [data-theme="night"][data-mode="light"] {
-  --bg: #F2F2F6; --bg-side: #EBEBF1; --card: #FCFCFE;
-  --ink: #2C2E3A; --ink-2: #6B6E82; --ink-3: #A1A4B5;
-  --hair: #DDDEE8;
-  --accent: #6D77A8; --accent-soft: #E4E6F1; --on-accent: #FCFCFE;
-  --ok: #6D9679; --warn: #A8852E;
-  --shadow: 0 18px 48px rgba(53, 57, 84, .14), 0 2px 8px rgba(53, 57, 84, .07);
-  --shadow-sm: 0 1px 4px rgba(53, 57, 84, .08);
+  --accent: #6853A4; --accent-soft: #F0ECF8; --ok: #6853A4;
 }
 [data-theme="night"][data-mode="dark"] {
-  --bg: #1B1D27; --bg-side: #15161F; --card: #242633;
-  --ink: #DEDFE8; --ink-2: #9CA0B8; --ink-3: #5E6178;
-  --hair: #303344;
-  --accent: #98A3D4; --accent-soft: #2E3350; --on-accent: #15161F;
-  --ok: #8FB89B; --warn: #C9A054;
-  --shadow: 0 18px 48px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .35);
+  --accent: #BCA9E8; --accent-soft: #382F4D; --ok: #BCA9E8;
 }
 
-/* ---------- 沙漠：落日下的沙丘 ---------- */
 [data-theme="desert"][data-mode="light"] {
-  --bg: #F7F2E7; --bg-side: #F0EADC; --card: #FEFBF4;
-  --ink: #363026; --ink-2: #7B7160; --ink-3: #B0A692;
-  --hair: #E5DCC8;
-  --accent: #AC8253; --accent-soft: #F0E5D4; --on-accent: #FEFBF4;
-  --ok: #7C9268; --warn: #A8742E;
-  --shadow: 0 18px 48px rgba(84, 66, 40, .14), 0 2px 8px rgba(84, 66, 40, .07);
-  --shadow-sm: 0 1px 4px rgba(84, 66, 40, .08);
+  --accent: #926125; --accent-soft: #F8F0E3; --ok: #926125;
 }
 [data-theme="desert"][data-mode="dark"] {
-  --bg: #26211A; --bg-side: #1F1B15; --card: #302A21;
-  --ink: #E8E1D2; --ink-2: #AC9F88; --ink-3: #6D6252;
-  --hair: #3D362B;
-  --accent: #C9A876; --accent-soft: #423826; --on-accent: #1F1B15;
-  --ok: #9AAE85; --warn: #C9A054;
-  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+  --accent: #E2BD85; --accent-soft: #443821; --ok: #E2BD85;
 }
 
-/* ---------- 雪山：清晨的冰川 ---------- */
 [data-theme="snow"][data-mode="light"] {
-  --bg: #F4F6F8; --bg-side: #EDF0F3; --card: #FCFDFE;
-  --ink: #2B3138; --ink-2: #67717C; --ink-3: #9DA7B2;
-  --hair: #DCE2E8;
-  --accent: #74909F; --accent-soft: #E4EBEF; --on-accent: #FCFDFE;
-  --ok: #6D9679; --warn: #A8852E;
-  --shadow: 0 18px 48px rgba(48, 62, 76, .13), 0 2px 8px rgba(48, 62, 76, .06);
-  --shadow-sm: 0 1px 4px rgba(48, 62, 76, .08);
+  --accent: #446F89; --accent-soft: #EDF2F7; --ok: #446F89;
 }
 [data-theme="snow"][data-mode="dark"] {
-  --bg: #1D2126; --bg-side: #171B1F; --card: #262B31;
-  --ink: #DFE3E7; --ink-2: #98A4AF; --ink-3: #5C6771;
-  --hair: #323942;
-  --accent: #93ABC0; --accent-soft: #2C3846; --on-accent: #171B1F;
-  --ok: #8FB89B; --warn: #C9A054;
-  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
+  --accent: #A9C6DC; --accent-soft: #293B49; --ok: #A9C6DC;
 }
 
-/* ---------- 南极：极昼的冰面 ---------- */
 [data-theme="polar"][data-mode="light"] {
-  --bg: #F0F5F5; --bg-side: #E8EFEF; --card: #FBFEFE;
-  --ink: #263335; --ink-2: #5F7478; --ink-3: #96A9AC;
-  --hair: #D6E2E2;
-  --accent: #579CA2; --accent-soft: #DEEDEE; --on-accent: #FBFEFE;
-  --ok: #629489; --warn: #A8852E;
-  --shadow: 0 18px 48px rgba(38, 71, 74, .13), 0 2px 8px rgba(38, 71, 74, .06);
-  --shadow-sm: 0 1px 4px rgba(38, 71, 74, .08);
+  --accent: #327B76; --accent-soft: #E8F4F1; --ok: #327B76;
 }
 [data-theme="polar"][data-mode="dark"] {
-  --bg: #172123; --bg-side: #121B1D; --card: #1F2B2D;
-  --ink: #D9E4E4; --ink-2: #8FA8AA; --ink-3: #566A6C;
-  --hair: #2A3A3C;
-  --accent: #7FBFC4; --accent-soft: #24393B; --on-accent: #121B1D;
-  --ok: #85B3A8; --warn: #C9A054;
-  --shadow: 0 18px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .3);
-}
-
-/* ---------- 清单色（浅色模式） ---------- */
-[data-mode="light"] {
-  --list-clay: #B4664A; --list-moss: #71885E; --list-sea: #5A8CA0;
-  --list-sand: #B08D57; --list-slate: #75828E; --list-plum: #9A6E8C;
-}
-[data-mode="dark"] {
-  --list-clay: #CE8A6D; --list-moss: #96AE81; --list-sea: #82AFC3;
-  --list-sand: #C9A876; --list-slate: #99A6B2; --list-plum: #BC93AE;
-}
-
-/* ---------- 纸纹与风景水印 ----------
-   --paper 是一块可无缝平铺的噪点（SVG feTurbulence，浅色模式撒墨点、深色模式撒白点），
-   铺在窗口与侧栏底纸上，近看有纸的颗粒，远看只是不那么"塑料"。
-   --scene-a 是底部风景水印的总透明度（画本身见 ThemeScene.tsx，颜色取自各主题 token）。*/
-[data-mode="light"] {
-  --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='p' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .85 0 0 0 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)' opacity='.09'/%3E%3C/svg%3E");
-  --scene-a: .22;
-}
-[data-mode="dark"] {
-  --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='p' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .85 0 0 0 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)' opacity='.055'/%3E%3C/svg%3E");
-  --scene-a: .24;
+  --accent: #92CFC5; --accent-soft: #263F3C; --ok: #92CFC5;
 }

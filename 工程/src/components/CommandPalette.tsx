@@ -4,11 +4,12 @@ import type { ThemeName } from "../core/model";
 import type { ViewId } from "../core/store";
 import { navigate, setPaletteOpen, setQuickAddOpen, undo, updateSettings } from "../core/store";
 import { FOCUS_ENABLED } from "../core/features";
+import Icon, { type IconName } from "./Icon";
 import "../styles/overlays.css";
 
 interface Command {
   id: string;
-  icon: string;
+  icon: IconName;
   label: string;
   hint: string;
   run: () => void;
@@ -18,39 +19,39 @@ interface Command {
 // 「随手记」v1.11.2 从这张表里退出去了——它现在不是一个能跳过去的地方，
 // 而是下面 COMMANDS 里那条「记一条」（开弹窗）。
 // 顺序跟侧栏走（2026-09 重排）：常驻四项 计划 / 日历 / 今日任务 / 习惯，再是「更多」里那几个，设置垫底
-const NAV: [ViewId, string, string, string][] = [
-  ["plan", "🗂", "计划", "全部未完成任务（含四象限）"],
-  ["calendar", "📅", "日历", "按月查看"],
-  ["today", "🌞", "今日任务", "今日安排与逾期"],
-  ["habits", "🔁", "习惯", "需要每天打卡的事"],
-  ["done", "✔", "已完成", "已完成的任务"],
-  ["focus", "🍅", "专注", "番茄钟"],
-  ["stats", "📊", "统计", "完成情况回顾"],
-  ["trash", "🗑", "回收站", "已删除的任务"],
-  ["settings", "⚙", "设置", "偏好与数据"],
+const NAV: [ViewId, IconName, string, string][] = [
+  ["plan", "list", "计划", "全部未完成任务（含四象限）"],
+  ["calendar", "calendar", "日历", "按月查看"],
+  ["today", "sun", "今日任务", "今日安排与逾期"],
+  ["habits", "repeat", "习惯", "需要每天打卡的事"],
+  ["done", "checkCircle", "已完成", "已完成的任务"],
+  ["focus", "clock", "专注", "番茄钟"],
+  ["stats", "chart", "统计", "完成情况回顾"],
+  ["trash", "trash", "回收站", "已删除的任务"],
+  ["settings", "settings", "设置", "偏好与数据"],
 ];
 
 // [主题, 图标, 名称, 说明]（说明沿用 themes.css 里的意象）
-const THEMES: [ThemeName, string, string, string][] = [
-  ["forest", "🌲", "森林", "晨雾里的针叶林"],
-  ["ocean", "🌊", "海洋", "退潮后的浅滩"],
-  ["night", "✨", "星空", "暮色与远光"],
-  ["desert", "🏜", "沙漠", "落日下的沙丘"],
-  ["snow", "🏔", "雪山", "清晨的冰川"],
-  ["polar", "🧊", "南极", "极昼的冰面"],
+const THEMES: [ThemeName, IconName, string, string][] = [
+  ["forest", "palette", "森林", "晨雾里的针叶林"],
+  ["ocean", "palette", "海洋", "退潮后的浅滩"],
+  ["night", "palette", "星空", "暮色与远光"],
+  ["desert", "palette", "沙漠", "落日下的沙丘"],
+  ["snow", "palette", "雪山", "清晨的冰川"],
+  ["polar", "palette", "南极", "极昼的冰面"],
 ];
 
-const MODES: ["light" | "dark" | "system", string, string][] = [
-  ["light", "🌤", "浅色"],
-  ["dark", "🌙", "深色"],
-  ["system", "🖥", "跟随系统"],
+const MODES: ["light" | "dark" | "system", IconName, string][] = [
+  ["light", "sun", "浅色"],
+  ["dark", "moon", "深色"],
+  ["system", "devices", "跟随系统"],
 ];
 
 const COMMANDS: Command[] = [
   // 排在最前面：记一条是这个面板里唯一一条「当场就能做完」的事，
   // 别让它排在一串跳转后面（Ctrl+K 打开就在眼前）
   {
-    id: "quick-add", icon: "✍️", label: "记一条",
+    id: "quick-add", icon: "edit", label: "记一条",
     hint: "打开记一条的框，回车记下", run: () => setQuickAddOpen(true),
   },
   // 专注暂时收起（core/features.ts），跳转项跟着不出现
@@ -65,7 +66,7 @@ const COMMANDS: Command[] = [
     id: `mode-${mode}`, icon, label: name, hint: "深浅模式",
     run: () => updateSettings({ mode }),
   })),
-  { id: "undo", icon: "↩", label: "撤销上一步", hint: "撤销最近一次更改", run: () => undo() },
+  { id: "undo", icon: "restore", label: "撤销上一步", hint: "撤销最近一次更改", run: () => undo() },
 ];
 
 export default function CommandPalette() {
@@ -123,7 +124,7 @@ export default function CommandPalette() {
     >
       <div className="modal cp-modal">
         <div className="cp-input">
-          <span className="cp-glyph">❯</span>
+          <Icon name="search" />
           <input
             autoFocus
             value={q}
@@ -140,7 +141,7 @@ export default function CommandPalette() {
               onMouseEnter={() => setActive(i)}
               onClick={() => runAt(i)}
             >
-              <span className="cp-ico">{c.icon}</span>
+              <span className="cp-ico"><Icon name={c.icon} size={17} /></span>
               <span className="cp-label">{c.label}</span>
               <span className="cp-hint">{c.hint}</span>
             </button>

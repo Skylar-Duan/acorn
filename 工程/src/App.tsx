@@ -173,6 +173,7 @@ export default function App() {
   // 全局快捷键
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (e.defaultPrevented) return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -212,6 +213,10 @@ export default function App() {
         return;
       }
       if (inEditable()) return;
+      // 原生控件和局部按钮自己处理 Enter／方向键，不能被列表选中项抢走。
+      // Ctrl/Meta 的全局动作仍按上面的分支执行；普通任务行保留列表键盘操作。
+      const target = e.target instanceof Element ? e.target : null;
+      if (!mod && target?.closest('button, a[href], select, [role="button"], [role="tab"]')) return;
 
       const ids = visibleTaskIds();
       const cur = selectedIds.length === 1 ? ids.indexOf(selectedIds[0]) : -1;

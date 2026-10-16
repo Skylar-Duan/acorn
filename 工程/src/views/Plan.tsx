@@ -18,6 +18,7 @@ import RowList, { ROW_PIN, cardAnchor, useFoldPlan, visibleRows } from "../compo
 import MobileHead from "../mobile/MobileHead";
 import QuadrantBoard from "./Quadrant";
 import "../styles/plan.css";
+import Icon from "../components/Icon";
 
 const SORT_OPTIONS = [
   { id: "time", name: "按时间" },
@@ -156,7 +157,7 @@ export default function Plan() {
           Ctrl+F 在这个视图里会聚焦到它（App.tsx 按 DOM 找 .plan-search input），四象限 tab 下不出现 */}
       {tab === "list" && (
         <div className="plan-search">
-          <span className="ps-glyph">🔍</span>
+          <span className="ps-glyph"><Icon name="search" size={17} /></span>
           <input
             className="input"
             value={q}

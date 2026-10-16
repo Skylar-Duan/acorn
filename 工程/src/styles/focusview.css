@@ -18,7 +18,7 @@
   gap: 18px;
 }
 .fv-lead {
-  font-family: var(--serif);
+  font-family: var(--heading);
   font-size: 19px;
   color: var(--ink);
   text-align: center;
@@ -68,13 +68,13 @@
   letter-spacing: 2px;
 }
 .fv-timer.fv-paused {
-  font-family: var(--serif);
+  font-family: var(--heading);
   font-size: 56px;
   letter-spacing: 10px;
   color: var(--ink-3);
 }
 .fv-task {
-  font-family: var(--serif);
+  font-family: var(--heading);
   font-size: 17px;
   color: var(--ink-2);
   max-width: 440px;

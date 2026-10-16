@@ -17,6 +17,7 @@ import { shortVersion, IS_ULTRA } from "../core/version";
 import { forceFoldOpen, useFold } from "../core/useFold";
 import { moveSidebarModule, sidebarHidden, sidebarModules, sidebarName, SIDEBAR_MODULES, type SidebarModuleId } from "../core/sidebar";
 import SidebarIcon from "./SidebarIcon";
+import Icon from "./Icon";
 import SidebarModuleMenu, { type SidebarMenuTarget } from "./SidebarModuleMenu";
 import { useSidebarModuleDrag } from "./sidebarModuleDrag";
 import "../styles/sidebar.css";
@@ -567,19 +568,19 @@ export default function Sidebar(
     <aside className={`side side-modules${drawerOpen ? " open" : ""}`}>
       <div className="brand">
         <img src={iconUrl} alt="" />
-        {IS_ULTRA ? "橡果 Ultra" : "橡果"}
+        <span className="brand-name">橡果{IS_ULTRA && <span className="brand-edition">Ultra</span>}</span>
         {/* 版本号小标签，点开是给使用者看的更新日志（core/changelog.ts，不是 CHANGELOG.md）。
             跟齿轮一样在拖拽区里，CSS 必须 no-drag，还得把 .brand 的 3px 字距复位 */}
         <button className="ver" title="查看更新日志" onClick={() => setChangelogOpen(true)}>{shortVersion()}</button>
         {/* 齿轮跟着标题走：手机上抽屉一拉开就在手边，不用滚到侧栏最底下。
             .brand 是窗口拖拽区，这颗按钮必须在 CSS 里单独 no-drag，否则点不动 */}
-        <button className="gear" title="设置" aria-label="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}>⚙</button>
+        <button className="gear" title="设置" aria-label="设置" onClick={() => { navigate("settings"); onNavigate?.(); }}><Icon name="settings" size={16} /></button>
       </div>
       {/* 记一条：整条侧栏最该一眼看见的那件事，所以是唯一一颗实心按钮。
           它**不是导航项**——记完还留在原来那一页，所以没有选中态，也不调 onNavigate
           （手机上侧栏根本不渲染，抽屉那套跟它无关） */}
       <button className="side-quickadd" title="记一条（Ctrl+1）" onClick={() => setQuickAddOpen(true)}>
-        <span className="side-quickadd-plus">＋</span>
+        <Icon name="plus" size={17} />
         记一条
       </button>
       <nav aria-label="侧栏">

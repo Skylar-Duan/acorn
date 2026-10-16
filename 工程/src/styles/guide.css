@@ -16,7 +16,7 @@
   overflow: hidden;
 }
 .gd-win-head { display: flex; align-items: baseline; gap: 12px; flex: none; flex-wrap: wrap; row-gap: 2px; }
-.gd-win-head h1 { font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.gd-win-head h1 { font-family: var(--heading); font-size: 22px; font-weight: 600; }
 .gd-win-head .sub { color: var(--ink-2); font-size: 13px; }
 .gd-win-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 2px 26px; margin-top: 8px; }
 
@@ -77,7 +77,7 @@
 
 .gd-section { margin-bottom: 26px; }
 .gd-section > h2 {
-  font-family: var(--serif);
+  font-family: var(--heading);
   font-size: 17px;
   font-weight: 600;
   color: var(--ink);

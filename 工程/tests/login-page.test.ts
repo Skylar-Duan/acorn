@@ -46,7 +46,7 @@ describe("文案：用户定过的那几句，一个字都不许改", () => {
 
   for (const line of LINES) {
     it(`「${line}」在源码里`, () => {
-      expect(loginPageSource).toContain(line);
+      expect(loginPageSource.replace(/<\/?span>/g, "")).toContain(line);
     });
   }
 
@@ -324,7 +324,7 @@ describe("样式：颜色只用 token，时长只用 --dur-*", () => {
     // 唯一放行的是那抹错误红：settings.css 里的 .acct-err 用的就是同一个值
     const hex = (loginCss.match(/#[0-9A-Fa-f]{3,8}\b/g) ?? []).filter((c) => c !== "#C0564A");
     expect(hex).toEqual([]);
-    for (const token of ["var(--bg)", "var(--card)", "var(--ink)", "var(--accent)", "var(--accent-soft)", "var(--hair)"]) {
+    for (const token of ["var(--surface-inset)", "var(--card)", "var(--ink)", "var(--accent)", "var(--accent-soft)", "var(--hair)"]) {
       expect(loginCss).toContain(token);
     }
   });
@@ -355,9 +355,9 @@ describe("样式：颜色只用 token，时长只用 --dur-*", () => {
     expect(loginCss).toContain("border-radius: 14px;");
   });
 
-  it("桌面登录表单那张卡还是 680 宽、左 300 扉页右表单", () => {
-    expect(loginCss).toContain("width: min(680px, calc(100vw - 32px));");
-    expect(loginCss).toContain("grid-template-columns: 300px 1fr;");
+  it("桌面登录表单是 660 宽、左 240 品牌区，右侧表单允许收缩", () => {
+    expect(loginCss).toContain("width: min(660px, calc(100vw - 32px));");
+    expect(loginCss).toContain("grid-template-columns: 240px minmax(0, 1fr);");
   });
 
   it("桌面选档案那一步收成单栏 440 窄卡（摊成双栏左半边就干站着）", () => {

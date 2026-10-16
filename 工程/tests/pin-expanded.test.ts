@@ -453,7 +453,7 @@ describe("视图接线", () => {
   });
 
   it("日历不用钉：卡片本来就画在网格外面那块固定的详情区，日子怎么改它都不挪窝", () => {
-    expect(calendarViewSource).toContain('<div className="cal-detail">');
+    expect(calendarViewSource).toContain('<div className="cal-detail" ref={detail}>');
     expect(calendarViewSource).toContain("<TaskCard key={expanded.id} task={expanded} />");
     expect(calendarViewSource).not.toContain("usePinExpanded");
   });

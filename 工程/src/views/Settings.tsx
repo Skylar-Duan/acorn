@@ -38,6 +38,8 @@ import UpdatePanel from "../components/UpdatePanel";
 import { updaterSupported } from "../core/updater";
 import MobileHead from "../mobile/MobileHead";
 import SidebarSettings from "../components/SidebarSettings";
+import Icon, { type IconName } from "../components/Icon";
+import { IMAGE_LEDGER_MAX_BYTES, ledgerImageBytes } from "../core/taskImages";
 import "../styles/settings.css";
 
 /** 设置页那些节在本机记忆里的键前缀（侧栏是 `acorn-side-`）。
@@ -45,6 +47,7 @@ import "../styles/settings.css";
 const SET_FOLD_PREFIX = "acorn-set-";
 /** 设置页所有节共用这一个 group：useFold 凭它保证「一次只摊开一节」 */
 const SET_GROUP = "settings";
+const SECTION_ICONS: Record<string, IconName> = { cloud: "person", general: "sliders", "eye-care": "eye", sidebar: "grid", look: "palette", data: "folder", io: "file", update: "download", feedback: "feedback" };
 
 /**
  * 设置页的一节（v1.9.1 起可折叠）。
@@ -93,9 +96,10 @@ function SetSection({
     <div className={`set-section${open ? "" : " set-closed"}`} id={anchorId}>
       <div className="set-header">
         <button type="button" className="set-head" aria-expanded={open} onClick={toggle}>
+          <span className="set-icon"><Icon name={SECTION_ICONS[id] ?? "settings"} size={18} /></span>
           <h2>{title}</h2>
           {!open && summary && <span className="set-summary">{summary}</span>}
-          <span className={`set-caret${open ? " up" : ""}`}>▾</span>
+          <span className={`set-caret${open ? " up" : ""}`}><Icon name="chevronDown" size={15} /></span>
         </button>
         {headerAction}
       </div>
@@ -196,6 +200,7 @@ function buildMarkdown(d: AppData): string {
 export default function Settings() {
   const data = useApp((s) => s.data);
   const settings = data.settings;
+  const imageBytes = IS_ULTRA ? ledgerImageBytes(data) : 0;
   /** 「账号」那一节收起来时右边那句话要分登录没登录说，所以这里要知道登录态 */
   const session = useSync((s) => s.session);
   // 每次进设置页都先摊开账号那一节（v1.15.1）。**必须在下面那几节挂载之前喊**——
@@ -625,6 +630,14 @@ export default function Settings() {
           summary={status ? status.dir : "正在检查…"}
         >
           <div className="set-desc">每天首次保存时自动留一份备份，保留 30 份。</div>
+          {IS_ULTRA && <div className="set-row set-storage">
+            <div className="set-row-label">图片空间<span className="set-hint">已完成、回收站与历史记录中的图片也会计入。</span></div>
+            <div className="set-storage-usage"><span>{(imageBytes / 1048576).toFixed(1)} / 20 MB</span>
+              <div className="set-storage-track" role="progressbar" aria-label="图片空间使用" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(imageBytes / IMAGE_LEDGER_MAX_BYTES * 100))}>
+                <i style={{width:`${Math.min(100, imageBytes / IMAGE_LEDGER_MAX_BYTES * 100)}%`}} />
+              </div>
+            </div>
+          </div>}
           <div className="set-row">
             <span
               className={`set-dot${status ? (status.dirOk ? " ok" : " bad") : ""}`}

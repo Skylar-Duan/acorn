@@ -143,8 +143,8 @@ describe("② RowList：手机上走 MobileRow，不画内嵌展开卡", () => {
     expect(card).not.toContain("var(--paper)");
     expect(card).toContain("box-shadow: var(--m-card-shadow);");
     expect(card).not.toContain("border:");
-    // 桌面那层颗粒原样还在
-    expect(read("src/styles/base.css")).toContain("background-image: var(--paper); }");
+    // 办公 UI 改版后桌面与手机都使用干净底面。
+    expect(read("src/styles/base.css")).toContain("background-image: none; }");
     // 「更多」那两块纸片跟着一起脱了纸纹
     expect(shellCss).toContain(".mmore-acct, .mmore-tile { background-image: none;");
   });
@@ -540,7 +540,7 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     expect(headSource).toContain("onClick={() => setSearchOpen(true)}");
   });
 
-  it("大标题用文楷 34px（方向 A 放大了一档）；顶上留安全区，不画假状态栏", () => {
+  it("大标题使用现代标题字体 34px；顶上留安全区，不画假状态栏", () => {
     expect(headSource).toContain('className={`serif mhead-title');
     expect(shellCss).toContain("font-size: 34px;");
     // 这条必须带 .mshell：上面那条 `.mshell .view-head { padding-left: 0 }` 是两个类，
@@ -552,9 +552,9 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     // 站的位置；PM v1.12.0 真机原话「顶部留白还是太少了，不符合现代 APP 审美」
     expect(shellCss).toContain("padding: calc(max(var(--m-safe-top), 12px) + 22px) 18px 0;");
     expect(mobileCss).toContain("--m-safe-top: env(safe-area-inset-top, 0px);");
-    // 大标题是常规字重（画板那个 .serif 标题没写 font-weight）：600 会取到文楷 Medium，30px 的中文一上 Medium 就发闷
     const title = shellCss.slice(shellCss.indexOf(".mhead-title {"), shellCss.indexOf(".mhead-title.small"));
-    expect(title).toContain("font-weight: 400;");
+    expect(title).toContain("font-family: var(--heading);");
+    expect(title).toContain("font-weight: 650;");
   });
 
   it("🔴 每一个视图在手机上都走 MobileHead——安全区在它那儿，漏一个就顶到状态栏底下", () => {

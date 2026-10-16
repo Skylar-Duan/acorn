@@ -72,7 +72,7 @@
 
 /* 标题用文楷：这是整张纸唯一一处「正文」，别的都是标签 */
 .msh-title {
-  font-family: var(--serif); font-size: 20px; line-height: 28px; color: var(--ink);
+  font-family: var(--heading); font-size: 20px; line-height: 28px; color: var(--ink);
   width: 100%; display: block; word-break: break-word;
 }
 .msh-title.dropped { color: var(--ink-3); text-decoration: line-through; }

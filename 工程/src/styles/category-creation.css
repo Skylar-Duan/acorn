@@ -2,7 +2,7 @@
 .category-create { width: 420px; max-width: calc(100vw - 32px); padding: 26px; border-radius: 20px; box-shadow: var(--shadow); }
 .category-create header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
 .category-create header p { margin: 0 0 6px; font-size: 11px; color: var(--ink-3); letter-spacing: .04em; }
-.category-create header h2 { margin: 0; font-family: var(--serif); font-size: 23px; font-weight: 500; color: var(--ink); }
+.category-create header h2 { margin: 0; font-family: var(--heading); font-size: 23px; font-weight: 600; color: var(--ink); }
 .category-create-close { color: var(--ink-3); width: 27px; height: 27px; border-radius: 50%; font-size: 22px; line-height: 1; }
 .category-create-close:hover { background: var(--accent-soft); color: var(--ink); }
 .category-create-name { display: flex; gap: 14px; align-items: center; margin-bottom: 25px; }

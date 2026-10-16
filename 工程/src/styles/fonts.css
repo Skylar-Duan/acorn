@@ -11,15 +11,15 @@
 @font-face {
   font-family: "Noto Sans SC";
   font-style: normal;
-  font-weight: 400;
+  font-weight: 100 500;
   font-display: swap;
   src: url("../assets/fonts/notosanssc-regular.woff2") format("woff2");
 }
 @font-face {
   font-family: "Noto Sans SC";
   font-style: normal;
-  /* 500–900 全落到这一档：界面里 46 处 600、4 处 700，只有 1 处 500，不值得多带一档 */
-  font-weight: 500 900;
+  /* 标题和强调使用粗体；普通控件的 500 保持常规字重，避免整页文字都变粗。 */
+  font-weight: 501 900;
   font-display: swap;
   src: url("../assets/fonts/notosanssc-bold.woff2") format("woff2");
 }

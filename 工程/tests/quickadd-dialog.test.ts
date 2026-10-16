@@ -132,7 +132,7 @@ describe("弹窗本身", () => {
   it("回车记下一条之后**不关窗**：连着记几条不用重开", () => {
     const onAdded = dialogSource.slice(dialogSource.indexOf("onAdded={"));
     expect(onAdded.slice(0, 80)).not.toContain("setQuickAddOpen(false)");
-    expect(dialogSource).toContain("连着记几条不用重开");
+    expect(dialogSource).toContain("记下，继续记录");
   });
 
   it("记下一条有回执（不是 toast——记一条不需要反悔，只需要被看见）", () => {
@@ -161,8 +161,8 @@ describe("弹窗本身", () => {
   it("遮罩和外壳复用现有那套（.overlay / .modal），不另起一套弹窗体系", () => {
     expect(dialogSource).toContain('className="overlay qad-back"');
     expect(dialogSource).toContain('className="modal qad-modal"');
-    expect(dialogCss).toContain("width: min(92vw, 640px);");
-    expect(dialogCss).toContain("border-radius: 16px;");
+    expect(dialogCss).toContain("width: min(calc(100vw - 48px), 680px);");
+    expect(dialogCss).toContain("border-radius: 14px;");
     // .modal 默认 overflow:hidden，那排「点着选」的小菜单是垂下来的，一裁就只剩半个
     expect(dialogCss).toContain("overflow: visible;");
     // .modal 默认 min-width 480，窄窗口下会把卡片顶出屏幕
@@ -270,7 +270,7 @@ describe("🔴 桌面界面上一个「随手记」都不许剩", () => {
     expect(appSource).toContain(">移出清单<");
     expect(ctxMenuSource).toContain("移出清单");
     // 任务卡上那颗药丸显示的是「这件事现在归哪」，是个状态
-    expect(taskCardSource).toContain('"未分清单"');
+    expect(taskCardSource).toContain("未分清单");
     // 导出的 CSV / Markdown 里那一组也是状态
     expect(settingsSource).toContain('"未分清单"');
   });

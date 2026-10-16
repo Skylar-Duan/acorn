@@ -199,7 +199,10 @@ describe("用户实际看到的母任务安排", () => {
       .find((b) => b.textContent?.includes("最近子任务"))!;
     expect(pill.textContent).toContain("今天 09:00 · 最近子任务");
     act(() => pill.click());
-    expect(host.querySelector<HTMLInputElement>('.popmenu input[type="date"]')?.value).toBe("");
+    const date = document.querySelector<HTMLInputElement>('[data-task-popover="parent"] input[type="date"]');
+    expect(date).not.toBeNull();
+    expect(host.contains(date)).toBe(false);
+    expect(date?.value).toBe("");
     expect(appStore.getState().data.tasks[0].due).toBeNull();
   });
 

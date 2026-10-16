@@ -13,6 +13,7 @@ import { FOCUS_ENABLED } from "../core/features";
 import { canSaveFile, isMobile } from "../core/platform";
 import { WhoBadge } from "../components/TaskRow";
 import MobileHead from "../mobile/MobileHead";
+import Icon from "../components/Icon";
 
 const HEAT_WEEKS = 13;
 const HEAT_DAYS = HEAT_WEEKS * 7; // 91
@@ -101,7 +102,7 @@ export default function StatsView() {
   }
 
   return (
-    <section className="main">
+    <section className="main stats-page">
       {/* 手机上走 MobileHead：顶部安全区统一在它那儿留（桌面那个 .view-head 没有），
           而且这一页是从「更多」点进来的，得给一条回去的路 */}
       {isMobile ? (
@@ -151,8 +152,9 @@ export default function StatsView() {
           </div>
         </div>
 
-        {/* 完成热力图 */}
-        <div>
+        <div className="stats-analysis">
+        {/* 两块分析共享同一行，宽屏不再把小图表竖着堆满页面。 */}
+        <section className="stats-panel" aria-label="完成热力图">
           <div className="stats-sec-head">
             完成热力图
             <span className="stats-sec-sub">最近 {HEAT_WEEKS} 周</span>
@@ -166,7 +168,7 @@ export default function StatsView() {
               多
             </span>
           </div>
-          <div className="stats-hm">
+          <div className="stats-hm" role="img" aria-label={`最近${HEAT_WEEKS}周的每日完成记录，共完成${heat.reduce((n, d) => n + d.count, 0)}件`}>
             <div className="stats-hm-days">
               <span>一</span>
               <span>四</span>
@@ -187,15 +189,16 @@ export default function StatsView() {
               })}
             </div>
           </div>
-        </div>
+          <div className="stats-chart-caption">{fmtMD(heat[0]?.date ?? today)} — {fmtMD(today)}</div>
+        </section>
 
         {/* 最近 14 天趋势 */}
-        <div>
+        <section className="stats-panel" aria-label="完成趋势">
           <div className="stats-sec-head">
             完成趋势
             <span className="stats-sec-sub">最近 14 天</span>
           </div>
-          <div className="stats-trend">
+          <div className="stats-trend" role="img" aria-label={`最近14天完成${trend.reduce((n, d) => n + d.count, 0)}件`}>
             {trend.map((d) => (
               <div key={d.date} className="stats-trend-col" title={`${formatCN(d.date)} · 完成 ${d.count} 件`}>
                 <div className="stats-trend-track">
@@ -213,11 +216,12 @@ export default function StatsView() {
               </div>
             ))}
           </div>
+        </section>
         </div>
 
         {/* 分布两栏：清单 | 需求方 */}
         <div className="stats-duo">
-          <div>
+          <section className="stats-panel" aria-label="各清单分布">
             <div className="stats-sec-head">
               各清单分布
               <span className="stats-sec-sub">最近 30 天完成</span>
@@ -239,8 +243,8 @@ export default function StatsView() {
                 </div>
               ))}
             </div>
-          </div>
-          <div>
+          </section>
+          <section className="stats-panel" aria-label="各需求方分布">
             <div className="stats-sec-head">
               各需求方分布
               <span className="stats-sec-sub">最近 30 天完成</span>
@@ -262,7 +266,7 @@ export default function StatsView() {
                 ))}
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         {/* 每周回顾卡 */}
@@ -282,7 +286,7 @@ export default function StatsView() {
             </div>
           </div>
           <button className="btn" onClick={() => void onExport()}>
-            {canSaveFile ? "导出本周小结 (Markdown)" : "复制本周小结 (Markdown)"}
+            <Icon name={canSaveFile ? "download" : "file"} size={15} />{canSaveFile ? "导出本周小结" : "复制本周小结"}
           </button>
         </div>
       </div>

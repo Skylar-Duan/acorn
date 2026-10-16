@@ -8,11 +8,13 @@
   gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .si-input {
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
+  flex-basis: 160px;
   border: none;
   outline: none;
   background: transparent;
@@ -30,16 +32,23 @@ textarea.si-input {
 }
 
 /* 解析 chips：视觉与 app.css 的 .chip 一致；这里再声明一份，供未载入 app.css 的小窗使用 */
-.si-chips { display: flex; gap: 6px; flex: none; align-items: center; }
+.si-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 0 1 auto; max-width: 100%; align-items: center; }
 .si-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 200px;
   font-size: var(--fs-xs);
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink-2);
   white-space: nowrap;
   animation: si-chip-in var(--dur-1) var(--ease);
 }
+.si-chips .chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.si-chips .chip > svg { flex: none; color: var(--accent); }
 @keyframes si-chip-in { from { opacity: 0; transform: scale(.85); } }
 
 /* 自动补全下拉：挂输入框正下方的小卡 */
@@ -47,13 +56,16 @@ textarea.si-input {
   position: absolute;
   top: calc(100% + 9px);
   left: 0;
-  min-width: 180px;
-  max-width: 320px;
+  width: max-content;
+  min-width: min(220px, calc(100vw - 32px));
+  max-width: min(360px, calc(100vw - 32px));
+  max-height: min(280px, 50dvh);
+  overflow: auto;
   background: var(--card);
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
-  padding: 5px;
+  padding: 6px;
   z-index: 70;
   animation: si-drop-in var(--dur-1) var(--ease);
 }
@@ -64,7 +76,8 @@ textarea.si-input {
   align-items: center;
   gap: 7px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 8px 10px;
+  min-height: 36px;
   border-radius: var(--r-sm);
   font-size: 13px;
   color: var(--ink);

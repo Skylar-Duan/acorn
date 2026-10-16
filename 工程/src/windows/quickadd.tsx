@@ -9,6 +9,7 @@ import SyntaxInput from "../components/SyntaxInput";
 import ImageAttachments from "../components/ImageAttachments";
 import type { TaskImage } from "../core/model";
 import { IS_ULTRA } from "../core/version";
+import "../styles/task-quickadd-window.css";
 
 function applyThemeAttrs(theme: string, mode: string) {
   const el = document.documentElement;
@@ -106,20 +107,16 @@ function QuickAddApp() {
 
   return (
     <div
-      style={{
-        background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 14,
-        boxShadow: "var(--shadow)", padding: "16px 18px", margin: 8,
-        display: "flex", flexDirection: "column", gap: 10,
-      }}
+      className="task-quickadd-window"
       onKeyDown={(e) => {
         if (e.key === "Escape") { imageRevision.current++; setImages([]); void hide(); }
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }} data-tauri-drag-region>
-        <span style={{ fontFamily: "var(--serif)", fontSize: 15, letterSpacing: 2, color: "var(--ink-2)" }} data-tauri-drag-region>
+      <div className="task-quickadd-window-head" data-tauri-drag-region>
+        <span data-tauri-drag-region>
           随手记一条
         </span>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>Esc 关闭 · 回车保存</span>
+        <span className="task-quickadd-window-hint">Esc 关闭 · 回车保存</span>
       </div>
       <SyntaxInput
         value={text}
@@ -138,7 +135,6 @@ function QuickAddApp() {
         whos={ctx.whoNames}
         weekendDay={ctx.weekendDay}
         showChips
-        inputStyle={{ fontSize: 15, padding: "10px 14px" }}
       />
       <ImageAttachments images={images} draft label="这件事的图片"
         onBusyChange={(busy) => { imageBusy.current = busy; }}

@@ -10,7 +10,7 @@
 .side-modules .side-module-heading > .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .side.side-modules nav li { display: grid; grid-template-columns: 28px 15px minmax(0, 1fr) 24px; gap: 6px; padding: 7px 9px 7px 3px; min-height: 36px; font-size: 13px; font-weight: 400; }
 .side.side-modules .side-module-group li { padding-left: 23px; }
-.side.side-modules nav li.on { font-weight: 500; }
+.side.side-modules nav li.on { font-weight: 600; color: var(--accent); background: var(--accent-soft); box-shadow: none; }
 .side-modules .side-label { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-drag-grip { width: 28px; flex: none; font-size: 13px; line-height: 1; text-align: center; color: var(--ink-3); cursor: grab; opacity: 0; user-select: none; }
 .side-modules nav li:hover > .sidebar-drag-grip, .side-modules nav li:focus-visible > .sidebar-drag-grip,

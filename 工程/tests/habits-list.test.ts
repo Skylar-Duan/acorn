@@ -182,7 +182,7 @@ describe("页面：三组都在，不只剩今天", () => {
     for (const part of [desk, mobile]) {
       const a = part.indexOf("今天要做的");
       const b = part.indexOf("重复的计划</div>");
-      const c = part.indexOf("今天不用做</div>");
+      const c = part.indexOf("今天不用做");
       expect(a).toBeGreaterThan(-1);
       expect(b).toBeGreaterThan(a);
       expect(c).toBeGreaterThan(b);

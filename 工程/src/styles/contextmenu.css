@@ -8,7 +8,7 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
-  padding: 6px;
+  padding: 7px;
   animation: card-in var(--dur-1) var(--ease);
 }
 
@@ -22,7 +22,7 @@
 
 .ctx-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 6px 10px; border-radius: var(--r-sm);
+  padding: 8px 10px; min-height: 34px; border-radius: var(--r-sm);
   font-size: 13px; color: var(--ink); text-align: left;
   white-space: nowrap;
 }

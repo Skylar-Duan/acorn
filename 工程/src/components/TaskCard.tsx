@@ -29,6 +29,9 @@ import RepeatMenu from "./RepeatMenu";
 import { useLeaving } from "./motion";
 import { CommitMark, FLASH_MS, TYPING_IDLE_MS, useTypingFlash } from "./commitFlash";
 import ImageAttachments from "./ImageAttachments";
+import TaskPropertyPopover from "./TaskPropertyPopover";
+import TaskIcon from "./Icon";
+import "../styles/task-workspace.css";
 
 const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
 
@@ -47,6 +50,8 @@ export default function TaskCard({ task }: { task: Task }) {
   const tagNames = useMemo(() => allTags({ tasks }).map((t) => t.tag), [tasks]);
   const whoNames = useMemo(() => allWho({ tasks, settings }).map((w) => w.who), [tasks, settings]);
   const [menu, setMenu] = useState<MenuName>(null);
+  const propertyAnchor = useRef<HTMLButtonElement | null>(null);
+  const subPropertyAnchor = useRef<HTMLButtonElement | null>(null);
   const [subMenu, setSubMenu] = useState<{ id: string; kind: "date" | "prio" } | null>(null);
   /** 循环弹层现在显示的是常用项（false）还是「自定义…」面板（true）。点 ↻ 那颗小签打开时一律回到常用项 */
   const [repeatCustom, setRepeatCustom] = useState(false);
@@ -139,6 +144,7 @@ export default function TaskCard({ task }: { task: Task }) {
       // 分类创建弹窗是这笔标题编辑的一部分，点它不应再提交或收起卡片。
       if (isTaskCategoryDialogOpen()) return;
       if (e.target instanceof Element && e.target.closest("[data-image-dialog]")) return;
+      if (e.target instanceof Element && e.target.closest("[data-task-popover]")?.getAttribute("data-task-popover") === taskIdRef.current) return;
       if (!cardRef.current.contains(e.target as Node)) {
         // A1「点走 = 提交」：卡片马上就要没了，先把还悬着的输入落库再收
         flushRef.current();
@@ -214,7 +220,8 @@ export default function TaskCard({ task }: { task: Task }) {
   const canFoldDone = doneSubs.length >= SUB_DONE_PEEK;
   const doneShown = canFoldDone ? showDone ?? !autoFold : true;
 
-  function openDateMenu() {
+  function openDateMenu(event: React.MouseEvent<HTMLButtonElement>) {
+    propertyAnchor.current = event.currentTarget;
     setDraftTime(task.dueTime ?? "");
     setMenu(menu === "date" ? null : "date");
   }
@@ -473,7 +480,7 @@ export default function TaskCard({ task }: { task: Task }) {
   function renderSub(s: Subtask) {
     return (
       <div key={s.id} className={`sub-row${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}`} style={{ position: "relative" }}>
-        <button className={`sb${s.done ? " done" : ""}`} onClick={() => toggleSubtask(task.id, s.id)} />
+        <button className={`sb${s.done ? " done" : ""}`} aria-label={`${s.done ? "标记未完成" : "完成子任务"} ${s.title}`} onClick={() => toggleSubtask(task.id, s.id)} />
         {/* 子任务标题跟母任务标题同一个待遇：长了就换行，不再单行截断（v1.9.1）。
             ref 直接给 growArea——它是个模块级的稳定函数，React 只在元素挂/卸时调它，
             不会每渲染一次就重挂一遍 */}
@@ -512,26 +519,29 @@ export default function TaskCard({ task }: { task: Task }) {
         )}
         {/* 子任务自己的日期/优先级：默认继承母任务，点小签单独设 */}
         <button
-          className="pill"
-          style={{ padding: "1px 8px", fontSize: 11 }}
+          className="pill sub-property"
           title={s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}
-          onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "date" ? null : { id: s.id, kind: "date" })}
+          aria-label={`子任务日期：${s.title}`}
+          aria-expanded={subMenu?.id === s.id && subMenu.kind === "date"}
+          onClick={(e) => { subPropertyAnchor.current = e.currentTarget; setSubMenu(subMenu?.id === s.id && subMenu.kind === "date" ? null : { id: s.id, kind: "date" }); }}
         >
           {/* 继承来的日期也照样显示，只是淡一点——一眼看得出这条到底哪天要做 */}
-          {s.due ? formatShort(s.due) : task.due ? <span style={{ opacity: 0.5 }}>{formatShort(task.due)}</span> : "📅"}
+          <TaskIcon name="calendar" />
+          {s.due ? formatShort(s.due) : task.due ? <span className="sub-inherited">{formatShort(task.due)}</span> : null}
         </button>
         <button
-          className="pill"
-          style={{ padding: "1px 8px", fontSize: 11 }}
+          className="pill sub-property"
           title={s.priority != null ? "这条子任务自己的重要性" : "跟着母任务走，点一下可以单独设"}
-          onClick={() => setSubMenu(subMenu?.id === s.id && subMenu.kind === "prio" ? null : { id: s.id, kind: "prio" })}
+          aria-label={`子任务重要性：${s.title}`}
+          aria-expanded={subMenu?.id === s.id && subMenu.kind === "prio"}
+          onClick={(e) => { subPropertyAnchor.current = e.currentTarget; setSubMenu(subMenu?.id === s.id && subMenu.kind === "prio" ? null : { id: s.id, kind: "prio" }); }}
         >
           {/* 继承母任务的整体淡一档：一眼分得出「自己设的」还是「跟着母任务」 */}
           <span className={`flag p${s.priority ?? task.priority}`} style={{ opacity: s.priority == null ? 0.5 : 1 }} />
           {s.priority != null ? (
             PRIORITY_LABEL[s.priority]
           ) : (
-            <span style={{ opacity: 0.5 }}>{PRIORITY_LABEL[task.priority]}</span>
+            <span className="sub-inherited">{PRIORITY_LABEL[task.priority]}</span>
           )}
         </button>
         {/* 放弃跟删除挨着放，都是「按一下这行就不在待办里了」的键；已经放弃的那条常驻显示，
@@ -541,20 +551,20 @@ export default function TaskCard({ task }: { task: Task }) {
           onClick={() => dropSubtask(task.id, s.id, !s.droppedAt)}
           title={s.droppedAt ? "取消放弃，放回未完成" : "放弃这一步：不做了，但它不算做完"}
         >
-          {s.droppedAt ? "↩" : "⊘"}
+          <TaskIcon name={s.droppedAt ? "restore" : "skip"} />
         </button>
-        <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务">×</button>
+        <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务" aria-label={`删除子任务 ${s.title}`}><TaskIcon name="trash" /></button>
         {((s.who?.length ?? 0) > 0 || (s.listIds?.length ?? 0) > 0) && (
           <span className="sub-categories" aria-label="子任务追加归类">
             {(s.who ?? []).map((who) => (
               <span className="sub-category" key={`who:${who}`}>
-                @{who}<button type="button" aria-label={`移除子任务需求方 ${who}`} onClick={() => updateSubtask(task.id, s.id, { who: s.who?.filter((w) => w !== who) })}>×</button>
+                <span title={`@${who}`}>@{who}</span><button type="button" aria-label={`移除子任务需求方 ${who}`} onClick={() => updateSubtask(task.id, s.id, { who: s.who?.filter((w) => w !== who) })}>×</button>
               </span>
             ))}
             {(s.listIds ?? []).map((id) => {
               const ownList = lists.find((l) => l.id === id);
               return ownList ? <span className="sub-category" key={`list:${id}`}>
-                /{ownList.name}<button type="button" aria-label={`移除子任务清单 ${ownList.name}`} onClick={() => updateSubtask(task.id, s.id, { listIds: s.listIds?.filter((l) => l !== id) })}>×</button>
+                <span title={`/${ownList.name}`}>/{ownList.name}</span><button type="button" aria-label={`移除子任务清单 ${ownList.name}`} onClick={() => updateSubtask(task.id, s.id, { listIds: s.listIds?.filter((l) => l !== id) })}>×</button>
               </span> : null;
             })}
           </span>
@@ -563,7 +573,7 @@ export default function TaskCard({ task }: { task: Task }) {
           canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
           onChange={(images) => updateSubtask(task.id, s.id, { images })} /></div>}
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
-          <div className={`popmenu${subPop.leaving ? " leaving" : ""}`} style={{ top: "100%", right: 0 }}>
+          <TaskPropertyPopover anchor={subPropertyAnchor.current} owner={task.id} leaving={subPop.leaving}>
             {/* 预设跟任务卡那个日期弹层同一套（core/options.dateOptions），别在这儿另写一份；
                 下面那个日期框就是「选日期…」 */}
             {presets.map((p) => (
@@ -587,10 +597,10 @@ export default function TaskCard({ task }: { task: Task }) {
               }}
             />
             <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: null, dueTime: null }); setSubMenu(null); }}>继承母任务</button>
-          </div>
+          </TaskPropertyPopover>
         )}
         {subPop.shown?.id === s.id && subPop.shown.kind === "prio" && (
-          <div className={`popmenu${subPop.leaving ? " leaving" : ""}`} style={{ top: "100%", right: 0 }}>
+          <TaskPropertyPopover anchor={subPropertyAnchor.current} owner={task.id} leaving={subPop.leaving}>
             {([3, 2, 1, 0] as Priority[]).map((p) => (
               <button key={p} className="item" onClick={() => { updateSubtask(task.id, s.id, { priority: p }); setSubMenu(null); }}>
                 <span className={`flag p${p}`} />
@@ -598,14 +608,14 @@ export default function TaskCard({ task }: { task: Task }) {
               </button>
             ))}
             <button className="item" onClick={() => { updateSubtask(task.id, s.id, { priority: null }); setSubMenu(null); }}>继承母任务</button>
-          </div>
+          </TaskPropertyPopover>
         )}
       </div>
     );
   }
 
   return (
-    <div className="task-card" ref={cardRef}>
+    <div className="task-card tw-card" ref={cardRef}>
       <div className="row1">
         {/* 跟任务行左边缘对齐用的占位（任务行那边有个折叠小三角），没有它点开卡片标题会往左跳一格 */}
         <span className="chain-caret ghost" />
@@ -681,7 +691,7 @@ export default function TaskCard({ task }: { task: Task }) {
 
         {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
         {/* 子任务同样认时间、需求方和清单；归类只追加到本步，#仍保留在正文。 */}
-        <div className="sub-row">
+        <div className="sub-row new-sub-row">
           <span className="sb" style={{ opacity: 0.35 }} />
           <SyntaxInput
             value={newSub}
@@ -726,14 +736,14 @@ export default function TaskCard({ task }: { task: Task }) {
         {doneShown && doneSubs.map(renderSub)}
       </div>
 
-      <div className="chips" style={{ position: "relative" }}>
+      <div className="chips tc-properties" aria-label="任务属性">
         {/* 日期 */}
-        <button className={`pill${shownDue ? " hot" : ""}`} onClick={openDateMenu}
+        <button className={`pill${shownDue ? " hot" : ""}`} onClick={openDateMenu} aria-expanded={menu === "date"}
           title={!task.due && shownDue ? "最近子任务的安排；点开可为母任务单独安排日期" : undefined}>
-          📅 {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}${!task.due ? " · 最近子任务" : ""}` : "安排日期"}
+          <TaskIcon name="calendar" /> {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}${!task.due ? " · 最近子任务" : ""}` : "安排日期"}
         </button>
         {menuPop.shown === "date" && (
-          <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 0 }}>
+          <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             {presets.map((p) => (
               <button key={p.key} className="item" onClick={() => setDue(p.ymd)}>
                 {p.label}
@@ -769,18 +779,19 @@ export default function TaskCard({ task }: { task: Task }) {
             <div className="sep" />
             {/* 清日期同样要把还欠着的那一次去抖丢掉，否则刚清完它 350ms 后又把日期写回来 */}
             {task.due && <button className="item" onClick={() => { dueFieldRef.current?.cancel(); updateTask(task.id, { due: null, dueTime: null }); dueWrittenRef.current = null; setMenu(null); }}>清除日期</button>}
-          </div>
+          </TaskPropertyPopover>
         )}
 
         {/* 循环 */}
         <button
           className={`pill${task.repeat ? " hot" : ""}`}
-          onClick={() => { setRepeatCustom(false); setMenu(menu === "repeat" ? null : "repeat"); }}
+          aria-expanded={menu === "repeat"}
+          onClick={(e) => { propertyAnchor.current = e.currentTarget; setRepeatCustom(false); setMenu(menu === "repeat" ? null : "repeat"); }}
         >
-          ↻ {task.repeat ? describeRepeat(task.repeat) : "循环"}
+          <TaskIcon name="repeat" /> {task.repeat ? describeRepeat(task.repeat) : "循环"}
         </button>
         {menuPop.shown === "repeat" && (
-          <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 90 }}>
+          <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             {repeatCustom ? (
               // 自定义面板就在这块 .popmenu 里换内容，点卡外 / 点别处收起的规矩原样适用
               <RepeatPicker
@@ -799,22 +810,22 @@ export default function TaskCard({ task }: { task: Task }) {
                 onCustom={() => setRepeatCustom(true)}
               />
             )}
-          </div>
+          </TaskPropertyPopover>
         )}
 
         {/* 清单 */}
-        <button className="pill" onClick={() => setMenu(menu === "list" ? null : "list")}>
+        <button className="pill" aria-expanded={menu === "list"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "list" ? null : "list"); }}>
           {list ? (
             <>
               <span style={{ width: 7, height: 7, borderRadius: 99, background: listColor(list.color), display: "inline-block" }} />
               {list.name}
             </>
           ) : (
-            "未分清单"
+            <><TaskIcon name="list" /> 未分清单</>
           )}
         </button>
         {menuPop.shown === "list" && (
-          <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 180 }}>
+          <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             <button className="item" onClick={() => { updateTask(task.id, { listId: null }); setMenu(null); }}>不归清单</button>
             {lists.map((l) => (
               <button key={l.id} className="item" onClick={() => { updateTask(task.id, { listId: l.id }); setMenu(null); }}>
@@ -822,15 +833,15 @@ export default function TaskCard({ task }: { task: Task }) {
                 {l.name}
               </button>
             ))}
-          </div>
+          </TaskPropertyPopover>
         )}
 
         {/* 需求方：一件事可以挂好几个人，挂了谁就一人一行，点 × 摘掉 */}
-        <button className={`pill${task.who.length ? " hot" : ""}`} onClick={() => setMenu(menu === "who" ? null : "who")}>
-          ＠ {task.who.length ? task.who.join("、") : "需求方"}
+        <button className={`pill${task.who.length ? " hot" : ""}`} aria-expanded={menu === "who"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "who" ? null : "who"); }}>
+          <TaskIcon name="person" /> {task.who.length ? task.who.join("、") : "需求方"}
         </button>
         {menuPop.shown === "who" && (
-          <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 250 }}>
+          <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             {task.who.map((w) => (
               <button key={w} className="item" title="移除这个需求方" onClick={() => removeTaskWho(task.id, w)}>
                 ＠ {w}
@@ -871,30 +882,30 @@ export default function TaskCard({ task }: { task: Task }) {
             {task.who.length > 0 && (
               <button className="item" onClick={() => { setTasksWho([task.id], []); setMenu(null); }}>全部清除</button>
             )}
-          </div>
+          </TaskPropertyPopover>
         )}
 
         {/* 优先级 */}
-        <button className={`pill${task.priority ? " hot" : ""}`} onClick={() => setMenu(menu === "priority" ? null : "priority")}>
-          ⚑ {PRIORITY_LABEL[task.priority]}
+        <button className={`pill${task.priority ? " hot" : ""}`} aria-expanded={menu === "priority"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "priority" ? null : "priority"); }}>
+          <TaskIcon name="flag" /> {PRIORITY_LABEL[task.priority]}
         </button>
         {menuPop.shown === "priority" && (
-          <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 330 }}>
+          <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             {([3, 2, 1, 0] as Priority[]).map((p) => (
               <button key={p} className="item" onClick={() => { updateTask(task.id, { priority: p }); setMenu(null); }}>
                 <span className={`flag p${p}`} />
                 {PRIORITY_LABEL[p]}
               </button>
             ))}
-          </div>
+          </TaskPropertyPopover>
         )}
 
         {/* 标签 */}
-        <button className={`pill${task.tags.length ? " hot" : ""}`} onClick={() => setMenu(menu === "tags" ? null : "tags")}>
-          # {task.tags.length ? task.tags.join("、") : "标签"}
+        <button className={`pill${task.tags.length ? " hot" : ""}`} aria-expanded={menu === "tags"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "tags" ? null : "tags"); }}>
+          <TaskIcon name="tag" /> {task.tags.length ? task.tags.join("、") : "标签"}
         </button>
         {menuPop.shown === "tags" && (
-          <div className={`popmenu${menuPop.leaving ? " leaving" : ""}`} style={{ top: "110%", left: 380 }}>
+          <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             <input
               className="inline"
               ref={tagInputRef}
@@ -926,7 +937,7 @@ export default function TaskCard({ task }: { task: Task }) {
               // **窗口失焦不是点走**：alt-tab 出去时那句改了一半的字串会被写成这件事的全部标签
               onBlur={() => { if (document.hasFocus()) commitTags(); }}
             />
-          </div>
+          </TaskPropertyPopover>
         )}
 
         {/* 放弃和删除都跟上面那排「改属性」的胶囊隔开：这两个是仅有的「按下去东西会从列表里消失」的键，
@@ -940,10 +951,10 @@ export default function TaskCard({ task }: { task: Task }) {
             dropTasks([task.id], !task.droppedAt);
           }}
         >
-          {task.droppedAt ? "↩ 取消放弃" : "⊘ 放弃"}
+          <TaskIcon name={task.droppedAt ? "restore" : "skip"} /> {task.droppedAt ? "取消放弃" : "放弃"}
         </button>
-        <button className="pill danger-pill" title="删除（可在回收站恢复，也可 Ctrl+Z 撤销）" onClick={() => { expandTask(null); deleteTasks([task.id]); }}>
-          🗑
+        <button className="pill danger-pill" aria-label="删除任务" title="删除（可在回收站恢复，也可 Ctrl+Z 撤销）" onClick={() => { expandTask(null); deleteTasks([task.id]); }}>
+          <TaskIcon name="trash" />
         </button>
 
         {/* 专注暂时收起，见 core/features.ts */}

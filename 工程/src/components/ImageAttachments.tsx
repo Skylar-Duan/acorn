@@ -9,6 +9,7 @@ import { appStore } from "../core/store";
 import { syncStore } from "../core/syncCtl";
 import { IMAGE_MAX_COUNT, imageListUpdateError, imageUrlLength, ledgerImageBytes } from "../core/taskImages";
 import { renderableTaskImages } from "../core/imageDisplay";
+import Icon from "./Icon";
 import "../styles/task-images.css";
 
 export interface ImageAttachmentsProps {
@@ -85,10 +86,10 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     }
   }
 
-  return <div className="task-images" data-task-images onMouseDown={(e) => e.stopPropagation()}>
+  return <div className={`task-images${visible.length ? "" : " task-images-empty"}`} data-task-images onMouseDown={(e) => e.stopPropagation()}>
     <div className="task-images-head">
-      <span>{label}{visible.length ? ` · ${visible.length}/${IMAGE_MAX_COUNT}` : ""}</span>
-      <button type="button" className="image-add" disabled={busy || images.length >= IMAGE_MAX_COUNT} onClick={() => input.current?.click()}>＋ 插图</button>
+      <span className="task-images-label">{label}{visible.length ? ` · ${visible.length}/${IMAGE_MAX_COUNT}` : ""}</span>
+      <button type="button" className="image-add" aria-label={`为${label}添加图片`} disabled={busy || images.length >= IMAGE_MAX_COUNT} onClick={() => input.current?.click()}><Icon name="image" size={14} /> 插图</button>
       {busy && <><span role="status">正在处理图片…</span><button type="button" onClick={() => { if (operation.current) operation.current.cancel = true; }}>取消</button></>}
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; void choose(files); }} />
     </div>
@@ -100,7 +101,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     </div>}
     {error && <p className="task-image-error" role="alert">{error}</p>}
     {viewing && createPortal(<div className="image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览" data-image-dialog onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setViewing(null); }}>
-      <button type="button" className="image-lightbox-close" aria-label="关闭图片预览" onClick={() => setViewing(null)}>×</button>
+      <button type="button" className="image-lightbox-close" aria-label="关闭图片预览" onClick={() => setViewing(null)}><Icon name="close" size={24} /></button>
       <img src={viewing.dataUrl} alt={viewing.name} /><span>{viewing.name}</span>
     </div>, document.body)}
   </div>;

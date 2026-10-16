@@ -102,8 +102,8 @@ describe("PWA 外壳（index.html + manifest）", () => {
   });
 
   it("theme-color 取默认主题「森林」的底纸色，深浅两档都给", () => {
-    const light = /\[data-theme="forest"\]\[data-mode="light"\][\s\S]*?--bg:\s*(#[0-9A-Fa-f]{6})/.exec(themes);
-    const dark = /\[data-theme="forest"\]\[data-mode="dark"\][\s\S]*?--bg:\s*(#[0-9A-Fa-f]{6})/.exec(themes);
+    const light = /\[data-mode="light"\]\s*\{[\s\S]*?--bg:\s*(#[0-9A-Fa-f]{6})/.exec(themes);
+    const dark = /\[data-mode="dark"\]\s*\{[\s\S]*?--bg:\s*(#[0-9A-Fa-f]{6})/.exec(themes);
     expect(light?.[1]).toBeTruthy();
     expect(dark?.[1]).toBeTruthy();
     expect(indexHtml).toContain(`(prefers-color-scheme: light)" content="${light![1]}"`);

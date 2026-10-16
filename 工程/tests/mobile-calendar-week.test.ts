@@ -342,11 +342,11 @@ describe("⑤ 每一天是一张能摊开的卡", () => {
   });
 
   it("🔴 切到周视图默认摊开今天：一进来下半屏就有内容，不许回到 v1.12.0 那片留白", () => {
-    expect(calendarSource).toContain('if (isMobile) setPicked(m === "week" ? today : null);');
+    expect(calendarSource).toContain('setPicked(isMobile && m === "week" ? today : null);');
     // 一进页面就已经是周视图（上次关掉时停在周）时同样得摊开今天
     expect(calendarSource).toContain('isMobile && loadMode() === "week" ? today : null,');
     // 「今天」那颗键也一样：周视图下把今天那张摊开，不是把七张全收起来
-    expect(calendarSource).toContain('if (isMobile) setPicked(mode === "week" ? todayYMD() : null);');
+    expect(calendarSource).toContain('setPicked(isMobile && mode === "month" ? null : day);');
   });
 
   it("🔴 三处数字仍然对得上：卡里摊开的行数 = 表头两个数之和 = 列出来的 + 「+N」", () => {

@@ -7,6 +7,7 @@ import { searchTasks } from "../core/search";
 import { aliveTasks, expandTask, navigate, openRows, rowDue, setSearchOpen, useApp } from "../core/store";
 import { taskDue, taskTime } from "../core/taskDue";
 import "../styles/overlays.css";
+import Icon from "./Icon";
 
 const MAX_SHOWN = 20;
 
@@ -82,7 +83,7 @@ export default function SearchOverlay() {
     >
       <div className="modal so-modal">
         <div className="so-input">
-          <span className="so-glyph">🔍</span>
+          <Icon name="search" />
           <input
             autoFocus
             value={q}

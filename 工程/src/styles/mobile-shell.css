@@ -21,7 +21,7 @@
    背景之上」。挂到 .mshell（定位元素、z-index:auto，画在第 8 层）上的话，
    这团光会盖在风景前面，风景就白垫了 */
 .shell.mobile {
-  background-image: radial-gradient(120% 70% at 85% -8%, var(--accent-soft), transparent 58%);
+  background-image: none;
 }
 
 .mshell {
@@ -129,7 +129,7 @@
 .mhead-titleline { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .mhead-acorn { flex: none; display: block; }
 .mhead-title {
-  font-family: var(--serif);
+  font-family: var(--heading);
   /* A 把标题放大到 34：整页第一眼落在「今天」两个字上，剩下的才是清单 */
   font-size: 34px;
   line-height: 38px;
@@ -137,7 +137,7 @@
   /* 常规字重，照画板（Main.dc.html 那个 .serif 标题没写 font-weight）。
      600 会取到文楷的 Medium 那一档——30px 的中文一上 Medium 就发闷，
      用户说的「比例怪怪的」有一半是这个。字号不动，只把这一档卸掉 */
-  font-weight: 400;
+  font-weight: 650;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
