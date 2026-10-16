@@ -16,9 +16,10 @@ import type { ReactNode } from "react";
 import { todayYMD } from "../core/dates";
 import { cardMs } from "../core/motion";
 import { doneGroups } from "../core/plan";
+import { compareCompletedAt, completedMillis, rowCompletionAt } from "../core/completionOrder";
 import type { DateRow } from "../core/store";
 import {
-  doneRows, droppedRows, navigate, rowDoneAt, rowDoneDay, rowDoneGuessed,
+  doneRows, droppedRows, navigate, rowDoneDay,
   rowDroppedAt, rowDroppedDay, rowTaskIds, useApp,
 } from "../core/store";
 import type { PinIds } from "../core/pin";
@@ -37,12 +38,12 @@ import "../styles/plan.css";
 const OLD_PAGE = 300;
 
 /** 一条「已完成」条目：行 + 它归到哪天 + 精确到哪一刻（排序用）。
- *  guessed = 这个日子是猜的（老子任务没有完成时刻，母任务也没完成）——
- *  这类条目照样列出来，但不写「完成 X月X日」，也不参与按天分组 */
+ *  guessed = 没有可确认的结束时刻（含缺失或非法戳）——
+ *  这类条目照样列出来，但不写完成日期，也不参与按天分组 */
 interface DoneItem {
   row: DateRow;
   day: string;
-  at: string;
+  at: string | null;
   guessed: boolean;
   /** 这条是放弃的（不是做完的）。分组、排序两边一视同仁，只有文案和筛选认它 */
   dropped: boolean;
@@ -87,25 +88,25 @@ export default function Done() {
   };
 
   const { groups, total, taskCount } = useMemo(() => {
-    // 归日和排序都只走 store 的 rowDoneDay / rowDoneAt：老子任务没有自己的完成时刻会
-    // 回落到母任务，而且那里已经把 UTC ISO 转成本地日期了（本地 0-8 点做完的不能归到昨天）。
-    // 日历的已完成桶用的是同两个函数——口径一旦分家，同一件事会在两个页面落在不同的日子
-    // 放弃的按**放弃那一刻**归日排（走 rowDroppedDay，跟完成那边同一套本地时区口径），
-    // 而且不存在「猜的」那一档：droppedAt 是这版才有的字段，有标记就必定带着时刻
+    // 只按真实结束时刻排序。老子任务可沿用已完成母任务的戳；未知/坏戳统一放最后，
+    // 不拿创建或编辑时间假装完成时间。归日仍沿既有本地时区口径，与日历一致。
     const items: DoneItem[] = [];
     if (filter !== "dropped") {
       for (const r of doneRows(data)) {
-        items.push({ row: r, day: rowDoneDay(r), at: rowDoneAt(r), guessed: rowDoneGuessed(r), dropped: false });
+        const at = rowCompletionAt(r);
+        items.push({ row: r, day: at ? rowDoneDay(r) : "", at, guessed: at === null, dropped: false });
       }
     }
     if (filter !== "done") {
       for (const r of droppedRows(data)) {
-        items.push({ row: r, day: rowDroppedDay(r), at: rowDroppedAt(r), guessed: false, dropped: true });
+        const raw = r.sub ? r.sub.droppedAt : r.task.droppedAt;
+        const at = completedMillis(raw) === null ? null : rowDroppedAt(r);
+        items.push({ row: r, day: at ? rowDroppedDay(r) : "", at, guessed: at === null, dropped: true });
       }
     }
-    items.sort((a, b) => (a.at < b.at ? 1 : -1));
-    // 日子是猜出来的那些不按天分组——按母任务的创建日归档等于编一个完成日，
-    // 一堆几个月前才建的老事会假装是那天做完的。它们统一沉到最后一组（「更早」）的尾部：
+    items.sort((a, b) => compareCompletedAt(a.at, b.at));
+    // 未知结束时刻不按天分组——按创建日归档等于编一个完成日。
+    // 它们统一沉到最后一组（「更早」）的尾部：
     // 不显示用户会以为东西不见了，显示就得老实说不知道是哪天（doneDate 传 null）
     const dated = items.filter((x) => !x.guessed);
     const guessed = items.filter((x) => x.guessed);

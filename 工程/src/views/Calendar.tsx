@@ -7,9 +7,10 @@ import type { Task } from "../core/model";
 import { addDays, cmpYMD, dayOfWeek, daysInMonth, monthStart, todayYMD, weekStart } from "../core/dates";
 import type { DateRow } from "../core/store";
 import { taskDue, taskTime } from "../core/taskDue";
+import { compareCompletedAt, rowCompletionAt } from "../core/completionOrder";
 import {
   addTask, aliveTasks, byPriorityThenOrder, doneRows, expandTask, navigate, rowDoneDay,
-  rowDoneGuessed, rowTaskIds, setTasksDue, useApp,
+  rowTaskIds, setTasksDue, useApp,
 } from "../core/store";
 import { rowKey } from "../components/RowList";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
@@ -249,10 +250,13 @@ export default function Calendar() {
     // 那天用户其实什么都没做完，画上去就是凭空捏造一条完成记录。
     // 它们不会消失，只是留在「已完成」列表尾部（见 store.rowDoneGuessed）
     for (const r of doneRows(data)) {
-      if (rowDoneGuessed(r)) continue;
+      if (!rowCompletionAt(r)) continue;
       slotOf(rowDoneDay(r)).done.push(r);
     }
-    for (const slot of map.values()) slot.open.sort(byPriorityThenOrder);
+    for (const slot of map.values()) {
+      slot.open.sort(byPriorityThenOrder);
+      slot.done.sort((a, b) => compareCompletedAt(rowCompletionAt(a), rowCompletionAt(b)));
+    }
     return map;
   }, [data]);
 

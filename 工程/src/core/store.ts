@@ -10,6 +10,7 @@ import { doneOn, isDueOn, sortHabitsForDay, toggleCheck, DEFAULT_HABIT_REPEAT } 
 import { addDays, cmpYMD, formatShort, nowLocalDT, todayYMD, toLocalDT, toYMD } from "./dates";
 import { firstOccurrence, nextOccurrence } from "./recur";
 import { taskDue, taskTime } from "./taskDue";
+import { compareCompletedAt } from "./completionOrder";
 import * as persist from "./persist";
 // 只用它一个 loadSession（读令牌在不在，不发网络请求）。cloud 不回头依赖 store，没有环
 import * as cloud from "./cloud";
@@ -1780,14 +1781,14 @@ export function rowPriority(r: DateRow): Priority {
 export const SUB_DONE_PEEK = 3;
 
 /** 任务卡里把子任务分成「还欠着的」和「做完的」两堆。
- *  filter 保留原数组顺序，所以两堆接起来跟原先「做完的沉到最下面」的稳定排序逐条等价，
- *  改成折叠之后视觉上不会有「东西自己动了」。只管显示，存的那份数组一个字节都不动 */
+ *  待办按生效日期、已完成按实际完成时刻倒序；同刻或未知完成时刻保留原先后。
+ *  只管显示，存的那份数组不重排。 */
 export function splitSubtasks(subs: Subtask[], parent: DueOwner): { open: Subtask[]; done: Subtask[] } {
   // 没做完的按**生效日期**排（用户 2026-09-03：「子任务按照时间顺序自动排列」）：
   // 自己填了日期的用自己的，没填的用母任务的——跟这一条在屏幕上显示的日期是同一个数，
   // 走 subDue 不许在这儿另写一套。母任务也没日期时它们一起沉到最后、彼此保持原来的先后。
   // 同一天里写了钟点的在前（跟今天/计划页 sortRows 同一个 dueSortKey），其余保持原序。
-  // 做完的那堆不动：它们按「做完」的先后堆着更符合直觉。
+  // 做完的按实际完成时刻倒序；同刻或缺少时刻保持原先后，不借创建或编辑时间。
   // 回收站里的（deletedAt 非空，v7）两堆都不进：调用方传的是整条 task.subtasks，
   // 在这儿统一挡掉，任务卡和手机详情页就不用各自记得过一遍 aliveSubtasks
   const open = subs
@@ -1795,7 +1796,7 @@ export function splitSubtasks(subs: Subtask[], parent: DueOwner): { open: Subtas
     .map((s, i) => ({ s, i, k: dueSortKey(subDue(s, parent), subTime(s, parent)) }))
     .sort((a, b) => (a.k === b.k ? a.i - b.i : a.k < b.k ? -1 : 1))
     .map((x) => x.s);
-  return { open, done: subs.filter((s) => s.done && !s.deletedAt) };
+  return { open, done: subs.filter((s) => s.done && !s.deletedAt).sort((a, b) => compareCompletedAt(a.doneAt, b.doneAt)) };
 }
 
 /** 已完成那堆默不默认收起。
@@ -1942,7 +1943,7 @@ export function tasksForToday(d: AppData, today = todayYMD()): { overdue: DateRo
   const doneToday = aliveTasks(d)
     // doneAt 是 UTC ISO，必须转回本地日期再归日，否则本地 0-8 点完成的会归到昨天
     .filter((t) => t.done && t.doneAt && toYMD(new Date(t.doneAt)) === today)
-    .sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : -1));
+    .sort((a, b) => compareCompletedAt(a.doneAt, b.doneAt));
   return { overdue, todays, doneToday };
 }
 
