@@ -91,7 +91,7 @@ describe("B5：一次性翻掉整列走硬切，单条小三角照旧有动画",
   });
 
   it("总开关这条路先硬切再翻状态，顺序不能反", () => {
-    expect(planSource).toContain("hardCutRows(); setFoldAll(!foldAll);");
+    expect(planSource).toContain("hardCutRows(); if (isMobile) setFoldAll(!foldAll); else setAllParentFolded(!foldAll);");
     expect(planSource.indexOf("hardCutRows()")).toBeLessThan(planSource.indexOf("setFoldAll(!foldAll)"));
   });
 

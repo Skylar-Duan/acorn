@@ -125,7 +125,7 @@ describe("B1：行和卡同时挂着，收起也有动画", () => {
 
   it("TaskRow 外面保留只管高度的槽，任务区类不替代完成状态", () => {
     expect(taskRowSource).toContain('className={`row-slot${leaving ? " leaving" : ""}');
-    expect(taskRowSource).toContain('className={`task-row tw-row${willDone ? " done-row" : ""}');
+    expect(taskRowSource).toContain('className={`task-row tw-row${nested ? " task-row-child" : ""}${willDone ? " done-row" : ""}');
   });
 
   // B1 的后账：卡片多活的那一拍里，它那条 document mousedown 监听也还活着。

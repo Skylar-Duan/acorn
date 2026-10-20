@@ -11,6 +11,7 @@ import { addDays, cmpYMD, formatShort, nowLocalDT, todayYMD, toLocalDT, toYMD } 
 import { firstOccurrence, nextOccurrence } from "./recur";
 import { taskDue, taskTime } from "./taskDue";
 import { compareCompletedAt } from "./completionOrder";
+import { comparePendingSchedule, pendingTimeKey as dueSortKey } from "./pendingOrder";
 import * as persist from "./persist";
 // 只用它一个 loadSession（读令牌在不在，不发网络请求）。cloud 不回头依赖 store，没有环
 import * as cloud from "./cloud";
@@ -1740,6 +1741,8 @@ export function categoryRows(d: Pick<AppData, "tasks">, category: { listId?: str
 export interface DueOwner {
   due: string | null;
   dueTime: string | null;
+  /** 排子任务时用到继承的重要性；只比较日期的旧调用方可以不传。 */
+  priority?: Priority;
 }
 
 /** 子任务的生效日期：自己填了用自己的，没填 = 继承母任务的（界面上显示的就是这个）。
@@ -1765,15 +1768,14 @@ export function rowTime(r: DateRow): string | null {
   return r.sub ? subTime(r.sub, r.task) : taskTime(r.task);
 }
 
-/** 排序键：日期拼上钟点。没日期的排最后，同一天里写了钟点的排在没钟点的前面。
- *  日期视图（sortRows）和任务卡里的子任务共用这一个式子，两处的先后才对得上 */
-function dueSortKey(due: string | null, time: string | null): string {
-  return `${due ?? "9999-99-99"}T${time ?? "99:99"}`;
+/** 子任务的有效重要性；null/undefined才继承，显式0仍是无重要性。 */
+export function subPriority(sub: Subtask, parent: Pick<DueOwner, "priority">): Priority {
+  return sub.priority ?? parent.priority ?? 0;
 }
 
 /** 行的有效重要性。子任务没填 = 继承母任务 */
 export function rowPriority(r: DateRow): Priority {
-  return r.sub ? r.sub.priority ?? r.task.priority : r.task.priority;
+  return r.sub ? subPriority(r.sub, r.task) : r.task.priority;
 }
 
 /** 已完成子任务攒到这个数，任务卡里那堆默认收起。
@@ -1781,20 +1783,20 @@ export function rowPriority(r: DateRow): Priority {
 export const SUB_DONE_PEEK = 3;
 
 /** 任务卡里把子任务分成「还欠着的」和「做完的」两堆。
- *  待办按生效日期、已完成按实际完成时刻倒序；同刻或未知完成时刻保留原先后。
+ *  待办按生效日期/钟点升序、同刻重要性降序；已完成仍按实际完成时刻倒序。
  *  只管显示，存的那份数组不重排。 */
 export function splitSubtasks(subs: Subtask[], parent: DueOwner): { open: Subtask[]; done: Subtask[] } {
   // 没做完的按**生效日期**排（用户 2026-09-03：「子任务按照时间顺序自动排列」）：
   // 自己填了日期的用自己的，没填的用母任务的——跟这一条在屏幕上显示的日期是同一个数，
-  // 走 subDue 不许在这儿另写一套。母任务也没日期时它们一起沉到最后、彼此保持原来的先后。
-  // 同一天里写了钟点的在前（跟今天/计划页 sortRows 同一个 dueSortKey），其余保持原序。
+  // 走 subDue/subTime/subPriority，与列表显示同源。无日期沉底，同日有钟点的在前；
+  // 完全同一时间再比有效重要性，同键才保留原序（与日期行的time模式共用比较器）。
   // 做完的按实际完成时刻倒序；同刻或缺少时刻保持原先后，不借创建或编辑时间。
   // 回收站里的（deletedAt 非空，v7）两堆都不进：调用方传的是整条 task.subtasks，
   // 在这儿统一挡掉，任务卡和手机详情页就不用各自记得过一遍 aliveSubtasks
   const open = subs
     .filter((s) => !s.done && !s.deletedAt)
-    .map((s, i) => ({ s, i, k: dueSortKey(subDue(s, parent), subTime(s, parent)) }))
-    .sort((a, b) => (a.k === b.k ? a.i - b.i : a.k < b.k ? -1 : 1))
+    .map((s, i) => ({ s, i, schedule: { due: subDue(s, parent), time: subTime(s, parent), priority: subPriority(s, parent) } }))
+    .sort((a, b) => comparePendingSchedule(a.schedule, b.schedule) || a.i - b.i)
     .map((x) => x.s);
   return { open, done: subs.filter((s) => s.done && !s.deletedAt).sort((a, b) => compareCompletedAt(a.doneAt, b.doneAt)) };
 }
@@ -1926,9 +1928,11 @@ export function sortRows(rows: DateRow[], mode: "time" | "priority"): DateRow[] 
       const ka = key(a), kb = key(b);
       if (ka !== kb) return ka < kb ? -1 : 1;
     } else {
-      const ka = key(a), kb = key(b);
-      if (ka !== kb) return ka < kb ? -1 : 1;
-      if (rowPriority(a) !== rowPriority(b)) return rowPriority(b) - rowPriority(a);
+      const order = comparePendingSchedule(
+        { due: rowDue(a), time: rowTime(a), priority: rowPriority(a) },
+        { due: rowDue(b), time: rowTime(b), priority: rowPriority(b) },
+      );
+      if (order) return order;
     }
     if (a.task.order !== b.task.order) return a.task.order - b.task.order;
     return subIdx(a) - subIdx(b);

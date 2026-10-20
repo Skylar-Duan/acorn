@@ -17,6 +17,11 @@ import {
   overdueSubRows,
 } from "../core/store";
 import PostponeButton from "./PostponeMenu";
+import { overdueParentActions } from "../core/parentRows";
+import { IS_ULTRA } from "../core/version";
+import { appStore, updateTask } from "../core/store";
+import { taskImages } from "../core/taskImages";
+import ImageAttachments from "./ImageAttachments";
 import "../styles/task-workspace.css";
 
 export function WhoBadge({ who }: { who: string }) {
@@ -83,9 +88,14 @@ export interface TaskRowProps {
    *  子任务自己的字段一个都不写（用户 2026-09 报：右键「母任务」改的却是第一个子任务）。
    *  摊开后的各条子任务行不带它：那时右键哪一条就是哪一步 */
   whole?: boolean;
+  /** 母子树的母行／缩进子行；不改变旧列表的渲染。 */
+  parentGroup?: boolean;
+  nested?: boolean;
+  /** 行点击打开前交给列表记住待定位子任务；不参与折叠/多选。 */
+  onOpen?: () => void;
 }
 
-export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed, tail = "lean", whole = false }: TaskRowProps) {
+export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed, tail = "lean", whole = false, parentGroup = false, nested = false, onOpen }: TaskRowProps) {
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -198,6 +208,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
     }
     if (multiSelect(e)) return;
     anchor.current = task.id;
+    onOpen?.();
     expandTask(task.id);
   }
 
@@ -282,9 +293,10 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
   return (
     // 外面这层只管高度（见 app.css 的 .row-slot）：行让位、行收走都在它身上做，
     // 行本身一个属性都没改，hover / 拖拽 / 右键那些老规矩原样还在
-    <div className={`row-slot${leaving ? " leaving" : ""}${collapsed ? " shut" : ""}`}>
+    <div className={`row-slot${leaving ? " leaving" : ""}${collapsed ? " shut" : ""}`}
+      ref={(node) => { node?.toggleAttribute("inert", !!collapsed); }} aria-hidden={collapsed || undefined}>
     <div
-      className={`task-row tw-row${willDone ? " done-row" : ""}${isDropped ? " dropped-row" : ""}${selected ? " selected" : ""}`}
+      className={`task-row tw-row${nested ? " task-row-child" : ""}${willDone ? " done-row" : ""}${isDropped ? " dropped-row" : ""}${selected ? " selected" : ""}`}
       onClick={onRowClick}
       onContextMenu={onCtx}
       onPointerDown={onPointerDown}
@@ -308,11 +320,14 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         e.dataTransfer.effectAllowed = "move";
       }}
       data-task-id={task.id}
+      data-sub-id={sub?.id}
+      data-parent-row={parentGroup ? "true" : undefined}
     >
       {chain ? (
         <button
           className={`chain-caret${chain.folded ? " folded" : ""}`}
-          title={chain.folded ? "摊开这件事剩下的子任务（→）" : "只看下一步（←）"}
+          title={parentGroup ? chain.folded ? "展开这件事的待办子任务（→）" : "收起这件事的待办子任务（←）" : chain.folded ? "摊开这件事剩下的子任务（→）" : "只看下一步（←）"}
+          aria-label={parentGroup ? `${chain.folded ? "展开" : "收起"}子任务 ${task.title}` : undefined}
           aria-expanded={!chain.folded}
           onClick={onFoldHit}
         >
@@ -327,7 +342,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
         onClick={onCheck}
         title={isDropped ? "放回未完成（取消放弃）" : isDone ? "标记未完成" : "完成"}
       />
-      {sub ? (
+      {sub && nested ? <span className="title">{sub.title || "（未命名）"}</span> : sub ? (
         <span className="title">
           {/* 链头行上这句「母任务 › 」兼任第二个折叠热区：它够宽、天生代表母任务，
               跟「点子任务标题 = 打开这件事的卡片」不打架。不是链头的行上只是一段灰字。
@@ -371,6 +386,10 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           绝不为了让下面那个徽标可点就把它拆掉——拆了整条右侧信息区都会变成「点了就开卡」。
           徽标自己带 onClick，本来就跑在这句之前 */}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
+        {IS_ULTRA && taskImages((sub ?? task).images).length > 0 && <ImageAttachments compact images={taskImages((sub ?? task).images)}
+          targetKey={`${task.id}:${sub?.id ?? "task"}`} label={sub ? "这一步的图片" : "图片"}
+          canEdit={() => !!appStore.getState().data.tasks.find((item) => item.id === task.id && !item.deletedAt && (!sub || item.subtasks.some((step) => step.id === sub.id && !step.deletedAt)))}
+          onChange={(images) => sub ? updateSubtask(task.id, sub.id, { images }) : updateTask(task.id, { images })} />}
         {chain && (chain.folded ? chain.more > 0 : chain.total > 0) && (
           // 收起时「+N」= 摊开，摊开时「−N」= 收起。两个方向都得有个可点物，
           // 否则只有 +N 一个入口，收回去只能回头去找行首那个小三角
@@ -378,8 +397,8 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
             className={`chain-more${chain.folded ? "" : " plain"}`}
             title={
               chain.folded
-                ? `这件事后面还有 ${chain.more} 条待办，点开摊开（→）`
-                : `把这件事剩下的 ${chain.total} 条收起来，只看下一步（←）`
+                ? `这件事有 ${chain.more} 条待办子任务，点开展开（→）`
+                : parentGroup ? `收起这件事的 ${chain.total} 条待办子任务（←）` : `把这件事剩下的 ${chain.total} 条收起来，只看下一步（←）`
             }
             onClick={onFoldHit}
           >
@@ -425,7 +444,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
                 : "顺延到哪天"
             }
             // 现点现取：菜单开着时数据变了，以点下去那一刻为准
-            getRows={() => (foldedHead ? overdueSubRows(task) : [row])}
+            getRows={() => parentGroup ? overdueParentActions(task, today) : (foldedHead ? overdueSubRows(task) : [row])}
             // Ctrl / Shift 点它照旧是连选，跟行上别的热区同一个规矩
             intercept={multiSelect}
           />

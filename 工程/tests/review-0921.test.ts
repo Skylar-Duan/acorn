@@ -194,13 +194,24 @@ describe("文案", () => {
 
 import { existsSync, readFileSync } from "node:fs";
 
-// 验收单工具在 _work/ 下，不进 git：没有这份文件（别处克隆的仓库）就跳过
+// 验收工具不入git。详细验法随发布进入历史，发布后继续检查，不能因pending清空而漏验。
 const PENDING = "../_work/验收单工具/最新改动.json";
-describe.skipIf(!existsSync(PENDING))("验收单（最新改动.json）", () => {
+const RELEASE_CHECKS = "../_work/验收单工具/发布验收.json";
+type ReviewCheck = { id: string; what: string; how: string[]; verified: boolean; screens: { src: string }[]; current?: Partial<ReviewCheck> };
+type ReleaseChecks = { checks?: ReviewCheck[] };
+describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", () => {
   const pend = existsSync(PENDING) ? JSON.parse(readFileSync(PENDING, "utf8")) : {};
-  const items = (p: string) => pend[p].items as { id: string; what: string; how: string[] }[];
+  const archive: Record<string, ReleaseChecks | string> = existsSync(RELEASE_CHECKS) ? JSON.parse(readFileSync(RELEASE_CHECKS, "utf8")) : {};
+  const pendingItems = (p: string): ReviewCheck[] => pend[p]?.items ?? [];
+  const items = (p: string): ReviewCheck[] => [
+    ...pendingItems(p),
+    ...Object.entries(archive).filter(([key, value]) => key.startsWith(`${p}|`) && typeof value === "object")
+      .flatMap(([, value]) => (value as ReleaseChecks).checks ?? []),
+  ].map((it) => ({ ...it, ...it.current }));
   const text = (p: string, id: string) => {
-    const it = items(p).find((x) => x.id === id)!;
+    const it = items(p).find((x) => x.id === id);
+    expect(it, `${p}/${id}应保留在待核或正式历史，不能发布时丢失`).toBeDefined();
+    if (!it) throw new Error(`验收记录缺失：${p}/${id}`);
     return [it.what, ...it.how].join("\n");
   };
   it("网页没有「更新弹窗」那一项", () => {
@@ -208,11 +219,28 @@ describe.skipIf(!existsSync(PENDING))("验收单（最新改动.json）", () => 
   });
   it("桌面说明：攒着改动时写明对应哪个测试版、已经装了；刚发完正式版时写明发的是几号", () => {
     // 不钉死整句——每打一次新测试版这句话就会改一次，只钉这层意思
-    if (items("desktop").length) {
+    if (pendingItems("desktop").length) {
       expect(pend.desktop.note).toMatch(/beta\.\d+/);
       expect(pend.desktop.note).toContain("已装到这台电脑");
     } else {
       expect(pend.desktop.note).toMatch(/\d+\.\d+\.\d+ 已于 \d{4}-\d{2}-\d{2} 正式发布/);
+    }
+  });
+  it("本轮正式历史完整保留旧桌面14条、网页34条，并增加今天实际交付的逐项验法", () => {
+    for (const [p, version, oldCount] of [["desktop", "1.16.1", 14], ["web", "1.15.1", 34]] as const) {
+      if (pendingItems(p).length) continue;
+      const entry = archive[`${p}|${version}`] as ReleaseChecks | undefined;
+      expect(entry, `${p}正式发布后详细验法必须归档`).toBeDefined();
+      const deliveredIds = ["261020-parent-expand", "261020-child-time-order", "261020-child-actions", "261020-existing-child-priority",
+        ...(p === "desktop" ? ["261020-ultra-image-stack"] : [])];
+      expect(entry?.checks?.length).toBeGreaterThanOrEqual(oldCount + deliveredIds.length);
+      for (const id of deliveredIds) {
+        const check = entry?.checks?.find((it) => it.id === id);
+        expect(check?.what.length, id).toBeGreaterThan(20);
+        expect(check?.how.length, id).toBeGreaterThanOrEqual(3);
+      }
+      expect(entry?.checks?.some((it) => it.screens.length > 0)).toBe(true);
+      expect(new Set(entry?.checks?.map((it) => it.id)).size).toBe(entry?.checks?.length);
     }
   });
   it("网页那几项没有浏览器做不到的操作", () => {
@@ -221,7 +249,7 @@ describe.skipIf(!existsSync(PENDING))("验收单（最新改动.json）", () => 
     }
   });
   it("桌面和电脑浏览器那几项叫「今日任务页」；收起的链头才代表整件事", () => {
-    // 桌面那两项 09-23 随 1.16.0 发布、从「最新改动」挪走了，只剩网页那两项要核（桌面还攒着的话照核）
+    // 09-23桌面旧条目已并入1.16.0摘要；网页详细条目无论待核或已归档都要继续核。
     const pairs = [["desktop", "d-2609d-postpone"], ["desktop", "d-2609d-ctx"], ["web", "w-2609d-postpone"], ["web", "w-2609d-ctx"]]
       .filter(([p, id]) => items(p).some((x) => x.id === id));
     expect(pairs.some(([p]) => p === "web")).toBe(true);

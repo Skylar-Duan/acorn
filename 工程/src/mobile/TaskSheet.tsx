@@ -116,7 +116,7 @@ function TaskSheetBody({ task }: { task: Task }) {
   // 母任务一起传进去：没自己填日期的那几步按母任务的日子排，跟屏幕上显示的日期一致（同 TaskCard）
   const { open: openSubs, done: doneSubs } = useMemo(
     () => splitSubtasks(task.subtasks, task),
-    [task.subtasks, task.due, task.dueTime],
+    [task.subtasks, task.due, task.dueTime, task.priority],
   );
   const canFoldDone = doneSubs.length >= SUB_DONE_PEEK;
   const doneShown = canFoldDone ? showDone ?? !foldDoneSubs(task.subtasks) : true;

@@ -370,7 +370,7 @@ describe("入口：三处都是同一个「顺延 ▾」", () => {
     expect(head).toContain('openSheet({ kind: "postpone", rows: overdue.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })');
     expect(head).toContain("全部顺延 →");
     expect(head).not.toContain("推到明天");
-    expect(head).toContain('<PostponeButton className="act" label="全部顺延" getRows={() => overdue} />');
+    expect(head).toContain('<PostponeButton className="act" label="全部顺延" getRows={() => parents?.overdueActions ?? overdue} />');
   });
 
   it("多选浮条：「顺延」，不再是「推到明天」", () => {
@@ -404,7 +404,7 @@ describe("入口：三处都是同一个「顺延 ▾」", () => {
     expect(taskRowSource).toContain(
       "const showPostpone = !isMobile && !dateOnlyTail && !doneDate && (overdue || headOverdue.length > 0);",
     );
-    expect(taskRowSource).toContain("getRows={() => (foldedHead ? overdueSubRows(task) : [row])}");
+    expect(taskRowSource).toContain("getRows={() => parentGroup ? overdueParentActions(task, today) : (foldedHead ? overdueSubRows(task) : [row])}");
     // Ctrl / Shift 点它照旧连选
     expect(taskRowSource).toContain("intercept={multiSelect}");
     // 点它不冒泡成打开任务卡

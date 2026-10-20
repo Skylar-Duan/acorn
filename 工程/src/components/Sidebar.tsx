@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { todayYMD, cmpYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
+import { isMobile } from "../core/platform";
+import { parentRowsForToday } from "../core/parentRows";
 import {
   addTasksWho, aliveTasks, allTags, allWho, appStore, categoryRows, deleteTasks, habitsOpenToday,
   moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
@@ -354,10 +356,11 @@ export default function Sidebar(
   // 这里改了口径，清单角标跟着一起改，跟 counts.plan（走 openRows）对齐
   const open = useMemo(() => aliveTasks({ tasks }).filter((t) => !t.done && !t.droppedAt), [tasks]);
   const rows = useMemo(() => openRows({ tasks }), [tasks]);
-  // 计数按「行」算，跟点进去实际看到的条数对得上（有子任务的事已经拆成一行一个子任务）
+  const todayParents = useMemo(() => isMobile ? null : parentRowsForToday({ tasks, settings }, today), [tasks, settings, today]);
+  // 桌面今日按合并后的母任务计数；手机继续原有到期步骤行计数。
   const counts = useMemo(
     () => ({
-      today: rows.filter((r) => {
+      today: todayParents ? todayParents.overdue.length + todayParents.todays.length : rows.filter((r) => {
         const due = rowDue(r);
         return due && cmpYMD(due, today) <= 0;
       }).length,
@@ -368,7 +371,7 @@ export default function Sidebar(
       trash: tasks.filter((t) => t.deletedAt).length + trashedSubtaskRows({ tasks }).length,
       habits: habitsOpenToday({ tasks }, today),
     }),
-    [tasks, open, rows, today],
+    [tasks, open, rows, today, todayParents],
   );
   const whoList = useMemo(() => allWho({ tasks, settings }), [tasks, settings]);
   const tagList = useMemo(() => allTags({ tasks }), [tasks]);

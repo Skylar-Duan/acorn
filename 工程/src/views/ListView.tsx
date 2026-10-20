@@ -171,8 +171,8 @@ export default function ListView({ kind }: { kind: ListKind }) {
   const subRows = useMemo(() => {
     if (kind === "trash") return trashedSubtaskRows(data);
     if (kind !== "list" && kind !== "who") return [];
-    return sortRows(categoryRows(data, kind === "list" ? { listId } : { who }).filter((r) => r.sub), sortMode);
-  }, [data, kind, listId, who, sortMode]);
+    return sortRows(categoryRows(data, kind === "list" ? { listId } : { who }).filter((r) => r.sub), "time");
+  }, [data, kind, listId, who]);
   const trashHasStuff = tasks.length > 0 || subRows.length > 0;
 
   // 清单/需求方视图：按日期分组展示更有章法（分法在 core/plan.ts，纯函数、可单测）。

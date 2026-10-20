@@ -14,7 +14,7 @@ import { imageEditContext } from "../core/imageEditContext";
 import { rememberTaskSubtasksFolded, taskSubtasksFolded } from "../core/subtaskFold";
 import { listColor } from "../core/colors";
 import {
-  addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
+  addSubtask, addTasksWho, allTags, allWho, appStore, completeTask, deleteTasks,
   dropTasks, expandTask, foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks,
   showToast, SUB_DONE_PEEK, toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
@@ -239,7 +239,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   // 所以母任务改了日期这一堆也要重排（依赖里带上 due / dueTime）
   const { open: openSubs, done: doneSubs } = useMemo(
     () => splitSubtasks(task.subtasks, task),
-    [task.subtasks, task.due, task.dueTime],
+    [task.subtasks, task.due, task.dueTime, task.priority],
   );
   const canFoldOpen = openSubs.length > 3;
   const previewFolded = canFoldOpen && openFolded && !locatingSubId;
@@ -587,15 +587,11 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             <span className="sub-inherited">{PRIORITY_LABEL[task.priority]}</span>
           )}
         </button>
-        {/* 放弃跟删除挨着放，都是「按一下这行就不在待办里了」的键；已经放弃的那条常驻显示，
-            否则想反悔的人得先猜出来这里有个按钮 */}
-        <button
-          className="sub-drop"
-          onClick={() => dropSubtask(task.id, s.id, !s.droppedAt)}
-          title={s.droppedAt ? "取消放弃，放回未完成" : "放弃这一步：不做了，但它不算做完"}
-        >
-          <TaskIcon name={s.droppedAt ? "restore" : "skip"} />
-        </button>
+        {IS_ULTRA && <ImageAttachments compact images={taskImages(s.images)} label="这一步的图片" pickerLabel={`给子任务添加图片 ${s.title}`}
+          targetKey={`${task.id}:${s.id}`}
+          inputTargets={() => [subInputRefs.current.get(s.id)]}
+          canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
+          onChange={(images) => updateSubtask(task.id, s.id, { images })} />}
         <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务" aria-label={`删除子任务 ${s.title}`}><TaskIcon name="trash" /></button>
         {((s.who?.length ?? 0) > 0 || (s.listIds?.length ?? 0) > 0) && (
           <span className="sub-categories" aria-label="子任务追加归类">
@@ -612,11 +608,6 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             })}
           </span>
         )}
-        {IS_ULTRA && <div className="sub-images"><ImageAttachments images={taskImages(s.images)} label="这一步的图片"
-          targetKey={`${task.id}:${s.id}`}
-          inputTargets={() => [subInputRefs.current.get(s.id)]}
-          canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
-          onChange={(images) => updateSubtask(task.id, s.id, { images })} /></div>}
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
           <TaskPropertyPopover anchor={subPropertyAnchor.current} owner={task.id} leaving={subPop.leaving}>
             {/* 预设跟任务卡那个日期弹层同一套（core/options.dateOptions），别在这儿另写一份；
@@ -702,6 +693,12 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         <CommitMark on={titleFlash} />
         {/* 放弃只在这儿露一个灰标签，圈圈那边一点不动 */}
         {task.droppedAt && <span className="drop-tag">已放弃</span>}
+        <ImageAttachments compact images={taskImages(task.images)}
+          targetKey={task.id}
+          inputTargets={() => [titleRef.current, notesRef.current]}
+          onBusyChange={(busy) => { taskImageBusy.current = busy; }}
+          canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
+          onChange={(images) => updateTask(task.id, { images })} />
       </div>
 
       {/* 包一层是为了让「✓」有个落脚的地方：备注是整行的 textarea，回执得贴在它右上角 */}
@@ -725,12 +722,6 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         {notesFlash && <span className="commit-ok tc-notes-ok">✓</span>}
       </div>
 
-      <ImageAttachments images={taskImages(task.images)}
-        targetKey={task.id}
-        inputTargets={() => [titleRef.current, notesRef.current]}
-        onBusyChange={(busy) => { taskImageBusy.current = busy; }}
-        canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
-        onChange={(images) => updateTask(task.id, { images })} />
       <div className="subs">
         {canFoldOpen ? <button type="button" className="tc-openfold" aria-expanded={!previewFolded} aria-controls={`pending-subs-${task.id}`}
           onClick={() => { const folded = !previewFolded; setDismissedLocate(locateSubId ?? null); rememberTaskSubtasksFolded(task.id, folded); setOpenFold({ id: task.id, folded }); }}>
@@ -771,13 +762,13 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             weekendDay={settings.weekendDay}
             inputStyle={{ fontSize: 13 }}
           />
-          {IS_ULTRA && <div className="sub-images"><ImageAttachments images={newSubImages} label="新子任务图片" draft
+          {IS_ULTRA && <ImageAttachments images={newSubImages} label="新子任务图片" pickerLabel="给新子任务添加图片" draft
             targetKey={`new:${task.id}`}
             inputTargets={() => [newSubInputRef.current]}
             onBusyChange={(busy) => { newSubImageBusy.current = busy; }}
             canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
             createContext={() => { const revision = newSubImageRevision.current; return imageEditContext(() => newSubImageRevision.current === revision && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)); }}
-            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} /></div>}
+            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} />}
         </div>
 
         {/* 阈值跟自动折叠同一个，见上面的 canFoldDone */}

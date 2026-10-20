@@ -94,19 +94,17 @@ describe("P0-1 子任务长标题和追加归类不能撑出窄屏", () => {
   });
 });
 
-describe("P0-5 手指没有 hover：子任务的「放弃 / 删除」不能靠 hover 才显形", () => {
-  it("两条 hover 显形规则都圈进了 @media (hover: hover)", () => {
+describe("P0-5 手指没有 hover：子任务的删除不能靠 hover 才显形", () => {
+  it("hover 显形规则圈进了 @media (hover: hover)", () => {
     const block = mediaBlock(appCss, "@media (hover: hover)");
     expect(block).toContain(".task-card .subs .sub-row:hover .rm");
-    expect(block).toContain(".task-card .subs .sub-row:hover .sub-drop");
     // 变红那条也在里面：手机上它是常驻件，没有「扫过才变红」这回事
     expect(block).toContain(".task-card .subs .rm:hover { color: #C0564A; }");
   });
 
-  it("没有 hover 的设备上两颗常驻显示，并撑到手指按得准的尺寸", () => {
+  it("没有 hover 的设备上删除常驻显示，并撑到手指按得准的尺寸", () => {
     const block = mediaBlock(appCss, "@media (hover: none)");
     expect(block).toContain(".task-card .subs .rm");
-    expect(block).toContain(".task-card .subs .sub-drop");
     expect(block).toContain("opacity: .55;");
     expect(block).toContain("min-width: 30px;");
     expect(block).toContain("min-height: 30px;");
@@ -115,9 +113,6 @@ describe("P0-5 手指没有 hover：子任务的「放弃 / 删除」不能靠 h
     expect(block).toContain(".task-card .subs .sb.done::after");
   });
 
-  it("「已经放弃的那条常驻显示 ↩」留在 hover 块外面——那是老规矩，两种设备都要", () => {
-    expect(appCss).toContain(".task-card .subs .sub-row.dropped .sub-drop { opacity: 1; }");
-  });
 });
 
 describe("P0-3 子任务链：母任务名和子任务名各自省略", () => {

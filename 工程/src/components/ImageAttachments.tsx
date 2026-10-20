@@ -11,6 +11,8 @@ import { IMAGE_MAX_COUNT, imageListUpdateError, imageUrlLength, ledgerImageBytes
 import { renderableTaskImages } from "../core/imageDisplay";
 import { bindImageInput } from "../core/imageInput";
 import Icon from "./Icon";
+import TaskPropertyPopover from "./TaskPropertyPopover";
+import { useLeaving } from "./motion";
 import "../styles/task-images.css";
 
 export interface ImageAttachmentsProps {
@@ -28,6 +30,10 @@ export interface ImageAttachmentsProps {
   inputTargets?: () => readonly (HTMLElement | null | undefined)[];
   /** 组件被复用于另一目标时，旧压缩结果不得写到新目标。 */
   targetKey?: string;
+  /** 子任务行的小加号；选图、粘贴和拖入共用同一条处理路径。 */
+  pickerLabel?: string;
+  /** 已保存的图片收成右侧一张缩略图，点开再看完整图片。 */
+  compact?: boolean;
 }
 
 export default function ImageAttachments(props: ImageAttachmentsProps) {
@@ -35,11 +41,23 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState<TaskImage | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const panel = useLeaving(expanded ? true : null);
+  const summaryButton = useRef<HTMLButtonElement>(null);
+  const galleryElement = useRef<HTMLDivElement>(null);
   const current = useRef(props);
   current.current = props;
   const operation = useRef<{ cancel: boolean; context: ImageOperation } | null>(null);
-  useEffect(() => () => { if (operation.current) { operation.current.cancel = true; operation.current.context.dispose(); operation.current = null; current.current.onBusyChange?.(false); } }, []);
-  useEffect(() => () => { if (operation.current) operation.current.cancel = true; }, [props.targetKey]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const picking = useRef<{ context: ImageOperation; targetKey?: string } | null>(null);
+  function cancelPick() { picking.current?.context.dispose(); picking.current = null; }
+  useEffect(() => () => { cancelPick(); if (operation.current) { operation.current.cancel = true; operation.current.context.dispose(); operation.current = null; current.current.onBusyChange?.(false); } }, []);
+  useEffect(() => () => { cancelPick(); if (operation.current) operation.current.cancel = true; }, [props.targetKey]);
+  useEffect(() => { setExpanded(false); setViewing(null); }, [props.targetKey]);
+  useEffect(() => {
+    if (viewing && !images.some((image) => image?.id === viewing.id && image.dataUrl === viewing.dataUrl)) setViewing(null);
+    if (!images.length && !busy && !error) setExpanded(false);
+  }, [images, busy, error, viewing]);
   useEffect(() => {
     if (!IS_ULTRA || !draft) return;
     const key = () => { const s = syncStore.getState().session; return s ? `${s.email}\n${s.token}` : ""; };
@@ -56,14 +74,41 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     return () => document.removeEventListener("keydown", close, true);
   }, [viewing]);
   useEffect(() => {
+    if (!expanded || viewing) return;
+    const outside = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && (summaryButton.current?.contains(target) || galleryElement.current?.contains(target) || target.closest(".image-lightbox"))) return;
+      setExpanded(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setExpanded(false); } };
+    document.addEventListener("mousedown", outside, true);
+    document.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", escape, true); };
+  }, [expanded, viewing]);
+  useEffect(() => {
     if (!IS_ULTRA || isMobile) return;
     return bindImageInput(props.inputTargets?.() ?? [], (files) => { void attach(files); });
   });
+  useEffect(() => {
+    const input = fileInput.current;
+    if (!input) return;
+    input.addEventListener("cancel", cancelPick);
+    return () => input.removeEventListener("cancel", cancelPick);
+  });
 
-  async function attach(files: File[]) {
-    if (!files.length || busy || operation.current) return;
-    const context = createContext?.() ?? imageEditContext(canEdit);
-    const targetKey = current.current.targetKey;
+  function openPicker() {
+    if (operation.current || !fileInput.current || current.current.canEdit?.() === false) return;
+    cancelPick();
+    const context = current.current.createContext?.() ?? imageEditContext(current.current.canEdit);
+    picking.current = { context, targetKey: current.current.targetKey };
+    fileInput.current.value = "";
+    fileInput.current.click();
+  }
+
+  async function attach(files: File[], picked?: { context: ImageOperation; targetKey?: string }) {
+    if (!files.length || operation.current || picked && (picked.targetKey !== current.current.targetKey || !picked.context.valid())) { picked?.context.dispose(); return; }
+    const context = picked?.context ?? createContext?.() ?? imageEditContext(canEdit);
+    const targetKey = picked ? picked.targetKey : current.current.targetKey;
     const job = { cancel: false, context };
     operation.current = job;
     const valid = () => operation.current === job && !job.cancel && current.current.targetKey === targetKey && context.valid();
@@ -86,7 +131,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
       if (capacity) throw new Error(capacity);
       current.current.onChange(next);
     } catch (caught) {
-      if (valid()) setError(caught instanceof Error ? caught.message : "这张图片没能添加，请重试");
+      if (valid()) { setError(caught instanceof Error ? caught.message : "这张图片没能添加，请重试"); if (current.current.compact) setExpanded(true); }
     } finally {
       context.dispose();
       if (operation.current === job) { operation.current = null; setBusy(false); current.current.onBusyChange?.(false); }
@@ -95,12 +140,16 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
 
   if (!IS_ULTRA || isMobile) return null;
   const visible = renderableTaskImages(images);
-  if (!visible.length && !busy && !error) return null;
+  const showGallery = visible.length > 0 || busy || !!error;
+  if (!showGallery && !props.pickerLabel) return null;
 
-  return <div className={`task-images${visible.length ? "" : " task-images-empty"}`} data-task-images onMouseDown={(e) => e.stopPropagation()}>
+  const gallery = <div ref={galleryElement} className={`task-images${props.compact ? " task-images-compact-gallery" : ""}${visible.length ? "" : " task-images-empty"}`}
+    data-task-images data-image-dialog={props.compact || undefined} role={props.compact ? "dialog" : undefined} aria-label={props.compact ? `${label} · ${visible.length}张` : undefined}
+    onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
     <div className="task-images-head">
       <span className="task-images-label">{label}{visible.length ? ` · ${visible.length}/${IMAGE_MAX_COUNT}` : ""}</span>
       {busy && <><span role="status">正在处理图片…</span><button type="button" onClick={() => { if (operation.current) operation.current.cancel = true; }}>取消</button></>}
+      {props.compact && <button type="button" className="image-collapse" aria-label="收起图片" onClick={() => setExpanded(false)}><Icon name="close" size={15} /></button>}
     </div>
     {visible.length > 0 && <div className="task-image-list">
       {visible.map((image) => <div className="task-image-thumb" key={image.id}>
@@ -109,9 +158,28 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
       </div>)}
     </div>}
     {error && <p className="task-image-error" role="alert">{error}</p>}
+  </div>;
+
+  return <>
+    {props.pickerLabel && <>
+      <button type="button" className="sub-image-add" title="添加图片" aria-label={props.pickerLabel} disabled={busy}
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); openPicker(); }}><Icon name="plus" size={15} /></button>
+      <input ref={fileInput} type="file" hidden multiple accept="image/jpeg,image/png,image/webp" data-image-picker
+        onChange={(e) => { const selected = picking.current; picking.current = null; const files = Array.from(e.currentTarget.files ?? []); e.currentTarget.value = ""; if (selected) void attach(files, selected); }} />
+    </>}
+    {showGallery && (props.compact ? <>
+      <button ref={summaryButton} type="button" className={`image-summary${visible.length > 1 ? " image-summary-stack" : ""}${error ? " image-summary-error" : ""}`}
+        data-image-summary aria-expanded={expanded} aria-label={`展开${label} ${visible.length}张`} title={error || `${label} · ${visible.length}张`}
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
+        {visible[0] ? <img src={visible[0].dataUrl} alt="" loading="lazy" draggable={false} /> : <Icon name="image" size={17} />}
+        {visible.length > 1 && <span className="image-summary-count">{visible.length}</span>}
+        {busy && <span className="image-summary-busy" role="status" aria-label="正在处理图片" />}
+      </button>
+      {panel.shown && <TaskPropertyPopover anchor={summaryButton.current} leaving={panel.leaving}>{gallery}</TaskPropertyPopover>}
+    </> : gallery)}
     {viewing && createPortal(<div className="image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览" data-image-dialog onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setViewing(null); }}>
       <button type="button" className="image-lightbox-close" aria-label="关闭图片预览" onClick={() => setViewing(null)}><Icon name="close" size={24} /></button>
       <img src={viewing.dataUrl} alt={viewing.name} /><span>{viewing.name}</span>
     </div>, document.body)}
-  </div>;
+  </>;
 }

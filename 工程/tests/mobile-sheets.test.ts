@@ -186,15 +186,15 @@ describe("③ 任务详情改属性：每一笔都走 TaskCard 用的那个 stor
     expect(nl(taskCardSource)).toContain(line);
   });
 
-  it("子任务四件事：勾 / 改名 / 放弃 / 删，都走 store（变量名不同，形状一样）", () => {
+  it("子任务勾、改名和删都走 store，手机仍保留放弃动作", () => {
     for (const re of [
       /toggleSubtask\(task\.id, \w+\.id\)/,
-      /dropSubtask\(task\.id, \w+\.id, !\w+\.droppedAt\)/,
       /removeSubtask\(task\.id, \w+\.id\)/,
     ]) {
       expect(taskSheetSource, String(re)).toMatch(re);
       expect(taskCardSource, String(re)).toMatch(re);
     }
+    expect(taskSheetSource).toMatch(/dropSubtask\(task\.id, \w+\.id, !\w+\.droppedAt\)/);
     expect(taskSheetSource).toMatch(/updateSubtask\(task\.id, \w+\.id, \{ title:/);
     expect(taskCardSource).toContain("updateSubtask(task.id, id, patch);");
     // 加子任务：这一处**保留**快捷语法（「不用背语法」说的是「记一条」那张纸）

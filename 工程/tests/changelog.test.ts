@@ -55,8 +55,10 @@ describe("分端：每一端只列它真拿到、且看得见变化的版本", (
     expect(vs("android")).toContain("1.14.2");
   });
 
-  it("网页版是 1.15.0 才有的，只有这一版", () => {
-    expect(vs("web")).toEqual(["1.15.0"]);
+  it("网页版从 1.15.0 开始，最新发布与公开表一致", () => {
+    const versions = vs("web");
+    expect(versions[versions.length - 1]).toBe("1.15.0");
+    expect(vs("web")[0]).toBe(table.public.web);
   });
 
   it("电脑那份里不写手机才有的东西", () => {

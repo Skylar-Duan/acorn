@@ -11,6 +11,8 @@ import type { ReactNode } from "react";
 import type { DateRow, UIState } from "../core/store";
 import { isChainFolded, toggleChain, useApp } from "../core/store";
 import { cardMs } from "../core/motion";
+import { parentFolded, toggleParentFolded, useParentFold, type ParentFoldState } from "../core/parentFold";
+import { pendingChildRows } from "../core/parentRows";
 import { isMobile } from "../core/platform";
 import type { PinIds } from "../core/pin";
 import { CardSlot } from "./motion";
@@ -81,6 +83,19 @@ export function planFold(allRows: DateRow[], ui: UIState): FoldPlan {
   return { hidden, more, head, total };
 }
 
+/** 桌面母子树：母行始终保留，折叠只控制它下面的全部待办子。 */
+export function planParentFold(allRows: DateRow[], state: ParentFoldState): FoldPlan {
+  const plan: FoldPlan = { hidden: new Set(), more: new Map(), head: new Set(), total: new Map() };
+  for (const row of allRows) {
+    const count = pendingChildRows(row.task).length;
+    if (!count) continue;
+    const key = rowKey(row);
+    plan.head.add(key); plan.total.set(key, count);
+    if (parentFolded(state, row.task.id)) plan.more.set(key, count);
+  }
+  return plan;
+}
+
 export interface RowListProps {
   /** 本组的行。**不要**先拿 fold.hidden 过滤——折叠掉的行由这里收成 0 高，
    *  这样「只看下一步」是收进去/放出来的，而不是凭空少几行又多几行（B5）。
@@ -94,9 +109,12 @@ export interface RowListProps {
   fadeOnDone?: boolean;
   /** 手机端：给这一组的第一行演一次「往右滑」的示意（只有整页最上面那一组该传，见 mobile/MobileRow） */
   hintFirstRow?: boolean;
+  /** 只由桌面Plan/Today启用；其他列表和手机继续原子链语义。 */
+  parentGroups?: boolean;
 }
 
-export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hintFirstRow }: RowListProps) {
+export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hintFirstRow, parentGroups = false }: RowListProps) {
+  const [locate, setLocate] = useState<{ taskId: string; subId: string } | null>(null);
   // 收起卡片也要有动画（B1）：expandedId 一清空就把卡片从树上摘掉的话，
   // 「收起」永远是硬切。所以让它再活一拍，那一拍里 .shut 把高度收回去。
   // 只有卡片本来就落在这一组的那个 RowList 会留住它，别的组从头到尾没画过卡片。
@@ -149,6 +167,8 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hi
         sub={r.sub}
         orderedIds={orderedIds}
         bundled={bundled}
+        parentGroup={parentGroups}
+        onOpen={parentGroups ? () => setLocate(null) : undefined}
         fadeOnDone={fadeOnDone}
         // 摊成卡片了、或者被「只看下一步」收起来了，都只是收成 0 高，不下树
         collapsed={expanded || fold.hidden.has(key)}
@@ -162,7 +182,7 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hi
                 more: fold.more.get(key) ?? 0,
                 // 摊开态的「−N」得知道这条链一共有几条：more 那份收起来才有值
                 total: fold.total.get(key) ?? 0,
-                onToggle: () => toggleChain(r.task.id),
+                onToggle: () => parentGroups ? toggleParentFolded(r.task.id) : toggleChain(r.task.id),
               }
             : undefined
         }
@@ -176,9 +196,16 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hi
     if (expanded || key === closing) {
       out.push(
         <CardSlot key={`card:${r.task.id}`} shut={!expanded}>
-          <TaskCard task={r.task} />
+          <TaskCard task={r.task} locateSubId={locate?.taskId === r.task.id ? locate.subId : undefined} />
         </CardSlot>,
       );
+    }
+    if (parentGroups && !r.sub) {
+      for (const child of pendingChildRows(r.task)) {
+        out.push(<TaskRow key={`row:${rowKey(child)}`} task={child.task} sub={child.sub} orderedIds={orderedIds}
+          onOpen={() => setLocate({ taskId: r.task.id, subId: child.sub!.id })}
+          nested bundled fadeOnDone={fadeOnDone} collapsed={expanded || fold.more.has(key)} />);
+      }
     }
   });
   return <>{out}</>;
@@ -190,7 +217,8 @@ export function visibleRows(rows: DateRow[], fold: FoldPlan): DateRow[] {
 }
 
 /** 免得每个视图都 import useApp 再取一次 */
-export function useFoldPlan(allRows: DateRow[]): FoldPlan {
+export function useFoldPlan(allRows: DateRow[], parents = false): FoldPlan {
   const ui = useApp((s) => s.ui);
-  return planFold(allRows, ui);
+  const parentState = useParentFold((state) => state);
+  return parents ? planParentFold(allRows, parentState) : planFold(allRows, ui);
 }

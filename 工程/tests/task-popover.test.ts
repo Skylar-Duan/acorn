@@ -6,6 +6,7 @@ import QuickAddBar from "../src/components/QuickAddBar";
 import { taskPopoverPosition } from "../src/components/TaskPropertyPopover";
 import { defaultData, newTask } from "../src/core/model";
 import { appStore, flushSave, useApp } from "../src/core/store";
+import { addDays, todayYMD } from "../src/core/dates";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -50,11 +51,11 @@ describe("真实组件的属性浮层", () => {
     trigger.focus(); click(trigger);
     const menu = document.querySelector<HTMLElement>('[data-task-popover="popover-demo"]')!;
     expect(host.contains(menu)).toBe(false);
-    const preset = menu.querySelector<HTMLButtonElement>("button.item")!;
-    expect(document.activeElement).toBe(preset);
+    expect(document.activeElement).toBe(menu.querySelector("button.item"));
+    const preset = [...menu.querySelectorAll<HTMLButtonElement>("button.item")].find((button) => button.textContent?.trim() === "明天")!;
     click(preset);
     expect(appStore.getState().ui.expandedId).toBe("popover-demo");
-    expect(appStore.getState().data.tasks[0].due).not.toBe("2026-10-20");
+    expect(appStore.getState().data.tasks[0].due).toBe(addDays(todayYMD(), 1));
     expect(document.querySelector(".task-card")).not.toBeNull();
   });
 

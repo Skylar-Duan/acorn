@@ -530,9 +530,9 @@ describe("入口：右键菜单、任务卡上的小按钮、子任务", () => {
     expect(chips).not.toContain("drop-pill");
   });
 
-  it("子任务行上有自己的放弃键", () => {
-    expect(taskCardSource).toContain('className="sub-drop"');
-    expect(taskCardSource).toContain("dropSubtask(task.id, s.id, !s.droppedAt)");
+  it("子任务行取消放弃键，已有放弃记录仍能显示", () => {
+    expect(taskCardSource).not.toContain('className="sub-drop"');
+    expect(taskCardSource).toContain('s.droppedAt && <span className="drop-tag">已放弃</span>');
   });
 });
 

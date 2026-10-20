@@ -3,6 +3,8 @@
 .row-slot.shut > .tw-row.task-row, .row-slot.leaving > .tw-row.task-row { min-height: 0; }
 .tw-row.task-row:hover { background: var(--card); }
 .tw-row.task-row.selected { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+.tw-row.task-row.task-row-child { padding-left: 42px; font-size: 13px; }
+.tw-row.task-row.task-row-child > .chain-caret { display: none; }
 .tw-row .title { flex: 1 1 0; letter-spacing: .01em; }
 .tw-row .title:has(.chain-parent) { display: flex; align-items: baseline; }
 .tw-row .chain-parent { flex: 0 1 auto; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
@@ -40,14 +42,16 @@
 .tw-card .subs .sub-row .sub-property { flex: none; height: 26px; max-width: 160px; padding: 2px 6px; margin-top: -1px; border: 0; border-radius: 5px; font-size: 11px; background: transparent; color: var(--ink-3); }
 .tw-card .subs .sub-row .sub-property:hover, .tw-card .subs .sub-row .sub-property[aria-expanded=true] { color: var(--accent); background: var(--accent-soft); }
 .tw-card .sub-inherited { color: var(--ink-3); }
-.tw-card .subs .sub-row .rm, .tw-card .subs .sub-row .sub-drop { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; margin-top: -1px; border-radius: 5px; }
-.tw-card .subs .sub-row:focus-within .rm, .tw-card .subs .sub-row:focus-within .sub-drop { opacity: 1; }
+.tw-card .subs .sub-row .rm, .tw-card .subs .sub-row .sub-image-add { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; margin-top: -1px; border-radius: 5px; }
+.tw-card .subs .sub-image-add { color: var(--ink-3); }
+.tw-card .subs .sub-image-add:hover { color: var(--accent); background: var(--accent-soft); }
+.tw-card .subs .sub-image-add:disabled { opacity: .45; cursor: default; }
+.tw-card .subs .sub-row:focus-within .rm { opacity: 1; }
 .tw-card .subs .rm:hover { background: var(--bg); }
 .tw-card .subs .new-sub-row { margin-top: 6px; padding: 8px 0; }
 .tw-card .new-sub-row .si-input::placeholder { color: var(--ink-3); font-size: 12px; font-weight: 400; }
 .tw-card .sub-categories { flex: 1 0 calc(100% - 24px); width: calc(100% - 24px); margin-left: 24px; }
-.tw-card .subs .sub-row > .sub-images:has(.task-images-empty) { flex: 0 0 auto; width: auto; margin: 0; padding: 0; }
-.tw-card .sub-images .task-images-empty { margin: 0; }
+.tw-card .subs .sub-row > .task-images { order: 5; flex: 1 0 calc(100% - 24px); width: calc(100% - 24px); margin: 4px 0 0 24px; }
 .tw-card .sub-category { min-width: 0; max-width: 240px; padding: 2px 5px 2px 7px; border: 1px solid var(--hair); background: transparent; border-radius: 5px; font-size: 11px; }
 .tw-card .sub-category > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tw-card .sub-category button { width: 20px; height: 20px; }
@@ -93,7 +97,7 @@
   .tw-row .sub-row-categories { max-width: 18%; }
 }
 @media (hover: none) {
-  .tw-card .subs .sub-row .rm, .tw-card .subs .sub-row .sub-drop { min-width: 32px; min-height: 32px; opacity: .65; }
+  .tw-card .subs .sub-row .rm, .tw-card .subs .sub-row .sub-image-add { min-width: 32px; min-height: 32px; opacity: .65; }
   .tw-card .subs .sub-row > .sb { width: 18px; height: 18px; }
 }
 @media (max-width: 600px) {

@@ -39,12 +39,12 @@
 
       <div class="panel" style="margin-top:18px">
         <p>打一句话进去：</p>
-        <pre>周五下午3点 提交周报 /工作 @李哥 !高</pre>
+        <pre>~周五下午3点 提交周报 /工作 @李哥 !高</pre>
         <p>日期、时间、清单、需求方、重要性，<b>五样一次到位</b>，不用先选再选。<br>
         不想记这套写法，输入框下面就是一排按钮，点着选一样。</p>
       </div>
 
-      <p class="meta">当前版本 <span data-release="version">v1.16.0</span> · Windows / 安卓 / 网页 · 数据存在你自己的机器上</p>
+      <p class="meta">当前版本 <span data-release="version">v1.16.1</span> · Windows / 安卓 / 网页 · 数据存在你自己的机器上</p>
       <div class="cta-row">
         <!-- 下载是一个按钮 + 一个弹窗，不是并排堆平台按钮：平台只会越来越多
              （将来还有 iOS / macOS），首屏也不该替访客猜他在什么设备上。
@@ -72,7 +72,7 @@
              data-sub="Windows 10 / 11 · x64"
              data-href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe"
              data-api="https://acorn.cdpandas.com/api/desktop/latest"
-             data-version="1.16.0"
+             data-version="1.16.1"
              data-size="7299065"></div>
         <div data-download-item
              data-label="Windows Ultra"
@@ -105,8 +105,8 @@
         <h3>一句话记一件事</h3>
         <p>不用先选日期、再选清单、再点重要性。把话打完就行：</p>
         <ul>
-          <li>日期：明天 / 下周三 / 8月20日 / 十月底之前</li>
-          <li>时间与循环：下午3点、每周一三五</li>
+          <li>日期：<code>~明天</code> / <code>~下周三</code> / <code>~8月20日</code></li>
+          <li>时间与循环：<code>~下午3点</code>、<code>~每周一三五</code></li>
           <li><code>/清单</code> · <code>#标签</code> · <code>@需求方</code> · <code>!高</code></li>
         </ul>
         <p style="margin-top:8px">边打边显示解析出来的结果，不对当场改。</p>
@@ -131,14 +131,20 @@
       </div>
 
       <div class="card">
-        <h3>有子任务的事，按「下一步干什么」排</h3>
-        <p>一件事还剩几个子任务没做，列表里就占几行（「写周报 › 画趋势图」），母任务先收起来，全做完了它才回来收尾。</p>
-        <p style="margin-top:8px">子任务没单独填日期和重要性时就等于母任务的：母任务定在周五，它的子任务周五当天自己出现在「今天」。</p>
+        <h3>先看整件事，再展开步骤</h3>
+        <p>电脑上的计划和今日任务先列母任务，点箭头展开待办步骤。子任务按日期、钟点排，同一时间再按重要性排。</p>
+        <p style="margin-top:8px">子任务未单独排期时沿用母任务；母任务未单独排期时，显示最近待办步骤的日期。点开任务卡，还可以把长清单收成前三条。</p>
       </div>
 
       <div class="card">
-        <h3>改一整句话，就是改这件事</h3>
-        <p>点开任何一件事，底下那栏已经写好了它的完整一句话。删掉「!高」就降级，删掉「@李哥」就把人摘了，旁边一个按钮随时还原。</p>
+        <h3>直接改标题，也能改安排</h3>
+        <p>电脑上直接在标题里写「~明天 !高」，就能调整日期和重要性。子任务写「@李哥 /学习」，会在末尾追加归类小签，点×移除。</p>
+      </div>
+
+      <div class="card">
+        <h3>四象限，看任务的位置</h3>
+        <p>重要性越高越靠上，截止越近越靠右，近期日期拉开、远期压缩。有待办步骤时只显示可执行的子任务点。</p>
+        <p style="margin-top:8px">拖动点时跟随预览日期和重要性，松手保存；左键按住时点一下右键取消。</p>
       </div>
 
       <div class="card">
@@ -177,30 +183,30 @@
   <div class="wrap">
     <div class="section-head">
       <h2>长这个样子</h2>
-      <p>真机截图，里面的任务是演示数据。</p>
+      <p>应用界面截图，里面的任务是演示数据。</p>
     </div>
     <div class="shots">
 
       <figure class="shot">
-        <img src="assets/shot-today.webp" width="1280" height="860" loading="lazy" decoding="async"
-             alt="今天视图：逾期的事在最上面，今天的事按子任务一行一行列出，做完的沉到下面；左侧栏按清单、需求方、标签各分一栏，森林主题的针叶林垫在任务下面">
+        <img src="assets/shot-today.webp" width="1280" height="900" loading="lazy" decoding="async"
+             alt="今日任务：逾期在上，母任务点箭头展开待办步骤；侧栏按清单、需求方和标签分组">
         <figcaption><b>今天</b>：逾期在上，今天在中，做完的沉下去；侧栏按清单、需求方、标签各分一栏。</figcaption>
       </figure>
 
       <figure class="shot">
-        <img src="assets/shot-changelog.webp" width="1280" height="860" loading="lazy" decoding="async"
+        <img src="assets/shot-changelog.webp" width="1280" height="900" loading="lazy" decoding="async"
              alt="更新日志弹窗：最新版本一张主卡，一句话概括加几张新能力小卡；之前的版本折成一行一版">
         <figcaption><b>更新日志</b>：打开橡果会自己查有没有新版，这里也能手动查；之前的版本折成一行一版。</figcaption>
       </figure>
 
       <figure class="shot">
-        <img src="assets/shot-calendar.webp" width="1280" height="860" loading="lazy" decoding="async"
+        <img src="assets/shot-calendar.webp" width="1280" height="900" loading="lazy" decoding="async"
              alt="日历月视图：任务按到期日落在格子里，做完的打勾；顶上可以切到按周看，也能只看计划或只看已完成">
         <figcaption><b>日历</b>：顶上切月 / 周两种看法，全部 / 计划 / 已完成三档筛。</figcaption>
       </figure>
 
       <figure class="shot">
-        <img src="assets/shot-settings.webp" width="1280" height="690" loading="lazy" decoding="async"
+        <img src="assets/shot-settings.webp" width="1280" height="900" loading="lazy" decoding="async"
              alt="设置页：外观区六款主题各配一张风景缩略图，深浅模式可选；云账号一节可注册或登录，不登录也完全能用">
         <figcaption><b>设置</b>：六款主题各配一幅画，深浅两色随手切；云账号可选，不登录一切照旧。</figcaption>
       </figure>
@@ -285,11 +291,26 @@
          用接口里的更新说明在最上面补一条。逻辑在 /utilities/_shared/tool-release.js。 -->
     <div class="releases"
          data-release-api="https://acorn.cdpandas.com/api/desktop/latest"
-         data-release-static="1.16.0">
+         data-release-static="1.16.1">
 
 <!-- releases:begin（scripts/site-changelog.py 生成，别手改） -->
       <div class="rel">
-        <div class="meta"><div class="ver">v1.16.0</div><div class="date" data-release="date">2026-09-23</div></div>
+        <div class="meta"><div class="ver">v1.16.1</div><div class="date" data-release="date">2026-10-20</div></div>
+        <div>
+          <p><b>办公界面焕新，母子任务展开与坐标四象限</b></p>
+          <ul>
+            <li><b>办公界面焕新</b>：任务、日历、习惯、统计及设置统一排版；侧栏分组可以拖动排序，点箭头收展，功能区设置用小按钮增减入口。</li>
+            <li><b>母子任务展开</b>：计划和今日任务先显示母任务，点箭头展开待办子任务。母任务未单独排期时显示最近子任务日期；子任务按时间优先、重要性其次排列。</li>
+            <li><b>坐标四象限</b>：任务按重要性和截止日期显示为点，近期拉开、远期压缩。拖动时跟随预览，松手保存；左键按住时点右键取消。</li>
+            <li><b>子任务追加归类</b>：直接改标题可识别「~明天 !高」或「！！！」等标记；子任务写「@李哥 /学习」会追加归类小签，可以点×移除。</li>
+            <li><b>Ultra图片</b>：子任务小加号选图，或在输入处粘贴、拖图。保存后右侧仅显示一张缩略图，多图有数量标记，点开展开完整图片。</li>
+            <li><b>体验优化</b>：待办子任务收起时保留前三条，已完成记录按完成时间倒序；护眼提醒可选小窗或全屏，优化了日期菜单和日历议程等使用体验。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.16.0</div><div class="date">2026-09-23</div></div>
         <div>
           <p><b>计划按本周、本月分组，循环可以自定义，新增反馈入口</b></p>
           <ul>
@@ -298,7 +319,7 @@
             <li><b>习惯页列出重复计划</b>：习惯页新增「重复的计划」，带循环的计划按下一次的日子排，例如「每月1号 交房租」；每个习惯右边写着下次是哪天。</li>
             <li><b>账号两边通用</b>：橡果和 cdpandas 用同一个账号；点右上角头像可以换头像、改名字，各设备一致；手机上刚记的事，电脑上约 5 分钟内自动出现。</li>
             <li><b>新增反馈入口</b>：设置里「账号」下面多了「反馈」，写下哪里不好用、想要什么，点「发送」就交给我们。</li>
-            <li><b>体验优化</b>：顺延可选本周末、下周末、本月末或任意一天；侧栏依次是计划、日历、今日任务、习惯，已完成放进「更多」；修复了若干问题。</li>
+            <li><b>体验优化</b>：顺延可选本周末、下周末、本月末或任意一天；优化了侧栏入口，修复了若干问题。</li>
           </ul>
         </div>
       </div>
@@ -315,6 +336,9 @@
         </div>
       </div>
 
+      <details class="rel-more">
+      <summary>更早的版本（18）</summary>
+
       <div class="rel">
         <div class="meta"><div class="ver">v1.14.1</div><div class="date">2026-09-09</div></div>
         <div>
@@ -324,9 +348,6 @@
           </ul>
         </div>
       </div>
-
-      <details class="rel-more">
-      <summary>更早的版本（17）</summary>
 
       <div class="rel">
         <div class="meta"><div class="ver">v1.14.0</div><div class="date">2026-09-04</div></div>

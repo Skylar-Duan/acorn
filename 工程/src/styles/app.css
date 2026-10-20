@@ -528,27 +528,17 @@ body.side-resizing { user-select: none; cursor: col-resize; }
   white-space: nowrap;
 }
 .task-card .subs .rm { color: var(--ink-3); font-size: 13px; opacity: 0; }
-/* 「放弃这一步」。跟删除同一档待遇：平时藏着，鼠标扫过才露面。
-   **已经放弃的那条常驻显示**——不然想反悔的人得先猜出来这儿有个按钮 */
-.task-card .subs .sub-drop { color: var(--ink-3); font-size: 12px; opacity: 0; flex: none; }
-.task-card .subs .sub-row.dropped .sub-drop { opacity: 1; }
-/* 🔴「平时藏着，扫过才露面」只对**有鼠标的设备**成立。手指没有 hover ——
-   不圈进 (hover: hover) 的话，手机上这两颗按钮 opacity 一直是 0，
-   等于「放弃了能撤回、但压根没法放弃」（v1.10.0 修） */
+/* 删除键在鼠标悬停时显示，触屏上保持可见。 */
 @media (hover: hover) {
-  .task-card .subs .sub-row:hover .rm,
-  .task-card .subs .sub-row:hover .sub-drop { opacity: 1; }
-  .task-card .subs .sub-drop:hover { color: var(--accent); }
+  .task-card .subs .sub-row:hover .rm { opacity: 1; }
   .task-card .subs .rm:hover { color: #C0564A; }
 }
-/* 没有 hover 的设备（手机 / 平板）：两颗常驻半显，并撑到手指按得准的大小。
-   压到 .55 而不是 1，是因为它们在手机上是常驻件，全亮会跟子任务标题抢视线 */
+/* 没有 hover 的设备：删除键常驻半显，并放大触摸范围。 */
 @media (hover: none) {
   /* 长按任务行是唤右键菜单的（TaskRow 自己接的长按），别让系统再弹「复制 / 全选」气泡抢戏——
      侧栏排序那套 .lifted 已经这么写了，任务行漏了这一句（v1.10.0 手机走查第 11 条） */
   .task-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  .task-card .subs .rm,
-  .task-card .subs .sub-drop {
+  .task-card .subs .rm {
     opacity: .55;
     min-width: 30px;
     min-height: 30px;
@@ -576,7 +566,7 @@ body.side-resizing { user-select: none; cursor: col-resize; }
 }
 .task-card .subs .tc-donefold:hover { color: var(--accent); background: var(--accent-soft); }
 .task-card .subs .tc-donefold-caret { font-size: 9px; line-height: 1; opacity: .8; }
-/* .rm / .sub-drop 的 :hover 上色都收进上面那个 @media (hover: hover) 了，这儿不再重复一份 */
+/* .rm 的 :hover 上色收进上面那个 @media (hover: hover)。 */
 .task-card .chips { display: flex; gap: 7px; margin: 10px 0 0 28px; align-items: center; flex-wrap: wrap; }
 .task-card .chips .pill { cursor: default; }
 .task-card .chips .pill:hover { border-color: var(--accent); color: var(--accent); }

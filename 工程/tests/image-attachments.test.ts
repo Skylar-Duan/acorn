@@ -7,6 +7,7 @@ vi.mock("../src/core/platform", async (original) => ({ ...await original<typeof 
 vi.mock("../src/core/imageCompression", async (original) => ({ ...await original<typeof import("../src/core/imageCompression")>(), compressTaskImage: flags.compress }));
 import ImageAttachments from "../src/components/ImageAttachments";
 import TaskCard from "../src/components/TaskCard";
+import TaskRow from "../src/components/TaskRow";
 import QuickAddBar from "../src/components/QuickAddBar";
 import { defaultData, newTask, type TaskImage } from "../src/core/model";
 import { addSubtask, appStore, deleteTasks, flushSave, undo, updateTask, useApp } from "../src/core/store";
@@ -17,11 +18,11 @@ const jpegHeader = [255, 216, 255, 192, 0, 17, 8, 0, 1, 0, 1, 3, 1, 17, 0, 2, 17
 const image: TaskImage = { id: "new-photo", name: "合成图.jpg", dataUrl: `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpegHeader))}`, width: 1, height: 1, bytes: jpegHeader.length };
 let root: Root; let host: HTMLDivElement;
 const getTask = () => appStore.getState().data.tasks.find((t) => t.id === "image-task")!;
-function Existing() {
+function Existing({ picker = false, compact = false }: { picker?: boolean; compact?: boolean }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const task = useApp((s) => s.data.tasks.find((t) => t.id === "image-task"));
   if (!task || task.deletedAt) return null;
-  return createElement("div", null, createElement("textarea", { ref: input }), createElement(ImageAttachments, { images: task.images, inputTargets: () => [input.current], canEdit: () => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt), onChange: (images) => updateTask(task.id, { images }) }));
+  return createElement("div", null, createElement("textarea", { ref: input }), createElement(ImageAttachments, { compact, images: task.images, pickerLabel: picker ? "添加测试图片" : undefined, inputTargets: () => [input.current], canEdit: () => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt), onChange: (images) => updateTask(task.id, { images }) }));
 }
 function Card() { const task = useApp((s) => s.data.tasks.find((t) => t.id === "image-task"))!; return createElement(TaskCard, { task }); }
 async function pasteImages(files = [new File(["synthetic"], "合成图.png", { type: "image/png" })], input = document.querySelector<HTMLElement>('textarea, .si-input')!, text = "", kind = "paste") {
@@ -32,6 +33,11 @@ async function pasteImages(files = [new File(["synthetic"], "合成图.png", { t
   return event;
 }
 function button(label: string) { return [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label)!; }
+function pickButton() { return document.querySelector<HTMLButtonElement>(".sub-image-add")!; }
+async function chooseImages(input = document.querySelector<HTMLInputElement>('[data-image-picker]')!, files = [new File(["synthetic"], "选择的图片.png", { type: "image/png" })]) {
+  Object.defineProperty(input, "files", { configurable: true, value: files });
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+}
 
 beforeEach(async () => {
   await flushSave(); while (appStore.getState().undoDepth > 0) undo(); await flushSave(); localStorage.clear();
@@ -44,10 +50,102 @@ beforeEach(async () => {
 afterEach(async () => { act(() => root.unmount()); document.body.innerHTML = ""; vi.restoreAllMocks(); await flushSave(); });
 
 describe("Ultra图片入口", () => {
-  it("无图时与普通UI相同，没有图片区域、附件按钮或文件选择器", () => {
+  it("已保存多图只显示一个缩略图和数量，点开展开完整图片且不写账本", async () => {
+    updateTask("image-task", { images: [image, { ...image, id: "photo-2", name: "第二张.jpg" }] });
+    act(() => root.render(createElement(Existing, { compact: true })));
+    const before = JSON.stringify(getTask());
+    expect(document.querySelectorAll("[data-image-summary] img")).toHaveLength(1);
+    expect(document.querySelector(".image-summary-stack .image-summary-count")?.textContent).toBe("2");
+    expect(document.querySelector("[data-task-images]")).toBeNull();
+    act(() => document.querySelector<HTMLButtonElement>("[data-image-summary]")!.click());
+    expect(document.querySelectorAll("[data-task-images] .image-open")).toHaveLength(2);
+    expect(JSON.stringify(getTask())).toBe(before);
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="放大图片 第二张.jpg"]')!.click());
+    expect(document.querySelector('[aria-label="图片预览"] img')?.getAttribute("alt")).toBe("第二张.jpg");
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[aria-label="图片预览"]')).toBeNull();
+    expect(document.querySelector('[data-image-summary]')?.getAttribute("aria-expanded")).toBe("true");
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="收起图片"]')!.click());
+    expect(document.querySelector('[data-image-summary]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(JSON.stringify(getTask())).toBe(before);
+  });
+  it("任务卡主图在标题右侧，已建子图在本行；新子草稿仍显示待保存图片", async () => {
+    updateTask("image-task", { images: [image] }); addSubtask("image-task", "带图子任务", { images: [{ ...image, id: "child-photo" }] });
+    act(() => root.render(createElement(Card)));
+    expect(document.querySelector(".task-card .row1 [data-image-summary]")).not.toBeNull();
+    expect(document.querySelector(".sub-row:not(.new-sub-row) > [data-image-summary]")).not.toBeNull();
+    expect(document.querySelector("[data-task-images]")).toBeNull();
+    await pasteImages(undefined, document.querySelector<HTMLElement>('.new-sub-row textarea')!);
+    expect(document.querySelector('.new-sub-row [data-task-images] img')).not.toBeNull();
+  });
+  it("列表缩略图点开图片不误开任务卡，普通版同一账本隐藏图片", () => {
+    updateTask("image-task", { images: [image] });
+    act(() => root.render(createElement(TaskRow, { task: getTask(), orderedIds: ["image-task"] })));
+    expect(document.querySelector(".task-row .meta [data-image-summary]")).not.toBeNull();
+    act(() => document.querySelector<HTMLButtonElement>("[data-image-summary]")!.click());
+    expect(appStore.getState().ui.expandedId).toBeNull();
+    expect(document.querySelector('[data-task-images]')).not.toBeNull();
+    flags.ultra = false;
+    act(() => root.render(createElement(TaskRow, { task: getTask(), orderedIds: ["image-task"] })));
+    expect(document.querySelector('[data-image-summary], [data-task-images], img')).toBeNull();
+    expect(getTask().images).toEqual([image]);
+  });
+  it("无图时仅新子任务行有小加号，主任务没有图片占位和附件按钮", () => {
     act(() => root.render(createElement(Card)));
     expect(document.querySelector('[data-task-images]')).toBeNull();
-    expect(document.querySelector('input[type="file"], .image-add')).toBeNull();
+    expect(document.querySelectorAll('.sub-image-add')).toHaveLength(1);
+    expect(document.querySelector('.new-sub-row .sub-image-add')).not.toBeNull();
+    expect(document.querySelector('.sub-drop')).toBeNull();
+  });
+  it("小加号打开原生选图，选中的图片只加到对应子任务", async () => {
+    addSubtask("image-task", "选图的步骤");
+    act(() => root.render(createElement(Card)));
+    const row = document.querySelector<HTMLElement>('.sub-row:not(.new-sub-row)')!;
+    const input = row.querySelector<HTMLInputElement>('[data-image-picker]')!;
+    const open = vi.spyOn(input, "click");
+    act(() => row.querySelector<HTMLButtonElement>('.sub-image-add')!.click());
+    expect(open).toHaveBeenCalledOnce();
+    await chooseImages(input);
+    expect(getTask().subtasks[0].images).toEqual([image]);
+    expect(getTask().images).toBeUndefined();
+    expect(document.querySelector('.new-sub-row img')).toBeNull();
+    expect(document.querySelector('.sub-drop')).toBeNull();
+  });
+  it("取消选图不写入，重新选择同一张文件仍可添加", async () => {
+    act(() => root.render(createElement(Existing, { picker: true })));
+    act(() => pickButton().click());
+    await chooseImages(undefined, []);
+    expect(flags.compress).not.toHaveBeenCalled(); expect(getTask().images).toBeUndefined();
+    act(() => pickButton().click()); await chooseImages();
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="删除图片 合成图.jpg"]')!.click());
+    act(() => pickButton().click()); await chooseImages();
+    expect(getTask().images).toEqual([image]); expect(flags.compress).toHaveBeenCalledTimes(2);
+  });
+  it("打开选图窗口期间换账号再换回来，旧选择不写入", async () => {
+    act(() => root.render(createElement(Existing, { picker: true })));
+    act(() => pickButton().click());
+    act(() => { syncStore.setState({ session: { email: "synthetic@example.com", token: "synthetic", rev: 0, syncedAt: null } }); syncStore.setState({ session: null }); });
+    await chooseImages();
+    expect(flags.compress).not.toHaveBeenCalled(); expect(getTask().images).toBeUndefined();
+  });
+  it("打开选图窗口期间删除子任务，选择结果不会复活它", async () => {
+    addSubtask("image-task", "将被删除的步骤");
+    act(() => root.render(createElement(Card)));
+    const row = document.querySelector<HTMLElement>('.sub-row:not(.new-sub-row)')!;
+    const input = row.querySelector<HTMLInputElement>('[data-image-picker]')!;
+    act(() => row.querySelector<HTMLButtonElement>('.sub-image-add')!.click());
+    act(() => row.querySelector<HTMLButtonElement>('.rm')!.click());
+    await chooseImages(input);
+    expect(getTask().subtasks[0].deletedAt).toBeTruthy(); expect(getTask().subtasks[0].images).toBeUndefined();
+    expect(flags.compress).not.toHaveBeenCalled();
+  });
+  it("选图对话框的取消事件会释放旧选择，再次打开能正常添加", async () => {
+    act(() => root.render(createElement(Existing, { picker: true })));
+    act(() => pickButton().click());
+    const input = document.querySelector<HTMLInputElement>('[data-image-picker]')!;
+    act(() => input.dispatchEvent(new Event("cancel", { bubbles: true })));
+    await chooseImages(input); expect(getTask().images).toBeUndefined();
+    act(() => pickButton().click()); await chooseImages(input); expect(getTask().images).toEqual([image]);
   });
   it("纯图粘贴阻默认，普通文字与混合剪贴板保留原生文字粘贴", async () => {
     act(() => root.render(createElement(Existing)));

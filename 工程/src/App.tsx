@@ -1,5 +1,7 @@
 // 主窗外壳：侧栏 + 视图路由 + 全局快捷键 + 撤销 toast + 批量操作条。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { setParentFolded } from "./core/parentFold";
+import { overdueParentActions } from "./core/parentRows";
 import { listColor } from "./core/colors";
 import type { CSSProperties } from "react";
 import Sidebar from "./components/Sidebar";
@@ -242,8 +244,17 @@ export default function App() {
         postponeTasks(selectedIds);
       } else if (
         !mod && (e.key === "ArrowLeft" || e.key === "ArrowRight") &&
-        selectedIds.length === 1 && hasChain(selectedIds[0])
+        selectedIds.length === 1
       ) {
+        // 桌面母子树优先委托当前真实母行；旧列表与手机保留原子链语义。
+        const parent = [...document.querySelectorAll<HTMLElement>('.task-row[data-parent-row="true"]')]
+          .find((row) => row.dataset.taskId === selectedIds[0] && row.querySelector("button.chain-caret"));
+        if (parent) {
+          e.preventDefault();
+          setParentFolded(selectedIds[0], e.key === "ArrowLeft");
+          return;
+        }
+        if (!hasChain(selectedIds[0])) return;
         // ←收链 / →摊开（v1.9.1）。这两个键原本完全空着，零冲突：
         // mod+→ 是「顺延」，在上一条就被接走了，所以这里必须带 !mod 且排在它后面。
         // 摆状态不 toggle：连按 ← 应该一直收着。
@@ -461,9 +472,14 @@ export default function App() {
             label="顺延"
             getRows={() => {
               const ids = appStore.getState().ui.selectedIds;
-              return postponeRowsForTasks(
-                appStore.getState().data.tasks.filter((t) => ids.includes(t.id) && !t.deletedAt),
-              );
+              const tasks = appStore.getState().data.tasks.filter((t) => ids.includes(t.id) && !t.deletedAt);
+              if (document.querySelector('.task-row[data-parent-row="true"]')) {
+                return tasks.flatMap((task) => {
+                  const overdue = overdueParentActions(task, todayYMD());
+                  return overdue.length ? overdue : [{ task, sub: null }];
+                });
+              }
+              return postponeRowsForTasks(tasks);
             }}
           />
           <span style={{ position: "relative" }}>

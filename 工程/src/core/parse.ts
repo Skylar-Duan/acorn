@@ -934,11 +934,13 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   });
 
   // ---- 8. 裸感叹号串(放最后:此时紧随的 token 已被占用,可视作边界) ----
-  // 全角/半角混合按总长度计级;紧跟普通正文(「!棒」)时按标点处理,不吞。
+  // 全角/半角混合按总长度计级。词首连续两枚以上是明确标记，可紧贴正文；
+  // 单枚「!棒」和句中的「真棒！！继续」仍当普通标点，不吞正文。
   scan(RE.prioBang, (m) => {
     const b = m.index + m[0].length;
-    if (b < input.length && !consumed[b] && !/[\s#@~～]/.test(input[b])) return null;
     const n = m[0].length;
+    const explicitPrefix = n >= 2 && (m.index === 0 || consumed[m.index - 1] || /\s/.test(input[m.index - 1]));
+    if (b < input.length && !consumed[b] && !/[\s#@~～]/.test(input[b]) && !explicitPrefix) return null;
     const lv: Priority = n >= 3 ? 3 : n === 2 ? 2 : 1;
     return {
       chip: { kind: "priority", text: lv === 3 ? "高" : lv === 2 ? "中" : "低" },

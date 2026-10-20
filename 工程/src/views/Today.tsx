@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCN, todayYMD } from "../core/dates";
 import { openRows, rowTaskIds, sortRows, tasksForToday, useApp } from "../core/store";
+import { mergeParentRows, parentRowsForToday } from "../core/parentRows";
 import { FOCUS_ENABLED } from "../core/features";
 import { isMobile } from "../core/platform";
 import { usePinExpanded } from "../core/pin";
@@ -21,12 +22,15 @@ export default function Today() {
   const sessions = data.sessions;
   const today = todayYMD();
 
-  const { overdue, todays, doneToday } = tasksForToday(data, today);
+  const legacy = tasksForToday(data, today);
+  const parents = isMobile ? null : parentRowsForToday(data, today);
+  const { overdue, todays } = parents ?? legacy;
+  const { doneToday } = legacy;
   // 展开着的那件事钉在上一版的位置上（core/pin.ts）：在卡里加一条明天到期的子任务、
   // 或者顺手把日期改到下周，这件事的行会整个退出这个视图，卡片当场没了没法接着输入。
   // 所以兜底行池给的是**整份** openRows——光靠下面这两组是捞不回来的
   const pinPool = expandedId
-    ? sortRows(openRows(data).filter((r) => r.task.id === expandedId), data.settings.sortMode)
+    ? sortRows((isMobile ? openRows(data) : mergeParentRows(openRows(data))).filter((r) => r.task.id === expandedId), data.settings.sortMode)
     : [];
   const pinned = usePinExpanded(
     [{ key: "overdue", rows: overdue }, { key: "today", rows: todays }],
@@ -39,7 +43,7 @@ export default function Today() {
   const allRows = [...overdueShown, ...todayShown];
   const orderedIds = rowTaskIds(allRows);
   // 折叠整页算一次（跟「计划」同一套口径），否则逾期区和今天区会各收一遍
-  const fold = useFoldPlan(allRows);
+  const fold = useFoldPlan(allRows, !isMobile);
   const anchor = cardAnchor(allRows, expandedId);
   // 这两个只用来判断「这一组还剩东西吗、组标题画不画」。
   // 真正交给 RowList 的是**没过滤过**的那份：折叠掉的行由它收成 0 高，收/放才都有动画（B5）
@@ -47,7 +51,7 @@ export default function Today() {
   const todayRows = visibleRows(todayShown, fold);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
   // 底部进度按「件」算不按「行」算：一件事拆成 3 个子任务时，做掉 1 个不该让分母也跟着缩水
-  const total = rowTaskIds(todays).length + doneToday.length;
+  const total = (parents?.todayCount ?? rowTaskIds(todays).length) + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
   /** 手机端：还欠着几件（给顶栏那句副标题用）。桌面照旧只写日期 */
   const left = Math.max(0, total - doneToday.length);
@@ -96,18 +100,18 @@ export default function Today() {
                   全部顺延 →
                 </button>
               ) : (
-                <PostponeButton className="act" label="全部顺延" getRows={() => overdue} />
+                <PostponeButton className="act" label="全部顺延" getRows={() => parents?.overdueActions ?? overdue} />
               )}
             </div>
             {/* 手机端：整页最上面那一行演一次「往右滑」的示意（hintFirstRow） */}
-            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} />
+            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} parentGroups={!isMobile} />
           </>
         )}
         {todayRows.length > 0 && (
           <div className="group-head split"><span className="group-label">今天</span></div>
         )}
         {/* 逾期那组在上面，示意只演一次：那儿有行的时候这儿就不演了 */}
-        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint && overdueRows.length === 0} />
+        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint && overdueRows.length === 0} parentGroups={!isMobile} />
         {/* 做完的这一组：桌面照旧一条组标题 + 逐行摊开；
             手机上默认收成一行「已完成 · N 展开」——今天这一屏该留给还没做的事 */}
         {doneToday.length > 0 && (isMobile ? (

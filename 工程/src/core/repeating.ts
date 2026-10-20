@@ -10,13 +10,14 @@
 // 放进 habits.ts 会跟 store 互相 import 成环。
 
 import type { AppData } from "./model";
-import { aliveSubtasks, aliveTasks, rowDue, rowTime, type DateRow } from "./store";
+import { aliveSubtasks, aliveTasks, rowDue, rowPriority, rowTime, type DateRow } from "./store";
+import { comparePendingSchedule } from "./pendingOrder";
 
 /** 带循环的计划，一行一件：
  *   · 整件事带循环的 → 母任务那一行（有子任务也只占一行，跟「每月同步一次」这种说法对得上）；
  *   · 某一步自己带循环的 → 「母 › 子」那一行（母任务本身带不带循环都算）。
  *  做完的、放弃的、在回收站的都不算；习惯不算（习惯在本页自己那两组里）。
- *  按下一次的日子排，同一天写了钟点的在前；没排日子的沉底，彼此按标题排 */
+ *  按下一次生效日期/钟点排，同刻重要性降序，同键保留原先后；未安排日期沉底。 */
 export function repeatingRows(d: Pick<AppData, "tasks">): DateRow[] {
   const rows: DateRow[] = [];
   for (const t of aliveTasks(d)) {
@@ -26,10 +27,8 @@ export function repeatingRows(d: Pick<AppData, "tasks">): DateRow[] {
       if (s.repeat && !s.done && !s.droppedAt) rows.push({ task: t, sub: s });
     }
   }
-  const key = (r: DateRow) => `${rowDue(r) ?? "9999-99-99"}T${rowTime(r) ?? "99:99"}`;
-  const name = (r: DateRow) => (r.sub ? `${r.task.title} › ${r.sub.title}` : r.task.title);
   return rows
-    .map((r, i) => ({ r, i, k: key(r), n: name(r) }))
-    .sort((a, b) => (a.k !== b.k ? (a.k < b.k ? -1 : 1) : a.n.localeCompare(b.n, "zh") || a.i - b.i))
+    .map((r, i) => ({ r, i, schedule: { due: rowDue(r), time: rowTime(r), priority: rowPriority(r) } }))
+    .sort((a, b) => comparePendingSchedule(a.schedule, b.schedule) || a.i - b.i)
     .map((x) => x.r);
 }
