@@ -6,12 +6,12 @@
     "web": "1.17.0"
   },
   "beta": {
-    "desktop": 13,
+    "desktop": 1,
     "android": 4,
     "web": 0
   },
   "betaAfter": {
-    "desktop": "1.16.0",
+    "desktop": "1.17.0",
     "android": "1.15.0",
     "web": "1.15.0"
   }
