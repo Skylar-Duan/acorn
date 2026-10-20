@@ -1,7 +1,7 @@
 // 电脑上自动去云端取最新（v1.15.1，用户 2026-09-21 定的）。
 //
 // 原来桌面只在开机和本机有改动时同步：手机上刚记的事，电脑上光看不改就永远等不来。
-// 现在加两条：窗口回到眼前取一次（距上次成功不到 60 秒跳过）、登录着每 5 分钟取一次。
+// 窗口回焦和定时检查都遵循本机所选周期，默认每5分钟；不绕过用户的较长间隔。
 //
 // 这一份钉：什么时候发、什么时候不发、出错不吵、登出就停、手机上不挂、走的是现成的 syncNow。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,7 +81,7 @@ describe("该不该取这一轮（autoPullIfDue）", () => {
     expect(syncOnce).toHaveBeenCalledTimes(1);
   });
 
-  it("距上次成功同步不到 60 秒：跳过；过了 60 秒：取", async () => {
+  it("距上次成功同步不到默认周期：跳过；过了周期：取", async () => {
     signedIn(new Date(T0 - 30 * 1000).toISOString());
     expect(await autoPullIfDue()).toBe(false);
     signedIn(new Date(T0 - AUTO_PULL_GAP_MS - 1).toISOString());
@@ -113,7 +113,7 @@ describe("该不该取这一轮（autoPullIfDue）", () => {
     expect(syncOnce).not.toHaveBeenCalled();
   });
 
-  it("失败了也算试过：一分钟里再来不重撞；过了一分钟再试", async () => {
+  it("失败了也算试过：同一周期里再来不重撞；过了周期再试", async () => {
     syncOnce.mockRejectedValue(new Error("网断了"));
     expect(await autoPullIfDue()).toBe(true);
     expect(await autoPullIfDue()).toBe(false);

@@ -34,6 +34,9 @@ export interface ImageAttachmentsProps {
   pickerLabel?: string;
   /** 已保存的图片收成右侧一张缩略图，点开再看完整图片。 */
   compact?: boolean;
+  /** 子任务直接在正文下展开图片，不另开完整集合浮层。 */
+  inlineExpanded?: boolean;
+  onExpand?: () => void;
 }
 
 export default function ImageAttachments(props: ImageAttachmentsProps) {
@@ -139,25 +142,28 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
       if (capacity) throw new Error(capacity);
       current.current.onChange(next);
     } catch (caught) {
-      if (valid()) { setError(caught instanceof Error ? caught.message : "这张图片没能添加，请重试"); if (current.current.compact) setExpanded(true); }
+      if (valid()) { setError(caught instanceof Error ? caught.message : "这张图片没能添加，请重试"); if (current.current.compact) { if (current.current.onExpand) current.current.onExpand(); else setExpanded(true); } }
     } finally {
       context.dispose();
       if (operation.current === job) { operation.current = null; setBusy(false); current.current.onBusyChange?.(false); }
     }
   }
 
+  const inlinePanel = useLeaving(props.inlineExpanded ? true : null);
+  const inline = props.inlineExpanded !== undefined;
+  const compactGallery = props.compact && !inline;
   if (!plus || isMobile) return null;
   const visible = renderableTaskImages(images);
   const showGallery = visible.length > 0 || busy || !!error;
   if (!showGallery && !props.pickerLabel) return null;
 
-  const gallery = <div ref={galleryElement} className={`task-images${props.compact ? " task-images-compact-gallery" : ""}${visible.length ? "" : " task-images-empty"}`}
-    data-task-images data-image-dialog={props.compact || undefined} role={props.compact ? "dialog" : undefined} aria-label={props.compact ? `${label} · ${visible.length}张` : undefined}
+  const gallery = <div ref={galleryElement} className={`task-images${compactGallery ? " task-images-compact-gallery" : ""}${visible.length ? "" : " task-images-empty"}`}
+    data-task-images data-image-dialog={compactGallery || undefined} role={compactGallery ? "dialog" : undefined} aria-label={`${label} · ${visible.length}张`}
     onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
     <div className="task-images-head">
       <span className="task-images-label">{label}{visible.length ? ` · ${visible.length}/${IMAGE_MAX_COUNT}` : ""}</span>
       {busy && <><span role="status">正在处理图片…</span><button type="button" onClick={() => { if (operation.current) operation.current.cancel = true; }}>取消</button></>}
-      {props.compact && <button type="button" className="image-collapse" aria-label="收起图片" onClick={() => setExpanded(false)}><Icon name="close" size={15} /></button>}
+      {compactGallery && <button type="button" className="image-collapse" aria-label="收起图片" onClick={() => setExpanded(false)}><Icon name="close" size={15} /></button>}
     </div>
     {visible.length > 0 && <div className="task-image-list">
       {visible.map((image) => <div className="task-image-thumb" key={image.id}>
@@ -176,14 +182,16 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
         onChange={(e) => { const selected = picking.current; picking.current = null; const files = Array.from(e.currentTarget.files ?? []); e.currentTarget.value = ""; if (selected) void attach(files, selected); }} />
     </>}
     {showGallery && (props.compact ? <>
-      <button ref={summaryButton} type="button" className={`image-summary${visible.length > 1 ? " image-summary-stack" : ""}${error ? " image-summary-error" : ""}`}
+      {!props.inlineExpanded && <button ref={summaryButton} type="button" className={`image-summary${visible.length > 1 ? " image-summary-stack" : ""}${error ? " image-summary-error" : ""}`}
         data-image-summary aria-expanded={expanded} aria-label={`展开${label} ${visible.length}张`} title={error || `${label} · ${visible.length}张`}
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); if (props.onExpand) props.onExpand(); else setExpanded(!expanded); }}>
         {visible[0] ? <img src={visible[0].dataUrl} alt="" loading="lazy" draggable={false} /> : <Icon name="image" size={17} />}
         {visible.length > 1 && <span className="image-summary-count">{visible.length}</span>}
         {busy && <span className="image-summary-busy" role="status" aria-label="正在处理图片" />}
-      </button>
-      {panel.shown && <TaskPropertyPopover anchor={summaryButton.current} leaving={panel.leaving}>{gallery}</TaskPropertyPopover>}
+      </button>}
+      {inline ? inlinePanel.shown && <div className={`sub-images-motion${inlinePanel.leaving ? " leaving" : ""}`} aria-hidden={inlinePanel.leaving || undefined}
+        ref={(el) => { if (el) el.inert = inlinePanel.leaving; }}><div>{gallery}</div></div>
+        : panel.shown && <TaskPropertyPopover anchor={summaryButton.current} leaving={panel.leaving}>{gallery}</TaskPropertyPopover>}
     </> : gallery)}
     {viewing && createPortal(<div className="image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览" data-image-dialog onMouseDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setViewing(null); }}>
       <button type="button" className="image-lightbox-close" aria-label="关闭图片预览" onClick={() => setViewing(null)}><Icon name="close" size={24} /></button>

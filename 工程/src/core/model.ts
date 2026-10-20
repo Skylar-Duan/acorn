@@ -169,6 +169,8 @@ export interface Settings {
    *  下次打开要重新输密码。**它只是这台设备的事**：设置不参与云同步
    *  （merge.ts 的 `settings: local.settings`），所以手机关掉自动登录不会连累电脑。 */
   autoLogin?: boolean;
+  /** 本机检查云端更新的间隔（分钟）；缺省5分钟，不改变本机修改后的自动上传。 */
+  syncIntervalMinutes?: 5 | 60 | 360 | 1440;
   /** **旧字段**（v1.15.0 那一版的名字，只在这台设备上）。现在名字和头像跟着账号走，
    *  住在 AppData.profiles 里（见 core/profile.ts）；这两个键只在第一次登录着打开新版时
    *  被迁进去一次，之后不再读也不再写。**不删**：还没升级的那台设备照旧靠它显示 */
@@ -253,6 +255,7 @@ export function defaultSettings(): Settings {
     // 还没升级的桌面端读到它们也只是多几个不认识的键，照读照存。
     // 升版本才是真麻烦——那会让老客户端被服务端 409 挡在门外
     autoLogin: true,
+    syncIntervalMinutes: 5,
     profileName: "",
     profileAvatar: "",
   };

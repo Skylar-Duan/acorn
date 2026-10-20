@@ -11,6 +11,7 @@ import type {
 } from "react";
 import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
+import { overlapsQuotedText } from "../core/quotedText";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import { growArea, keepLines, oneLine } from "./autogrow";
 import Icon from "./Icon";
@@ -79,7 +80,7 @@ type Trigger = keyof typeof TRIGGER_KIND;
 
 // 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）。
 // ~ / ～ 也是边界：打「@李哥~3点」时那个 ~ 之后是时间，不该再往候选里筛人名
-const TOKEN_RE = /(?:^|\s)([#@\/])([^\s#@\/!！~～]*)$/;
+const TOKEN_RE = /(?:^|\s)([#@\/])([^\s#@\/!！~～"“”＂]*)$/;
 
 const MAX_ITEMS = 6;
 
@@ -138,12 +139,14 @@ export default function SyntaxInput({
     if (m === null) return null;
     const trigger = m[1] as Trigger;
     const prefix = m[2];
+    const start = caret - prefix.length - 1;
+    if (overlapsQuotedText(value, start, caret)) return null;
     // 这一类根本不认，就别弹补全了（子任务行里的 # @ / 就是普通字符）
     if (skip?.includes(TRIGGER_KIND[trigger])) return null;
     const source = trigger === "#" ? tags : trigger === "@" ? whos : lists;
     const items = pickCandidates(source, prefix);
     if (items.length === 0) return null;
-    return { trigger, start: caret - prefix.length - 1, end: caret, prefix, items };
+    return { trigger, start, end: caret, prefix, items };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, caret, tags, whos, lists, skipKey]);
 

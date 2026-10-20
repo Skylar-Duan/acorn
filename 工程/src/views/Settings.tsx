@@ -25,6 +25,7 @@ import type { BackupInfo, DataStatus } from "../core/persist";
 import { applyQuickAddShortcut } from "../core/shortcutCtl";
 import { previewEyeCare } from "../core/eyeCare";
 import { useSync } from "../core/syncCtl";
+import { SYNC_INTERVAL_CHOICES, syncIntervalMinutes } from "../core/syncInterval";
 // 开关拆成了两件事（v1.15.0）：hasDesktopFeatures 只说「界面是桌面那一套吗」，
 // isDesktopShell 才是「这台机器真做得到吗」。电脑上的浏览器前者真、后者假——
 // 这一页以前只认前者，于是网页上摆着一个按了没反应的全局快捷键、一颗点了必报错的导出
@@ -430,6 +431,15 @@ export default function Settings() {
             登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
           </div>
           <AccountPanel />
+          {isDesktopShell && <div className="set-row">
+            <div className="set-row-label">自动同步间隔<span className="set-hint">检查云端更新的间隔；本机修改仍自动上传。</span></div>
+            <div className="set-ctl"><div className="set-seg" role="group" aria-label="自动同步间隔">
+              {SYNC_INTERVAL_CHOICES.map(({ minutes, label }) => <button type="button" key={minutes}
+                className={syncIntervalMinutes(settings) === minutes ? "on" : undefined}
+                aria-pressed={syncIntervalMinutes(settings) === minutes}
+                onClick={() => updateSettings({ syncIntervalMinutes: minutes })}>{label}</button>)}
+            </div></div>
+          </div>}
         </SetSection>
 
         {/* ---------- 通用（v1.14.1 前叫「行为」，PM 点名改名并挪到第一位；v1.15.1 起让给账号，排第二） ---------- */}

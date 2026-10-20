@@ -402,8 +402,8 @@ describe("创建：解析出的 repeat 一路存进去", () => {
 describe("界面：两端的子任务行上都看得见它会重复", () => {
   it("桌面子任务行画了循环小签，样式在 app.css 里", () => {
     expect(taskCardSource).toContain('className="sub-rep"');
-    expect(taskCardSource).toContain("s.repeat && (");
-    expect(taskCardSource).toContain("describeRepeat(s.repeat)");
+    expect(taskCardSource).toContain("display.repeat && (");
+    expect(taskCardSource).toContain("describeRepeat(display.repeat)");
     expect(appCss).toContain(".task-card .subs .sub-rep");
     // 只用主题 token，不许写死颜色
     const start = appCss.indexOf(".task-card .subs .sub-rep");

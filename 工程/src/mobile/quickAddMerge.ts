@@ -17,6 +17,7 @@
 // （触发符必须在句首或空白之后），只是那边是键盘上下选，这边是手指点。
 import type { ParseChip, ParseResult } from "../core/parse";
 import type { Priority, RepeatRule } from "../core/model";
+import { overlapsQuotedText } from "../core/quotedText";
 
 export type ChipKind = ParseChip["kind"];
 
@@ -199,7 +200,7 @@ export interface CandMatch {
 
 /** 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）。跟 SyntaxInput 那条一字不差。
  *  ~ / ～ 也是边界：打「@李哥~3点」时那个 ~ 之后是时间，不该再往候选里筛人名 */
-const TOKEN_RE = /(?:^|\s)([#@/])([^\s#@/!！~～]*)$/;
+const TOKEN_RE = /(?:^|\s)([#@/])([^\s#@/!！~～"“”＂]*)$/;
 
 /** 一行横排放得下的颗数：多了要横滚，少了不够挑 */
 export const CAND_MAX = 8;
@@ -225,10 +226,12 @@ export function candidatesAt(
   if (m === null) return null;
   const trigger = m[1] as Trigger;
   const prefix = m[2];
+  const start = caret - prefix.length - 1;
+  if (overlapsQuotedText(text, start, caret)) return null;
   const pool = trigger === "#" ? source.tags : trigger === "@" ? source.whos : source.lists;
   const items = pickCandidates(pool, prefix);
   if (items.length === 0) return null;
-  return { trigger, start: caret - prefix.length - 1, end: caret, prefix, items };
+  return { trigger, start, end: caret, prefix, items };
 }
 
 /** 把半截 token 换成整个候选 + 一个空格，光标停在空格后面接着打 */

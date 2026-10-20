@@ -4,7 +4,7 @@ import { defaultData, newTask } from "../src/core/model";
 import { appStore, clearUndo, flushSave, requestSave, resolveRescue, switchDataDirectory } from "../src/core/store";
 import * as cloud from "../src/core/cloud";
 import * as persist from "../src/core/persist";
-import { autoPullIfDue, autoSyncHeld, signOut, syncNow, syncStore } from "../src/core/syncCtl";
+import { AUTO_PULL_EVERY_MS, autoPullIfDue, autoSyncHeld, signOut, syncNow, syncStore } from "../src/core/syncCtl";
 
 vi.mock("../src/core/cloud", async (original) => ({
   ...await original<typeof import("../src/core/cloud")>(), syncOnce: vi.fn(), whoAmI: vi.fn(), saveSession: vi.fn(async () => {}),
@@ -94,7 +94,7 @@ describe("换目录不会把旧主窗结果写到新账本", () => {
   it("轻探测不算running，但换目录置loaded=false会让它的旧结果失效", async () => {
     await syncNow();
     syncOnce.mockClear();
-    vi.setSystemTime(Date.now() + 61_000);
+    vi.setSystemTime(Date.now() + AUTO_PULL_EVERY_MS + 1);
     let reply!: (value: unknown) => void;
     whoAmI.mockImplementationOnce(() => new Promise((resolve) => { reply = resolve; }));
     const probe = autoPullIfDue();

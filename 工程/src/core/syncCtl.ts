@@ -14,6 +14,7 @@ import { todayYMD, toYMD } from "./dates";
 import { isMobile } from "./platform";
 import { adoptLegacyProfile } from "./profile";
 import { setPlusSession } from "./plus";
+import { syncIntervalMs } from "./syncInterval";
 
 interface SyncStore {
   session: Session | null;
@@ -96,6 +97,14 @@ export function upgradeBlocked(
 const QUIET_MS = 4000;
 
 let debounce: ReturnType<typeof setTimeout> | null = null;
+let debounceContext: ReturnType<typeof syncContext> | null = null;
+
+function cancelPendingSync(): void {
+  if (debounce) clearTimeout(debounce);
+  debounce = null;
+  debounceContext?.dispose();
+  debounceContext = null;
+}
 
 /** 独占闸门（9-21 复核）：「从云端覆盖本机」、登录时挑档案那一段里，**后台自己发的同步一律不发**。
  *  原生确认框一关、窗口重新拿到焦点就会触发自动取；那一轮拿「本机这份」跟云端合并推上去，
@@ -107,10 +116,7 @@ let exclusive = 0;
  *  放行时这段里攒下的改动（dirty）照常排一次防抖同步 */
 export async function holdAutoSync(): Promise<() => void> {
   exclusive++;
-  if (debounce) {
-    clearTimeout(debounce);
-    debounce = null;
-  }
+  cancelPendingSync();
   let released = false;
   const release = () => {
     if (released) return;
@@ -379,10 +385,21 @@ function adoptLegacyProfileNow(session: Session): void {
  *  默认这一下 syncNow 恰恰是它要避免的动作。调用方自己负责随后走覆盖或走合并。 */
 export async function adoptSession(session: Session, opts?: { sync?: boolean }): Promise<void> {
   const epoch = ++sessionEpoch;
+  cancelPendingSync();
+  stopWatching();
+  stopAutoPull();
   setPlusSession(session);
   try { await cloud.saveSession(session); }
   catch (error) {
-    if (epoch === sessionEpoch) setPlusSession(syncStore.getState().session);
+    if (epoch === sessionEpoch) {
+      const previous = syncStore.getState().session;
+      setPlusSession(previous);
+      if (previous) {
+        watchData();
+        startAutoPull();
+        if (syncStore.getState().dirty) requestSync();
+      }
+    }
     throw error;
   }
   if (epoch !== sessionEpoch) return;
@@ -406,10 +423,7 @@ export async function adoptSession(session: Session, opts?: { sync?: boolean }):
 export async function signOut(): Promise<void> {
   const epoch = ++sessionEpoch;
   setPlusSession(null);
-  if (debounce) {
-    clearTimeout(debounce);
-    debounce = null;
-  }
+  cancelPendingSync();
   stopWatching();
   stopAutoPull();
   await cloud.saveSession(null);
@@ -426,10 +440,11 @@ export async function signOut(): Promise<void> {
 export async function expireSession(): Promise<void> {
   const epoch = ++sessionEpoch;
   setPlusSession(null);
-  await cloud.saveSession(null);
-  if (epoch !== sessionEpoch) return;
+  cancelPendingSync();
   stopWatching();
   stopAutoPull();
+  await cloud.saveSession(null);
+  if (epoch !== sessionEpoch) return;
   set({
     session: null,
     phase: "error",
@@ -505,16 +520,16 @@ export async function dailySyncIfNeeded(today = todayYMD()): Promise<boolean> {
 
 // ---------- 电脑上自动去云端取最新（v1.15.1） ----------
 
-/** 距上次成功同步不到这么久，窗口回到眼前也不再取：alt-tab 一次、关个小窗回主窗一次，
- *  一分钟里能来十几下，每下都跑一轮是白耗 */
-export const AUTO_PULL_GAP_MS = 60 * 1000;
-/** 登录着、开着橡果，每隔这么久自己取一次 */
+/** 默认检查周期。实际定时及回焦检查一起遵循本机设置的周期。 */
 export const AUTO_PULL_EVERY_MS = 5 * 60 * 1000;
+/** 保留旧调用方的默认间隔常量；不再单独用一分钟回焦绕过设置。 */
+export const AUTO_PULL_GAP_MS = AUTO_PULL_EVERY_MS;
 
 /** 上一次「自动取」真发出去的时刻（**成败都记**）。只活在进程内。
  *  失败时 syncedAt 一动不动，光看它的话服务器挂着的那段时间每次切回窗口都会重撞一次 */
 let lastAutoPullAt = 0;
 let autoPullOff: (() => void) | null = null;
+let autoPullRearm: (() => void) | null = null;
 
 /**
  * 该取就取一轮：用户 2026-09-21 定的「电脑版自动去云端取最新数据」。
@@ -523,7 +538,7 @@ let autoPullOff: (() => void) | null = null;
  * 走的就是 syncNow（自带 base_rev、409 重试、合并），不另写一套：
  * 取回来的并进本机，本机没传的顺手推上去。
  *
- * 不发的情况：没登录、离线、被服务端挡着等升级、正在同步、距上次成功（或上次自动取）不到一分钟。
+ * 不发的情况：没登录、离线、被服务端挡着等升级、正在同步、尚未到所选检查周期。
  * **出错安静处理**：不弹窗不打扰，侧栏那行字照实说，下一次到点再试。返回这一轮发没发出去。
  */
 export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
@@ -532,10 +547,12 @@ export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
   if (!dataState.loaded || dataState.loadError || dataState.rescue || dataState.wiped) return false;
   if (!st.session || upgradeBlocked(st, now) || st.phase === "syncing" || running || exclusive > 0) return false;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+  const gap = syncIntervalMs(dataState.data.settings);
   const last = st.session.syncedAt ? Date.parse(st.session.syncedAt) : NaN;
-  if (Number.isFinite(last) && now - last < AUTO_PULL_GAP_MS) return false;
-  if (now - lastAutoPullAt < AUTO_PULL_GAP_MS) return false;
+  if (Number.isFinite(last) && now - last < gap) return false;
+  if (now - lastAutoPullAt < gap) return false;
   lastAutoPullAt = now; // 先记再发：focus 和 visibilitychange 常常前后脚一起来
+  autoPullRearm?.();
   const snapshot = appStore.getState().data;
   if (!st.dirty && syncedRef === snapshot && st.phase === "idle") {
     const context = syncContext(st.session);
@@ -557,26 +574,71 @@ export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
 }
 
 /**
- * 挂上「窗口回到眼前就取一次 + 每 5 分钟取一次」。登录态落定时调（initSync / adoptSession），
- * 重复调只挂一份；登出、令牌过期时 stopAutoPull 摘掉。
+ * 挂上按所选周期检查云端的定时器与回焦检查。切档立刻重排，仅保留一份定时器；
+ * 换账号或账本暂时失效时清掉旧定时器，旧回调也不能落进新账号。
  *
  * **只在电脑上**（isMobile 为假，电脑浏览器上的网页版也算）：手机进后台就落盘推一把、
  * 回来有每天补一轮，再加定时拉会在计费流量上一直跑。
  */
 export function startAutoPull(mobile = isMobile): void {
   if (mobile || autoPullOff || typeof window === "undefined") return;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let generation = 0;
+  let startedAt = Date.now();
+  let lastTimerCheckAt = 0;
+  const bookReady = () => {
+    const state = appStore.getState();
+    return state.loaded && !state.loadError && !state.rescue && !state.wiped;
+  };
+  const schedule = (restart = false) => {
+    if (restart) { startedAt = Date.now(); lastTimerCheckAt = 0; }
+    const ownGeneration = ++generation;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    const session = syncStore.getState().session;
+    if (!session || !bookReady()) return;
+    const epoch = sessionEpoch;
+    const last = session.syncedAt ? Date.parse(session.syncedAt) : NaN;
+    const base = Math.max(startedAt, lastAutoPullAt, lastTimerCheckAt, Number.isFinite(last) ? last : 0);
+    const delay = Math.max(0, base + syncIntervalMs(appStore.getState().data.settings) - Date.now());
+    timer = setTimeout(() => {
+      const current = syncStore.getState().session;
+      if (generation !== ownGeneration || epoch !== sessionEpoch
+        || current?.token !== session.token || current.email !== session.email || !bookReady()) return;
+      // 离线、正在同步或闸门关闭也等下一周期，不在到期的同一刻反复排0毫秒检查。
+      lastTimerCheckAt = Date.now();
+      schedule();
+      void autoPullIfDue();
+    }, delay);
+  };
   const onFocus = () => void autoPullIfDue();
   const onVisible = () => {
     if (document.visibilityState === "visible") void autoPullIfDue();
   };
   window.addEventListener("focus", onFocus);
   document.addEventListener("visibilitychange", onVisible);
-  const timer = setInterval(() => void autoPullIfDue(), AUTO_PULL_EVERY_MS);
+  const offSettings = appStore.subscribe((next, previous) => {
+    if (syncIntervalMs(next.data.settings) !== syncIntervalMs(previous.data.settings)
+      || next.loaded !== previous.loaded || next.loadError !== previous.loadError
+      || next.rescue !== previous.rescue || next.wiped !== previous.wiped) schedule(true);
+  });
+  const offSession = syncStore.subscribe((next, previous) => {
+    if (next.session?.token !== previous.session?.token || next.session?.email !== previous.session?.email) {
+      lastAutoPullAt = 0;
+      schedule(true);
+    } else if (next.session?.syncedAt !== previous.session?.syncedAt) schedule();
+  });
+  autoPullRearm = () => schedule();
   autoPullOff = () => {
+    generation++;
     window.removeEventListener("focus", onFocus);
     document.removeEventListener("visibilitychange", onVisible);
-    clearInterval(timer);
+    offSettings();
+    offSession();
+    autoPullRearm = null;
+    if (timer) clearTimeout(timer);
   };
+  schedule();
 }
 
 /** 摘掉自动取。换个账号登录时间隔从头算 */
@@ -713,9 +775,15 @@ export function requestSync(): void {
   const st = syncStore.getState();
   if (!st.session || upgradeBlocked(st)) return;
   set({ dirty: true });
-  if (debounce) clearTimeout(debounce);
+  cancelPendingSync();
+  const context = syncContext(st.session);
+  debounceContext = context;
   debounce = setTimeout(() => {
     debounce = null;
+    debounceContext = null;
+    const valid = context.valid();
+    context.dispose();
+    if (!valid) return;
     // 闸门关着：dirty 留着，放行时再排（见 holdAutoSync）
     if (exclusive > 0) return;
     void syncNow();
@@ -724,10 +792,7 @@ export function requestSync(): void {
 
 /** 退出前最后一次：先把盘落了，再尽力推一把。**推不上去也不能拦着退出** */
 export async function flushSync(): Promise<void> {
-  if (debounce) {
-    clearTimeout(debounce);
-    debounce = null;
-  }
+  cancelPendingSync();
   await flushSave();
   if (!syncStore.getState().session || !syncStore.getState().dirty) return;
   try {

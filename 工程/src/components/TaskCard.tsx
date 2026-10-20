@@ -7,6 +7,7 @@ import { dateOptions } from "../core/options";
 import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { appendedSubCategories, editedCategoryPatch, editedTitlePatch, parseEditedTitle } from "../core/editSyntax";
+import { subtaskTitlePreview, taskTitlePreview } from "../core/editPreview";
 import { isTaskCategoryDialogOpen, prepareSubtaskCategories, prepareTaskCategories } from "../core/categoryCreation";
 import { plusEnabled, usePlus } from "../core/plus";
 import { imageListUpdateError, taskImages } from "../core/taskImages";
@@ -35,6 +36,19 @@ import TaskIcon from "./Icon";
 import "../styles/task-workspace.css";
 
 const PRIORITY_LABEL: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
+
+function resizeSubTitle(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  if (el.dataset.expanded !== "true") { el.style.height = "24px"; return; }
+  const before = el.getBoundingClientRect().height;
+  el.style.height = "auto";
+  const height = Math.max(24, el.scrollHeight);
+  if (before > 0 && Math.abs(before - height) > 1) {
+    el.style.height = `${before}px`;
+    void el.offsetHeight;
+  }
+  el.style.height = `${height}px`;
+}
 
 /** 日期弹层里的每一次写库都带上它：**弹层期间一律不数顺延**。
  *  「这件事被往后推了几次」按弹层开→关整段算一次，落在 settleDuePopup 里 */
@@ -84,6 +98,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const titleDraftRef = useRef<string | null>(null);
   const [subDrafts, setSubDrafts] = useState<Record<string, string>>({});
+  const [subExpanded, setSubExpanded] = useState<Record<string, boolean>>({});
   const subDraftsRef = useRef<Record<string, string>>({});
   // 日期弹层里时间框的当前值。**不再是「攒着等确定」的草稿**（那个「确定」按钮已经撤了，
   // 见下面 commitDraft 一带的注释）：日历格一选就生效、时间一失焦就生效，
@@ -172,6 +187,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
       closeMenusRef.current();
     }
     function onKey(e: KeyboardEvent) {
+      if (e.isComposing || e.keyCode === 229) return;
       // Esc 是**丢弃**，不是「点走 = 提交」那条路（见 flushPending 的注释）。
       // 光收卡片不行：卡片一卸载 DateField 会自己 flush 一次，把日期框里刚敲了一半
       // （月段改完、日段还没改）的那一天当成最终结果落库，结算再判它比原来晚，+1 顺延——
@@ -226,13 +242,16 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   // ref={growArea} 只在挂载那一下调一次，所以外部改动（撤销/同步/标题编辑）得在这儿补一遍。
   // 只扫这张卡自己的 .subs，不动别处
   useLayoutEffect(() => {
-    cardRef.current?.querySelectorAll<HTMLTextAreaElement>(".subs textarea").forEach((el) => growArea(el));
-  }, [task.subtasks, subDrafts]);
+    cardRef.current?.querySelectorAll<HTMLTextAreaElement>(".subs textarea").forEach((el) => el.hasAttribute("data-expanded") ? resizeSubTitle(el) : growArea(el));
+  }, [task.subtasks, subDrafts, subExpanded, locatingSubId]);
 
-  const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
+  const titlePreview = useMemo(() => taskTitlePreview(task, titleDraft, { lists, now: new Date(), weekendDay: settings.weekendDay }), [task, titleDraft, lists, settings.weekendDay]);
+  const displayTask = titlePreview.task;
+  const list = displayTask.listId ? lists.find((l) => l.id === displayTask.listId) : null;
   const today = todayYMD();
-  const shownDue = taskDue(task);
-  const shownTime = taskTime(task);
+  const previewSchedule = titlePreview.parsed?.chips.some((chip) => chip.kind === "date" || chip.kind === "time" || chip.kind === "repeat");
+  const shownDue = previewSchedule ? displayTask.due : taskDue(displayTask);
+  const shownTime = previewSchedule ? displayTask.dueTime : taskTime(displayTask);
 
   // 已经做完的子任务沉到最下面，多了还要收起来（只改显示顺序，存的那份数组原样不动）。
   // 用户口径：「子任务已通过的排到最下面」——上面永远是还欠着的。
@@ -247,6 +266,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   const visibleOpenSubs = previewFolded ? openSubs.slice(0, 3) : openSubs;
   useLayoutEffect(() => {
     if (!locatingSubId) return;
+    setSubExpanded((current) => current[locatingSubId] === true ? current : { ...current, [locatingSubId]: true });
     const frame = requestAnimationFrame(() => {
       const row = [...(cardRef.current?.querySelectorAll<HTMLElement>("[data-subtask-id]") ?? [])].find((element) => element.dataset.subtaskId === locatingSubId);
       row?.scrollIntoView?.({ block: "center", behavior: "auto" });
@@ -517,24 +537,35 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
    *  写成组件体内的局部函数、不抽成外部组件：外部组件每次 render 都是个新类型，
    *  React 会把行整个卸载重建，行里那两个 .popmenu 会在打字时闪没 */
   function renderSub(s: Subtask) {
+    const expanded = subExpanded[s.id] ?? locatingSubId === s.id;
+    const preview = subtaskTitlePreview(s, subDrafts[s.id], { lists, now: new Date(), weekendDay: settings.weekendDay });
+    const display = preview.subtask;
+    const subShownDue = display.due ?? displayTask.due;
+    const subShownTime = display.due ? display.dueTime : display.dueTime ?? displayTask.dueTime;
     // 每步复用同一个ref回调，避免编辑母标题时让133个子框逐个重新量高。
     let inputRef = subInputCallbacks.current.get(s.id);
     if (!inputRef) {
-      inputRef = (el) => { growArea(el); if (el) subInputRefs.current.set(s.id, el); else subInputRefs.current.delete(s.id); };
+      inputRef = (el) => { resizeSubTitle(el); if (el) subInputRefs.current.set(s.id, el); else subInputRefs.current.delete(s.id); };
       subInputCallbacks.current.set(s.id, inputRef);
     }
     return (
-      <div key={s.id} data-subtask-id={s.id} className={`sub-row${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}${locatingSubId === s.id ? " quad-located" : ""}`} style={{ position: "relative" }}>
+      <div key={s.id} data-subtask-id={s.id} className={`sub-row sub-card-row${expanded ? " sub-expanded" : ""}${plus ? " sub-plus" : ""}${s.done ? " done" : ""}${s.droppedAt ? " dropped" : ""}${locatingSubId === s.id ? " quad-located" : ""}`} style={{ position: "relative" }}>
+        <button type="button" className="sub-disclosure" aria-expanded={expanded} aria-label={`${expanded ? "收起" : "展开"}子任务 ${s.title}`} aria-controls={`sub-title-${s.id}`}
+          onMouseDown={(e) => e.preventDefault()} onClick={() => setSubExpanded((current) => ({ ...current, [s.id]: !expanded }))}><TaskIcon name="chevronRight" /></button>
         <button className={`sb${s.done ? " done" : ""}`} aria-label={`${s.done ? "标记未完成" : "完成子任务"} ${s.title}`} onClick={() => toggleSubtask(task.id, s.id)} />
         {/* 子任务标题跟母任务标题同一个待遇：长了就换行，不再单行截断（v1.9.1）。
             ref按子任务复用，挂载时量高度并记录图片输入目标。 */}
         <textarea
           rows={1}
+          id={`sub-title-${s.id}`}
+          data-expanded={expanded}
+          wrap={expanded ? "soft" : "off"}
           ref={inputRef}
           className={subFlash === s.id ? "commit-lit" : undefined}
           value={subDrafts[s.id] ?? s.title}
+          onFocus={() => { if (!expanded) setSubExpanded((current) => ({ ...current, [s.id]: true })); }}
           onChange={(e) => {
-            growArea(e.currentTarget);
+            resizeSubTitle(e.currentTarget);
             // 子任务标题可以是几行（用户要的）：换行留着，粘进来的也留着，只统一 \r\n
             const drafts = { ...subDraftsRef.current, [s.id]: keepLines(e.target.value) };
             subDraftsRef.current = drafts;
@@ -553,17 +584,25 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         />
         <CommitMark on={subFlash === s.id} />
         {/* 放弃了的那一步：圈圈不动，只在旁边挂个灰标签 */}
+        {(s.droppedAt || display.repeat) && <span className="sub-status">
         {s.droppedAt && <span className="drop-tag">已放弃</span>}
         {/* 这一步会重复（v8）。跟「已放弃」同一副长相（.drop-tag 那套圆角小签），
             一眼看得出勾掉它不是了结、是推到下一次 */}
-        {s.repeat && (
-          <span className="sub-rep" title={`这一步会重复：${describeRepeat(s.repeat)}`}>
-            ↻ {describeRepeat(s.repeat)}
+        {display.repeat && (
+          <span className="sub-rep" title={`这一步会重复：${describeRepeat(display.repeat)}`}>
+            ↻ {describeRepeat(display.repeat)}
           </span>
         )}
-        {/* 子任务自己的日期/优先级：默认继承母任务，点小签单独设 */}
+        </span>}
+        {plus && <ImageAttachments compact inlineExpanded={expanded} onExpand={() => setSubExpanded((current) => ({ ...current, [s.id]: true }))}
+          images={taskImages(s.images)} label="这一步的图片" pickerLabel={`给子任务添加图片 ${s.title}`}
+          targetKey={`${task.id}:${s.id}`}
+          inputTargets={() => [subInputRefs.current.get(s.id)]}
+          canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
+          onChange={(images) => updateSubtask(task.id, s.id, { images })} />}
+        {/* 图片在日期前；日期与重要性各有固定列，空图行仍保持对齐。 */}
         <button
-          className="pill sub-property"
+          className="pill sub-property sub-property-date"
           title={s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}
           aria-label={`子任务日期：${s.title}`}
           aria-expanded={subMenu?.id === s.id && subMenu.kind === "date"}
@@ -571,42 +610,38 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         >
           {/* 继承来的日期也照样显示，只是淡一点——一眼看得出这条到底哪天要做 */}
           <TaskIcon name="calendar" />
-          {s.due ? formatShort(s.due) : task.due ? <span className="sub-inherited">{formatShort(task.due)}</span> : null}
+          <span className={`sub-date-value${display.due ? "" : " sub-inherited"}`}>{subShownDue ? `${formatShort(subShownDue)}${subShownTime ? ` ${subShownTime}` : ""}` : ""}</span>
         </button>
         <button
-          className="pill sub-property"
+          className="pill sub-property sub-property-priority"
           title={s.priority != null ? "这条子任务自己的重要性" : "跟着母任务走，点一下可以单独设"}
           aria-label={`子任务重要性：${s.title}`}
           aria-expanded={subMenu?.id === s.id && subMenu.kind === "prio"}
           onClick={(e) => { subPropertyAnchor.current = e.currentTarget; setSubMenu(subMenu?.id === s.id && subMenu.kind === "prio" ? null : { id: s.id, kind: "prio" }); }}
         >
           {/* 继承母任务的整体淡一档：一眼分得出「自己设的」还是「跟着母任务」 */}
-          <span className={`flag p${s.priority ?? task.priority}`} style={{ opacity: s.priority == null ? 0.5 : 1 }} />
-          {s.priority != null ? (
-            PRIORITY_LABEL[s.priority]
+          <span className={`flag p${display.priority ?? displayTask.priority}`} style={{ opacity: display.priority == null ? 0.5 : 1 }} />
+          {display.priority != null ? (
+            PRIORITY_LABEL[display.priority]
           ) : (
-            <span className="sub-inherited">{PRIORITY_LABEL[task.priority]}</span>
+            <span className="sub-inherited">{PRIORITY_LABEL[displayTask.priority]}</span>
           )}
         </button>
-        {plus && <ImageAttachments compact images={taskImages(s.images)} label="这一步的图片" pickerLabel={`给子任务添加图片 ${s.title}`}
-          targetKey={`${task.id}:${s.id}`}
-          inputTargets={() => [subInputRefs.current.get(s.id)]}
-          canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
-          onChange={(images) => updateSubtask(task.id, s.id, { images })} />}
         <button className="rm" onClick={() => removeSubtask(task.id, s.id)} title="删除子任务" aria-label={`删除子任务 ${s.title}`}><TaskIcon name="trash" /></button>
-        {((s.who?.length ?? 0) > 0 || (s.listIds?.length ?? 0) > 0) && (
+        {((display.who?.length ?? 0) > 0 || (display.listIds?.length ?? 0) > 0 || preview.unresolvedListNames.length > 0) && (
           <span className="sub-categories" aria-label="子任务追加归类">
-            {(s.who ?? []).map((who) => (
+            {(display.who ?? []).map((who) => (
               <span className="sub-category" key={`who:${who}`}>
-                <span title={`@${who}`}>@{who}</span><button type="button" aria-label={`移除子任务需求方 ${who}`} onClick={() => updateSubtask(task.id, s.id, { who: s.who?.filter((w) => w !== who) })}>×</button>
+                <span title={`@${who}`}>@{who}</span>{s.who?.includes(who) && <button type="button" aria-label={`移除子任务需求方 ${who}`} onClick={() => updateSubtask(task.id, s.id, { who: s.who?.filter((w) => w !== who) })}>×</button>}
               </span>
             ))}
-            {(s.listIds ?? []).map((id) => {
+            {(display.listIds ?? []).map((id) => {
               const ownList = lists.find((l) => l.id === id);
               return ownList ? <span className="sub-category" key={`list:${id}`}>
-                <span title={`/${ownList.name}`}>/{ownList.name}</span><button type="button" aria-label={`移除子任务清单 ${ownList.name}`} onClick={() => updateSubtask(task.id, s.id, { listIds: s.listIds?.filter((l) => l !== id) })}>×</button>
+                <span title={`/${ownList.name}`}>/{ownList.name}</span>{s.listIds?.includes(id) && <button type="button" aria-label={`移除子任务清单 ${ownList.name}`} onClick={() => updateSubtask(task.id, s.id, { listIds: s.listIds?.filter((l) => l !== id) })}>×</button>}
               </span> : null;
             })}
+            {preview.unresolvedListNames.map((name) => <span className="sub-category" key={`pending-list:${name}`}>/{name}</span>)}
           </span>
         )}
         {subPop.shown?.id === s.id && subPop.shown.kind === "date" && (
@@ -656,7 +691,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
       <div className="row1">
         {/* 跟任务行左边缘对齐用的占位（任务行那边有个折叠小三角），没有它点开卡片标题会往左跳一格 */}
         <span className="chain-caret ghost" />
-        <span className={`flag p${task.priority}`} />
+        <span className={`flag p${displayTask.priority}`} />
         <button
           className={`cb${task.done ? " done" : ""}`}
           onClick={() => (task.done ? uncompleteTask(task.id) : completeTask(task.id))}
@@ -723,70 +758,11 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         {notesFlash && <span className="commit-ok tc-notes-ok">✓</span>}
       </div>
 
-      <div className="subs">
-        {canFoldOpen ? <button type="button" className="tc-openfold" aria-expanded={!previewFolded} aria-controls={`pending-subs-${task.id}`}
-          onClick={() => { const folded = !previewFolded; setDismissedLocate(locateSubId ?? null); rememberTaskSubtasksFolded(task.id, folded); setOpenFold({ id: task.id, folded }); }}>
-          <span className={`tc-openfold-chevron${previewFolded ? " folded" : ""}`} aria-hidden="true">⌄</span>
-          待办子任务 <span className="tc-openfold-count">{openSubs.length}</span>
-          <span className="tc-openfold-action">{previewFolded ? `展开其余 ${openSubs.length - 3} 条` : "收起，仅看前3条"}</span>
-        </button> : openSubs.length > 0 && <div className="tc-openfold tc-openfold-static">待办子任务 <span className="tc-openfold-count">{openSubs.length}</span></div>}
-        <div id={`pending-subs-${task.id}`}>{visibleOpenSubs.map(renderSub)}</div>
-
-        {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
-        {/* 子任务同样认时间、需求方和清单；归类只追加到本步，#仍保留在正文。 */}
-        <div className="sub-row new-sub-row">
-          <span className="sb" style={{ opacity: 0.35 }} />
-          <SyntaxInput
-            elementRef={newSubInputRef}
-            value={newSub}
-            onChange={(v) => { newSubRef.current = v; setNewSub(v); }}
-            onSubmit={addSubFromInput}
-            // A1：打了一半点走也算数（addSubFromInput 空标题自己会退回，不会加出空条）。
-            // 照实汇报加上没有：只打了「明天」没打标题时一条都没加，右边就不该浮出 ✓
-            onBlurCommit={() => addSubFromInput()}
-            // Esc 先擦掉这一条，第二下才轮到收卡片
-            onEscape={() => {
-              if (!newSub && !newSubImagesRef.current.length) return false;
-              newSubRef.current = "";
-              setNewSub("");
-              newSubImagesRef.current = []; setNewSubImages([]); newSubImageRevision.current++;
-              return true;
-            }}
-            // 长句子折行、框跟着长高（不再单行一直往左推）；Shift+Enter 是换行，写进这条子任务的标题。
-            // 所以这里不接 onShiftEnter：子任务里收卡按 Esc（有字时第二下）或点卡外
-            allowNewline
-            placeholder="＋ 子任务，回车添加（可以写「~明天 !高」）"
-            lists={lists.map((l) => l.name)}
-            tags={[]}
-            whos={whoNames}
-            skip={["tag"]}
-            weekendDay={settings.weekendDay}
-            inputStyle={{ fontSize: 13 }}
-          />
-          <ImageAttachments images={newSubImages} label="新子任务图片" pickerLabel="给新子任务添加图片" draft
-            targetKey={`new:${task.id}`}
-            inputTargets={() => [newSubInputRef.current]}
-            onBusyChange={(busy) => { newSubImageBusy.current = busy; }}
-            canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
-            createContext={() => { const revision = newSubImageRevision.current; return imageEditContext(() => newSubImageRevision.current === revision && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)); }}
-            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} />
-        </div>
-
-        {/* 阈值跟自动折叠同一个，见上面的 canFoldDone */}
-        {canFoldDone && (
-          <button className="tc-donefold" onClick={() => setShowDone(!doneShown)}>
-            {doneShown ? "收起已完成" : `显示已完成 ${doneSubs.length}`}
-            <span className="tc-donefold-caret">{doneShown ? "▴" : "▾"}</span>
-          </button>
-        )}
-        {doneShown && doneSubs.map(renderSub)}
-      </div>
-
       <div className="chips tc-properties" aria-label="任务属性">
         {/* 日期 */}
         <button className={`pill${shownDue ? " hot" : ""}`} onClick={openDateMenu} aria-expanded={menu === "date"}
-          title={!task.due && shownDue ? "最近子任务的安排；点开可为母任务单独安排日期" : undefined}>
-          <TaskIcon name="calendar" /> {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}${!task.due ? " · 最近子任务" : ""}` : "安排日期"}
+          title={!displayTask.due && shownDue ? "最近子任务的安排；点开可为母任务单独安排日期" : undefined}>
+          <TaskIcon name="calendar" /> {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}${!displayTask.due ? " · 最近子任务" : ""}` : "安排日期"}
         </button>
         {menuPop.shown === "date" && (
           <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
@@ -830,11 +806,11 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
 
         {/* 循环 */}
         <button
-          className={`pill${task.repeat ? " hot" : ""}`}
+          className={`pill${displayTask.repeat ? " hot" : ""}`}
           aria-expanded={menu === "repeat"}
           onClick={(e) => { propertyAnchor.current = e.currentTarget; setRepeatCustom(false); setMenu(menu === "repeat" ? null : "repeat"); }}
         >
-          <TaskIcon name="repeat" /> {task.repeat ? describeRepeat(task.repeat) : "循环"}
+          <TaskIcon name="repeat" /> {displayTask.repeat ? describeRepeat(displayTask.repeat) : "循环"}
         </button>
         {menuPop.shown === "repeat" && (
           <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
@@ -861,10 +837,10 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
 
         {/* 清单 */}
         <button className="pill" aria-expanded={menu === "list"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "list" ? null : "list"); }}>
-          {list ? (
+          {titlePreview.listName ? (
             <>
-              <span style={{ width: 7, height: 7, borderRadius: 99, background: listColor(list.color), display: "inline-block" }} />
-              {list.name}
+              <span style={{ width: 7, height: 7, borderRadius: 99, background: list ? listColor(list.color) : "var(--accent)", display: "inline-block" }} />
+              {titlePreview.listName}
             </>
           ) : (
             <><TaskIcon name="list" /> 未分清单</>
@@ -883,8 +859,8 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         )}
 
         {/* 需求方：一件事可以挂好几个人，挂了谁就一人一行，点 × 摘掉 */}
-        <button className={`pill${task.who.length ? " hot" : ""}`} aria-expanded={menu === "who"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "who" ? null : "who"); }}>
-          <TaskIcon name="person" /> {task.who.length ? task.who.join("、") : "需求方"}
+        <button className={`pill${displayTask.who.length ? " hot" : ""}`} aria-expanded={menu === "who"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "who" ? null : "who"); }}>
+          <TaskIcon name="person" /> {displayTask.who.length ? displayTask.who.join("、") : "需求方"}
         </button>
         {menuPop.shown === "who" && (
           <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
@@ -932,8 +908,8 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         )}
 
         {/* 优先级 */}
-        <button className={`pill${task.priority ? " hot" : ""}`} aria-expanded={menu === "priority"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "priority" ? null : "priority"); }}>
-          <TaskIcon name="flag" /> {PRIORITY_LABEL[task.priority]}
+        <button className={`pill${displayTask.priority ? " hot" : ""}`} aria-expanded={menu === "priority"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "priority" ? null : "priority"); }}>
+          <TaskIcon name="flag" /> {PRIORITY_LABEL[displayTask.priority]}
         </button>
         {menuPop.shown === "priority" && (
           <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
@@ -947,8 +923,8 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         )}
 
         {/* 标签 */}
-        <button className={`pill${task.tags.length ? " hot" : ""}`} aria-expanded={menu === "tags"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "tags" ? null : "tags"); }}>
-          <TaskIcon name="tag" /> {task.tags.length ? task.tags.join("、") : "标签"}
+        <button className={`pill${displayTask.tags.length ? " hot" : ""}`} aria-expanded={menu === "tags"} onClick={(e) => { propertyAnchor.current = e.currentTarget; setMenu(menu === "tags" ? null : "tags"); }}>
+          <TaskIcon name="tag" /> {displayTask.tags.length ? displayTask.tags.join("、") : "标签"}
         </button>
         {menuPop.shown === "tags" && (
           <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
@@ -1016,6 +992,67 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
           </button>
         )}
       </div>
+
+      <div className="subs">
+        {canFoldOpen ? <button type="button" className="tc-openfold" aria-expanded={!previewFolded} aria-controls={`pending-subs-${task.id}`}
+          onClick={() => { const folded = !previewFolded; setDismissedLocate(locateSubId ?? null); rememberTaskSubtasksFolded(task.id, folded); setOpenFold({ id: task.id, folded }); }}>
+          <span className={`tc-openfold-chevron${previewFolded ? " folded" : ""}`} aria-hidden="true">⌄</span>
+          待办子任务 <span className="tc-openfold-count">{openSubs.length}</span>
+          <span className="tc-openfold-action">{previewFolded ? `展开其余 ${openSubs.length - 3} 条` : "收起，仅看前3条"}</span>
+        </button> : openSubs.length > 0 && <div className="tc-openfold tc-openfold-static">待办子任务 <span className="tc-openfold-count">{openSubs.length}</span></div>}
+        <div id={`pending-subs-${task.id}`}>{visibleOpenSubs.map(renderSub)}</div>
+
+        {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
+        {/* 子任务同样认时间、需求方和清单；归类只追加到本步，#仍保留在正文。 */}
+        <div className="sub-row new-sub-row">
+          <span className="sb" style={{ opacity: 0.35 }} />
+          <SyntaxInput
+            elementRef={newSubInputRef}
+            value={newSub}
+            onChange={(v) => { newSubRef.current = v; setNewSub(v); }}
+            onSubmit={addSubFromInput}
+            // A1：打了一半点走也算数（addSubFromInput 空标题自己会退回，不会加出空条）。
+            // 照实汇报加上没有：只打了「明天」没打标题时一条都没加，右边就不该浮出 ✓
+            onBlurCommit={() => addSubFromInput()}
+            // Esc 先擦掉这一条，第二下才轮到收卡片
+            onEscape={() => {
+              if (!newSub && !newSubImagesRef.current.length) return false;
+              newSubRef.current = "";
+              setNewSub("");
+              newSubImagesRef.current = []; setNewSubImages([]); newSubImageRevision.current++;
+              return true;
+            }}
+            // 长句子折行、框跟着长高（不再单行一直往左推）；Shift+Enter 是换行，写进这条子任务的标题。
+            // 所以这里不接 onShiftEnter：子任务里收卡按 Esc（有字时第二下）或点卡外
+            allowNewline
+            placeholder="＋ 子任务，回车添加（可以写「~明天 !高」）"
+            lists={lists.map((l) => l.name)}
+            tags={[]}
+            whos={whoNames}
+            skip={["tag"]}
+            weekendDay={settings.weekendDay}
+            inputStyle={{ fontSize: 13 }}
+          />
+          <ImageAttachments images={newSubImages} label="新子任务图片" pickerLabel="给新子任务添加图片" draft
+            targetKey={`new:${task.id}`}
+            inputTargets={() => [newSubInputRef.current]}
+            onBusyChange={(busy) => { newSubImageBusy.current = busy; }}
+            canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
+            createContext={() => { const revision = newSubImageRevision.current; return imageEditContext(() => newSubImageRevision.current === revision && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)); }}
+            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} />
+        </div>
+
+        {/* 阈值跟自动折叠同一个，见上面的 canFoldDone */}
+        {canFoldDone && (
+          <button className="tc-donefold" onClick={() => setShowDone(!doneShown)}>
+            {doneShown ? "收起已完成" : `显示已完成 ${doneSubs.length}`}
+            <span className="tc-donefold-caret">{doneShown ? "▴" : "▾"}</span>
+          </button>
+        )}
+        {doneShown && doneSubs.map(renderSub)}
+      </div>
+
+
 
 
     </div>

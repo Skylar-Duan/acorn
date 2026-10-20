@@ -70,7 +70,7 @@ void (async () => {
     const now = Date.now();
     if (now - lastFocusSync < FOCUS_SYNC_GAP_MS) return;
     lastFocusSync = now;
-    void dailySyncIfNeeded();
+    if (isMobile) void dailySyncIfNeeded();
   };
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") onBackToApp();

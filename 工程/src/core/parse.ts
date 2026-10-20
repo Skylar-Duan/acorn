@@ -26,6 +26,7 @@ import {
 } from "./dates";
 import { HOLIDAY_WORDS, holidayDate } from "./holidays";
 import { describeRepeat } from "./recur";
+import { quotedSpans } from "./quotedText";
 
 export interface ParseChip {
   kind: "date" | "time" | "repeat" | "list" | "tag" | "who" | "priority";
@@ -121,10 +122,10 @@ function firstOccurrence(rule: RepeatRule, today: string): string {
 const RE = {
   // 字符类统一排斥 / ——否则「#紧要/工作」会整体吞成一个标签,清单丢失;
   // 同样排斥 ~ 与 ～:「@李哥~3点」的人名到 ~ 为止,时间不能被吃进名字里
-  tag: /#([^\s#@/!！~～]+)/g,
+  tag: /#([^\s#@/!！~～"“”＂]+)/g,
   // '/' 必须在行首或空白之后,防止误吞 8/20 这类日期
-  list: /(?<!\S)\/([^\s#@/!！~～]+)/g,
-  who: /@([^\s#@/!！~～]+)/g,
+  list: /(?<!\S)\/([^\s#@/!！~～"“”＂]+)/g,
+  who: /@([^\s#@/!！~～"“”＂]+)/g,
   prioWord: /[!！](高|中|低)/g,
   prioBang: /[!！]+/g,
   repWorkday: /每个?工作日/g,
@@ -251,6 +252,9 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   const today = todayYMD(opts.now);
   const skip = new Set<ParseChip["kind"]>(opts.skip ?? []);
   const consumed: boolean[] = new Array<boolean>(input.length).fill(false);
+  const quotes = quotedSpans(input);
+  const quoted: boolean[] = new Array<boolean>(input.length).fill(false);
+  for (const span of quotes) for (let i = span.start; i < span.end; i++) quoted[i] = true;
 
   const st = {
     due: null as string | null,
@@ -283,7 +287,7 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   const tokens: Tok[] = [];
 
   const free = (a: number, b: number): boolean => {
-    for (let i = a; i < b; i++) if (consumed[i]) return false;
+    for (let i = a; i < b; i++) if (consumed[i] || quoted[i]) return false;
     return true;
   };
 
@@ -296,15 +300,15 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   // URL、邮件地址、明确的文件路径/文件名里的 ~ 是字面字符,不能拆出日期。
   // /工作 仍是清单语法;只有带后续目录分隔符的绝对路径才按文件路径保护。
   const literalSpans = Array.from(input.matchAll(
-    /\b[a-z][a-z\d+.-]*:\/\/\S+|\bwww\.\S+|\b[a-z]:[\\/]\S+|\\\\\S+|(?<!\S)(?:\.{1,2}[\\/]|~[\\/]|\/(?:[^/\s]+\/)+)\S+|\S+@[^\s@]+\.[^\s@]+|[^\s/\\]+\.[a-z][a-z\d]{0,7}(?=\s|$)/gi,
+    /\b[a-z][a-z\d+.-]*:\/\/[^\s"“”＂]+|\bwww\.[^\s"“”＂]+|\b[a-z]:[\\/][^\s"“”＂]+|\\\\[^\s"“”＂]+|(?<!\S)(?:\.{1,2}[\\/]|~[\\/]|\/(?:[^/\s"“”＂]+\/)+)[^\s"“”＂]+|[^\s"“”＂]+@[^\s@"“”＂]+\.[^\s@"“”＂]+|[^\s/\\"“”＂]+\.[a-z][a-z\d]{0,7}(?=\s|$|["“”＂])/gi,
   ), (m) => [m.index!, m.index! + m[0].length] as const);
 
   /** 时间闸门:这个 token 前面有没有人领着?
-   *  · 紧邻的前一个字符是还没被占用的 ~ / ～,且不是正文里的范围号 → 认,
+   *  · 前面是还没被占用的 ~ / ～（可隔行内空格）,且不是正文里的范围号 → 认,
    *    并把这个符号一起并进占用区间(返回它的下标);
    *  · 紧邻的前一个字符已经在某个 ~ 领着的那一串里 → 也认(一个 ~ 管一整串:「~周五下午3点」);
    *  · 别的一律不认(返回 -1),原文原样留在标题里。
-   *  中间空了格就断了——空格不在 licensed 里,得再打一个 ~。这条规矩写在用法页上。
+   *  ~ 后可以先空格再写时间；日期与后续钟点之间空了格仍要再打一个 ~。
    *
    *  ~ 可以紧跟正文,句首/句中/句尾一致。数字或日期末尾紧接的波浪线仍当范围号:
    *  「预计 3～5天内 出结果」「报销 1~2个月后 到账」「档期 8/20~8/25」「面试 14:00～15:00 二轮」
@@ -314,8 +318,9 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
    *  人名或标签结尾即使是数字,也不会被当作范围端点。 */
   const gate = (a: number): number => {
     if (a === 0) return -1;
-    if (isTilde(input[a - 1]) && !consumed[a - 1]) {
-      const t = a - 1;
+    let t = a - 1;
+    while (t >= 0 && /[^\S\r\n]/.test(input[t])) t--;
+    if (isTilde(input[t]) && free(t, a)) {
       if (literalSpans.some(([start, end]) => start <= t && t < end)) return -1;
       if (t === 0 || consumed[t - 1]) return t;
       const left = input.slice(0, t);
@@ -984,8 +989,18 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     due = dueTime <= nowHM ? addDays(today, 1) : today;
   }
 
+  // 清理空格和「提醒我」时先收好引用，最后原样放回；引用内的空格、换行也属于正文。
+  let quoteMark = "\u0000";
+  while (input.includes(quoteMark)) quoteMark += "\u0000";
+  const quoteAt = new Map(quotes.map((span, index) => [span.start, { ...span, index }]));
   let title = "";
-  for (let i = 0; i < input.length; i++) if (!consumed[i]) title += input[i];
+  for (let i = 0; i < input.length; i++) {
+    const span = quoteAt.get(i);
+    if (span) {
+      title += `${quoteMark}${span.index}${quoteMark}`;
+      i = span.end - 1;
+    } else if (!consumed[i]) title += input[i];
+  }
   title = tidyTitle(title, opts.keepNewlines, (l) => l.replace(/\s+/g, " ").trim());
   // 识别出时间/日期后，「20点提醒我」这类说法残留的"提醒(我)"是指令词不是内容，去掉。
   // 只删两种安全形态：独立成词的"提醒/提醒我"、句首的"提醒我"——"写提醒事项"这类内容词不动
@@ -998,6 +1013,10 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
         .replace(/\s+/g, " ")
         .trim(),
     );
+  }
+  for (let index = 0; index < quotes.length; index++) {
+    const span = quotes[index];
+    title = title.replace(`${quoteMark}${index}${quoteMark}`, () => input.slice(span.start, span.end));
   }
 
   return {
