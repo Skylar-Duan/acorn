@@ -361,7 +361,7 @@ export async function readWebSnapshot(): Promise<string | null> {
 /** 把这台设备上的橡果数据删干净：data.json 与它的中间态、backups/ 里橡果自己写的那些、
  *  冒烟报告、登录令牌，并清空 config.json 的 recentDirs。返回真正清过的目录。
  *  **Rust 侧自己会拒绝没登录过账号的调用**，这里不是唯一的闸门。 */
-export async function purgeLocalFiles(): Promise<string[]> {
+export async function purgeLocalFiles(opts?: { confirmed?: boolean }): Promise<string[]> {
   if (!inTauri) {
     // 浏览器里「这台设备上的那一份」就是这两处，两处都得清干净
     await idbDel();
@@ -374,7 +374,7 @@ export async function purgeLocalFiles(): Promise<string[]> {
     await idbDel(IDB_PRE_KEY);
     return [];
   }
-  return inv<string[]>("purge_local_data");
+  return inv<string[]>("purge_local_data", opts?.confirmed ? { confirmed: true } : undefined);
 }
 
 /** 清空本机会动到哪些目录。确认框在弹之前调一次，把路径逐条列给用户看——

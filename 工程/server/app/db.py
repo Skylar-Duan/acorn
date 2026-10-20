@@ -255,6 +255,21 @@ class Database:
 
     def delete_user(self, user_id: int) -> None:
         with self.tx() as c:
+            row = c.execute("SELECT email FROM users WHERE id = ?", (user_id,)).fetchone()
+            if row is None:
+                return
+            email = str(row["email"]).strip().lower()
+            # 这些表没有指向users的外键，必须按可信库内邮箱／用户ID显式清理。
+            c.execute("DELETE FROM codes WHERE lower(trim(email)) = ?", (email,))
+            c.execute(
+                "DELETE FROM hits WHERE key IN (?, ?) OR lower(trim(substr(key, instr(key, ':') + 1))) = ?",
+                (f"fb:{user_id}", f"ultra-verify:{user_id}", email),
+            )
+            # 保留别人的反馈与处理结果，只去掉注销者作为处理人的邮箱快照。
+            c.execute("UPDATE feedback SET done_by = NULL WHERE lower(trim(done_by)) = ?", (email,))
+            c.execute("DELETE FROM ultra_downloads WHERE user_id = ?", (user_id,))
+            c.execute("DELETE FROM ultra_requests WHERE user_id = ?", (user_id,))
+            c.execute("DELETE FROM ultra_grants WHERE user_id = ?", (user_id,))
             c.execute("DELETE FROM vaults WHERE user_id = ?", (user_id,))
             # 反馈也跟着走（不留副本）。外键本来就级联，显式再删一遍，不指望 PRAGMA 一定开着
             c.execute("DELETE FROM feedback WHERE user_id = ?", (user_id,))

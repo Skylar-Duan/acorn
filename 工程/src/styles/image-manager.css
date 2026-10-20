@@ -1,0 +1,42 @@
+.image-manager-overlay { position: fixed; z-index: 1800; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: #15201866; backdrop-filter: blur(3px); }
+.image-manager-panel { position: relative; display: flex; flex-direction: column; width: min(840px, 100%); max-height: min(780px, calc(100dvh - 48px)); min-width: 0; background: var(--card); border: 1px solid var(--hair); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; animation: card-in var(--dur-1) var(--ease); }
+.image-manager-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 22px 24px 16px; }
+.image-manager-head h2 { margin: 0 0 8px; font-family: var(--sans); font-size: 20px; font-weight: 600; }
+.image-manager-head p { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.image-manager-head p span { color: var(--ink-3); }
+.image-manager-close { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 7px; color: var(--ink-3); }
+.image-manager-close:hover { background: var(--bg); color: var(--ink); }
+.image-manager-meter { height: 3px; margin: 0 24px; background: var(--hair); border-radius: 3px; overflow: hidden; }
+.image-manager-meter i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width var(--dur-1) var(--ease); }
+.image-manager-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; }
+.image-manager-filters { display: flex; gap: 4px; }
+.image-manager-filters button { padding: 6px 10px; border-radius: 6px; font-size: 12px; color: var(--ink-3); }
+.image-manager-filters button[aria-pressed=true] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.image-manager-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.image-manager-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px; overflow-y: auto; overscroll-behavior: contain; padding: 2px 24px 22px; min-height: 100px; }
+.image-manager-item { min-width: 0; border: 1px solid transparent; border-radius: 10px; padding: 5px; }
+.image-manager-item.selected { border-color: var(--accent); background: var(--accent-soft); }
+.image-manager-picture { position: relative; height: 112px; }
+.image-manager-preview { width: 100%; height: 100%; border-radius: 7px; overflow: hidden; background: var(--bg); }
+.image-manager-preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.image-manager-picture > input { position: absolute; top: 7px; left: 7px; width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+.image-manager-remove { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--card); border: 1px solid var(--hair); color: var(--ink-2); }
+.image-manager-remove:hover { color: var(--warn); }
+.image-manager-owner { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 9px 0 6px; font-size: 12px; color: var(--ink); }
+.image-manager-owner span { color: var(--ink-3); }
+.image-manager-sync { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); }
+.image-manager-sync input, .image-manager-select input { accent-color: var(--accent); }
+.image-manager-conflict, .image-manager-error { font-size: 12px; color: var(--warn); }
+.image-manager-error { margin: 0; padding: 8px 24px; }
+.image-manager-empty { grid-column: 1/-1; color: var(--ink-3); text-align: center; padding: 30px 0; font-size: 13px; }
+.image-manager-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--hair); background: var(--card); }
+.image-manager-actions > span { margin-right: auto; color: var(--ink-3); font-size: 12px; }
+.image-manager-actions .btn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.image-manager-confirm-wrap { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: #15201855; z-index: 2; }
+.image-manager-confirm { width: min(380px, 100%); padding: 24px; background: var(--card); border: 1px solid var(--hair); border-radius: 12px; box-shadow: var(--shadow); }
+.image-manager-confirm h3 { margin: 0 0 12px; font-size: 17px; font-family: var(--sans); }
+.image-manager-confirm p { margin: 0 0 20px; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+.image-manager-confirm > div { display: flex; justify-content: flex-end; gap: 8px; }
+.set-storage .image-manage-entry { flex: none; font-size: 12px; margin-left: 4px; }
+@media (max-width: 600px) { .image-manager-overlay { padding: 12px; } .image-manager-panel { max-height: calc(100dvh - 24px); } .image-manager-head, .image-manager-tools, .image-manager-actions { padding-inline: 16px; } .image-manager-meter { margin-inline: 16px; } .image-manager-grid { padding-inline: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .image-manager-actions > span { flex-basis: 100%; } }
+@media (prefers-reduced-motion: reduce) { .image-manager-panel { animation: none; } .image-manager-meter i { transition: none; } }

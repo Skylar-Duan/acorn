@@ -68,8 +68,8 @@
 .tw-card .sub-rep { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 
 /* 子任务默认一行；图片独占日期前的位置，各条日期与操作始终同列。 */
-.tw-card.task-card .subs .sub-card-row { --sub-date-width: 108px; display: grid; grid-template-columns: 16px 15px minmax(0, 1fr) 0 var(--sub-date-width) 48px 0 26px; column-gap: 6px; row-gap: 0; align-items: start; }
-.tw-card.task-card .subs .sub-card-row.sub-plus { grid-template-columns: 16px 15px minmax(0, 1fr) 34px var(--sub-date-width) 48px 26px 26px; }
+.tw-card.task-card .subs .sub-card-row { --sub-date-width: 72px; display: grid; grid-template-columns: 16px 15px minmax(0, 1fr) 0 var(--sub-date-width) 26px 0 26px; column-gap: 6px; row-gap: 0; align-items: start; }
+.tw-card.task-card .subs .sub-card-row.sub-plus { grid-template-columns: 16px 15px minmax(0, 1fr) 30px var(--sub-date-width) 26px 26px 26px; }
 .tw-card .sub-disclosure { display: grid; place-items: center; grid-column: 1; grid-row: 1; width: 16px; height: 24px; color: var(--ink-3); border-radius: 4px; }
 .tw-card .sub-disclosure:hover { color: var(--accent); background: var(--accent-soft); }
 .tw-card .sub-disclosure svg { width: 13px; height: 13px; transition: transform var(--dur-1) var(--ease); }
@@ -79,9 +79,9 @@
 .tw-card.task-card .subs .sub-card-row:not(.sub-expanded) > textarea { max-height: 24px; white-space: pre; }
 .tw-card.task-card .subs .sub-card-row.sub-expanded > textarea { max-height: none; white-space: pre-wrap; }
 .tw-card.task-card .subs .sub-card-row > .image-summary { grid-column: 4; grid-row: 1; width: 30px; height: 24px; margin: 0; }
-.tw-card.task-card .subs .sub-card-row > .sub-property-date { grid-column: 5; grid-row: 1; width: var(--sub-date-width); min-width: 0; justify-content: flex-end; overflow: hidden; }
+.tw-card.task-card .subs .sub-card-row > .sub-property-date { grid-column: 5; grid-row: 1; width: var(--sub-date-width); min-width: 0; padding-inline: 0; justify-content: flex-start; gap: 4px; overflow: hidden; }
 .tw-card .sub-date-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tw-card.task-card .subs .sub-card-row > .sub-property-priority { grid-column: 6; grid-row: 1; width: 48px; justify-content: flex-end; }
+.tw-card.task-card .subs .sub-card-row > .sub-property-priority { grid-column: 6; grid-row: 1; width: 26px; padding-inline: 0; gap: 4px; justify-content: center; }
 .tw-card.task-card .subs .sub-card-row > .sub-image-add { grid-column: 7; grid-row: 1; }
 .tw-card.task-card .subs .sub-card-row > .rm { grid-column: 8; grid-row: 1; }
 .tw-card.task-card .subs .sub-card-row > .sub-categories { grid-column: 3 / -1; grid-row: 2; width: auto; margin: 3px 0 0; }
@@ -93,7 +93,6 @@
 .tw-card .sub-images-motion .task-images { margin: 6px 0 4px; padding: 4px 2px; }
 @keyframes sub-images-open { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
 @keyframes sub-images-close { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
-@media (max-width: 1000px) { .tw-card.task-card .subs .sub-card-row { --sub-date-width: 86px; column-gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { .tw-card .sub-images-motion, .tw-card .sub-images-motion.leaving { animation: none; } .tw-card .sub-disclosure svg, .tw-card.task-card .subs .sub-card-row > textarea { transition: none; } }
 
 .tw-quickadd.quick-add { display: block; min-height: 46px; padding: 10px 14px; border-radius: 10px; box-shadow: 0 1px 2px #10201904; background-image: none; }

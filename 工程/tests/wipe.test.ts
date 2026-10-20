@@ -199,12 +199,10 @@ describe("绝不能把清空做成「登录态变 null」的副作用", () => {
     expect(code).not.toMatch(/wipeLocalData/);
   });
 
-  it("注销账号那段只调 signOut，不调清空", () => {
-    const start = accountPanelSource.indexOf("deleteAccount");
-    expect(start).toBeGreaterThan(0);
-    const tail = accountPanelSource.slice(start, start + 600);
-    expect(tail).toContain("signOut()");
-    expect(tail).not.toContain("wipeLocalData");
+  it("注销只由明确确认的专用动作清本机，不复用要求重新上传的旧清空闸门", () => {
+    expect(accountPanelSource).toContain("await eraseAcornAccount()");
+    expect(accountPanelSource).toContain("确定注销橡果账号吗");
+    expect(accountPanelSource).not.toContain("wipeLocalData");
   });
 });
 

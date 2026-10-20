@@ -296,7 +296,8 @@ def test_ultra_new_images_limits_but_known_history_completion_can_sync():
         # 已有图复制进循环历史仍保留；只有新增图时才拦总图片额度。
         assert not ultra.check_new_images(envelope([one, one]), envelope([one]))
         assert not ultra.check_new_images(envelope([one, {**one, "id": "copied-history-image"}]), envelope([one]))
-    for images in ([image(n) for n in range(9)], [{**one, "width": 99999}], [{**one, "dataUrl": "data:image/svg+xml;base64,YQ=="}], [{**one, "bytes": 999}]):
+    assert ultra.check_new_images(envelope([image(n) for n in range(9)]), None)
+    for images in ([{**one, "width": 99999}], [{**one, "dataUrl": "data:image/svg+xml;base64,YQ=="}], [{**one, "bytes": 999}]):
         try:
             ultra.check_new_images(envelope(images), None)
             assert False

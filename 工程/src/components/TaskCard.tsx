@@ -603,7 +603,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         {/* 图片在日期前；日期与重要性各有固定列，空图行仍保持对齐。 */}
         <button
           className="pill sub-property sub-property-date"
-          title={s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}
+          title={`${subShownDue ? `${formatShort(subShownDue)}${subShownTime ? ` ${subShownTime}` : ""} · ` : ""}${s.due ? "这条子任务自己的日期" : "跟着母任务走，点一下可以单独排"}`}
           aria-label={`子任务日期：${s.title}`}
           aria-expanded={subMenu?.id === s.id && subMenu.kind === "date"}
           onClick={(e) => { subPropertyAnchor.current = e.currentTarget; setSubMenu(subMenu?.id === s.id && subMenu.kind === "date" ? null : { id: s.id, kind: "date" }); }}

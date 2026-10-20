@@ -285,10 +285,11 @@ describe("Ultra图片入口", () => {
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(getTask().subtasks[0]).toMatchObject({ title: "待图步骤", images: [image] });
   });
-  it("第9张粘贴被拒绝，不压缩且既有图片保留", async () => {
+  it("第9张仍可粘贴压缩并保存，原有8张完整保留", async () => {
     updateTask("image-task", { images: Array.from({ length: 8 }, (_, n) => ({ ...image, id: `old-${n}` })) });
     act(() => root.render(createElement(Existing)));
-    await pasteImages(); expect(flags.compress).not.toHaveBeenCalled();
-    expect(getTask().images).toHaveLength(8); expect(document.querySelector('[role="alert"]')?.textContent).toContain("8 张");
+    await pasteImages(); expect(flags.compress).toHaveBeenCalledTimes(1);
+    expect(getTask().images).toHaveLength(9); expect(getTask().images?.[8]).toEqual(image);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
   });
 });

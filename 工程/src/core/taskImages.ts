@@ -1,5 +1,6 @@
 import type { AppData, TaskImage } from "./model";
 
+/** 旧版本数量上限，仅供历史兼容；新图片不限制每件数量。 */
 export const IMAGE_MAX_COUNT = 8;
 export const IMAGE_MAX_BYTES = 256 * 1024;
 export const IMAGE_LEDGER_MAX_BYTES = 20 * 1024 * 1024;
@@ -39,15 +40,13 @@ export function validNewTaskImage(image: TaskImage): boolean {
     Number.isInteger(image.bytes) && image.bytes > 0 && image.bytes <= IMAGE_MAX_BYTES && imageDataBytes(image.dataUrl) === image.bytes;
 }
 
-/** 只限制新增图片。删图、完成任务、回收/撤销等已有操作不因配额被挡。 */
+/** 只限制新增图片的单张安全；本机数量／总量不限，云额度由imageLibrary管理。 */
 export function imageListUpdateError(data: Pick<AppData, "tasks">, current: TaskImage[], next: TaskImage[], usedBytes = ledgerImageBytes(data)): string | null {
   const previous = new Map(current.map((i) => [i?.id, i?.dataUrl]));
   const added = next.filter((i) => previous.get(i?.id) !== i?.dataUrl);
   if (!added.length) return null;
-  if (next.length > IMAGE_MAX_COUNT) return "每件任务或子任务最多放 8 张图片";
   if (new Set(next.map((i) => i?.id)).size !== next.length || added.some((i) => !validNewTaskImage(i))) return "图片格式或大小不合适，请重新选择";
-  const total = usedBytes - current.reduce((n, i) => n + imageUrlLength(i), 0) + next.reduce((n, i) => n + imageUrlLength(i), 0);
-  return total > IMAGE_LEDGER_MAX_BYTES ? "账本图片已满 20 MB，请先删除不需要的图片" : null;
+  return null;
 }
 
 export function imageTargetSize(width: number, height: number, maxEdge = IMAGE_MAX_EDGE): { width: number; height: number } {

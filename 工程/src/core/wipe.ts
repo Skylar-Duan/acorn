@@ -11,6 +11,7 @@ import * as persist from "./persist";
 import * as cloud from "./cloud";
 import { holdAutoSync, signOut, syncNowChecked, syncStore } from "./syncCtl";
 import type { SyncGate } from "./syncCtl";
+import { restoreLocalOnlyImages } from "./imageLibrary";
 
 /** 闸门没过。跟一般的报错分开，界面据此显示「先导出再清」那条出口 */
 export class WipeBlocked extends Error {
@@ -162,14 +163,16 @@ async function restoreHeld(opts?: RestoreOpts): Promise<CloudRestore> {
     );
   }
 
-  await persist.saveData(pulled.data);
+    // 云端不带仅本机图片；保留仍存在同owner的本机内容，不复活真正删除的任务。
+    const restored = restoreLocalOnlyImages(pulled.data, appStore.getState().data);
+    await persist.saveData(restored);
   // 不清的话 Ctrl+Z 一按就把覆盖前那份整份写回盘，等于白覆盖
   clearUndo();
   // 覆盖的是「事」，不是这台设备的偏好：主题 / 快捷键 / 需求方顺序本来就不参与同步（mergeData 同一口径），
   // 整份换掉会把另一台设备的主题、快捷键搬到这台上来——登录即覆盖那条新路（2026-09-02）让这个副作用露了头
   const keep = appStore.getState().data.settings;
   appStore.setState({
-    data: { ...pulled.data, settings: keep },
+      data: { ...restored, settings: keep },
     loaded: true, loadError: null, dataFromNewer: null, rescue: null,
   });
   // 版本号跟着走：下一轮同步要报「我是基于第几版改的」，报错了会白白撞一次 409

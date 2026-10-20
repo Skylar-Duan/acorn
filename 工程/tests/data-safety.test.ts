@@ -319,7 +319,7 @@ describe("从云端整份覆盖本机：备份是硬前置", () => {
   });
 
   it("成功 toast 里带上备份位置，用户看得见退路在哪", () => {
-    const start = accountPanelSource.indexOf("已用云端第");
+    const start = accountPanelSource.indexOf('showToast("云端下载完成"');
     expect(start).toBeGreaterThan(0);
     expect(accountPanelSource.slice(start, start + 200)).toContain("out.backup");
   });
@@ -535,10 +535,12 @@ describe("清空的范围要跟「找回数据」扫的范围一样宽，但得�
     expect(rustSource).toContain("fn list_purge_targets");
     expect(accountPanelSource).toContain("purgeTargets()");
     const wipeConfirm = accountPanelSource.slice(
-      accountPanelSource.indexOf("const doSignOutAndWipe"),
-      accountPanelSource.indexOf("const doSignOutOnly"),
+      accountPanelSource.indexOf("const doClearLocal"),
+      accountPanelSource.indexOf("const doEraseAccount"),
     );
-    expect(wipeConfirm).toContain("dirs.length > 0");
+    expect(wipeConfirm).toContain("await localScope()");
+    expect(wipeConfirm).toContain("scope +");
+    expect(accountPanelSource).toContain('directories.join("\\n")');
   });
 
   it("只按文件名删自己写出来的东西，绝不 RMDir 目录本身", () => {
@@ -569,15 +571,16 @@ describe("清空的范围要跟「找回数据」扫的范围一样宽，但得�
 
 describe("登录状态下必须有两条出路", () => {
   const signedIn = accountPanelSource.slice(
-    accountPanelSource.indexOf("if (session && step === \"signedIn\")"),
+    accountPanelSource.indexOf("if (session)"),
   );
 
-  it("「退出登录并清空本机」和「只退出登录，保留本机」都常驻，清空那条排前面", () => {
-    const wipe = signedIn.indexOf("退出登录并清空本机");
-    const keep = signedIn.indexOf("只退出登录，保留本机");
+  it("退出、删除本地、注销三条动作常驻，退出保留本机与明确删除分开", () => {
+    const wipe = signedIn.indexOf("删除本地数据");
+    const keep = signedIn.indexOf("退出登录");
     expect(wipe).toBeGreaterThan(0);
     expect(keep).toBeGreaterThan(0);
-    expect(wipe).toBeLessThan(keep);
+    expect(keep).toBeLessThan(wipe);
+    expect(signedIn).toContain("注销橡果账号");
   });
 
   it("「只退出登录」走的是 signOut，不碰任何本机数据", () => {

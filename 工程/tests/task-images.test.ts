@@ -40,18 +40,18 @@ describe("图片压缩与额度", () => {
     await expect(fitJpeg(5000, 4000, async () => { calls++; valid = false; return jpeg("x", IMAGE_MAX_BYTES + 1).dataUrl; }, () => valid)).rejects.toThrow("取消");
     expect(calls).toBe(1);
   });
-  it("每个任务/子任务8张，单张256KiB，总量计历史和回收站的dataURL", () => {
+  it("每件数量和本机总量不限，单张256KiB，总量计历史和回收站的dataURL", () => {
     const data = defaultData();
-    expect(imageListUpdateError(data, [], Array.from({ length: 9 }, (_, i) => jpeg(String(i))))).toContain("8 张");
+    expect(imageListUpdateError(data, [], Array.from({ length: 9 }, (_, i) => jpeg(String(i))))).toBeNull();
     expect(imageListUpdateError(data, [], [jpeg("x", IMAGE_MAX_BYTES + 1)])).toContain("大小");
-    expect(imageListUpdateError(data, [], [jpeg()], IMAGE_LEDGER_MAX_BYTES)).toContain("20 MB");
+    expect(imageListUpdateError(data, [], [jpeg()], IMAGE_LEDGER_MAX_BYTES)).toBeNull();
     data.tasks = [newTask({ title: "历史", done: true, deletedAt: "2026-10-16T00:00:00Z", images: [jpeg()], subtasks: [{ id: "s", title: "步骤", done: true, images: [jpeg("s")] }] })];
     expect(ledgerImageBytes(data)).toBe(jpeg().dataUrl.length * 2);
   });
-  it("已超额度也允许删图和纯文字更新，新增图片才拒绝", () => {
+  it("已超云额度仍允许本机新增图片、删图与纯文字更新", () => {
     const data = defaultData(); const current = [jpeg("a"), jpeg("b")];
     expect(imageListUpdateError(data, current, [current[0]], IMAGE_LEDGER_MAX_BYTES + 100)).toBeNull();
-    expect(imageListUpdateError(data, current, [...current, jpeg("c")], IMAGE_LEDGER_MAX_BYTES)).toContain("20 MB");
+    expect(imageListUpdateError(data, current, [...current, jpeg("c")], IMAGE_LEDGER_MAX_BYTES)).toBeNull();
   });
   it("显示过滤拒绝远程URL和伪造尺寸的解码炸弹，原数组不动", () => {
     const png = new Uint8Array(24); png.set([137, 80, 78, 71]);

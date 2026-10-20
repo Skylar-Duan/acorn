@@ -5,7 +5,8 @@
    cdpandas 的账号后端（app/account.py），它认过这个人，橡果再签自己的长效令牌。
 2. 存一份数据——每个账号一整份 AppData（信封 JSON）+ 一个版本号 rev。
    推送时必须报出「我是基于第几版改的」，对不上就退回最新那版让客户端自己合并再推。
-   合并逻辑全在客户端（src/core/merge.ts），服务器只认版本号，永远不改用户数据的内容。
+   任务正文的合并在客户端（src/core/merge.ts）；服务器认版本号，另按图片控制表
+   过滤仅本机或已删除的图片，防止旧设备把这些云端副本重新上传。
 
 为什么是整份而不是按条同步：任务数据一个人也就几百 KB，整份传省掉了一整套增量协议
 和它的边界 bug；真长到几 MB 再说（有 max_vault_bytes 兜底）。
@@ -33,6 +34,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import account, ultra
 from .config import settings
 from .db import Database, now_iso
+from .image_sync import cloud_image_projection
 from .security import TokenError, make_token, read_token, verify_password
 
 log = logging.getLogger("acorn.api")
@@ -470,11 +472,17 @@ def delete_account(user: CurrentUser) -> dict:
 
     cdpandas 账号还在：下次用同一个邮箱密码登录，橡果会建一个空的新行（数据不会回来）。"""
     db.delete_user(int(user["id"]))
+    email = str(user["email"]).strip().lower()
+    with _admin_lock:
+        for key in [key for key, value in _admin_cache.items() if value[1] and value[1].strip().lower() == email]:
+            _admin_cache.pop(key, None)
     return {
         "deleted": True,
         "scope": "acorn",
         "cdpandasAccountKept": True,
-        "message": "橡果云端的数据已经删干净了。cdpandas 账号还在，要注销它得去 cdpandas.com。",
+        "deletedData": ["account", "ledger", "feedback", "plusAuthorization", "plusRequests", "plusDownloads", "emailCodes", "accountRateLimits", "feedbackOperatorIdentity"],
+        "retainedData": ["cdpandasAccount", "infrastructureAccessLogs", "externalBackups"],
+        "message": "橡果云端账号资料、账本、反馈、授权及可关联的账号记录已删除；cdpandas统一账号、服务器访问日志与应用外备份不在本次清理范围。",
     }
 
 
@@ -519,12 +527,13 @@ def push(body: PushIn, user: CurrentUser) -> dict:
             f"云端的数据是更新版本的橡果存的（数据版本 {stored}，这台设备是 {schema}）。"
             f"先升级这台设备上的橡果，升级前不会同步，本地数据一条都不会动。",
         )
-    payload = json.dumps(body.data, ensure_ascii=False, separators=(",", ":"))
+    previous = json.loads(vault["data"]) if vault["data"] else None
+    projected = cloud_image_projection(body.data, previous)
+    payload = json.dumps(projected, ensure_ascii=False, separators=(",", ":"))
     cap = settings.ultra_max_vault_bytes if ultra.enabled(db, int(user["id"])) else settings.max_vault_bytes
     if len(payload.encode("utf-8")) > cap:
         raise bad(413, "too_big", "本机记录仍保留。图片或历史记录较多，减少图片后重试同步" if cap > settings.max_vault_bytes else "本机记录仍保留。云端数据已超过 5 MiB，减少内容后重试同步")
-    previous = json.loads(vault["data"]) if vault["data"] else None
-    ultra.check_new_images(body.data, previous)
+    ultra.check_new_images(projected, previous)
 
     rev = db.put_vault(int(user["id"]), body.base_rev, payload, (body.device or "")[:64], schema)
     if rev is None:

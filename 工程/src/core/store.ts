@@ -17,6 +17,7 @@ import * as persist from "./persist";
 import * as cloud from "./cloud";
 import { isMobile } from "./platform";
 import { imageListUpdateError, taskImages } from "./taskImages";
+import { bulkDeleteImages, bulkSetImageSync, finalizeImageMutation } from "./imageLibrary";
 
 // 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
 // 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换。
@@ -317,7 +318,8 @@ function mutate(
   opts?: { toast?: string; skipUndo?: boolean; coalesceKey?: string },
 ) {
   const cur = appStore.getState().data;
-  const next = stamp(cur, fn(cur));
+  const images = finalizeImageMutation(cur, fn(cur));
+  const next = stamp(cur, images.data);
   if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘、也不打断合并
   if (!opts?.skipUndo) {
     const key = opts?.coalesceKey;
@@ -334,7 +336,7 @@ function mutate(
     coalesce = key === undefined ? null : { key, at };
   }
   appStore.setState({ data: next, undoDepth: undoStack.length });
-  if (opts?.toast) showToast(opts.toast, !opts?.skipUndo);
+  if (opts?.toast || images.message) showToast([opts?.toast, images.message].filter(Boolean).join("；"), !opts?.skipUndo);
   scheduleSave();
 }
 
@@ -359,7 +361,7 @@ export function undo() {
   });
   // 撤销也是一次改动，被撤回来的那些条要重新盖时刻戳，
   // 否则同步时云端那份「更新」的会把撤销效果又推回来
-  const restored = stamp(cur, {
+  const restored = stamp(cur, finalizeImageMutation(cur, {
     ...prev,
     tasks,
     sessions: cur.sessions,
@@ -367,7 +369,7 @@ export function undo() {
     graveyard: cur.graveyard,
     // 名字和头像同 settings：不属于可撤销数据，撤一件事不许把刚换的头像也撤回去
     ...(cur.profiles !== undefined ? { profiles: cur.profiles } : {}),
-  });
+  }).data);
   appStore.setState({
     data: restored,
     undoDepth: undoStack.length,
@@ -573,6 +575,21 @@ export async function switchDataDirectory(dir: string): Promise<void> {
 }
 
 // ---------- 任务动作 ----------
+
+/** 管理图的多选操作只提交一次，撤销时也恢复全部引用与独立同步开关。 */
+export function deleteManagedImages(keys: readonly string[]): string | null {
+  const result = bulkDeleteImages(appStore.getState().data, keys);
+  if (result.error) return result.error;
+  if (result.changed) mutate(() => result.data, { toast: "已删除图片" });
+  return null;
+}
+
+export function setManagedImageSync(keys: readonly string[], sync: boolean): string | null {
+  const result = bulkSetImageSync(appStore.getState().data, keys, sync);
+  if (result.error) return result.error;
+  if (result.changed) mutate(() => result.data, { toast: sync ? "已开启图片云端同步" : "图片仅保存在本机" });
+  return null;
+}
 
 export interface AddTaskInput {
   title: string;

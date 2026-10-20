@@ -515,11 +515,11 @@ describe("④ 网页上那几处「按了没反应」", () => {
     expect(upto).toContain("if (!persist.inTauri) return;");
   });
 
-  it("账号页那颗「先导出一份 JSON」在网页上也给得出来", () => {
-    // 用户正卡在「清空之前先留一份」这一步，这颗按钮尤其不能是个空壳
-    expect(accountSource).toContain("{canSaveFile && (");
-    expect(accountSource).toContain("if (!inTauri) {");
-    expect(accountSource).toContain("downloadTextFile(`acorn-${todayYMD()}.json`, json);");
+  it("账号页保持精简，JSON导出仍在设置的统一导出入口", () => {
+    expect(accountSource).not.toContain("先导出一份 JSON");
+    const settings = read("src/views/Settings.tsx");
+    expect(settings).toContain("downloadTextFile(");
+    expect(settings).toContain("导出 JSON");
   });
 
   it("浏览器那两条通道摆在存取层里，各页面不再自己造一遍", () => {

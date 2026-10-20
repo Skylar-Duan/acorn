@@ -138,6 +138,11 @@
 .acct-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .acct-form .input { flex: 1 1 190px; min-width: 150px; }
 .acct-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.acct-sync-actions { display: flex; gap: 8px; flex: none; }
+.acct-account-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 6px; }
+.acct-account-action { min-height: 36px; padding: 0 14px; border: 1px solid var(--hair); background: var(--card); border-radius: 10px; }
+.acct-remove-local { color: var(--ink-2); }
+.acct-delete-account { color: #b65046; border-color: color-mix(in srgb, #b65046 28%, var(--hair)); background: color-mix(in srgb, #b65046 6%, var(--card)); }
 .acct-err { font-size: var(--fs-sm); color: #C0564A; line-height: 1.7; }
 
 

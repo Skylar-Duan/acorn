@@ -486,8 +486,8 @@ fn snapshot_backup(state: State<DataDir>, prefix: String) -> Result<Option<Strin
 /// 把这台设备上的橡果数据删干净。**调用方必须先确认本地那份已经在云端**，
 /// 这里只负责删得彻底。
 ///
-/// 唯一的自保闸门：没有 auth.json（这台设备从没登过账号）就直接拒绝。
-/// 不能让「我只是想清个缓存」的调用，把从来没上过云的数据删掉——那是删了就没了。
+/// 旧调用没有auth.json就拒绝。账号页明确确认删除时允许confirmed:true，
+/// 以支持已登录但关闭自动登录、没有登录文件的本次会话。
 ///
 /// **清的范围必须跟「找回数据」扫的范围一样宽**：candidate_dirs() 除了当前目录和
 /// recentDirs，还无条件扫默认位置、%APPDATA% / %LOCALAPPDATA% 下的 userdata、
@@ -499,9 +499,9 @@ fn snapshot_backup(state: State<DataDir>, prefix: String) -> Result<Option<Strin
 /// 只碰真有 data.json 的目录、只按文件名删橡果自己写出来的东西。
 /// 返回真正清过的目录，前端拿它跟确认框里列过的名单对得上。
 #[tauri::command]
-fn purge_local_data(app: AppHandle, state: State<DataDir>) -> Result<Vec<String>, String> {
+fn purge_local_data(app: AppHandle, state: State<DataDir>, confirmed: Option<bool>) -> Result<Vec<String>, String> {
     let auth = auth_path(&app).ok_or("找不到配置目录")?;
-    if !auth.exists() {
+    if !may_purge_local_data(auth.exists(), confirmed) {
         return Err("这台设备没有登录过账号，不清空本地数据".into());
     }
     let dir = state.0.lock().unwrap().clone();
@@ -509,13 +509,13 @@ fn purge_local_data(app: AppHandle, state: State<DataDir>) -> Result<Vec<String>
     // recentDirs 待会儿要被清掉，所以候选目录必须**在那之前**取一次，否则扫不全
     let mut cleaned: Vec<String> = vec![];
     for d in purge_targets(&dir) {
-        purge_data_files(&d);
+        purge_data_files(&d)?;
         cleaned.push(d.to_string_lossy().to_string());
     }
 
     // 登录令牌（连写一半留下的临时文件一起）
-    let _ = fs::remove_file(&auth);
-    let _ = fs::remove_file(auth.with_extension("json.tmp"));
+    remove_owned_file(&auth)?;
+    remove_owned_file(&auth.with_extension("json.tmp"))?;
 
     // recentDirs 必须一起清。不清的话下次启动 initStore 发现任务为 0，
     // 会扫 recentDirs 把刚删掉的目录当「找回来的数据」推荐回来——白删一场还吓人一跳。
@@ -528,9 +528,15 @@ fn purge_local_data(app: AppHandle, state: State<DataDir>) -> Result<Vec<String>
             "recentDirs": Vec::<String>::new(),
             "freshStart": true,
         });
-        let _ = fs::write(&p, json.to_string());
+        fs::write(&p, json.to_string()).map_err(|error| format!("清理设置未完成（{}）：{}", p.display(), error))?;
     }
     Ok(cleaned)
+}
+
+/// 明确删除由前端绑定当前登录session并确认；自动登录关闭时本次session仍有效，
+/// 但auth.json刻意不存在。旧调用未传confirmed时仍须具备原有登录文件。
+fn may_purge_local_data(auth_exists: bool, confirmed: Option<bool>) -> bool {
+    auth_exists || confirmed == Some(true)
 }
 
 /// 这一次「清空本机」会动到哪些目录。**清和确认框用的必须是同一份名单**——
@@ -574,32 +580,51 @@ fn is_acorn_backup_name(name: &str) -> bool {
 /// **只按文件名删，绝不 RMDir 目录本身**：数据文件夹是用户拿系统文件夹选择器随便挑的
 /// 一个已有目录（set_data_dir 不追加子目录），橡果并不独占它——递归删下去会把用户
 /// 放在同一个文件夹里的其它东西一起删光。
-fn purge_data_files(dir: &Path) {
+fn remove_owned_file(path: &Path) -> Result<(), String> {
+    deleted_or_missing(fs::remove_file(path), path)
+}
+
+fn deleted_or_missing(result: std::io::Result<()>, path: &Path) -> Result<(), String> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("删除未完成（{}）：{}", path.display(), error)),
+    }
+}
+
+fn purge_data_files(dir: &Path) -> Result<(), String> {
     // 数据本体与原子写留下的中间态
-    let _ = fs::remove_file(data_file(dir));
-    let _ = fs::remove_file(dir.join("data.json.tmp"));
-    let _ = fs::remove_file(dir.join("data.json.old"));
-    if let Ok(rd) = fs::read_dir(dir) {
-        for e in rd.flatten() {
+    remove_owned_file(&data_file(dir))?;
+    remove_owned_file(&dir.join("data.json.tmp"))?;
+    remove_owned_file(&dir.join("data.json.old"))?;
+    match fs::read_dir(dir) {
+        Ok(rd) => for item in rd {
+            let e = item.map_err(|error| format!("无法检查清理范围（{}）：{}", dir.display(), error))?;
             if e.file_name().to_string_lossy().starts_with("data.json.corrupt-") {
-                let _ = fs::remove_file(e.path());
+                remove_owned_file(&e.path())?;
             }
-        }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+        Err(error) => return Err(format!("无法检查清理范围（{}）：{}", dir.display(), error)),
     }
     // 每日备份 30 份 + pre-restore / pre-import：只在本地，云端一份都没有。
     // **同样只按文件名删**：数据文件夹是用户随便挑的一个已有目录，backups 是个
     // 再常见不过的目录名，remove_dir_all 下去会把用户自己放在里面的东西一起删光
     let bdir = dir.join("backups");
-    if let Ok(rd) = fs::read_dir(&bdir) {
-        for e in rd.flatten() {
+    match fs::read_dir(&bdir) {
+        Ok(rd) => for item in rd {
+            let e = item.map_err(|error| format!("无法检查备份（{}）：{}", bdir.display(), error))?;
             if is_acorn_backup_name(&e.file_name().to_string_lossy()) {
-                let _ = fs::remove_file(e.path());
+                remove_owned_file(&e.path())?;
             }
-        }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+        Err(error) => return Err(format!("无法检查备份（{}）：{}", bdir.display(), error)),
     }
     let _ = fs::remove_dir(&bdir); // 不带 _all：还剩别人的文件就删不掉，正好该留着
-    let _ = fs::remove_file(dir.join("smoke-report.json"));
-    let _ = fs::remove_file(dir.join(".acorn-probe"));
+    remove_owned_file(&dir.join("smoke-report.json"))?;
+    remove_owned_file(&dir.join(".acorn-probe"))?;
+    Ok(())
 }
 
 /// 清空之后那一次启动的一次性标记：读到就地清掉，返回 true。
@@ -1106,6 +1131,24 @@ mod tests {
     /// 清空本机时 backups/ 是**按文件名逐个删**的（那个目录不归橡果独占，不能递归删）。
     /// 所以「实际写出去的每一种名字」都必须落在 BACKUP_PREFIXES 里，
     /// 否则清完还留在盘上——这条隐私功能就白做了。加一种新备份时这里会先红。
+    #[test]
+    fn failed_owned_file_deletion_is_reported_without_deleting_any_test_files() {
+        let path = Path::new("synthetic/data.json");
+        assert!(deleted_or_missing(Ok(()), path).is_ok());
+        assert!(deleted_or_missing(Err(std::io::ErrorKind::NotFound.into()), path).is_ok());
+        let failure = deleted_or_missing(Err(std::io::ErrorKind::PermissionDenied.into()), path);
+        assert!(failure.is_err());
+        assert!(failure.unwrap_err().contains("synthetic/data.json"));
+    }
+
+    #[test]
+    fn explicit_account_clear_supports_disabled_auto_login_without_weakening_legacy_calls() {
+        assert!(may_purge_local_data(false, Some(true)));
+        assert!(!may_purge_local_data(false, None));
+        assert!(!may_purge_local_data(false, Some(false)));
+        assert!(may_purge_local_data(true, None));
+    }
+
     #[test]
     fn backup_names_are_all_purgeable() {
         let day = chrono::Local::now().format("%Y%m%d").to_string();

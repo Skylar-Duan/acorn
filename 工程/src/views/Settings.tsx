@@ -41,7 +41,9 @@ import { updaterSupported } from "../core/updater";
 import MobileHead from "../mobile/MobileHead";
 import SidebarSettings from "../components/SidebarSettings";
 import Icon, { type IconName } from "../components/Icon";
-import { IMAGE_LEDGER_MAX_BYTES, ledgerImageBytes } from "../core/taskImages";
+import { IMAGE_LEDGER_MAX_BYTES } from "../core/taskImages";
+import { cloudImageBytes } from "../core/imageLibrary";
+import ImageManager from "../components/ImageManager";
 import "../styles/settings.css";
 
 /** 设置页那些节在本机记忆里的键前缀（侧栏是 `acorn-side-`）。
@@ -204,7 +206,9 @@ export default function Settings() {
   const plusCanToggle = usePlusCanToggle();
   const data = useApp((s) => s.data);
   const settings = data.settings;
-  const imageBytes = plus ? ledgerImageBytes(data) : 0;
+  const imageBytes = plus ? cloudImageBytes(data) : 0;
+  const [imageManagerOpen, setImageManagerOpen] = useState(false);
+  useEffect(() => { if (!plus) setImageManagerOpen(false); }, [plus]);
   /** 「账号」那一节收起来时右边那句话要分登录没登录说，所以这里要知道登录态 */
   const session = useSync((s) => s.session);
   // 每次进设置页都先摊开账号那一节（v1.15.1）。**必须在下面那几节挂载之前喊**——
@@ -425,11 +429,8 @@ export default function Settings() {
           title="账号"
           defaultOpen
           anchorId="set-cloud"
-          summary={session ? "同步 · 从云端覆盖到这台设备" : "登录后手机和电脑是同一本"}
+          summary={session ? "同步 · 云端下载" : "登录 / 注册"}
         >
-          <div className="set-desc">
-            登录后手机和电脑使用同一份数据。同一件事在两端都改过时，以较晚的一次为准。
-          </div>
           <AccountPanel />
           {isDesktopShell && <div className="set-row">
             <div className="set-row-label">自动同步间隔<span className="set-hint">检查云端更新的间隔；本机修改仍自动上传。</span></div>
@@ -648,13 +649,15 @@ export default function Settings() {
             <div className="set-ctl"><button className={`set-switch${plus ? " on" : ""}`} role="switch" aria-label="Plus功能" aria-checked={plus} onClick={() => setPlusEnabled(!plus)} /></div>
           </div>}
           {plus && <div className="set-row set-storage">
-            <div className="set-row-label">图片空间<span className="set-hint">已完成、回收站与历史记录中的图片也会计入。</span></div>
+            <div className="set-row-label">图片空间</div>
             <div className="set-storage-usage"><span>{(imageBytes / 1048576).toFixed(1)} / 20 MB</span>
               <div className="set-storage-track" role="progressbar" aria-label="图片空间使用" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(imageBytes / IMAGE_LEDGER_MAX_BYTES * 100))}>
                 <i style={{width:`${Math.min(100, imageBytes / IMAGE_LEDGER_MAX_BYTES * 100)}%`}} />
               </div>
             </div>
+            <button type="button" className="btn image-manage-entry" onClick={() => setImageManagerOpen(true)}>管理图片</button>
           </div>}
+          {plus && imageManagerOpen && <ImageManager onClose={() => setImageManagerOpen(false)} />}
           <div className="set-row">
             <span
               className={`set-dot${status ? (status.dirOk ? " ok" : " bad") : ""}`}

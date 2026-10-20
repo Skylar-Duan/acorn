@@ -10,6 +10,16 @@ export interface TaskImage {
   width: number;
   height: number;
   bytes: number;
+  /** false = 仅保存在本机。缺省的旧图片仍同步；imageSync中的较新操作为准。 */
+  sync?: boolean;
+}
+
+/** 图片控制只含编号与操作，不含本机图片内容。旧客户端按未知字段保留。 */
+export interface ImageSyncState {
+  sync: boolean;
+  updatedAt: string;
+  deletedAt?: string | null;
+  [key: string]: unknown;
 }
 
 export interface Subtask {
@@ -222,6 +232,8 @@ export interface AppData {
    *  这台设备退出 A 登上 B，合并时 A 的那张脸不会盖掉 B 的，也不会被当成 B 的显示出来。
    *  不在 defaultData 里——一个键都没有才是「这台设备上还没有谁设过」 */
   profiles?: Record<string, Profile>;
+  /** 可选图片同步开关／删除墓碑，编号在循环历史与原任务间共用。DATA_VERSION仍为8。 */
+  imageSync?: Record<string, ImageSyncState>;
 }
 
 /** 墓碑保留多久。比回收站的 30 天长得多——只要还有设备可能揣着旧副本，就不能忘 */

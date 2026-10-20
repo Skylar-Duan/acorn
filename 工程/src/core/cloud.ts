@@ -14,6 +14,7 @@ import { mergeData } from "./merge";
 import { pack, unpack } from "./transfer";
 import { inTauri } from "./persist";
 import { plusMetadataReceiver } from "./plus";
+import { restoreLocalOnlyImages, toCloudData } from "./imageLibrary";
 
 /** 服务器地址。构建时可用 VITE_ACORN_API 覆盖（自建服务器 / 本地联调） */
 export const API_BASE: string =
@@ -174,7 +175,10 @@ export async function resetPassword(email: string, code: string, password: strin
  *  cdpandasAccountKept = true 表示 cdpandas 账号还在。老服务器回的是空的，两项都没有 */
 export interface DeleteOut {
   deleted?: boolean;
+  scope?: "acorn";
   cdpandasAccountKept?: boolean;
+  deletedData?: string[];
+  retainedData?: string[];
   message?: string;
 }
 
@@ -279,9 +283,11 @@ function unpackRemote(raw: unknown): AppData | null {
  *  云端还没有数据时 data 是 null，调用方必须据此中止，绝不能拿空的去覆盖本机。 */
 export async function pullOnly(
   session: Session,
+  local?: AppData,
 ): Promise<{ rev: number; data: AppData | null; updatedAt: string | null }> {
   const pulled = await call<PullOut>("/api/sync", { token: session.token });
-  return { rev: pulled.rev, data: unpackRemote(pulled.data), updatedAt: pulled.updatedAt };
+  const data = unpackRemote(pulled.data);
+  return { rev: pulled.rev, data: data && local ? restoreLocalOnlyImages(data, local) : data, updatedAt: pulled.updatedAt };
 }
 
 export interface SyncOutcome {
@@ -321,7 +327,7 @@ export async function syncOnce(session: Session, local: AppData): Promise<SyncOu
         token: session.token,
         body: {
           base_rev: baseRev,
-          data: pack(mergedLocal, APP_VERSION),
+          data: pack(toCloudData(mergedLocal), APP_VERSION),
           device: deviceName(),
         },
       });

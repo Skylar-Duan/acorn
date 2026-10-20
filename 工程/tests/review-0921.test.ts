@@ -165,8 +165,9 @@ describe("文案", () => {
     expect(sidebarSource).toContain('title="账号与同步状态"');
     expect(sidebarSource).not.toContain("云账号与同步状态");
   });
-  it("账号卡说明：手机上说「「今天」页右上角」，桌面说「右上角」，都不写端名", () => {
-    expect(accountPanelSource).toContain('{isMobile ? "「今天」页" : ""}右上角那颗头像点开也能退出登录');
+  it("账号卡移除冗余头像说明，影响范围只放在操作确认框", () => {
+    expect(accountPanelSource).not.toContain("右上角那颗头像");
+    expect(accountPanelSource).toContain("确定退出登录吗");
   });
   // 桌面这段 09-23 已随 1.16.0 发布、beta 清空（细节并进 1.16.0 的「体验优化」），这两条只剩还攒着的两端要核
   it("网页 beta 段没有「修复更新弹窗贴边」（网页弹不出那个框）；安卓留着", () => {
@@ -193,6 +194,7 @@ describe("文案", () => {
 });
 
 import { existsSync, readFileSync } from "node:fs";
+import versionTable from "../versions.json";
 
 // 验收工具不入git。详细验法随发布进入历史，发布后继续检查，不能因pending清空而漏验。
 const PENDING = "../_work/验收单工具/最新改动.json";
@@ -231,8 +233,8 @@ describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", ()
       expect(pend.desktop.note).toMatch(/beta\.\d+/);
       expect(pend.desktop.note).toContain("已装到这台电脑");
     } else {
-      expect(pend.desktop.since).toBe("1.17.0");
-      expect(pend.desktop.note).toContain("1.17.0");
+      expect(pend.desktop.since).toBe(versionTable.public.desktop);
+      expect(pend.desktop.note).toContain(versionTable.public.desktop);
       expect(pend.desktop.note).toMatch(/发布状态以最终交付通知为准|已于 \d{4}-\d{2}-\d{2} 正式发布/);
     }
   });

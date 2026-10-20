@@ -161,7 +161,7 @@ describe("账号纸上那颗「退出登录」只断登录态，绝不清本机"
   it("接的是 syncCtl.signOut，跟设置页那条「只退出登录，保留本机」同一句回执", () => {
     expect(accountSheetSource).toContain("signOut()");
     expect(accountSheetSource).toContain("已退出登录。这台设备上的数据原样留着，一条都没清");
-    expect(accountPanelSource).toContain("已退出登录。这台设备上的数据原样留着，一条都没清");
+    expect(accountPanelSource).toContain("本机数据保留");
   });
 
   it("清空本机那条路一句代码都不在这张纸上（头注释里写着为什么，那不算）", () => {
@@ -172,13 +172,15 @@ describe("账号纸上那颗「退出登录」只断登录态，绝不清本机"
     }
   });
 
-  it("清空本机继续留在设置页，也继续先过那道闸", () => {
-    expect(accountPanelSource).toContain("退出登录并清空本机");
-    expect(accountPanelSource).toContain("const gate = await checkWipeGate();");
+  it("明确删除本机继续只在设置页，有确认且不上传仅本机图片", () => {
+    expect(accountPanelSource).toContain("确定删除本地数据吗");
+    expect(accountPanelSource).toContain("await clearLocalAccountData()");
+    expect(accountPanelSource).toContain("此操作不会上传未选择同步的图片");
   });
 
-  it("两处说的是同一件事：设置页那段明说手机上那颗头像做的是「保留本机」这一条", () => {
-    expect(accountPanelSource).toContain("做的是「保留本机」这一条");
+  it("账号设置不再重复常驻头像用法说明，退出确认仍明确保留本机", () => {
+    expect(accountPanelSource).not.toContain("右上角那颗头像");
+    expect(accountPanelSource).toContain("本机数据保留");
   });
 });
 

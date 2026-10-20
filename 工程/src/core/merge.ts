@@ -25,6 +25,7 @@
 
 import type { AppData, FocusSession, List, Profile, Task, Tombstone } from "./model";
 import { DATA_VERSION, pruneGraveyard } from "./model";
+import { mergeImageSync, restoreLocalOnlyImages } from "./imageLibrary";
 
 /** 有 id 和 updatedAt 的东西（任务和清单都算） */
 interface Stamped {
@@ -166,7 +167,13 @@ export function mergeData(local: AppData, remote: AppData, now = Date.now()): Me
   const graveList = pruneGraveyard([...(local.graveyard ?? []), ...(remote.graveyard ?? [])], now);
   const graves = new Map(graveList.map((g) => [g.id, g.at]));
 
-  const tasks = mergeStamped<Task>(local.tasks, remote.tasks, graves);
+  let tasks = mergeStamped<Task>(local.tasks, remote.tasks, graves);
+  const imageSync = mergeImageSync(local.imageSync, remote.imageSync);
+  // 任务其它字段仍整条选赢家，本机图不因云端赢家不带其内容而丢失。
+  const imageBase = { ...local, tasks, ...(imageSync !== undefined ? { imageSync } : {}) };
+  const localImages = restoreLocalOnlyImages(imageBase, local, remote.imageSync);
+  // 图片开关独立于正文赢家；另一端刚启用/撤销删除时，也从它那份带回相应内容。
+  tasks = restoreLocalOnlyImages(localImages, remote, local.imageSync).tasks;
   const lists = mergeStamped<List>(local.lists, remote.lists, graves);
 
   const localIds = new Set(local.tasks.map((t) => t.id));
@@ -196,6 +203,7 @@ export function mergeData(local: AppData, remote: AppData, now = Date.now()): Me
       // 名字和头像跟着账号走（上面的铺开只会「同名听本机」，那样手机改了电脑永远看不见）。
       // 两边都没有就不加这个键，老数据合一遍长相一个字不变
       ...(profiles !== undefined ? { profiles } : {}),
+      ...(imageSync !== undefined ? { imageSync } : {}),
     },
     summary: { added, updated, removed },
   };
@@ -219,6 +227,7 @@ export function sideDataChanged(merged: AppData, local: AppData): boolean {
     sig(merged.lists, listSig) !== sig(local.lists, listSig)
     || sig(merged.graveyard, graveSig) !== sig(local.graveyard, graveSig)
     || sig(merged.sessions, sessSig) !== sig(local.sessions, sessSig)
+    || JSON.stringify(merged.imageSync) !== JSON.stringify(local.imageSync)
   );
 }
 

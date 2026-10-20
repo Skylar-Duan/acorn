@@ -1,7 +1,7 @@
 import { appStore } from "./store";
 import { syncStore } from "./syncCtl";
 import { newId } from "./model";
-import { ledgerImageBytes } from "./taskImages";
+import { cloudImageBytes } from "./imageLibrary";
 import { plusStore } from "./plus";
 
 let contextId = newId();
@@ -16,5 +16,5 @@ export function imageWindowContext(): { imageContextId: string; imageBudgetUsed:
     plusStore.subscribe((next, old) => { if (next.revision !== old.revision) contextId = newId(); });
     appStore.subscribe((s) => { if (!s.loaded || s.loadError || s.wiped) contextId = newId(); });
   }
-  return { imageContextId: contextId, imageBudgetUsed: ledgerImageBytes(appStore.getState().data) };
+  return { imageContextId: contextId, imageBudgetUsed: cloudImageBytes(appStore.getState().data) };
 }

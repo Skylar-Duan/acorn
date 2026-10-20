@@ -560,8 +560,6 @@ def check_new_images(incoming: dict, previous: dict | None) -> bool:
         if key(image) in known:
             continue
         new = True
-        if len(owners) > 8:
-            fail(413, "too_many_images", "一件事或一条子任务最多放 8 张图片")
         if not uri.startswith(IMAGE_PREFIX) or len(uri) > len(IMAGE_PREFIX) + 4 * ((256 * 1024 + 2) // 3):
             fail(413, "image_too_big", "图片需要压缩到 256 KiB 以内")
         try:

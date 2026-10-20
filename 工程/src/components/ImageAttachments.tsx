@@ -5,9 +5,10 @@ import { plusEnabled, plusStore, usePlus } from "../core/plus";
 import { isMobile } from "../core/platform";
 import { compressTaskImage } from "../core/imageCompression";
 import { imageEditContext, type ImageOperation } from "../core/imageEditContext";
-import { appStore } from "../core/store";
+import { appStore, showToast } from "../core/store";
 import { syncStore } from "../core/syncCtl";
-import { IMAGE_MAX_COUNT, imageListUpdateError, imageUrlLength, ledgerImageBytes } from "../core/taskImages";
+import { imageListUpdateError } from "../core/taskImages";
+import { cloudImageBytes, prepareImageAdditions } from "../core/imageLibrary";
 import { renderableTaskImages } from "../core/imageDisplay";
 import { bindImageInput } from "../core/imageInput";
 import Icon from "./Icon";
@@ -125,8 +126,6 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     const valid = () => plusEnabled() && operation.current === job && !job.cancel && current.current.targetKey === targetKey && context.valid();
     setBusy(true); current.current.onBusyChange?.(true); setError("");
     try {
-      const original = current.current.images ?? [];
-      if (original.length + files.length > IMAGE_MAX_COUNT) throw new Error("每件任务或子任务最多放 8 张图片");
       const added: TaskImage[] = [];
       for (const file of files) {
         if (!valid()) return;
@@ -137,10 +136,11 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
       const latest = current.current.images ?? [];
       const next = [...latest, ...added];
       const data = appStore.getState().data;
-      const used = usedBytes?.() ?? ledgerImageBytes(data);
-      const capacity = imageListUpdateError(data, latest, next, used + (draft ? latest.reduce((n, i) => n + imageUrlLength(i), 0) : 0));
+      const prepared = prepareImageAdditions(data, latest, next, { usedCloudBytes: usedBytes?.() ?? cloudImageBytes(data), currentInLedger: !draft });
+      const capacity = imageListUpdateError(data, latest, prepared.images);
       if (capacity) throw new Error(capacity);
-      current.current.onChange(next);
+      current.current.onChange(prepared.images);
+      if (prepared.message) { setError(prepared.message); showToast(prepared.message, false); }
     } catch (caught) {
       if (valid()) { setError(caught instanceof Error ? caught.message : "这张图片没能添加，请重试"); if (current.current.compact) { if (current.current.onExpand) current.current.onExpand(); else setExpanded(true); } }
     } finally {
@@ -161,7 +161,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     data-task-images data-image-dialog={compactGallery || undefined} role={compactGallery ? "dialog" : undefined} aria-label={`${label} · ${visible.length}张`}
     onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
     <div className="task-images-head">
-      <span className="task-images-label">{label}{visible.length ? ` · ${visible.length}/${IMAGE_MAX_COUNT}` : ""}</span>
+      <span className="task-images-label">{label}{visible.length ? ` · ${visible.length}张` : ""}</span>
       {busy && <><span role="status">正在处理图片…</span><button type="button" onClick={() => { if (operation.current) operation.current.cancel = true; }}>取消</button></>}
       {compactGallery && <button type="button" className="image-collapse" aria-label="收起图片" onClick={() => setExpanded(false)}><Icon name="close" size={15} /></button>}
     </div>
