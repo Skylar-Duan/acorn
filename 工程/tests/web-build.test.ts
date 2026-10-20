@@ -293,8 +293,8 @@ describe("发布脚本（publish-web.sh）", () => {
 describe("介绍页入口", () => {
   it("文案真源先改了，页面才跟着改", () => {
     // 纪律见 网站文案.md 抬头：页面上每一句中文以它为准，不许在 HTML 里就地改
-    expect(siteCopy).toContain("并排按钮：打开网页版");
-    expect(siteCopy).toContain("添加到主屏幕");
+    expect(siteCopy).toContain("网页入口、安卓下载保持灰色不可点击");
+    expect(siteCopy).toContain("直接进入网页版只显示“正在开发中”");
   });
 
   it("桌面优先：网页与安卓入口可见但禁用，Windows仍可下载", () => {

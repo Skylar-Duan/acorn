@@ -44,7 +44,7 @@
         不想记这套写法，输入框下面就是一排按钮，点着选一样。</p>
       </div>
 
-      <p class="meta">当前版本 <span data-release="version">v1.17.0</span> · Windows桌面 · 数据存在你自己的机器上</p>
+      <p class="meta">当前版本 <span data-release="version">v1.17.1</span> · Windows桌面 · 数据存在你自己的机器上</p>
       <div class="cta-row">
         <!-- 下载是一个按钮 + 一个弹窗，不是并排堆平台按钮：平台只会越来越多
              （将来还有 iOS / macOS），首屏也不该替访客猜他在什么设备上。
@@ -69,8 +69,7 @@
              data-sub="Windows 10 / 11 · x64"
              data-href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe"
              data-api="https://acorn.cdpandas.com/api/desktop/latest"
-             data-version="1.17.0"
-             data-size="7343858"></div>
+             data-version="1.17.1"></div>
         <div data-download-item
              data-label="安卓"
              data-sub="开发中，暂未开放下载"
@@ -124,12 +123,19 @@
       <div class="card">
         <h3>先看整件事，再展开步骤</h3>
         <p>电脑上的计划和今日任务先列母任务，点箭头展开待办步骤。子任务按日期、钟点排，同一时间再按重要性排。</p>
-        <p style="margin-top:8px">子任务未单独排期时沿用母任务；母任务未单独排期时，显示最近待办步骤的日期。点开任务卡，还可以把长清单收成前三条。</p>
+        <p style="margin-top:8px">母任务按自己与待办步骤中最近的日期排列。每一步默认显示一行，点箭头展开完整文字；长清单也可以收成前三条。</p>
       </div>
 
       <div class="card">
         <h3>直接改标题，也能改安排</h3>
-        <p>电脑上直接在标题里写「~明天 !高」，就能调整日期和重要性。子任务写「@李哥 /学习」，会在末尾追加归类小签，点×移除。</p>
+        <p>电脑上直接在标题里写「~明天 !高」，日期和重要性会即时预览，确认后保存。子任务写「@李哥 /学习」，会在末尾追加归类小签，点×移除。</p>
+        <p style="margin-top:8px">要保留符号本身，把内容放进双引号，例如「“@李哥 ~明天 !!!”」，引号里的内容只当正文。</p>
+      </div>
+
+      <div class="card">
+        <h3>Plus，给任务附图</h3>
+        <p>在输入框里粘贴、拖入图片，也可以点子任务旁的小加号选图。收起时显示一枚缩略图，展开后完整文字和图片排在同一步里。</p>
+        <p style="margin-top:8px">设置里的「图片空间」可逐张或多选删除，也能选择哪些图片同步到云端。云端图片空间为20 MB，本机不限制图片总量和张数。同一安装包，Plus资格随账号启用。</p>
       </div>
 
       <div class="card">
@@ -141,16 +147,15 @@
       <div class="card">
         <h3>账号与同步 <span class="tag">可选</span></h3>
         <p>登录同一个账号，可以在不同Windows设备上继续处理任务。没网时照常使用，联网后再同步。网页版与手机版正在开发中。</p>
-        <p style="margin-top:8px">一个邮箱就能跨设备。新装的设备登录后直接拿到云端那份；这台设备上已经记了事的话，登录时会问你是把两边合起来还是用云端那份。同一件事两边都改过，以改得晚的那次为准。</p>
-        <p style="margin-top:8px">断网、服务器出问题都不影响你继续用，本机那份照常读写。不注册的话跟以前完全一样，一个字都不会往外传。</p>
-        <p style="margin-top:8px">登录之后，退出登录会把这台设备上的数据一起清掉，只留云端那一份——清之前橡果会先跟服务器对一次账，没对上就一条都不清。</p>
+        <p style="margin-top:8px">设置中可选每5分钟、1小时、6小时或1天检查云端更新，本机修改仍会自动上传。同一件事两边都改过，以改得晚的那次为准。</p>
+        <p style="margin-top:8px">退出登录保留本机数据；删除本地数据和注销橡果账号是单独的按钮，操作前都会确认范围。cdpandas统一账号保留。</p>
       </div>
 
       <div class="card">
         <h3>数据在你自己的机器上</h3>
         <p>默认存在本机，装完就能用。想让数据跟着移动硬盘走，去设置里换个文件夹就行。</p>
         <p style="margin-top:8px">保存时先写好副本再替换，写到一半断电也不会碰坏原来那份；每天留一份备份共 30 份，删掉的东西在回收站里放 30 天，日常的每一步操作都能撤销。</p>
-        <p style="margin-top:8px">唯一不能撤销的是设置里那两个明确写着「会覆盖 / 会清空」的动作，点之前会让你确认。</p>
+        <p style="margin-top:8px">云端下载、删除本地数据和注销橡果账号前都会确认。这些动作不能用任务撤销恢复，下载替换账本前会留一份本机备份。</p>
       </div>
 
       <div class="card">
@@ -222,20 +227,21 @@
       <table>
         <thead><tr><th>你打的</th><th>它记下的</th></tr></thead>
         <tbody>
-          <tr><td>明天 / 下周三 / 8月20日 / 十月底之前</td><td>到期日</td></tr>
-          <tr><td>下午3点 / 晚上八点</td><td>具体时间，到点弹系统通知</td></tr>
-          <tr><td>每天 / 每周一三五 / 每月10号</td><td>循环，做完自动生成下一次</td></tr>
-          <tr><td><code>/工作</code></td><td>归到「工作」清单，没有这个清单会自动建</td></tr>
+          <tr><td>~明天 / ~下周三 / ~8月20日 / ~十月底之前</td><td>到期日</td></tr>
+          <tr><td>~下午3点 / ~晚上八点</td><td>具体时间，到点弹系统通知</td></tr>
+          <tr><td>~每天 / ~每周一三五 / ~每月10号</td><td>循环，做完自动生成下一次</td></tr>
+          <tr><td><code>/工作</code></td><td>归到「工作」清单，新清单先确认名称与外观</td></tr>
           <tr><td><code>#汇报</code></td><td>打上「汇报」标签</td></tr>
           <tr><td><code>@李哥</code></td><td>需求方是李哥，一件事可以挂好几个人</td></tr>
           <tr><td><code>!高</code> / <code>！！！</code></td><td>重要性（全角半角都认）</td></tr>
+          <tr><td><code>"@李哥 ~明天 !!!"</code></td><td>双引号内按正文保留，半角、中文和全角双引号都支持</td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="panel" style="margin-top:26px">
       <h3>一整句长这样</h3>
-      <pre>周五下午3点 提交周报 /工作 #汇报 @李哥 !高</pre>
+      <pre>~周五下午3点 提交周报 /工作 #汇报 @李哥 !高</pre>
       <p>输入时已有的清单、标签、需求方会自动补全，不用怕打错名字建出重复的一份。</p>
     </div>
   </div>
@@ -288,11 +294,26 @@
          用接口里的更新说明在最上面补一条。逻辑在 /utilities/_shared/tool-release.js。 -->
     <div class="releases"
          data-release-api="https://acorn.cdpandas.com/api/desktop/latest"
-         data-release-static="1.17.0">
+         data-release-static="1.17.1">
 
 <!-- releases:begin（scripts/site-changelog.py 生成，别手改） -->
       <div class="rel">
-        <div class="meta"><div class="ver">v1.17.0</div><div class="date" data-release="date">2026-10-20</div></div>
+        <div class="meta"><div class="ver">v1.17.1</div><div class="date" data-release="date">2026-10-20</div></div>
+        <div>
+          <p><b>子任务逐条展开，Plus图片管理</b></p>
+          <ul>
+            <li><b>子任务逐条展开</b>：子任务默认显示一行，点箭头展开完整文字，每一步可独立收起。母任务的日期、循环等操作移到备注下方、待办步骤上方。</li>
+            <li><b>编辑时预览属性</b>：修改标题时输入「！！！」「~ 明天」等标记，日期与重要性立即显示变化，确认后保存。双引号内的内容保留原文，说明卡片中可查看示例。</li>
+            <li><b>同步与账号设置</b>：设置中可选每5分钟、1小时、6小时或1天检查云端更新，本机修改仍自动上传。「云端下载」放在「立即同步」左侧，退出登录、删除本地数据和注销账号都增加明确确认。</li>
+            <li><b>Plus图片管理</b>：在设置的「图片空间」旁打开管理，可逐张或多选删除图片，也可选择是否同步到云端。云端图片空间为20 MB，本机不限制图片总量与张数；空间不足时新图仅保存在本机。</li>
+            <li><b>Plus图片展开</b>：子任务缩略图靠近日期并与其他操作保持紧凑间距，展开后全部图片排在正文下方，点图仍可放大。</li>
+            <li><b>体验优化</b>：精简了账号设置中的说明，优化了任务属性和图片的排列，修复了若干问题。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rel">
+        <div class="meta"><div class="ver">v1.17.0</div><div class="date">2026-10-20</div></div>
         <div>
           <p><b>办公界面焕新，母子任务展开与坐标四象限</b></p>
           <ul>
@@ -321,6 +342,9 @@
         </div>
       </div>
 
+      <details class="rel-more">
+      <summary>更早的版本（19）</summary>
+
       <div class="rel">
         <div class="meta"><div class="ver">v1.15.0</div><div class="date">2026-09-15</div></div>
         <div>
@@ -332,9 +356,6 @@
           </ul>
         </div>
       </div>
-
-      <details class="rel-more">
-      <summary>更早的版本（18）</summary>
 
       <div class="rel">
         <div class="meta"><div class="ver">v1.14.1</div><div class="date">2026-09-09</div></div>
