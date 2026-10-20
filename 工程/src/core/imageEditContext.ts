@@ -1,5 +1,6 @@
 import { appStore } from "./store";
 import { syncStore } from "./syncCtl";
+import { plusEnabled, plusStore } from "./plus";
 
 export interface ImageOperation { valid: () => boolean; dispose: () => void }
 
@@ -9,9 +10,11 @@ export function imageEditContext(canEdit: () => boolean = () => true): ImageOper
   const original = sessionKey();
   let invalid = false;
   const offSession = syncStore.subscribe(() => { if (sessionKey() !== original) invalid = true; });
+  const revision = plusStore.getState().revision;
+  const offPlus = plusStore.subscribe((s) => { if (s.revision !== revision) invalid = true; });
   const offData = appStore.subscribe((s) => { if (!s.loaded || s.loadError || s.wiped || !canEdit()) invalid = true; });
   return {
-    valid: () => { const s = appStore.getState(); return !invalid && sessionKey() === original && s.loaded && !s.loadError && !s.wiped && canEdit(); },
-    dispose: () => { offSession(); offData(); },
+    valid: () => { const s = appStore.getState(); return plusEnabled() && !invalid && sessionKey() === original && s.loaded && !s.loadError && !s.wiped && canEdit(); },
+    dispose: () => { offSession(); offPlus(); offData(); },
   };
 }

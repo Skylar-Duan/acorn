@@ -68,7 +68,7 @@ describe("分端：每一端只列它真拿到、且看得见变化的版本", (
 });
 
 describe("测试版：第一块是比上一个正式版多了什么", () => {
-  it("转入正式历史后仍按 edition 过滤，专属版本不会空壳出现在普通版", () => {
+  it("转入正式历史后按运行时Plus过滤，专属版本不会空壳出现在未授权账号", () => {
     const original = [...CHANGELOG.desktop];
     const mixed: ChangelogEntry = { version: "99.0.0", date: "2026-10-16", headline: "共同改动与专属功能", highlights: [
       { title: "共同改动", body: "两版都能使用。" },
@@ -77,8 +77,8 @@ describe("测试版：第一块是比上一个正式版多了什么", () => {
     const exclusive: ChangelogEntry = { version: "99.0.1", date: "2026-10-16", headline: "专属功能", highlights: [mixed.highlights[1]] };
     try {
       CHANGELOG.desktop.unshift(exclusive, mixed);
-      const normal = changelogFor("desktop", { beta: false, edition: "normal" });
-      const ultra = changelogFor("desktop", { beta: false, edition: "ultra" });
+      const normal = changelogFor("desktop", { beta: false, plus: false });
+      const ultra = changelogFor("desktop", { beta: false, plus: true });
       expect(normal.find(e => e.version === exclusive.version)).toBeUndefined();
       expect(normal.find(e => e.version === mixed.version)?.highlights).toEqual([mixed.highlights[0]]);
       expect(ultra.find(e => e.version === mixed.version)?.highlights).toEqual(mixed.highlights);
@@ -88,12 +88,15 @@ describe("测试版：第一块是比上一个正式版多了什么", () => {
       CHANGELOG.desktop.splice(0, CHANGELOG.desktop.length, ...original);
     }
   });
-  it("Ultra 专属改动仅在 Ultra 日志出现，普通版仍显示共同更新", () => {
-    const normal = changelogFor("desktop", {beta:true,edition:"normal"})[0].highlights;
-    const ultra = changelogFor("desktop", {beta:true,edition:"ultra"})[0].highlights;
-    expect(normal.every(h => h.edition !== "ultra")).toBe(true);
-    expect(ultra.some(h => h.edition === "ultra")).toBe(true);
-    expect(ultra.filter(h => !h.edition)).toEqual(normal.filter(h => !h.edition));
+  it("同一beta包的Plus专属改动按账号解锁显示，历史ultra标签仍兼容", () => {
+    const previous = BETA_NOTES.desktop;
+    try {
+      BETA_NOTES.desktop = { date: "2026-10-20", headline: "同一包", highlights: [{ title: "共同", body: "都可用" }, { title: "Plus", body: "按账号解锁", edition: "plus" }, { title: "历史图片", body: "原样兼容", edition: "ultra" }] };
+      const normal = changelogFor("desktop", {beta:true,plus:false})[0].highlights;
+      const plus = changelogFor("desktop", {beta:true,plus:true})[0].highlights;
+      expect(normal).toHaveLength(1);expect(plus).toHaveLength(3);
+      expect(plus.filter(h => !h.edition)).toEqual(normal);
+    } finally { BETA_NOTES.desktop = previous; }
   });
   it("装着测试版时，第一块是这个测试版，上一个正式版挪进后面", () => {
     // 哪一端刚发过正式版，那一端的 beta 就是空的（发布时清掉、下一轮重新攒），所以对每个攒着改动的端都核一遍

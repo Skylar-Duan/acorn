@@ -19,6 +19,7 @@
 
 import data from "./changelog-data.json";
 import { APP_PLATFORM, APP_VERSION, APP_EDITION, IS_BETA, compareVersions, type Platform, type Edition } from "./version";
+import { plusEnabled } from "./plus";
 
 export type Highlight = {
   edition?: string;
@@ -58,10 +59,10 @@ export const BETA_NOTES: Partial<Record<Platform, BetaNotes>> = data.beta;
  */
 export function changelogFor(
   platform: Platform = APP_PLATFORM,
-  opts: { beta?: boolean; betaVersion?: string; edition?: Edition } = {},
+  opts: { beta?: boolean; betaVersion?: string; plus?: boolean; edition?: Edition } = {},
 ): ChangelogEntry[] {
-  const edition = opts.edition ?? APP_EDITION;
-  const visible = (h: Highlight) => !h.edition || h.edition === edition;
+  const plus = opts.plus ?? plusEnabled();
+  const visible = (h: Highlight) => !h.edition || h.edition === "normal" || plus && (h.edition === "plus" || h.edition === "ultra");
   const released = CHANGELOG[platform]
     .map((entry) => ({ ...entry, highlights: entry.highlights.filter(visible) }))
     .filter((entry) => entry.highlights.length > 0)

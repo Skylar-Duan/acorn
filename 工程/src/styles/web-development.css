@@ -1,0 +1,18 @@
+:root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #252b33; background: #f3f4f6; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.development-backdrop { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at top, #fff, #eceef2); }
+.development-dialog { width: min(100%, 430px); padding: 36px 30px 32px; background: #fff; border: 1px solid #e4e6eb; border-radius: 24px; box-shadow: 0 24px 80px #202d4214; text-align: center; }
+.development-mark { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 auto 22px; border-radius: 14px; background: #eee6db; color: #8d623c; font-weight: 700; font-size: 24px; }
+h1 { font-size: 24px; letter-spacing: .02em; margin: 0 0 12px; }
+p { margin: 0; color: #657080; font-size: 14px; line-height: 1.8; }
+a { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; margin-top: 28px; padding: 10px 22px; border-radius: 12px; color: #fff; background: #35485f; font-size: 14px; text-decoration: none; }
+a:focus-visible { outline: 3px solid #c4a276; outline-offset: 4px; }
+@media (prefers-color-scheme: dark) {
+  :root { color: #eef0f4; background: #14171d; }
+  .development-backdrop { background: radial-gradient(ellipse at top, #232831, #14171d); }
+  .development-dialog { background: #222730; border-color: #353d49; }
+  .development-mark { background: #493d31; color: #e9c79f; }
+  p { color: #b0b8c6; }
+  a { background: #526b8a; }
+}

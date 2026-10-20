@@ -8,7 +8,7 @@ import { addTask, appStore, initStore, showToast } from "./core/store";
 import { finishCategoryDraft, prepareTaskCategories, taskCategoriesNeedConfirmation, useCategoryCreation } from "./core/categoryCreation";
 import { startThemeSync } from "./core/themeCtl";
 import { windowContext } from "./core/windowCtx";
-import { IS_ULTRA } from "./core/version";
+import { plusEnabled, plusStore } from "./core/plus";
 import { imageWindowContext } from "./core/imageWindowContext";
 import { imageListUpdateError } from "./core/taskImages";
 import { startReminderLoop } from "./core/reminders";
@@ -18,7 +18,7 @@ import { applyQuickAddShortcut } from "./core/shortcutCtl";
 import { inTauri } from "./core/persist";
 import { hasDesktopFeatures, isMobile } from "./core/platform";
 import { maybeRunSmoke } from "./core/smoke";
-import { dailySyncIfNeeded, flushSync, initSync } from "./core/syncCtl";
+import { dailySyncIfNeeded, flushSync, initSync, syncStore } from "./core/syncCtl";
 import { checkUpdateOnBoot, rememberLaunch } from "./core/updateCtl";
 import type { AddTaskInput } from "./core/store";
 import { applySavedSideW } from "./core/sideWidth";
@@ -116,6 +116,15 @@ void (async () => {
     await listen("guide:pull", async () => {
       await emitTo("guide", "guide:context", windowContext());
     });
+    let plusContextQueued = false;
+    const sendPlusContext = () => {
+      if (plusContextQueued) return;
+      plusContextQueued = true;
+      queueMicrotask(() => { plusContextQueued = false; void emitTo("quickadd", "quickadd:context", windowContext()).catch(() => {}); });
+    };
+    // 等账号/资格监听都更新完context代号后再广播，避免浮窗收到上一代号。
+    plusStore.subscribe(sendPlusContext);
+    syncStore.subscribe((next, old) => { if (next.session?.email !== old.session?.email || next.session?.token !== old.session?.token) sendPlusContext(); });
     await listen<AddTaskInput & { listName?: string | null; requestId?: string; imageContextId?: string }>("quickadd:submit", async (e) => {
       const respond = (saved: boolean) => emitTo("quickadd", "quickadd:result", { requestId: e.payload.requestId, saved });
       let saved = false;
@@ -130,9 +139,9 @@ void (async () => {
         return;
       }
       const { listName, requestId: _requestId, imageContextId, ...input } = e.payload;
-      const validImageContext = () => !input.images?.length || IS_ULTRA && !!imageContextId && imageWindowContext().imageContextId === imageContextId && !imageListUpdateError(appStore.getState().data, [], input.images);
+      const validImageContext = () => !input.images?.length || plusEnabled() && !!imageContextId && imageWindowContext().imageContextId === imageContextId && !imageListUpdateError(appStore.getState().data, [], input.images);
       if (input.images?.length && !validImageContext()) {
-        showToast(IS_ULTRA ? "图片未保存：账号或账本已改变，或图片容量不足" : "这个版本不支持添加图片", false);
+        showToast(plusEnabled() ? "图片未保存：账号或账本已改变，或图片容量不足" : "Plus未启用，图片未保存", false);
         await emitTo("quickadd", "quickadd:context", windowContext());
         return;
       }

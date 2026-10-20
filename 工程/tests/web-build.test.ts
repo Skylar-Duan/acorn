@@ -66,9 +66,17 @@ describe("网页版构建（vite.config.ts）", () => {
   });
 
   it("字体预加载插件只在网页版挂，桌面包不掺和", () => {
-    expect(viteConfig).toMatch(/plugins: \[react\(\), \.\.\.\(isWeb \? \[webFontPreload\(\)\] : \[\]\)\]/);
+    expect(viteConfig).toMatch(/plugins: \[react\(\), \.\.\.\(isWeb \? \[webDevelopmentGate\(\), webFontPreload\(\)\] : \[\]\)\]/);
     // preload 的 font 请求天生是匿名跨源模式，少了 crossorigin 等于白下一遍
     expect(viteConfig).toMatch(/crossorigin: ""/);
+  });
+
+  it("暂停开放时网页构建换成独立入口，不初始化账号或账本", () => {
+    expect(viteConfig).toContain('src="/src/web-development.ts"');
+    const gate = read("src/web-development.ts");
+    expect(gate).toContain('title.textContent = "正在开发中"');
+    expect(gate).toContain('dialog.setAttribute("role", "alertdialog")');
+    expect(gate).not.toMatch(/from ["']\.\/App|initStore\(|initSync\(|localStorage|fetch\(/);
   });
 });
 
@@ -289,18 +297,20 @@ describe("介绍页入口", () => {
     expect(siteCopy).toContain("添加到主屏幕");
   });
 
-  it("下载按钮旁边并排一颗「打开网页版」，指向根路径（网页版 2026-09-21 起挂根上）", () => {
-    expect(siteHtml).toContain(">打开网页版</a>");
-    expect(siteHtml).toContain('href="https://acorn.cdpandas.com/"');
+  it("桌面优先：网页与安卓入口可见但禁用，Windows仍可下载", () => {
+    expect(siteHtml).toMatch(/<button[^>]*disabled[^>]*>网页版开发中<\/button>/);
+    expect(siteHtml).not.toContain('href="https://acorn.cdpandas.com/"');
     expect(siteHtml).not.toContain("acorn.cdpandas.com/app/");
     // 下载仍是主按钮（9-17 起改成「一个按钮 + 平台弹窗」，用户要的：平台只会越来越多），
     // 弹窗里 Windows 和安卓两行都在，各指向固定下载名
     expect(siteHtml).toContain('<button class="btn" type="button" data-download-open>');
     expect(siteHtml).toContain('data-href="https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe"');
-    expect(siteHtml).toContain('data-href="https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"');
+    expect(siteHtml).not.toContain('data-href="https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"');
+    expect(siteHtml).toContain('data-disabled="true"');
   });
 
-  it("手机那段写清了 iPhone 怎么加到主屏幕", () => {
-    expect(siteHtml).toMatch(/Safari[\s\S]{0,80}分享[\s\S]{0,40}添加到主屏幕/);
+  it("暂缓网页和手机时不继续引导安装网页版", () => {
+    expect(siteHtml).not.toMatch(/Safari[\s\S]{0,80}分享[\s\S]{0,40}添加到主屏幕/);
+    expect(siteHtml).toContain("正在开发中");
   });
 });

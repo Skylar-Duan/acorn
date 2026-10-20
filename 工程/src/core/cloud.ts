@@ -13,6 +13,7 @@ import { displayVersion } from "./version";
 import { mergeData } from "./merge";
 import { pack, unpack } from "./transfer";
 import { inTauri } from "./persist";
+import { plusMetadataReceiver } from "./plus";
 
 /** 服务器地址。构建时可用 VITE_ACORN_API 覆盖（自建服务器 / 本地联调） */
 export const API_BASE: string =
@@ -196,10 +197,17 @@ export interface RemoteInfo {
   displayName?: string | null;
   /** 账号在哪边管：「cdpandas」= 改密码走忘记密码，注销只删橡果这边 */
   account?: string;
+  /** Plus账号资格；旧服务端的ultra字段只用于兼容升级。 */
+  plus?: boolean;
+  ultra?: boolean;
+  plusCanToggle?: boolean;
 }
 
 export async function whoAmI(token: string): Promise<RemoteInfo> {
-  return call<RemoteInfo>("/api/me", { token });
+  const receive = plusMetadataReceiver(token);
+  const info = await call<RemoteInfo>("/api/me", { token });
+  receive(info);
+  return info;
 }
 
 // ---------- 反馈 ----------

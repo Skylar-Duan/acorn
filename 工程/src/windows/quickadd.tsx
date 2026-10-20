@@ -9,7 +9,7 @@ import SyntaxInput from "../components/SyntaxInput";
 import type { SyntaxInputEl } from "../components/SyntaxInput";
 import ImageAttachments from "../components/ImageAttachments";
 import type { TaskImage } from "../core/model";
-import { IS_ULTRA } from "../core/version";
+import { plusEnabled, setPlusWindowContext, usePlus } from "../core/plus";
 import "../styles/task-quickadd-window.css";
 
 function applyThemeAttrs(theme: string, mode: string) {
@@ -31,9 +31,11 @@ interface Ctx {
   weekendDay?: "sat" | "sun";
   imageContextId?: string;
   imageBudgetUsed?: number;
+  plusEnabled?: boolean;
 }
 
 function QuickAddApp() {
+  const plus = usePlus();
   const [text, setText] = useState("");
   const [images, setImages] = useState<TaskImage[]>([]);
   const ctxRef = useRef<Ctx | null>(null);
@@ -46,13 +48,12 @@ function QuickAddApp() {
 
   // 普通草稿与普通版共用210高度，只有本次确实有图片时才展开。
   useEffect(() => {
-    if (!IS_ULTRA) return;
     let active = true;
     void Promise.all([import("@tauri-apps/api/window"), import("@tauri-apps/api/dpi")]).then(([{ getCurrentWindow }, { LogicalSize }]) => {
-      if (active) void getCurrentWindow().setSize(new LogicalSize(640, images.length || imagesBusy ? 330 : 210)).catch(() => {});
+      if (active) void getCurrentWindow().setSize(new LogicalSize(640, plus && (images.length || imagesBusy) ? 330 : 210)).catch(() => {});
     });
     return () => { active = false; };
-  }, [images.length > 0, imagesBusy]);
+  }, [plus, images.length > 0, imagesBusy]);
 
   useEffect(() => {
     applyThemeAttrs("forest", "system");
@@ -60,6 +61,7 @@ function QuickAddApp() {
       const { listen, emitTo } = await import("@tauri-apps/api/event");
       await listen<Ctx>("quickadd:context", (e) => {
         if (ctxRef.current?.imageContextId !== e.payload.imageContextId) { setImages([]); imageRevision.current++; }
+        setPlusWindowContext(e.payload.plusEnabled === true);
         ctxRef.current = e.payload;
         setCtx(e.payload);
         applyThemeAttrs(e.payload.theme, e.payload.mode);
@@ -108,7 +110,7 @@ function QuickAddApp() {
       due: parsed.due,
       dueTime: parsed.dueTime,
       repeat: parsed.repeat,
-      ...(IS_ULTRA ? { images, imageContextId: ctxRef.current?.imageContextId } : {}),
+      ...(plusEnabled() ? { images, imageContextId: ctxRef.current?.imageContextId } : {}),
       });
     } catch {
       pending.current = null;
@@ -153,7 +155,7 @@ function QuickAddApp() {
       <ImageAttachments images={images} draft label="这件事的图片"
         inputTargets={() => [imageInputRef.current]}
         onBusyChange={(busy) => { imageBusy.current = busy; setImagesBusy(busy); }}
-        createContext={() => { const revision = imageRevision.current; const context = ctxRef.current?.imageContextId; return { valid: () => !!context && revision === imageRevision.current && context === ctxRef.current?.imageContextId && !pending.current, dispose: () => {} }; }}
+        createContext={() => { const revision = imageRevision.current; const context = ctxRef.current?.imageContextId; return { valid: () => plusEnabled() && !!context && revision === imageRevision.current && context === ctxRef.current?.imageContextId && !pending.current, dispose: () => {} }; }}
         usedBytes={() => ctxRef.current?.imageBudgetUsed ?? 0}
         onChange={setImages} />
     </div>

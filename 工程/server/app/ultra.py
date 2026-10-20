@@ -98,9 +98,14 @@ def unlocked(grant):
         fail(423, "ultra_locked", "连续三次申请未完成下载，七天后可重新申请", lockedUntil=grant["locked_until"])
 
 
+def can_toggle_plus(user) -> bool:
+    """仅经服务端验证的本人账号有本机 Plus 体验开关；管理员或其他授权人没有。"""
+    return bool(user["verified"]) and str(user["email"]).strip().casefold() == DEFAULT_ENTITLED_EMAIL
+
+
 def entitlement(user, enabled_at=None) -> dict:
     """只接受服务端账号行；默认身份不创建虚构验证/下载时间。"""
-    default = bool(user["verified"]) and str(user["email"]).strip().casefold() == DEFAULT_ENTITLED_EMAIL
+    default = can_toggle_plus(user)
     return {
         "enabled": default or bool(enabled_at),
         "source": "default" if default else "verified_code" if enabled_at else None,

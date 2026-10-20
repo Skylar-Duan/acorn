@@ -33,6 +33,7 @@ def test_default_bower_entitlement_without_code_download_or_fake_timestamp():
         assert db.conn.execute("SELECT * FROM ultra_grants WHERE user_id=?", (uid,)).fetchone() is None
         me = client.get("/api/me", headers=headers).json()
         assert me["ultra"] and me["maxVaultBytes"] == 32 * 1024 * 1024
+        assert me["plus"] and me["plusCanToggle"]
         with override(max_vault_bytes=1000, ultra_max_vault_bytes=3000):
             envelope={"app":"acorn","schema":8,"data":{"tasks":[],"lists":[],"notes":"x"*1300}}
             assert client.put("/api/sync",headers=headers,json={"base_rev":0,"data":envelope}).status_code==200
@@ -52,12 +53,14 @@ def test_default_bower_entitlement_without_code_download_or_fake_timestamp():
 def test_default_identity_is_verified_server_identity_not_client_claim():
     with world(), bower(False) as (uid, headers):
         assert not ultra.enabled(db, uid)
+        assert not ultra.can_toggle_plus(db.get_user(uid))
         assert client.get("/api/me", headers=headers).status_code == 403
         assert client.get("/api/ultra/status", headers=headers).status_code == 403
     with world():
         uid, headers, _ = user()
         claimed = {**headers, "X-Email": ultra.DEFAULT_ENTITLED_EMAIL, "X-User-Email": ultra.DEFAULT_ENTITLED_EMAIL}
         assert not client.get("/api/me", headers=claimed).json()["ultra"]
+        assert not client.get("/api/me", headers=claimed).json()["plusCanToggle"]
         assert client.get("/api/ultra/desktop/latest", headers=claimed).status_code == 403
         assert not ultra.enabled(db, uid)
 
@@ -82,6 +85,8 @@ def test_verified_code_immediately_enables_cap_update_but_expired_download_still
         enabled_at=db.conn.execute("SELECT enabled_at FROM ultra_grants WHERE user_id=?",(uid,)).fetchone()[0]
         assert enabled_at==ultra.iso(Clock.now)
         assert client.get("/api/me",headers=headers).json()["maxVaultBytes"]==32*1024*1024
+        me = client.get("/api/me", headers=headers).json()
+        assert me["plus"] and not me["plusCanToggle"]
         assert client.get("/api/ultra/desktop/latest",headers=headers).status_code==200
         assert complete(headers,manifest).status_code==409
         # 大于普通5MiB的实际推送亦立即可用，而非只改状态标签。
@@ -103,6 +108,9 @@ def test_admin_accounts_sources_download_time_and_no_secrets_or_vaults():
         admin_uid, headers, email=admin()
         uid, person, _=user();applied=apply(person);manifest=verify(person,applied,sent)
         with override(admin_emails=frozenset({email})):
+            # 管理员身份不等于 Plus，更不拥有 Bower 专属的体验开关。
+            me = client.get("/api/me", headers=headers).json()
+            assert me["isAdmin"] and not me["plus"] and not me["plusCanToggle"]
             default=client.get(PATH+f"/{default_uid}",headers=headers).json()
             assert default["ultra"]["enabled"] and default["ultra"]["source"]=="default" and default["ultra"]["enabledAt"] is None
             before=client.get(PATH+f"/{uid}",headers=headers).json()

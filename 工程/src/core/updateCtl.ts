@@ -12,7 +12,7 @@ import { useStore } from "zustand";
 import { showToast } from "./store";
 import { todayYMD } from "./dates";
 import { APP_VERSION } from "./model";
-import { IS_ULTRA, shortVersion } from "./version";
+import { shortVersion } from "./version";
 import { isAndroid } from "./platform";
 import {
   compareVersions, downloadPackage, fetchUpdate, installFailureSay, installPackage, installStatusText, installWhy,
@@ -67,9 +67,9 @@ interface UpdateStore {
   prevVersion: string | null;
 }
 
-const MEMO_KEY = "acorn-update-last-check" + (IS_ULTRA ? "-ultra" : "");
+const MEMO_KEY = "acorn-update-last-check";
 /** 上一次启动时的版本号。**只用来判「这一版第一次开」**，不参与任何更新决策 */
-const LAUNCH_KEY = "acorn-last-version" + (IS_ULTRA ? "-ultra" : "");
+const LAUNCH_KEY = "acorn-last-version";
 
 function loadMemo(): CheckMemo | null {
   try {
@@ -99,9 +99,8 @@ export function firstRunKind(stored: string | null, current: string): FirstRun {
 /** 上次启动记下的版本号；没有（或读不了）就是 null */
 export function readLastVersion(): string | null {
   try {
-    // 同位置覆盖安装：第一次切 Ultra 沿用普通版启动历史，仍展示这批升级日志。
-    // 这里只读版本号；下载缓存、跳过提醒和检查结果继续按 edition 分开。
-    return localStorage.getItem(LAUNCH_KEY) ?? (IS_ULTRA ? localStorage.getItem("acorn-last-version") : null);
+    // 旧Ultra覆盖成统一主包时只继承启动历史，绝不复用旧私有安装包缓存。
+    return localStorage.getItem(LAUNCH_KEY) ?? localStorage.getItem("acorn-last-version-ultra");
   } catch {
     return null;
   }
@@ -159,7 +158,7 @@ export function useUpdate<T>(selector: (s: UpdateStore) => T): T {
 }
 
 /** 用户说「这一版不再提醒」时记下的版本号。按版本记，下一版照样弹 */
-const SKIP_KEY = "acorn-update-skip" + (IS_ULTRA ? "-ultra" : "");
+const SKIP_KEY = "acorn-update-skip";
 
 export function skippedVersion(): string {
   try {
@@ -298,7 +297,7 @@ export async function checkUpdateNow(): Promise<ManualCheck> {
 // 系统可能把橡果杀掉，回来是重新启动的，内存里的东西早没了。
 // 包被系统清掉了怎么办：安装器那边会回 "missing"，调用方当场重新下，不算失败（见 start）。
 
-const READY_KEY = "acorn-update-ready" + (IS_ULTRA ? "-ultra" : "");
+const READY_KEY = "acorn-update-ready";
 
 /** 已经下好、只差系统那一步的包 */
 export interface ReadyPackage {

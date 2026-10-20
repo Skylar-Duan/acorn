@@ -60,7 +60,8 @@ describe("界面真的用上了", () => {
 
   it("更新日志把这几版都做成主卡，不是只做最新一条", () => {
     // 只摊开这一端的（2026-09-18 起三端各排各的号）
-    expect(dialogSource).toContain("const log = changelogFor(APP_PLATFORM)");
+    expect(dialogSource).toContain("const plus = usePlus()");
+    expect(dialogSource).toContain("const log = changelogFor(APP_PLATFORM, { plus })");
     expect(dialogSource).toContain("entriesSince(log, prevVersion)");
     expect(dialogSource).toContain("fresh.map((e) => (");
     // 剩下的才进「之前的版本」，别把已经摊开的那几条又折叠一遍

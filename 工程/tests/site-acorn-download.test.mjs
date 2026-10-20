@@ -2,217 +2,182 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-import { createHash, webcrypto } from "node:crypto";
 
 const require = createRequire(new URL("../package.json", import.meta.url));
 const { JSDOM, VirtualConsole } = require("jsdom");
 const html = readFileSync(new URL("../../网站/index.html", import.meta.url), "utf8");
 const script = readFileSync(new URL("../../网站/assets/acorn-download.js", import.meta.url), "utf8");
-const bytes = Buffer.from("Synthetic Acorn Ultra installer bytes. Not an executable.");
-const digest = createHash("sha256").update(bytes).digest("hex");
-const expiry = () => new Date(Date.now() + 3600000).toISOString();
-const ready = () => ({ email: "demo@example.test", enabled: false, serverNow: new Date().toISOString(), requestId: null, requestDay: null, expiresAt: null, canRequest: true, nextRequestAt: expiry(), consecutiveFailures: 0, lockedUntil: null, verified: false, downloaded: false, download: null });
-const requested = () => ({ ...ready(), canRequest: false, requestId: "demo-request", expiresAt: expiry() });
-const manifest = () => ({ available: true, edition: "ultra", version: "1.16.1", schema: 8, url: "/api/ultra/download/demo-ticket", size: bytes.length, sha256: digest, fileName: "Acorn-Ultra-demo.exe", downloadId: "demo-download", requiresAuth: true });
-const verified = () => ({ ...requested(), verified: true, download: manifest() });
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-const rejection = (slug, status, extra = {}) => json({ detail: { error: slug, ...extra } }, status);
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-
+const latest = (path) => path.includes("desktop") ? { version: "1.17.0", size: 8 * 1048576 } : { version: "1.15.0", size: 13 * 1048576 };
 async function waitFor(predicate) {
-  for (let i = 0; i < 200; i++) { if (predicate()) return; await new Promise((resolve) => setTimeout(resolve, 2)); }
-  assert.ok(predicate(), "等待界面状态超时");
+  for (let i = 0; i < 150; i++) { if (predicate()) return; await tick(); }
+  assert.ok(predicate(), "等待下载界面状态超时");
 }
-function button(w, text) { return Array.from(w.document.querySelectorAll("button")).find((node) => node.textContent === text); }
-
 async function fixture(t, options = {}) {
-  const dom = new JSDOM(html, { url: "https://acorn.cdpandas.com/intro/", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
-  const w = dom.window;
+  const dom = new JSDOM(options.html || html, { url: options.url || "https://acorn.cdpandas.com/intro/", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
+  const w = dom.window, calls = [], clicks = [];
   t.after(() => w.close());
   w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   w.HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new w.Event("close")); };
-  Object.defineProperty(w, "crypto", { value: webcrypto });
-  w.Blob = Blob;
-  const calls = [], events = [], blobs = [];
-  w.URL.createObjectURL = (blob) => { blobs.push(blob); events.push("blob"); return "blob:synthetic-download"; };
-  w.URL.revokeObjectURL = () => {};
-  w.HTMLAnchorElement.prototype.click = function () { if (this.download) events.push("save"); };
-  let state = options.state || ready();
-  w.localStorage.setItem("acorn-auth", JSON.stringify({ token: "DO_NOT_USE_BEARER" }));
-  w.fetch = async (path, init = {}) => {
-    const url = new URL(path, w.location.href);
-    calls.push({ path: url.pathname, init });
-    if (url.pathname === "/api/desktop/latest" || url.pathname === "/api/android/latest") return json({ version: "1.16.0", size: 7299065 });
-    if (options.fetch) {
-      const answer = await options.fetch(url.pathname, init, { state, setState: (next) => { state = next; }, events });
-      if (answer) return answer;
-    }
-    if (url.pathname === "/api/ultra/status") return json(state);
-    if (url.pathname === "/api/ultra/request") { state = requested(); return json(state, 202); }
-    if (url.pathname === "/api/ultra/verify") {
-      state = verified();
-      return json({ ok: true, requestId: state.requestId, expiresAt: state.expiresAt, download: state.download });
-    }
-    if (url.pathname === "/api/ultra/download/demo-ticket") { events.push("receive"); return new Response(bytes); }
-    if (url.pathname === "/api/ultra/download/demo-download/complete") { events.push("complete"); state = { ...state, downloaded: true }; return json({ ok: true, enabled: true, downloaded: true, consecutiveFailures: 0 }); }
-    throw new Error("Unexpected mock endpoint: " + url.pathname);
+  w.HTMLAnchorElement.prototype.click = function () { clicks.push(this.href); };
+  if (options.prepare) options.prepare(w);
+  w.fetch = async (value, init = {}) => {
+    const url = new URL(value, w.location.href); calls.push({ url, path: url.pathname, init });
+    if (options.fetch) return options.fetch(url.pathname, init, url);
+    assert.ok(["/api/desktop/latest", "/api/android/latest"].includes(url.pathname), "只能请求公开版本接口");
+    return json(latest(url.pathname));
   };
   w.eval(script); await tick();
   const open = () => w.document.querySelector("[data-download-open]").click();
-  async function ultra() { open(); button(w, "获取 Ultra").click(); await tick(); await tick(); }
-  return { w, calls, events, blobs, open, ultra, state: () => state };
+  const dialog = () => w.document.querySelector(".acdl-dialog");
+  const row = (platform) => w.document.querySelector(`[data-platform="${platform}"]`);
+  const retry = () => w.document.querySelector(".acdl-retry");
+  const settle = () => waitFor(() => !retry()?.disabled);
+  return { w, calls, clicks, open, dialog, row, retry, settle };
 }
 
-test("普通下载继续公开，三个本地选项，Ultra点击前不探测身份或发信", async (t) => {
-  const f = await fixture(t); f.open();
-  assert.equal(f.w.document.querySelectorAll(".acdl-choice").length, 3);
-  assert.equal(f.w.document.querySelector('.acdl-choice.ultra .acdl-choice-meta').textContent, "个人测试版 · 支持任务附图");
-  assert.match(f.w.document.querySelector('[aria-label="下载Windows普通版"]').href, /Acorn-latest-x64-setup\.exe$/);
-  assert.match(f.w.document.querySelector('[aria-label="下载安卓普通版"]').href, /Acorn-latest-arm64\.apk$/);
-  assert.equal(f.calls.filter((c) => c.path.startsWith("/api/ultra/")).length, 0);
+test("Windows唯一可下载，安卓及网页版开发中不可跳转", async (t) => {
+  const f = await fixture(t); f.open(); await f.settle();
+  assert.equal(f.w.document.querySelectorAll(".acdl-choice").length, 2);
+  assert.deepEqual(Array.from(f.w.document.querySelectorAll(".acdl-choice-title"), (n) => n.textContent), ["Windows", "安卓"]);
+  assert.match(f.row("windows").textContent, /同一安装包，Plus账号登录后自动启用附图功能/);
+  assert.doesNotMatch(f.dialog().textContent, /Ultra|验证码|普通版|第二版本/);
+  assert.equal(f.row("windows").querySelector("a").href, "https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe");
+  assert.equal(f.row("android").querySelector("a"), null);
+  assert.equal(f.row("android").querySelector("button").disabled, true);
+  assert.equal(f.row("android").querySelector("button").getAttribute("aria-disabled"), "true");
+  const web = f.w.document.querySelector(".acorn-coming");
+  assert.equal(web.disabled, true); assert.equal(web.getAttribute("aria-disabled"), "true"); assert.equal(web.hasAttribute("href"), false);
+});
+
+test("未登录可直接下载，不读登录存储、不探测身份或调用旧私有接口", async (t) => {
+  const f = await fixture(t, { prepare(w) { w.Storage.prototype.getItem = () => { throw new Error("禁止读取登录存储"); }; } });
+  assert.equal(f.calls.length, 0);
+  f.open(); await f.settle(); f.row("windows").querySelector("a").click();
+  assert.equal(f.clicks.length, 1);
+  assert.ok(f.calls.every((c) => c.init.credentials === "omit" && c.init.body === undefined && !c.init.headers?.Authorization && !c.path.includes("ultra")));
+});
+
+test("只读取Windows真实版本与大小，不请求或显示旧安卓下载元数据", async (t) => {
+  const f = await fixture(t); f.open(); await f.settle();
+  assert.equal(f.row("windows").querySelector(".acdl-choice-meta").textContent, "v1.17.0 · 8.0 MB");
+  assert.equal(f.row("android").querySelector(".acdl-choice-meta").textContent, "正在开发中");
+  assert.ok(f.calls.every((call) => call.path === "/api/desktop/latest"));
+  assert.ok(f.retry().hidden);
+});
+
+test("接口中的跨源、脚本、旧Ultra下载URL都不能改变固定公共下载目标", async (t) => {
+  for (const target of ["https://other.example.test/steal.exe", "javascript:alert(1)", "/api/ultra/download/old-ticket"]) {
+    const f = await fixture(t, { fetch: (path) => json({ ...latest(path), url: target }) }); f.open(); await f.settle();
+    assert.match(f.row("windows").querySelector("a").href, /^https:\/\/acorn\.cdpandas\.com\/download\/windows\/Acorn-latest-x64-setup\.exe$/);
+    assert.ok(f.calls.every((c) => c.url.origin === "https://acorn.cdpandas.com"));
+  }
+});
+
+test("模板旧缓存或恶意href/api不转成其他源或私有下载请求", async (t) => {
+  const f = await fixture(t, { prepare(w) {
+    const item = w.document.querySelector('[data-label="Windows"]'); item.dataset.href = "javascript:alert(1)"; item.dataset.api = "https://other.example.test/account";
+  } }); f.open(); await f.settle();
+  assert.equal(f.row("windows").querySelector("a").href, "https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe");
+  assert.ok(f.calls.every((c) => c.url.origin === "https://acorn.cdpandas.com" && /\/api\/(desktop|android)\/latest$/.test(c.path)));
+});
+
+test("离线保留页面版本兜底与可用固定链接，能重试版本读取", async (t) => {
+  let online = false;
+  const f = await fixture(t, { fetch: (path) => online ? json(latest(path)) : Promise.reject(new Error("offline")) });
+  const fallback = f.w.document.querySelector('[data-label="Windows"]').dataset.version;
+  f.open(); await f.settle();
+  assert.match(f.row("windows").querySelector(".acdl-choice-meta").textContent, new RegExp("^v" + fallback.replaceAll(".", "\\.")));
+  assert.match(f.dialog().querySelector('[role="status"]').textContent, /下载入口仍可使用/);
+  assert.ok(!f.retry().hidden); online = true; f.retry().click(); await f.settle();
+  assert.ok(f.retry().hidden);
+});
+
+test("HTTP失败与非JSON响应保留Windows下载且不解开安卓入口", async (t) => {
+  for (const response of [() => json({}, 503), () => new Response("not-json")]) {
+    const f = await fixture(t, { fetch: response }); f.open(); await f.settle();
+    assert.equal(f.w.document.querySelectorAll(".acdl-choice a[href]").length, 1);
+    assert.equal(f.row("android").querySelector("button").disabled, true);
+    assert.ok(!f.retry().hidden);
+  }
+});
+
+test("非法大小或版本仅回落，不渲染HTML或异常数字", async (t) => {
+  for (const data of [{ version: '<img src=x onerror="alert(1)">', size: 20 }, { version: "1.17.0", size: -1 }, { version: "1.17.0", size: 2.5 }, { version: "9".repeat(60)+".0.0", size: 100 }]) {
+    const f = await fixture(t, { fetch: () => json(data) }); f.open(); await f.settle();
+    assert.equal(f.dialog().querySelector("img"), null);
+    assert.doesNotMatch(f.dialog().textContent, /NaN|Infinity|onerror|9999999999/);
+    assert.ok(!f.retry().hidden);
+  }
+});
+
+test("旧缓存标为安卓已开放也不会绕过当前桌面优先入口", async (t) => {
+  const f = await fixture(t, { prepare(w) { const item = w.document.querySelector('[data-label="安卓"]'); item.dataset.disabled = "false"; item.dataset.href = "https://acorn.cdpandas.com/download/android/Acorn-latest-arm64.apk"; }, fetch: () => json({ version: "1.17.1", size: 9 * 1048576 }) });
+  f.open(); await f.settle();
+  assert.equal(f.row("windows").querySelector(".acdl-choice-meta").textContent, "v1.17.1 · 9.0 MB");
+  assert.equal(f.row("android").querySelector("a"), null);
+  assert.equal(f.row("android").querySelector("button").disabled, true);
+  assert.ok(f.retry().hidden);
+});
+
+test("刷新等待时重复点击不会并发重复请求", async (t) => {
+  let requests = null;
+  const f = await fixture(t, { fetch: (path) => requests ? new Promise((resolve) => requests.push(() => resolve(json(latest(path))))) : json({}, 503) });
+  f.open(); await f.settle(); requests = []; f.retry().click(); f.retry().click();
+  assert.equal(requests.length, 1); assert.ok(f.retry().disabled);
+  requests.forEach((resolve) => resolve()); await f.settle();
+  assert.equal(f.calls.length, 2);
+});
+
+test("收起取消待完成请求，旧响应不改新一轮内容或重开弹窗", async (t) => {
+  let releases = [], delayed = true;
+  const f = await fixture(t, { fetch: (path) => delayed ? new Promise((resolve) => releases.push(() => resolve(json({ version: "9.9.9", size: 999 })) )) : json(latest(path)) });
+  f.open(); assert.equal(releases.length, 1); f.dialog().close();
+  assert.ok(f.calls.every((c) => c.init.signal.aborted));
+  delayed = false; f.open(); await f.settle(); releases.forEach((run) => run()); await tick(); await tick();
+  assert.doesNotMatch(f.dialog().textContent, /9\.9\.9/); f.dialog().close(); await tick(); assert.equal(f.dialog().open, false);
+});
+
+test("Esc收起并将焦点还给触发按钮", async (t) => {
+  const f = await fixture(t); const opener = f.w.document.querySelector("[data-download-open]"); opener.focus(); f.open(); await f.settle();
+  f.dialog().dispatchEvent(new f.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  assert.equal(f.dialog().open, false); assert.equal(f.w.document.activeElement, opener);
+});
+
+test("Tab在弹窗两端循环，隐藏的刷新按钮不接焦点", async (t) => {
+  const f = await fixture(t); f.open(); await f.settle();
+  const close = f.dialog().querySelector(".acdl-close"), last = f.row("windows").querySelector("a");
+  last.focus(); last.dispatchEvent(new f.w.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })); assert.equal(f.w.document.activeElement, close);
+  close.dispatchEvent(new f.w.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true })); assert.equal(f.w.document.activeElement, last);
+});
+
+test("点击行内空白不关闭，遮罩与原生取消可关闭", async (t) => {
+  const f = await fixture(t); f.open(); await f.settle(); f.row("windows").click(); assert.equal(f.dialog().open, true);
+  f.dialog().click(); assert.equal(f.dialog().open, false); f.open();
+  f.dialog().dispatchEvent(new f.w.Event("cancel", { cancelable: true })); assert.equal(f.dialog().open, false);
+});
+
+test("旧download-ultra入口转单包选择，保留query且不出现验证码页", async (t) => {
+  const f = await fixture(t, { url: "https://acorn.cdpandas.com/intro/?from=old#download-ultra" }); await f.settle();
+  assert.equal(f.dialog().open, true); assert.equal(f.w.location.hash, ""); assert.equal(f.w.location.search, "?from=old");
+  assert.equal(f.w.document.querySelectorAll(".acdl-choice").length, 2); assert.doesNotMatch(f.dialog().textContent, /Ultra|验证码|登录后下载/);
+  assert.ok(f.calls.every((c) => !c.path.includes("ultra")));
+});
+
+test("旧模板遗留Ultra行不会恢复第二安装包，noscript只有Windows可下载", async (t) => {
+  const f = await fixture(t, { prepare(w) { const item = w.document.createElement("div"); item.dataset.downloadItem = ""; item.dataset.label = "Windows Ultra"; item.dataset.api = "/api/ultra/status"; w.document.querySelector("[data-download-dialog]").append(item); } }); f.open(); await f.settle();
+  assert.equal(f.w.document.querySelectorAll(".acdl-choice").length, 2);
+  assert.ok(f.calls.every((c) => !c.path.includes("ultra")));
+  const noscript = html.match(/<noscript>([\s\S]*?)<\/noscript>/)[1];
+  assert.doesNotMatch(noscript, /Ultra|验证码|普通版/); assert.match(noscript, /Plus账号登录后自动启用/);
+  assert.equal((noscript.match(/<a /g) || []).length, 1); assert.doesNotMatch(noscript, /download\/android/);
   assert.ok(!html.includes('src="/utilities/_shared/tool-download.js"'));
 });
 
-test("未登录走cdpandas回跳链接，Cookie请求不偷用橡果Bearer", async (t) => {
-  const f = await fixture(t, { fetch: (path) => path === "/api/ultra/status" ? rejection("no_token", 401) : null });
-  await f.ultra();
-  const link = f.w.document.querySelector('.acdl-body a');
-  const url = new URL(link.href);
-  assert.equal(url.origin, "https://cdpandas.com");
-  assert.equal(url.pathname, "/login");
-  assert.equal(url.searchParams.get("redirect"), "https://acorn.cdpandas.com/intro/#download-ultra");
-  const call = f.calls.find((c) => c.path === "/api/ultra/status");
-  assert.equal(call.init.credentials, "same-origin");
-  assert.equal(call.init.headers.Authorization, undefined);
-});
-
-test("明确点击申请才发起一次，按钮等待时不会重复申请", async (t) => {
-  const f = await fixture(t); await f.ultra();
-  assert.equal(f.calls.filter((c) => c.path.endsWith("/request")).length, 0);
-  const apply = button(f.w, "申请今日验证码"); apply.click(); apply.click();
-  await waitFor(() => f.w.document.querySelector("#acdl-code"));
-  assert.equal(f.calls.filter((c) => c.path.endsWith("/request")).length, 1);
-  assert.match(f.w.document.querySelector(".acdl-status").textContent, /只发送给管理员.*北京时间/);
-});
-
-test("错误验证码三次仍可重试，不显示七天锁定或重新申请", async (t) => {
-  const f = await fixture(t, { state: requested(), fetch: (path) => path === "/api/ultra/verify" ? rejection("bad_code", 400) : null });
-  await f.ultra();
-  for (let i = 0; i < 3; i++) {
-    const input = f.w.document.querySelector("#acdl-code"); input.value = "000000"; input.dispatchEvent(new f.w.Event("input"));
-    f.w.document.querySelector(".acdl-body form").dispatchEvent(new f.w.Event("submit", { cancelable: true }));
-    await waitFor(() => f.w.document.querySelector('[role="alert"]'));
-  }
-  assert.equal(f.calls.filter((c) => c.path.endsWith("/verify")).length, 3);
-  assert.ok(f.w.document.querySelector("#acdl-code"));
-  assert.equal(button(f.w, "申请今日验证码"), undefined);
-  assert.match(f.w.document.querySelector('[role="alert"]').textContent, /输错不会按三次申请失败计算/);
-});
-
-test("已获授权仍显示今日申请，不绕过按天验证", async (t) => {
-  const f = await fixture(t, { state: { ...ready(), enabled: true } }); await f.ultra();
-  assert.ok(button(f.w, "申请今日验证码"));
-  assert.equal(button(f.w, "下载安装包"), undefined);
-  assert.match(f.w.document.querySelector(".acdl-body").textContent, /此前已获授权/);
-});
-
-test("锁定显示北京时间结束时刻，不可申请或输入验证码", async (t) => {
-  const state = { ...ready(), canRequest: false, lockedUntil: "2099-01-02T16:00:00Z", consecutiveFailures: 3 };
-  const f = await fixture(t, { state }); await f.ultra();
-  assert.match(f.w.document.querySelector(".acdl-status").textContent, /1月3日.*00:00.*北京时间/);
-  assert.equal(button(f.w, "申请今日验证码"), undefined);
-  assert.equal(f.w.document.querySelector("#acdl-code"), null);
-});
-
-test("当天已验证可直接下载，完整收取和SHA256后才Blob与complete", async (t) => {
-  const f = await fixture(t, { state: verified() }); await f.ultra();
-  button(f.w, "下载安装包").click();
-  await waitFor(() => f.events.includes("complete"));
-  assert.deepEqual(f.events, ["receive", "blob", "save", "complete"]);
-  assert.equal(f.calls.filter((c) => /\/(request|verify)$/.test(c.path)).length, 0);
-  const complete = f.calls.find((c) => c.path.endsWith("/complete"));
-  assert.deepEqual(JSON.parse(complete.init.body), { sha256: digest });
-  assert.equal(f.blobs[0].size, bytes.length);
-});
-
-test("当天已完成仍可重下，不能因enabled长期免申请", async (t) => {
-  const f = await fixture(t, { state: { ...verified(), enabled: true, downloaded: true } }); await f.ultra();
-  assert.match(f.w.document.querySelector(".acdl-status").textContent, /今天已完成下载.*午夜前可再次下载/);
-  assert.ok(button(f.w, "下载安装包"));
-});
-
-test("SHA256不匹配不保存文件，也不报complete成功", async (t) => {
-  const state = verified(); state.download.sha256 = "0".repeat(64);
-  const f = await fixture(t, { state }); await f.ultra(); button(f.w, "下载安装包").click();
-  await waitFor(() => f.w.document.querySelector('[role="alert"]'));
-  assert.equal(f.blobs.length, 0); assert.ok(!f.events.includes("complete"));
-  assert.match(f.w.document.querySelector('[role="alert"]').textContent, /校验不一致/);
-});
-
-test("文件少字节时不保存，不确认完整下载", async (t) => {
-  const state = verified(); state.download.size += 5;
-  const f = await fixture(t, { state }); await f.ultra(); button(f.w, "下载安装包").click();
-  await waitFor(() => f.w.document.querySelector('[role="alert"]'));
-  assert.equal(f.blobs.length, 0); assert.ok(!f.events.includes("complete"));
-});
-
-test("私有安装包地址必须本站Ultra路径，拒绝跨源清单", async (t) => {
-  const state = verified(); state.download.url = "https://other.example.test/installer.exe";
-  const f = await fixture(t, { state }); await f.ultra(); button(f.w, "下载安装包").click();
-  await waitFor(() => f.w.document.querySelector('[role="alert"]'));
-  assert.equal(f.calls.filter((c) => c.path === "/installer.exe").length, 0);
-  assert.equal(f.blobs.length, 0);
-});
-
-test("完成确认暂失败可幂等重试，不重新申请或重复取文件", async (t) => {
-  let completes = 0;
-  const f = await fixture(t, { state: verified(), fetch: (path) => {
-    if (path.endsWith("/complete") && ++completes === 1) return rejection("download_incomplete", 409);
-    return null;
-  } });
-  await f.ultra(); button(f.w, "下载安装包").click();
-  await waitFor(() => button(f.w, "重试下载完成确认")); button(f.w, "重试下载完成确认").click();
-  await waitFor(() => f.w.document.querySelector(".acdl-success"));
-  assert.equal(completes, 2);
-  assert.equal(f.calls.filter((c) => c.path === "/api/ultra/download/demo-ticket").length, 1);
-  assert.equal(f.blobs.length, 1);
-});
-
-test("收起后重开从服务器恢复今日请求，不发失败回执", async (t) => {
-  const f = await fixture(t); await f.ultra(); button(f.w, "申请今日验证码").click();
-  await waitFor(() => f.w.document.querySelector("#acdl-code"));
-  f.w.document.querySelector(".acdl-close").click(); await f.ultra();
-  assert.ok(f.w.document.querySelector("#acdl-code"));
-  assert.equal(f.calls.filter((c) => c.path.endsWith("/request")).length, 1);
-  assert.ok(!f.calls.some((c) => /fail|cancel/.test(c.path)));
-});
-
-test("离线可重试状态，普通下载仍可用", async (t) => {
-  let online = false;
-  const f = await fixture(t, { fetch: (path) => {
-    if (path === "/api/ultra/status" && !online) throw new TypeError("offline");
-    return null;
-  } });
-  await f.ultra(); assert.match(f.w.document.querySelector('[role="alert"]').textContent, /检查网络后重试/);
-  online = true; button(f.w, "刷新申请状态").click();
-  await waitFor(() => button(f.w, "申请今日验证码"));
-});
-
-test("午夜过期后重新读取服务端状态，不复用昨天的下载票据", async (t) => {
-  let midnight = false;
-  const f = await fixture(t, { state: verified(), fetch: (path) => path === "/api/ultra/status" && midnight ? json(ready()) : null });
-  await f.ultra(); assert.ok(button(f.w, "下载安装包"));
-  midnight = true; f.w.document.dispatchEvent(new f.w.Event("visibilitychange"));
-  await waitFor(() => button(f.w, "申请今日验证码"));
-  assert.equal(button(f.w, "下载安装包"), undefined);
-});
-
-test("Esc收起并恢复触发按钮焦点，状态字段只作文本", async (t) => {
-  const f = await fixture(t, { state: { ...ready(), email: '<img src=x onerror="alert(1)">' } });
-  f.w.document.querySelector("[data-download-open]").focus(); await f.ultra();
-  assert.equal(f.w.document.querySelector(".acdl-account img"), null);
-  const dlg = f.w.document.querySelector(".acdl-dialog");
-  dlg.dispatchEvent(new f.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-  assert.equal(dlg.open, false);
-  assert.equal(f.w.document.activeElement, f.w.document.querySelector("[data-download-open]"));
+test("版本信息到达时保留用户当前焦点与下载行节点", async (t) => {
+  const releases = [];
+  const f = await fixture(t, { fetch: (path) => new Promise((resolve) => releases.push(() => resolve(json(latest(path))))) }); f.open();
+  const anchor = f.row("windows").querySelector("a"); anchor.focus(); releases.forEach((run) => run()); await f.settle();
+  assert.equal(f.row("windows").querySelector("a"), anchor); assert.equal(f.w.document.activeElement, anchor);
 });

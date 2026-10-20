@@ -13,6 +13,7 @@ import type { Session, SyncPhase } from "./cloud";
 import { todayYMD, toYMD } from "./dates";
 import { isMobile } from "./platform";
 import { adoptLegacyProfile } from "./profile";
+import { setPlusSession } from "./plus";
 
 interface SyncStore {
   session: Session | null;
@@ -56,6 +57,21 @@ export const syncStore = createStore<SyncStore>(() => ({
   restored: null,
   restoring: false,
 }));
+
+// 也覆盖调用方直接切换session的路径；资格不能从上一个账号漏到下一个账号。
+syncStore.subscribe((state, previous) => {
+  if (state.session?.email !== previous.session?.email || state.session?.token !== previous.session?.token) setPlusSession(state.session);
+});
+
+function refreshPlus(session: Session): void {
+  // 不阻塞本地启动；离线沿用同账号缓存，响应由cloud按原token/账号校验。
+  void (async () => {
+    try { await cloud.whoAmI(session.token); }
+    catch (error) {
+      if ((error as cloud.ApiError)?.needsLogin && syncStore.getState().session?.token === session.token) setPlusSession(null);
+    }
+  })();
+}
 
 export function useSync<T>(selector: (s: SyncStore) => T): T {
   return useStore(syncStore, selector);
@@ -305,14 +321,18 @@ export async function applyAutoLogin(on: boolean): Promise<void> {
 
 /** 应用启动时调一次：有登录态就恢复出来，并立刻同步一轮 */
 export async function initSync(): Promise<void> {
+  const epoch = sessionEpoch;
   const session = await cloud.loadSession();
+  if (epoch !== sessionEpoch) return;
   if (!session) {
+    setPlusSession(null);
     set({ session: null, phase: "off", message: idleMessage(null) });
     return;
   }
   // 自动登录关着却还留着令牌：多半是上一次关开关时那一下写盘没落地（进程被杀、盘满）。
   // 以**用户拨过的那个开关**为准，顺手把令牌再删一次，别让它下次又把人自动登进去
   if (!autoLoginOn()) {
+    setPlusSession(null);
     await cloud.saveSession(null);
     set({ session: null, phase: "off", message: idleMessage(null) });
     return;
@@ -323,10 +343,12 @@ export async function initSync(): Promise<void> {
     session, phase: "idle", message: idleMessage(session),
     needsUpgrade: false, upgradeRetryAt: null,
   });
+  refreshPlus(session);
   // 这台设备是个空壳、而这个账号云端有东西：自己取回来，别摆一张只有一个选项的卡去问。
   // **排在 watchData 之前**：取回会整份换掉内存那份数据，监听已经挂上的话，
   // 这一下会被当成「用户改了东西」排一轮推送，侧栏那行先亮「有改动没传」再自己消下去
   const restored = await autoRestoreOnBoot(session);
+  if (epoch !== sessionEpoch || syncStore.getState().session?.token !== session.token) return;
   // 排在 watchData 之前、syncNow 之前：迁进来的那一条直接搭这一轮一起上云，不另排一轮
   adoptLegacyProfileNow(session);
   watchData();
@@ -356,12 +378,19 @@ function adoptLegacyProfileNow(session: Session): void {
  *  的路用（loginCtl.signInWithLocalData）：那条路要的正是不合并，
  *  默认这一下 syncNow 恰恰是它要避免的动作。调用方自己负责随后走覆盖或走合并。 */
 export async function adoptSession(session: Session, opts?: { sync?: boolean }): Promise<void> {
-  sessionEpoch++;
-  await cloud.saveSession(session);
+  const epoch = ++sessionEpoch;
+  setPlusSession(session);
+  try { await cloud.saveSession(session); }
+  catch (error) {
+    if (epoch === sessionEpoch) setPlusSession(syncStore.getState().session);
+    throw error;
+  }
+  if (epoch !== sessionEpoch) return;
   set({
     session, phase: "idle", message: idleMessage(session),
     dirty: false, needsUpgrade: false, upgradeRetryAt: null, lastAttemptAt: null,
   });
+  refreshPlus(session);
   adoptLegacyProfileNow(session);
   watchData();
   startAutoPull();
@@ -375,7 +404,8 @@ export async function adoptSession(session: Session, opts?: { sync?: boolean }):
  *  的副作用：401 令牌过期是**非自愿登出**，那一刻恰恰同步不上去，
  *  一次过期就无声抹掉全部本地数据，用户找都没处找。 */
 export async function signOut(): Promise<void> {
-  sessionEpoch++;
+  const epoch = ++sessionEpoch;
+  setPlusSession(null);
   if (debounce) {
     clearTimeout(debounce);
     debounce = null;
@@ -383,6 +413,7 @@ export async function signOut(): Promise<void> {
   stopWatching();
   stopAutoPull();
   await cloud.saveSession(null);
+  if (epoch !== sessionEpoch) return;
   set({
     session: null, phase: "off", message: idleMessage(null),
     dirty: false, needsUpgrade: false, upgradeRetryAt: null, lastAttemptAt: null,
@@ -393,8 +424,10 @@ export async function signOut(): Promise<void> {
  *  同步和设置页发反馈撞上 401 都走这一条，两处的样子得一致——
  *  不然反馈那边红字说「登录已经过期」，账号卡却还显示登录着 */
 export async function expireSession(): Promise<void> {
-  sessionEpoch++;
+  const epoch = ++sessionEpoch;
+  setPlusSession(null);
   await cloud.saveSession(null);
+  if (epoch !== sessionEpoch) return;
   stopWatching();
   stopAutoPull();
   set({

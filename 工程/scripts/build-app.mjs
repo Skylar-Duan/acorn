@@ -26,16 +26,17 @@ const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const VERSIONS = join(HERE, "versions.json");
 const PKG_DIR = resolve(HERE, "..", "安装包");
 
-const [platform, ...flags] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const retired = args.find((flag) => /^--(?:ultra|plus)(?:=|$)/.test(flag));
+if (retired) {
+  console.error(`${retired} 已停用：Windows 仅构建一个完整安装包，Plus 由账号权限解锁。请使用 node scripts/build-app.mjs desktop [--beta]。`);
+  process.exit(1);
+}
+const [platform, ...flags] = args;
 const beta = flags.includes("--beta");
-const ultra = flags.includes("--ultra");
 const publish = beta && !flags.includes("--no-publish");
 if (!["desktop", "android"].includes(platform)) {
   console.error("用法：node scripts/build-app.mjs <desktop|android> [--beta]（网页版走 server/deploy/publish-web.sh）");
-  process.exit(1);
-}
-if (ultra && platform !== "desktop") {
-  console.error("Ultra 仅提供 Windows 安装包");
   process.exit(1);
 }
 
@@ -59,7 +60,7 @@ if (beta) {
 const label = { desktop: "桌面版", android: "安卓版" }[platform];
 console.log(`=== ${label} ${beta ? `测试版 ${n}（号 ${version}，接在 v${pub} 之后）` : `正式包 v${version}`}`);
 
-const env = { ...process.env, ACORN_BUILD_PLATFORM: platform, ACORN_BUILD_VERSION: version, ACORN_BUILD_EDITION: ultra ? "ultra" : "normal" };
+const env = { ...process.env, ACORN_BUILD_PLATFORM: platform, ACORN_BUILD_VERSION: version, ACORN_BUILD_EDITION: "normal" };
 // cargo 装在 ~/.cargo/bin，但不一定在当前会话的 PATH 里（两台机器都遇到过）。
 // Windows 上环境变量名不分大小写，展开成普通对象后却分了——找到原来那个键再往前插，别另起一个 PATH
 const cargoBin = join(homedir(), ".cargo", "bin");
@@ -87,12 +88,6 @@ if (platform === "desktop") {
     rmSync(override, { force: true });
   }
   artifact = join(HERE, "src-tauri", "target", "release", "bundle", "nsis", `Acorn_${version}_x64-setup.exe`);
-  if (ultra && existsSync(artifact)) {
-    const ultraArtifact = join(dirname(artifact), `AcornUltra_${version}_x64-setup.exe`);
-    // 同一产物只保留 Ultra 文件名，避免私有包以普通包的名字留在公开发布候选中。
-    renameSync(artifact, ultraArtifact);
-    artifact = ultraArtifact;
-  }
 } else {
   run("bash", ["scripts/build-android.sh"]);
   artifact = join(HERE, "src-tauri", "target", "release", "bundle", "android", `Acorn_${version}_arm64.apk`);
@@ -121,7 +116,7 @@ mkdirSync(PKG_DIR, { recursive: true });
 const ext = platform === "desktop" ? "exe" : "apk";
 // 跟以前的命名一样：「橡果 v1.15.0 安装包.exe」「橡果 v1.15.0 安卓版.apk」，测试版把号换成 beta
 const kind = platform === "desktop" ? "安装包" : "安卓版";
-const dest = join(PKG_DIR, `橡果 ${ultra ? "Ultra " : ""}${beta ? "beta" : `v${version}`} ${kind}.${ext}`);
+const dest = join(PKG_DIR, `橡果 ${beta ? "beta" : `v${version}`} ${kind}.${ext}`);
 const temporaryPackage = `${dest}.${process.pid}.tmp`;
 try {
   copyFileSync(artifact, temporaryPackage);
@@ -134,9 +129,11 @@ console.log(`\n✓ 产物：${artifact}\n✓ 复制到：${dest}`);
 // 推到测试版通道：更新说明取 changelog-data.json 里这一端 beta 那段的小标题
 if (publish) {
   const log = JSON.parse(readFileSync(join(HERE, "src", "core", "changelog-data.json"), "utf8"));
-  const titles = (log.beta?.[platform]?.highlights ?? []).filter((h) => !h.edition || h.edition === (ultra ? "ultra" : "normal")).map((h) => h.title);
-  const notesFile = join(tmpdir(), `acorn-beta-notes-${platform}-${ultra ? "ultra" : "normal"}-${process.pid}.txt`);
-  const script = platform === "desktop" ? ultra ? "server/deploy/publish-ultra-exe.sh" : "server/deploy/publish-exe.sh" : "server/deploy/publish-apk.sh";
+  const titles = (log.beta?.[platform]?.highlights ?? [])
+    .filter((h) => h.edition === undefined || h.edition === "common" || h.edition === "normal")
+    .map((h) => h.title);
+  const notesFile = join(tmpdir(), `acorn-beta-notes-${platform}-${process.pid}.txt`);
+  const script = platform === "desktop" ? "server/deploy/publish-exe.sh" : "server/deploy/publish-apk.sh";
   console.log("\n=== 推到测试版通道（只有管理员看得到）");
   // 交给 bash 的路径要写成 /s/... 的样子：scp 会把「S:\...」里的冒号当成「主机名:路径」
   const posix = (p) => p.replace(/^([A-Za-z]):[\\/]/, (_, d) => `/${d.toLowerCase()}/`).split("\\").join("/");

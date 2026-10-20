@@ -5,7 +5,7 @@ import Plan from "../src/views/Plan";
 import Today from "../src/views/Today";
 import Sidebar from "../src/components/Sidebar";
 import { defaultData, newTask, type Subtask, type Task } from "../src/core/model";
-import { appStore, flushSave, openRows, postponeRowsTo, undo, updateTask } from "../src/core/store";
+import { appStore, flushSave, openRows, postponeRowsTo, undo, updateSubtask, updateTask } from "../src/core/store";
 import { mergeParentRows, overdueParentActions, parentRowsForToday, pendingChildRows } from "../src/core/parentRows";
 import { parentFoldStore, parentFolded, setAllParentFolded, setParentFolded } from "../src/core/parentFold";
 
@@ -78,17 +78,48 @@ describe("桌面母子任务树：真实Plan/Today", () => {
     expect(appStore.getState().data.tasks[1].done).toBe(false);
   });
 
-  it("Plan母手排日期优先，无手排才从最近子日期归组；搜索子标题保留母任务", () => {
+  it("Plan母手排日期更晚或无期都按最近子日期归组，搜索子标题保留母任务", () => {
     const manual = newTask({ id: "parent", title: "手排日期", due: FUTURE, subtasks: [step("搜索目标", { due: TODAY })] });
     const derived = newTask({ id: "derived", title: "取最近子", due: null, subtasks: [step("明天", { due: FUTURE }), step("今天", { due: TODAY })] });
     render([manual, derived]);
     const labels = () => [...host.querySelectorAll(".group-head,.task-row[data-parent-row]")].map((el) => el.textContent);
     const text = labels().join("|"); expect(text.indexOf("今天")).toBeLessThan(text.indexOf("取最近子"));
-    expect(text.indexOf("取最近子")).toBeLessThan(text.indexOf("本周")); expect(text.indexOf("本周")).toBeLessThan(text.indexOf("手排日期"));
-    expect(mother().textContent).toContain("10月23");
+    expect(text.indexOf("今天")).toBeLessThan(text.indexOf("手排日期")); expect(text).not.toContain("本周");
+    expect(mother().textContent).toContain("今天"); expect(appStore.getState().data.tasks[0].due).toBe(FUTURE);
     input(host.querySelector(".plan-search input")!, "搜索目标");
     expect(visible()).toHaveLength(1); expect(mother().textContent).toContain("手排日期");
     click(mother().querySelector("button.chain-caret")!); expect(children()).toEqual(["搜索目标"]);
+  });
+
+  it("Plan用同一个最近安排的日期钟点排序：母更早在前，母更晚/无期按子时间；只渲染不写安排", () => {
+    const tasks = [
+      newTask({ id: "late", title: "较晚母日期", due: FUTURE, dueTime: "06:00", subtasks: [step("最近十点", { due: TODAY, dueTime: "10:00" })] }),
+      newTask({ id: "blank", title: "未排母日期", due: null, dueTime: "05:00", subtasks: [step("最近九点", { due: TODAY, dueTime: "09:00" })] }),
+      newTask({ id: "early", title: "母安排更早", due: PAST, dueTime: "14:00", subtasks: [step("稍后子", { due: FUTURE })] }),
+    ];
+    render(tasks); const before = appStore.getState().data;
+    expect(visible().map((row) => row.dataset.taskId)).toEqual(["early", "blank", "late"]);
+    expect(mother("blank").textContent).toContain("今天 09:00"); expect(mother("late").textContent).toContain("今天 10:00");
+    expect(mother("early").textContent).toContain("昨天 14:00");
+    expect(appStore.getState().data).toBe(before); expect(appStore.getState().data.tasks.map((task) => task.due)).toEqual([FUTURE, null, PAST]);
+  });
+
+  it("最近子完成后母行按下个安排重排，Today与侧栏退出到期项，撤销恢复且母手排日期原样", () => {
+    const task = newTask({ id: "parent", title: "等待下一步", due: FUTURE, dueTime: "16:00", subtasks: [step("今日步骤", { due: TODAY, dueTime: "09:00" }), step("更远步骤", { due: "2026-10-25" })] });
+    act(() => { put([task]); root.render(createElement(Fragment, null, createElement(Sidebar), createElement(Today))); });
+    expect(mother().textContent).toContain("今天 09:00"); expect(host.querySelector('[data-sidebar-module="today"] .n')!.textContent).toBe("1");
+    act(() => updateSubtask("parent", "今日步骤", { done: true }));
+    expect(host.querySelector('.task-row[data-parent-row="true"]')).toBeNull(); expect(host.querySelector('[data-sidebar-module="today"] .n')).toBeNull();
+    expect(appStore.getState().data.tasks[0].due).toBe(FUTURE); expect(appStore.getState().data.tasks[0].dueTime).toBe("16:00");
+    act(() => undo()); expect(mother().textContent).toContain("今天 09:00"); expect(host.querySelector('[data-sidebar-module="today"] .n')!.textContent).toBe("1");
+  });
+
+  it("母手排今天但更近子逾期时只列逾期母行，今日进度仍计算该母安排", () => {
+    render([newTask({ id: "parent", title: "今天仍有母安排", due: TODAY, dueTime: "15:00", subtasks: [step("昨天未完", { due: PAST, dueTime: "09:00" })] })], "today");
+    expect(host.querySelectorAll('[data-parent-row="true"]')).toHaveLength(1); expect(mother().textContent).toContain("昨天 09:00");
+    expect([...host.querySelectorAll('.group-head')].map((row) => row.textContent).join("|")).toContain("逾期 1");
+    expect(host.querySelector('.day-foot')!.textContent).toContain("完成 0 / 1");
+    expect(appStore.getState().data.tasks[0].due).toBe(TODAY);
   });
 
   it("按重要性分组时展开的子任务仍时间主、同刻重要性次，改母重要性即时更新继承排序", () => {

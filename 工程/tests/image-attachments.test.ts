@@ -2,7 +2,7 @@ import { act, createElement, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const flags = vi.hoisted(() => ({ ultra: true, mobile: false, compress: vi.fn() }));
-vi.mock("../src/core/version", async (original) => ({ ...await original<typeof import("../src/core/version")>(), get IS_ULTRA() { return flags.ultra; } }));
+vi.mock("../src/core/plus", async (original) => ({ ...await original<typeof import("../src/core/plus")>(), plusEnabled: () => flags.ultra, usePlus: () => flags.ultra }));
 vi.mock("../src/core/platform", async (original) => ({ ...await original<typeof import("../src/core/platform")>(), get isMobile() { return flags.mobile; } }));
 vi.mock("../src/core/imageCompression", async (original) => ({ ...await original<typeof import("../src/core/imageCompression")>(), compressTaskImage: flags.compress }));
 import ImageAttachments from "../src/components/ImageAttachments";

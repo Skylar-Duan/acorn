@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { changelogFor, type ChangelogEntry } from "../core/changelog";
+import { usePlus } from "../core/plus";
 import { APP_PLATFORM, APP_VERSION, IS_BETA, shortVersion } from "../core/version";
 import { setChangelogOpen } from "../core/store";
 import {
@@ -154,7 +155,8 @@ export default function ChangelogDialog() {
    *  中间那版给他做的改动全折叠着看不见）。头一次装或没跨版本时，就是原来的「最新一条」 */
   const prevVersion = useUpdate((st) => st.prevVersion);
   /** 只看这一端的：三端各排各的号，电脑上不该读到讲手机安装的那条 */
-  const log = changelogFor(APP_PLATFORM);
+  const plus = usePlus();
+  const log = changelogFor(APP_PLATFORM, { plus });
   const fresh = entriesSince(log, prevVersion);
   const freshVers = new Set(fresh.map((e) => e.version));
   const older = log.filter((e) => !freshVers.has(e.version));

@@ -88,8 +88,22 @@ io.open(out, "w", encoding="utf-8").write(json.dumps({
 PY
 # 写完自己验一遍是不是合法 UTF-8，不合法当场停，别推一份服务端读不了的清单上去
 python -c "import io,json,sys; json.load(io.open(sys.argv[1],encoding='utf-8')); print('  清单是合法 UTF-8 JSON')" /tmp/acorn-latest-exe.json
-"${SCP[@]}" /tmp/acorn-latest-exe.json "$HOST:$REMOTE_DIR/latest.json"
+"${SCP[@]}" /tmp/acorn-latest-exe.json "$HOST:$REMOTE_DIR/latest.json.upload"
+"${SSH[@]}" bash -s -- "$REMOTE_DIR" "$NAME" "$SHA" <<'VERIFY'
+set -euo pipefail
+cd "$1"
+printf '%s  %s\n' "$3" "$2" | sha256sum -c -
+mv -f latest.json.upload latest.json
+VERIFY
 rm -f /tmp/acorn-latest-exe.json
+
+# 旧 Ultra 更新器只认识私有通道。提供同一份已上传的统一包副本，
+# 让它正常更新到账号识别 Plus 的新客户端；不再另编译任何 Ultra 包。
+echo "=== 兼容旧 Ultra 更新器（统一包原样副本）"
+"${SCP[@]}" "$(dirname "$0")/mirror-legacy-desktop.py" "$HOST:/tmp/acorn-mirror-legacy-desktop.py"
+LEGACY_ARGS=()
+if [ "$BETA" = 1 ]; then LEGACY_ARGS+=(--beta); fi
+"${SSH[@]}" /var/www/acorn-sync/.venv/bin/python /tmp/acorn-mirror-legacy-desktop.py "$REMOTE_DIR" /var/lib/acorn-sync/private --owner acorn "${LEGACY_ARGS[@]}"
 
 echo "=== 清理老包（留最近 $KEEP 个）"
 "${SSH[@]}" bash -s <<REMOTE

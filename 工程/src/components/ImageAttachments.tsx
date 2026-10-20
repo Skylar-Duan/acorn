@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TaskImage } from "../core/model";
-import { IS_ULTRA } from "../core/version";
+import { plusEnabled, plusStore, usePlus } from "../core/plus";
 import { isMobile } from "../core/platform";
 import { compressTaskImage } from "../core/imageCompression";
 import { imageEditContext, type ImageOperation } from "../core/imageEditContext";
@@ -37,6 +37,7 @@ export interface ImageAttachmentsProps {
 }
 
 export default function ImageAttachments(props: ImageAttachmentsProps) {
+  const plus = usePlus();
   const { images = [], onChange, label = "图片", canEdit, createContext, usedBytes, draft } = props;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -59,14 +60,21 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     if (!images.length && !busy && !error) setExpanded(false);
   }, [images, busy, error, viewing]);
   useEffect(() => {
-    if (!IS_ULTRA || !draft) return;
+    if (!draft) return;
     const key = () => { const s = syncStore.getState().session; return s ? `${s.email}\n${s.token}` : ""; };
     let previous = key();
-    const clear = () => { if (operation.current) operation.current.cancel = true; current.current.onChange([]); };
+    const clear = () => { if (operation.current) operation.current.cancel = true; if (current.current.images?.length) current.current.onChange([]); };
     const offSession = syncStore.subscribe(() => { const next = key(); if (next !== previous) { previous = next; clear(); } });
+    const offPlus = plusStore.subscribe((next, old) => { if (next.revision !== old.revision) clear(); });
     const offData = appStore.subscribe((s) => { if (!s.loaded || s.loadError || s.wiped) clear(); });
-    return () => { offSession(); offData(); };
+    return () => { offSession(); offPlus(); offData(); };
   }, [draft]);
+  useEffect(() => {
+    if (plus) return;
+    cancelPick();
+    if (operation.current) operation.current.cancel = true;
+    setExpanded(false); setViewing(null);
+  }, [plus]);
   useEffect(() => {
     if (!viewing) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setViewing(null); } };
@@ -86,7 +94,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     return () => { document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", escape, true); };
   }, [expanded, viewing]);
   useEffect(() => {
-    if (!IS_ULTRA || isMobile) return;
+    if (!plus || isMobile) return;
     return bindImageInput(props.inputTargets?.() ?? [], (files) => { void attach(files); });
   });
   useEffect(() => {
@@ -97,7 +105,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
   });
 
   function openPicker() {
-    if (operation.current || !fileInput.current || current.current.canEdit?.() === false) return;
+    if (!plusEnabled() || operation.current || !fileInput.current || current.current.canEdit?.() === false) return;
     cancelPick();
     const context = current.current.createContext?.() ?? imageEditContext(current.current.canEdit);
     picking.current = { context, targetKey: current.current.targetKey };
@@ -106,12 +114,12 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
   }
 
   async function attach(files: File[], picked?: { context: ImageOperation; targetKey?: string }) {
-    if (!files.length || operation.current || picked && (picked.targetKey !== current.current.targetKey || !picked.context.valid())) { picked?.context.dispose(); return; }
+    if (!plusEnabled() || !files.length || operation.current || picked && (picked.targetKey !== current.current.targetKey || !picked.context.valid())) { picked?.context.dispose(); return; }
     const context = picked?.context ?? createContext?.() ?? imageEditContext(canEdit);
     const targetKey = picked ? picked.targetKey : current.current.targetKey;
     const job = { cancel: false, context };
     operation.current = job;
-    const valid = () => operation.current === job && !job.cancel && current.current.targetKey === targetKey && context.valid();
+    const valid = () => plusEnabled() && operation.current === job && !job.cancel && current.current.targetKey === targetKey && context.valid();
     setBusy(true); current.current.onBusyChange?.(true); setError("");
     try {
       const original = current.current.images ?? [];
@@ -138,7 +146,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     }
   }
 
-  if (!IS_ULTRA || isMobile) return null;
+  if (!plus || isMobile) return null;
   const visible = renderableTaskImages(images);
   const showGallery = visible.length > 0 || busy || !!error;
   if (!showGallery && !props.pickerLabel) return null;

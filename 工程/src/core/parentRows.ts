@@ -4,7 +4,7 @@ import type { DateRow } from "./store";
 import { aliveSubtasks, openRows, overdueSubRows, rowDue, sortRows } from "./store";
 import { cmpYMD } from "./dates";
 
-/** 同一母任务只占一个分组位置，日期仍由rowDue的母手排／最近子规则决定。 */
+/** 同一母任务只占一个分组位置，日期由rowDue选母与待办子中的最近安排。 */
 export function mergeParentRows(rows: readonly DateRow[]): DateRow[] {
   const seen = new Set<string>();
   return rows.flatMap(({ task }): DateRow[] => {
@@ -36,7 +36,7 @@ export function parentRowsForToday(data: Pick<AppData, "tasks" | "settings">, to
     const due = rowDue(row);
     const pastChildren = overdueSubRows(row.task, today);
     const parentPast = !!due && cmpYMD(due, today) < 0;
-    const hasToday = due === today || children.some((child) => rowDue(child) === today);
+    const hasToday = row.task.due === today || due === today || children.some((child) => rowDue(child) === today);
     if (hasToday) todayCount++;
     if (parentPast || pastChildren.length) {
       overdue.push(row);

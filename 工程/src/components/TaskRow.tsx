@@ -18,7 +18,7 @@ import {
 } from "../core/store";
 import PostponeButton from "./PostponeMenu";
 import { overdueParentActions } from "../core/parentRows";
-import { IS_ULTRA } from "../core/version";
+import { usePlus } from "../core/plus";
 import { appStore, updateTask } from "../core/store";
 import { taskImages } from "../core/taskImages";
 import ImageAttachments from "./ImageAttachments";
@@ -96,6 +96,7 @@ export interface TaskRowProps {
 }
 
 export default function TaskRow({ task, sub = null, orderedIds, hideList, bundled, fadeOnDone = true, chain, doneDate, collapsed, tail = "lean", whole = false, parentGroup = false, nested = false, onOpen }: TaskRowProps) {
+  const plus = usePlus();
   const lists = useApp((s) => s.data.lists);
   const selected = useApp((s) => s.ui.selectedIds.includes(task.id));
   const selectedIds = useApp((s) => s.ui.selectedIds);
@@ -386,7 +387,7 @@ export default function TaskRow({ task, sub = null, orderedIds, hideList, bundle
           绝不为了让下面那个徽标可点就把它拆掉——拆了整条右侧信息区都会变成「点了就开卡」。
           徽标自己带 onClick，本来就跑在这句之前 */}
       <span className="meta" onClick={(e) => e.stopPropagation()}>
-        {IS_ULTRA && taskImages((sub ?? task).images).length > 0 && <ImageAttachments compact images={taskImages((sub ?? task).images)}
+        {plus && taskImages((sub ?? task).images).length > 0 && <ImageAttachments compact images={taskImages((sub ?? task).images)}
           targetKey={`${task.id}:${sub?.id ?? "task"}`} label={sub ? "这一步的图片" : "图片"}
           canEdit={() => !!appStore.getState().data.tasks.find((item) => item.id === task.id && !item.deletedAt && (!sub || item.subtasks.some((step) => step.id === sub.id && !step.deletedAt)))}
           onChange={(images) => sub ? updateSubtask(task.id, sub.id, { images }) : updateTask(task.id, { images })} />}

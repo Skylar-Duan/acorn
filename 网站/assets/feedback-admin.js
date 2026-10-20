@@ -1,4 +1,4 @@
-/* 橡果介绍页 · 管理员看反馈与 Ultra 授权
+/* 橡果介绍页 · 管理员看反馈与 Plus 授权
  * ============================================================
  * 只有管理员看得到：页面加载后自己问一次服务端 /api/feedback，
  * 200 才在「打开网页版」右边放一个「管理」按钮；普通访客什么也看不到。
@@ -194,8 +194,8 @@
     state.open = typeof n === "number" && n >= 0 ? n : state.open;
     ui.badge.textContent = state.open > 99 ? "99+" : String(state.open);
     ui.badge.hidden = state.open === 0;
-    ui.btn.setAttribute("aria-label", state.open ? "管理，" + state.open + " 条反馈没处理" : "管理反馈与Ultra授权");
-    ui.title.textContent = state.section === "ultra" ? "Ultra 授权" : state.open ? "反馈 · " + state.open + " 条没处理" : "反馈";
+    ui.btn.setAttribute("aria-label", state.open ? "管理，" + state.open + " 条反馈没处理" : "管理反馈与Plus授权");
+    ui.title.textContent = state.section === "ultra" ? "Plus 授权" : state.open ? "反馈 · " + state.open + " 条没处理" : "反馈";
   }
 
   function buildButton() {
@@ -228,7 +228,7 @@
     var sections = el("div", "fbk-sections");
     sections.setAttribute("aria-label", "管理内容");
     ui.sections = {};
-    [["feedback", "反馈"], ["ultra", "Ultra 授权"]].forEach(function (t) {
+    [["feedback", "反馈"], ["ultra", "Plus 授权"]].forEach(function (t) {
       var b = el("button", "fbk-section", t[1]);
       b.type = "button";
       b.addEventListener("click", function () {
@@ -417,7 +417,7 @@
       });
   }
 
-  // ---------- Ultra 授权（只读，沿用管理员身份；不读取任务、验证码或令牌字段） ----------
+  // ---------- Plus 授权（只读，沿用管理员身份；旧API路径保留迁移兼容） ----------
 
   function beijing(iso) {
     if (!iso || isNaN(new Date(iso).getTime())) return "暂无记录";
@@ -426,7 +426,7 @@
 
   function sourceName(ultra) {
     if (ultra.source === "default") return "管理员默认资格";
-    if (ultra.source === "verified_code") return "验证码验证";
+    if (ultra.source === "verified_code") return "历史验证码验证";
     return ultra.enabled ? "已授权" : "尚未授权";
   }
 
@@ -459,7 +459,7 @@
       ["连续到期未完成", String(typeof ultra.consecutiveFailures === "number" ? ultra.consecutiveFailures : 0) + " 次"],
       ["锁定至（北京）", ultra.lockedUntil ? beijing(ultra.lockedUntil) : "未锁定"]]);
     fields(card, entries);
-    if (ultra.source === "default") card.appendChild(el("p", "fbk-account-note", "管理员默认拥有 Ultra 资格，不代表曾验证验证码或完成下载。"));
+    if (ultra.source === "default") card.appendChild(el("p", "fbk-account-note", "此账号默认拥有 Plus 资格，不代表曾验证验证码或完成下载。"));
     if (!detail) {
       var foot = el("div", "fbk-foot");
       var button = el("button", "btn btn-ghost btn-sm", "查看详情");
@@ -489,7 +489,7 @@
   function loadAccount(id) {
     var my = ++state.seq;
     ui.filters.hidden = true;
-    ui.title.textContent = "Ultra 授权 · 详情";
+    ui.title.textContent = "Plus 授权 · 详情";
     ui.body.replaceChildren(el("div", "fbk-msg", "正在读取…"));
     request("GET", "/api/admin/ultra/accounts/" + encodeURIComponent(String(id))).then(function (item) {
       if (my !== state.seq) return;
@@ -516,7 +516,7 @@
       if (my !== state.seq) return;
       if (!data || !Array.isArray(data.items)) throw new Error("bad accounts");
       if (reset) ui.body.replaceChildren(); else if (more) more.remove();
-      if (reset) ui.body.appendChild(el("p", "fbk-account-note", "只读账号授权记录。验证码验证即取得资格；完整下载记录单独显示。所有时间均为北京时间。"));
+      if (reset) ui.body.appendChild(el("p", "fbk-account-note", "只读 Plus 账号资格记录。历史验证与完整下载记录单独显示，所有时间均为北京时间。"));
       if (reset && !data.items.length) ui.body.appendChild(el("div", "fbk-empty", view === "enabled" ? "暂无已授权账号" : "暂无账号"));
       data.items.forEach(function (item) { if (item && item.ultra && Number.isSafeInteger(item.id) && item.id > 0) ui.body.appendChild(accountCard(item, false)); });
       state.next = Number.isSafeInteger(data.next) && data.next > 0 ? data.next : null;

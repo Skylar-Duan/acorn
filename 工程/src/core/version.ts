@@ -27,12 +27,13 @@ export const APP_PLATFORM: Platform = isWebBuild ? "web" : isAndroid ? "android"
 type Published = Partial<Record<Platform, string>>;
 type BuildStamp = { platform?: string; version?: string; edition?: string };
 
-/** Ultra 是 Windows 独立构建，普通构建和其他端不会因未知字段而露出图片。 */
+/** 旧edition戳只为读取历史保留；新的所有Windows用户共用一个主包。 */
 export function pickEdition(platform: Platform, build?: BuildStamp): Edition {
-  return platform === "desktop" && build?.platform === "desktop" && build.edition === "ultra" ? "ultra" : "normal";
+  return "normal";
 }
 export const APP_EDITION: Edition = pickEdition(APP_PLATFORM, typeof __APP_BUILD__ === "object" ? __APP_BUILD__ : undefined);
-export const IS_ULTRA: boolean = APP_EDITION === "ultra";
+/** @deprecated 资格由core/plus运行时识别，不能再用此常量开功能。 */
+export const IS_ULTRA: boolean = false;
 
 /** 这一端现在是几号。打包脚本给某一端单独打包（尤其测试版）时会盖一个戳，
  *  戳对得上这一端就用戳上的号；否则用 versions.json 里这一端公开的号 */

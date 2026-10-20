@@ -78,9 +78,9 @@ describe("手机任务详情的母任务显示日期", () => {
     expect(appStore.getState().data.tasks[0].due).toBeNull();
   });
 
-  it("母任务手排日期和钟点优先，省略最近子任务来源", () => {
+  it("母任务手排更晚时显示最近子安排，编辑日期和钟点仍是母原值", () => {
     renderTask(mother({ due: "2026-10-16", dueTime: "18:00" }));
-    expect(dateRow().querySelector(".msh-prop-v")!.textContent).toBe("明天 18:00");
+    expect(dateRow().querySelector(".msh-prop-v")!.textContent).toBe("今天 09:00");
     act(() => dateRow().click());
     expect(document.querySelector<HTMLInputElement>('.msh-seg input[type="date"]')!.value).toBe("2026-10-16");
     expect(document.querySelector<HTMLInputElement>('.msh-seg input[type="time"]')!.value).toBe("18:00");

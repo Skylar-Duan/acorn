@@ -25,7 +25,7 @@ import RepeatMenu from "./RepeatMenu";
 import { useLeaving } from "./motion";
 import { useGuideEntry } from "./GuideSheet";
 import ImageAttachments from "./ImageAttachments";
-import { IS_ULTRA } from "../core/version";
+import { plusEnabled } from "../core/plus";
 import { imageEditContext } from "../core/imageEditContext";
 import { imageListUpdateError } from "../core/taskImages";
 import TaskPropertyPopover from "./TaskPropertyPopover";
@@ -167,7 +167,7 @@ export default function QuickAddBar({
   function submit(parsed: ParseResult): boolean {
     if (!parsed.title.trim() || submitting.current || isTaskCategoryDialogOpen()) return false;
     if (imageBusy.current) { showToast("图片还在处理，请稍候再保存", false); return false; }
-    const draftImages = IS_ULTRA ? imagesRef.current : [];
+    const draftImages = plusEnabled() ? imagesRef.current : [];
     const revision = imageRevision.current;
     const capacity = imageListUpdateError(appStore.getState().data, [], draftImages);
     if (capacity) { showToast(capacity, false); return false; }
@@ -187,7 +187,7 @@ export default function QuickAddBar({
     const who = parsed.who.length ? parsed.who : pick.who.length ? pick.who : defaults?.who ?? [];
     const commit = (listId: string | null, finalWho: string[]): boolean => {
       const current = appStore.getState();
-      if (!mounted.current || imageRevision.current !== revision || !current.loaded || current.loadError || current.wiped) return false;
+      if (!mounted.current || imageRevision.current !== revision || !current.loaded || current.loadError || current.wiped || draftImages.length > 0 && !plusEnabled()) return false;
       const imageError = imageListUpdateError(current.data, [], draftImages);
       if (imageError) { showToast(imageError, false); return false; }
       // 等新名字确认时，原来点选/默认的清单可能已被云同步删除。

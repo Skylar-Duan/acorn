@@ -300,7 +300,7 @@ describe("下载安装包", () => {
     const gap = DOWNLOAD_STALL_MS - 5000; // 每块之间差一点就到超时，但一直有新字节
     vi.stubGlobal("fetch", streamFetch([new Uint8Array(10), new Uint8Array(10), new Uint8Array(10)], gap));
     const seen: number[] = [];
-    const done = downloadPackage(pkg(), (p) => seen.push(p.received)).then((v) => v, (e) => e as Error);
+    const done = downloadPackage({ ...pkg(), size: 30 }, (p) => seen.push(p.received)).then((v) => v, (e) => e as Error);
     await vi.advanceTimersByTimeAsync(gap * 6);
     expect(await done).toBe("saved:Acorn_1.7.0.exe");
     expect(seen).toEqual([10, 20, 30]); // 进度是一路报上来的

@@ -74,8 +74,10 @@ describe("重复的计划：哪些算", () => {
         subtasks: [sub({ title: "导出流水" }), sub({ title: "每周核一次", repeat: { kind: "weekly", days: [1] }, due: "2026-08-24" })],
       }),
     ]));
-    expect(names(rows)).toEqual(["月底对账 › 每周核一次", "月底对账"]);
-    expect(rows[1].sub).toBeNull();
+    // 母行也采用最近待办日期，两行同刻同重要性时保持原序；不覆盖母任务自己的月底安排。
+    expect(names(rows)).toEqual(["月底对账", "月底对账 › 每周核一次"]);
+    expect(rows[0].sub).toBeNull();
+    expect(rows[0].task.due).toBe("2026-08-31");
   });
 
   it("母任务做完 / 放弃了，它底下带循环的那一步也不出现", () => {

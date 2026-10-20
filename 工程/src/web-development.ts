@@ -1,0 +1,30 @@
+import "./styles/web-development.css";
+
+// 与桌面入口隔离：暂停开放期间不初始化账号、账本、提醒或同步。
+document.title = "橡果 · 正在开发中";
+const root = document.getElementById("root")!;
+const backdrop = document.createElement("main");
+backdrop.className = "development-backdrop";
+const dialog = document.createElement("section");
+dialog.className = "development-dialog";
+dialog.setAttribute("role", "alertdialog");
+dialog.setAttribute("aria-modal", "true");
+dialog.setAttribute("aria-labelledby", "development-title");
+dialog.setAttribute("aria-describedby", "development-description");
+const mark = document.createElement("div");
+mark.className = "development-mark";
+mark.setAttribute("aria-hidden", "true");
+mark.textContent = "A";
+const title = document.createElement("h1");
+title.id = "development-title";
+title.textContent = "正在开发中";
+const description = document.createElement("p");
+description.id = "development-description";
+description.textContent = "我们目前专注桌面版本，欢迎使用 Windows 版橡果。";
+const download = document.createElement("a");
+download.href = "https://acorn.cdpandas.com/download/windows/Acorn-latest-x64-setup.exe";
+download.textContent = "下载 Windows 版";
+dialog.append(mark, title, description, download);
+backdrop.append(dialog);
+root.replaceChildren(backdrop);
+download.focus();

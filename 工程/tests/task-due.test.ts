@@ -68,7 +68,7 @@ afterEach(async () => {
   await flushSave();
 });
 
-describe("母任务没手排日期时，从还欠着的子任务取最早安排", () => {
+describe("母任务和待办子任务取最早安排，只计算不写回", () => {
   it("显示最早日期，逾期的也算；不改写母任务和任何子任务", () => {
     const task = parent({ subtasks: [step("future", TODAY), step("overdue", "2026-10-12")] });
     const before = JSON.stringify(task);
@@ -78,11 +78,28 @@ describe("母任务没手排日期时，从还欠着的子任务取最早安排"
     expect(task.due).toBeNull();
   });
 
-  it("母任务有手排日期时，日期和钟点都优先用母任务的", () => {
-    const task = parent({ due: "2026-10-30", dueTime: "16:00" });
-    expect(taskDue(task)).toBe("2026-10-30");
-    expect(taskTime(task)).toBe("16:00");
-    expect(taskTime({ ...task, dueTime: null })).toBeNull();
+  it.each([
+    ["2026-10-14", "16:00", "2026-10-14", "16:00"],
+    ["2026-10-30", "16:00", TODAY, "09:00"],
+    [null, "06:00", TODAY, "09:00"],
+  ])("母日期%s钟点%s：用最近安排%s %s，原手排字段不动", (due, dueTime, expectedDue, expectedTime) => {
+    const task = parent({ due, dueTime, subtasks: [step("next", TODAY, { dueTime: "09:00" })] });
+    const before = JSON.stringify(task);
+    expect(taskDue(task)).toBe(expectedDue); expect(taskTime(task)).toBe(expectedTime);
+    expect(JSON.stringify(task)).toBe(before);
+  });
+
+  it.each([
+    ["14:00", "09:00", "09:00"], ["09:00", "14:00", "09:00"],
+    [null, "09:00", "09:00"], ["09:00", null, "09:00"], [null, null, null],
+  ])("同日母%s子%s，日期与最早钟点%s来自同一安排", (motherTime, childTime, expected) => {
+    const task = parent({ due: TODAY, dueTime: motherTime, subtasks: [step("same", TODAY, { dueTime: childTime })] });
+    expect(taskDue(task)).toBe(TODAY); expect(taskTime(task)).toBe(expected);
+  });
+
+  it("更近子任务没有钟点时，不拼接较晚母任务钟点；继承日期的子可使用自己的更早钟点", () => {
+    expect(taskTime(parent({ due: "2026-10-30", dueTime: "06:00", subtasks: [step("next", TODAY)] }))).toBeNull();
+    expect(taskTime(parent({ due: TODAY, dueTime: "11:00", subtasks: [step("inherited", null, { dueTime: "09:00" })] }))).toBe("09:00");
   });
 
   it("排除已完成、回收站、放弃的步骤，兼容老子任务缺状态字段", () => {
@@ -105,6 +122,15 @@ describe("母任务没手排日期时，从还欠着的子任务取最早安排"
       expect(taskDue(parent(patch))).toBeNull();
       expect(taskTime(parent(patch))).toBeNull();
       expect(taskDue(parent({ ...patch, due: TODAY }))).toBe(TODAY);
+      const settled = parent({ ...patch, due: "2026-10-30", dueTime: "16:00", subtasks: [step("earlier", TODAY, { dueTime: "09:00" })] });
+      expect(taskDue(settled)).toBe("2026-10-30"); expect(taskTime(settled)).toBe("16:00");
+    },
+  );
+
+  it.each([{ done: true }, { droppedAt: STAMP }, { deletedAt: STAMP }])(
+    "最近子已收场/删除时，母任务保留自己的更早有效安排 %j", (patch) => {
+      const task = parent({ due: "2026-10-25", dueTime: "11:00", subtasks: [step("ignored", TODAY, { dueTime: "08:00", ...patch }), step("later", "2026-10-30", { dueTime: "09:00" })] });
+      expect(taskDue(task)).toBe("2026-10-25"); expect(taskTime(task)).toBe("11:00");
     },
   );
 
@@ -129,10 +155,18 @@ describe("母任务没手排日期时，从还欠着的子任务取最早安排"
     expect(tasksForToday(data, TODAY).todays.map((r) => r.sub!.id)).toEqual(["next"]);
   });
 
-  it("清单分组和排序把母任务按最近步骤安排，手排仍优先", () => {
+  it("母排得比子晚时，未排期兄弟仍只继承母原日期/钟点", () => {
+    const task = parent({ due: "2026-10-30", dueTime: "16:00", subtasks: [step("next", TODAY, { dueTime: "09:00" }), step("blank", null)] });
+    expect(taskDue(task)).toBe(TODAY); expect(taskTime(task)).toBe("09:00");
+    expect(rowDue({ task, sub: task.subtasks[1] })).toBe("2026-10-30");
+    expect(rowTime({ task, sub: task.subtasks[1] })).toBe("16:00");
+    expect(task.due).toBe("2026-10-30");
+  });
+
+  it("清单分组和排序按最近安排，母日期更早时仍在前", () => {
     const auto = parent();
     const earlier = parent({ id: "earlier", due: "2026-10-14" });
-    const manual = parent({ id: "manual", due: "2026-10-25" });
+    const manual = parent({ id: "manual", due: "2026-10-25", subtasks: [step("after-mother", "2026-10-30")] });
     const blank = parent({ id: "blank", subtasks: [] });
     const sorted = sortTasks([blank, manual, auto, earlier], "time");
     expect(sorted.map((t) => t.id)).toEqual(["earlier", "parent", "manual", "blank"]);
@@ -188,6 +222,25 @@ describe("母任务没手排日期时，从还欠着的子任务取最早安排"
     postponeTasks([task.id], 1);
     expect(appStore.getState().data.tasks[0].due).toBe("2026-10-21");
   });
+
+  it.each(["rows", "tasks"] as const)("%s显式顺延母任务以较晚手排日期为基准，子日期和钟点不动", (entry) => {
+    const task = parent({ due: "2026-10-30", dueTime: "16:00", subtasks: [step("next", TODAY, { dueTime: "09:00" })] });
+    put(task);
+    if (entry === "rows") postponeRows([{ task, sub: null }], 1); else postponeTasks([task.id], 1);
+    const next = appStore.getState().data.tasks[0];
+    expect(next.due).toBe("2026-10-31"); expect(next.dueTime).toBe("16:00");
+    expect(next.reminder).toBe("2026-10-31T16:00"); expect(next.subtasks).toEqual(task.subtasks);
+    expect(taskDue(next)).toBe(TODAY); undo(); expect(appStore.getState().data.tasks[0]).toEqual(task);
+  });
+
+  it("选日顺延不提前较晚母日期，但允许单独顺延更近子任务", () => {
+    const task = parent({ due: "2026-10-30", dueTime: "16:00", subtasks: [step("next", TODAY, { dueTime: "09:00" })] });
+    put(task); const before = appStore.getState().data;
+    postponeRowsTo([{ task, sub: null }], "2026-10-20"); expect(appStore.getState().data).toBe(before); expect(appStore.getState().undoDepth).toBe(0);
+    postponeRowsTo([{ task, sub: task.subtasks[0] }], "2026-10-20");
+    expect(appStore.getState().data.tasks[0]).toMatchObject({ due: "2026-10-30", dueTime: "16:00" });
+    expect(appStore.getState().data.tasks[0].subtasks[0]).toMatchObject({ due: "2026-10-20", dueTime: "09:00" });
+  });
 });
 
 describe("用户实际看到的母任务安排", () => {
@@ -204,6 +257,17 @@ describe("用户实际看到的母任务安排", () => {
     expect(host.contains(date)).toBe(false);
     expect(date?.value).toBe("");
     expect(appStore.getState().data.tasks[0].due).toBeNull();
+  });
+
+  it("母日期更晚时显示最近子安排，日期编辑框仍显示手排母日期且不写回", () => {
+    const task = parent({ due: "2026-10-30", dueTime: "16:00", subtasks: [step("next", TODAY, { dueTime: "09:00" })] });
+    put(task); const before = appStore.getState().data;
+    const host = mount(createElement(TaskCard, { task }));
+    const pill = host.querySelector<HTMLButtonElement>('.tc-properties > button.pill')!;
+    expect(pill.textContent).toContain("今天 09:00"); act(() => pill.click());
+    expect(document.querySelector<HTMLInputElement>('[data-task-popover="parent"] input[type="date"]')?.value).toBe("2026-10-30");
+    expect(document.querySelector<HTMLInputElement>('[data-task-popover="parent"] input[type="time"]')?.value).toBe("16:00");
+    expect(appStore.getState().data).toBe(before); expect(appStore.getState().data.tasks[0].dueTime).toBe("16:00");
   });
 
   it("整件事清单行在今天分组展示最近步骤日期", () => {

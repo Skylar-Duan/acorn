@@ -5,7 +5,7 @@
 // （themeCtl），否则开着的说明窗会一直停在打开那一刻的配色。两处必须发同一份东西，
 // 各写一份迟早分家。
 import { allTags, allWho, appStore } from "./store";
-import { IS_ULTRA } from "./version";
+import { plusEnabled } from "./plus";
 import { imageWindowContext } from "./imageWindowContext";
 
 export interface WindowContext {
@@ -18,6 +18,7 @@ export interface WindowContext {
   weekendDay: "sat" | "sun";
   imageContextId?: string;
   imageBudgetUsed?: number;
+  plusEnabled?: boolean;
 }
 
 export function windowContext(): WindowContext {
@@ -29,6 +30,7 @@ export function windowContext(): WindowContext {
     theme: d.settings.theme,
     mode: d.settings.mode,
     weekendDay: d.settings.weekendDay === "sat" ? "sat" : "sun",
-    ...(IS_ULTRA ? imageWindowContext() : {}),
+    plusEnabled: plusEnabled(),
+    ...(plusEnabled() ? imageWindowContext() : {}),
   };
 }

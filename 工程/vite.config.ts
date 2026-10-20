@@ -13,7 +13,7 @@ const versionTable = JSON.parse(readFileSync(resolve(__dirname, "versions.json")
 const buildStamp = {
   platform: process.env.ACORN_BUILD_PLATFORM ?? "",
   version: process.env.ACORN_BUILD_VERSION ?? "",
-  edition: process.env.ACORN_BUILD_EDITION === "ultra" ? "ultra" : "normal",
+  edition: "normal",
 };
 
 /** 网页版挂在 acorn.cdpandas.com 的这个路径下。2026-09-21 起是根路径 /（原来是 /app/，
@@ -61,6 +61,19 @@ function webFontPreload(): Plugin {
   };
 }
 
+// 网页端暂缓开放：构建时换掉入口，不加载App、不读取本机账本或恢复云同步。
+function webDevelopmentGate(): Plugin {
+  return {
+    name: "acorn-web-development-gate",
+    transformIndexHtml: {
+      order: "pre",
+      handler: (html) => html
+        .replace('src="/src/main.tsx"', 'src="/src/web-development.ts"')
+        .replace("</body>", '<noscript><p style="text-align:center;padding:2rem">正在开发中。我们目前专注桌面版本。</p></noscript></body>'),
+    },
+  };
+}
+
 // `npx vite build --mode web` 出网页版，不带 --mode 就还是桌面 / 安卓那条。
 // 不另开一份配置文件：两端九成是同一套东西，分叉只有下面标着 isWeb 的几处，
 // 写在一起才看得见到底差在哪。
@@ -68,7 +81,7 @@ export default defineConfig(({ mode }) => {
   const isWeb = mode === "web" || process.env.VITE_ACORN_WEB === "1";
 
   return {
-    plugins: [react(), ...(isWeb ? [webFontPreload()] : [])],
+    plugins: [react(), ...(isWeb ? [webDevelopmentGate(), webFontPreload()] : [])],
     define: {
       __APP_VERSIONS__: JSON.stringify(versionTable.public),
       __APP_BUILD__: JSON.stringify(buildStamp),

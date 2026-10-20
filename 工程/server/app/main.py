@@ -442,6 +442,7 @@ def reset(body: ResetIn, request: Request) -> TokenOut:
 @app.get("/api/me")
 def me(user: CurrentUser) -> dict:
     vault = db.get_vault(int(user["id"]))
+    plus = ultra.enabled(db, int(user["id"]))
     return {
         "email": user["email"],
         "createdAt": user["created_at"],
@@ -455,8 +456,11 @@ def me(user: CurrentUser) -> dict:
         "displayName": user["display_name"],
         # 账号在 cdpandas：改密码走「忘记密码」，注销只删橡果这边
         "account": "cdpandas",
-        "ultra": ultra.enabled(db, int(user["id"])),
-        "maxVaultBytes": settings.ultra_max_vault_bytes if ultra.enabled(db, int(user["id"])) else settings.max_vault_bytes,
+        "plus": plus,
+        "plusCanToggle": ultra.can_toggle_plus(user),
+        # 旧 Ultra 客户端升级到统一包前仍识别这个字段。
+        "ultra": plus,
+        "maxVaultBytes": settings.ultra_max_vault_bytes if plus else settings.max_vault_bytes,
     }
 
 

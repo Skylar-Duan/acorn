@@ -360,7 +360,8 @@ describe("④ 开机自动取回：三道闸门，缺一不取", () => {
     await initSync();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(whoAmI).not.toHaveBeenCalled();
+    // 启动会单独读取一次账号资格；资格查询不能替代账本合并或触发整本拉取。
+    expect(whoAmI).toHaveBeenCalledTimes(1);
     expect(pullOnly).not.toHaveBeenCalled();
     expect(syncOnce).toHaveBeenCalledTimes(1);
     expect(appStore.getState().data.tasks.map((t) => t.title)).toEqual(["本机的事"]);
@@ -468,6 +469,8 @@ describe("④ 开机自动取回：三道闸门，缺一不取", () => {
   it("「数据打不开」和「正等着用户挑文件夹」这两种状态下都不许自动取回", async () => {
     for (const patch of [{ loadError: "目录不可用" }, { rescue: [] as never[] }]) {
       whoAmI.mockClear();
+      pullOnly.mockClear();
+      syncOnce.mockClear();
       await signOut();
       appStore.setState({
         data: { ...defaultData(), lists: [], tasks: [] }, noDataFile: true,
@@ -476,7 +479,10 @@ describe("④ 开机自动取回：三道闸门，缺一不取", () => {
       loadSession.mockResolvedValue({ ...SESSION });
       whoAmI.mockResolvedValue({ email: "a@b.c", rev: 7, updatedAt: null, device: "x", hasData: true });
       await initSync();
-      expect(whoAmI).not.toHaveBeenCalled();
+      // 仍可读取 Plus 资格，但异常账本不许自动取回，也不许推送合并。
+      expect(whoAmI).toHaveBeenCalledTimes(1);
+      expect(pullOnly).not.toHaveBeenCalled();
+      expect(syncOnce).not.toHaveBeenCalled();
     }
   });
 });

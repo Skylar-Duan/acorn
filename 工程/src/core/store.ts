@@ -946,7 +946,8 @@ export function postponeRows(rows: DateRow[], days = 1) {
         const subHits = subs.filter((r) => r.task.id === t.id);
         let next = t;
         if (taskIds.includes(t.id)) {
-          const due = taskDue(t);
+          // 显式顺延母任务以手排日期为准，不能被更近子安排拉回过去。
+          const due = t.due ?? taskDue(t);
           const base = due && cmpYMD(due, today) > 0 ? due : today;
           const nd = addDays(base, days);
           next = { ...next, due: nd, postponeCount: t.postponeCount + 1, reminder: regenReminder(t, nd) };
@@ -983,7 +984,7 @@ export function postponeTasks(ids: string[], days = 1) {
       ...d,
       tasks: d.tasks.map((t) => {
         if (!ids.includes(t.id)) return t;
-        const due = taskDue(t);
+        const due = t.due ?? taskDue(t);
         const base = due && cmpYMD(due, today) > 0 ? due : today;
         const nd = addDays(base, days);
         return {
@@ -1019,7 +1020,7 @@ export function postponeRowsTo(rows: DateRow[], ymd: string) {
   // 不然「选日期…」能把子任务的截止日提前，还提示「已顺延」
   const wouldPullEarlier = (r: DateRow) => {
     const t = cur.get(r.task.id) ?? r.task;
-    const due = r.sub ? subDue(t.subtasks.find((s) => s.id === r.sub!.id) ?? r.sub, t) : taskDue(t);
+    const due = r.sub ? subDue(t.subtasks.find((s) => s.id === r.sub!.id) ?? r.sub, t) : t.due ?? taskDue(t);
     return !!due && cmpYMD(ymd, due) < 0;
   };
   rows = rows.filter((r) => !wouldPullEarlier(r));

@@ -8,7 +8,7 @@ import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { appendedSubCategories, editedCategoryPatch, editedTitlePatch, parseEditedTitle } from "../core/editSyntax";
 import { isTaskCategoryDialogOpen, prepareSubtaskCategories, prepareTaskCategories } from "../core/categoryCreation";
-import { IS_ULTRA } from "../core/version";
+import { plusEnabled, usePlus } from "../core/plus";
 import { imageListUpdateError, taskImages } from "../core/taskImages";
 import { imageEditContext } from "../core/imageEditContext";
 import { rememberTaskSubtasksFolded, taskSubtasksFolded } from "../core/subtaskFold";
@@ -43,6 +43,7 @@ const POPUP_WRITE = { noPostponeCount: true } as const;
 type MenuName = "date" | "repeat" | "list" | "priority" | "who" | "tags" | null;
 
 export default function TaskCard({ task, locateSubId, detailMode = false }: { task: Task; locateSubId?: string; detailMode?: boolean }) {
+  const plus = usePlus();
   // B8：只订阅真用得上的三片，派生也都缓存起来。以前是整份 data + 每次渲染重算一遍
   // allWho/allTags——在标题框里打一个字并不改数据，不该重复统计全库需求方和标签
   const lists = useApp((s) => s.data.lists);
@@ -351,7 +352,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
     const raw = newSubRef.current;
     const images = newSubImagesRef.current;
     const revision = newSubImageRevision.current;
-    const capacity = imageListUpdateError(appStore.getState().data, [], IS_ULTRA ? images : []);
+    const capacity = imageListUpdateError(appStore.getState().data, [], plusEnabled() ? images : []);
     if (capacity) { showToast(capacity, false); return false; }
     const r = parseEditedTitle(raw, { now: new Date(), listNames: lists.map((l) => l.name), weekendDay: settings.weekendDay, keepNewlines: true, skip: ["tag"] });
     const title = r.title.trim();
@@ -359,7 +360,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
     newSubRef.current = "";
     setNewSub("");
     const categories = await prepareSubtaskCategories(r.chips.filter((c) => c.kind === "list").map((c) => c.text), r.who,
-      () => newSubImageRevision.current === revision && !imageListUpdateError(appStore.getState().data, [], IS_ULTRA ? images : []) && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
+      () => newSubImageRevision.current === revision && (!images.length || plusEnabled()) && !imageListUpdateError(appStore.getState().data, [], images) && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt));
     if (!categories) {
       // 取消创建仍保留这句草稿；等待期间若已打了下一句，就不覆盖新输入。
       if (!newSubRef.current && appStore.getState().ui.expandedId === task.id) {
@@ -376,7 +377,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
       repeat: r.repeat,
       who: categories.who,
       listIds: categories.listIds,
-      ...(IS_ULTRA && images.length ? { images } : {}),
+      ...(plusEnabled() && images.length ? { images } : {}),
     });
     if (newSubImagesRef.current === images) { newSubImagesRef.current = []; setNewSubImages([]); newSubImageRevision.current++; }
     return true;
@@ -587,7 +588,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             <span className="sub-inherited">{PRIORITY_LABEL[task.priority]}</span>
           )}
         </button>
-        {IS_ULTRA && <ImageAttachments compact images={taskImages(s.images)} label="这一步的图片" pickerLabel={`给子任务添加图片 ${s.title}`}
+        {plus && <ImageAttachments compact images={taskImages(s.images)} label="这一步的图片" pickerLabel={`给子任务添加图片 ${s.title}`}
           targetKey={`${task.id}:${s.id}`}
           inputTargets={() => [subInputRefs.current.get(s.id)]}
           canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((sub) => sub.id === s.id && !sub.deletedAt)}
@@ -762,13 +763,13 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             weekendDay={settings.weekendDay}
             inputStyle={{ fontSize: 13 }}
           />
-          {IS_ULTRA && <ImageAttachments images={newSubImages} label="新子任务图片" pickerLabel="给新子任务添加图片" draft
+          <ImageAttachments images={newSubImages} label="新子任务图片" pickerLabel="给新子任务添加图片" draft
             targetKey={`new:${task.id}`}
             inputTargets={() => [newSubInputRef.current]}
             onBusyChange={(busy) => { newSubImageBusy.current = busy; }}
             canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
             createContext={() => { const revision = newSubImageRevision.current; return imageEditContext(() => newSubImageRevision.current === revision && appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)); }}
-            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} />}
+            onChange={(images) => { if (!images.length) newSubImageRevision.current++; newSubImagesRef.current = images; setNewSubImages(images); }} />
         </div>
 
         {/* 阈值跟自动折叠同一个，见上面的 canFoldDone */}

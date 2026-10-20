@@ -12,10 +12,10 @@ const table = JSON.parse(readFileSync("versions.json", "utf8")) as {
 };
 
 describe("号码从哪来", () => {
-  it("图片只属于显式 Windows Ultra 构建，普通版与其他端始终隐藏", () => {
+  it("所有用户共用normal主包，旧Ultra构建戳不能决定Plus资格", () => {
     expect(APP_EDITION).toBe("normal");
     expect(pickEdition("desktop")).toBe("normal");
-    expect(pickEdition("desktop", {platform:"desktop",edition:"ultra"})).toBe("ultra");
+    expect(pickEdition("desktop", {platform:"desktop",edition:"ultra"})).toBe("normal");
     expect(pickEdition("desktop", {platform:"web",edition:"ultra"})).toBe("normal");
     for (const platform of ["android", "web"] as const) {
       expect(pickEdition(platform, {platform,edition:"ultra"})).toBe("normal");

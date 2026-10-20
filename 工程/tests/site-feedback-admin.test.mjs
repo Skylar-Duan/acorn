@@ -28,7 +28,7 @@ async function fixture(t, options = {}) {
     throw new Error("非预期接口 " + path);
   };
   w.eval(script); await tick(); await tick();
-  async function openUltra() { w.document.querySelector(".fbk-btn").click(); button(w, "Ultra 授权").click(); await waitFor(() => !w.document.querySelector(".fbk-msg")); }
+  async function openUltra() { w.document.querySelector(".fbk-btn").click(); button(w, "Plus 授权").click(); await waitFor(() => !w.document.querySelector(".fbk-msg")); }
   return { w, calls, openUltra };
 }
 
@@ -41,11 +41,13 @@ test("非管理员门禁不出入口，不提前探测授权账号", async (t) =
   assert.ok(f.calls.every((c) => c.path.startsWith("/api/feedback?")));
 });
 
-test("失效Bearer后复用CDP Cookie身份，Ultra仅点tab后GET", async (t) => {
+test("Plus只读页保留原门禁与兼容API，失效Bearer后复用CDP Cookie", async (t) => {
   const f = await fixture(t, { fetch: (path, init) => path.includes("/api/feedback?") && init.headers.Authorization ? json({}, 401) : null });
   assert.equal(f.calls.length, 2);
   assert.ok(f.calls.every((c) => !c.path.startsWith("/api/admin/ultra/")));
   await f.openUltra();
+  assert.match(f.w.document.querySelector("dialog").textContent, /Plus 授权/);
+  assert.doesNotMatch(f.w.document.querySelector("dialog").textContent, /Ultra/);
   const calls = f.calls.filter((c) => c.path.startsWith("/api/admin/ultra/"));
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, "/api/admin/ultra/accounts?status=enabled&limit=50");
@@ -67,7 +69,7 @@ test("默认资格不伪造授权时间，验证码授权与完整下载分别�
 test("已授权与全部筛选切换，旧响应不能覆盖新筛选", async (t) => {
   let release;
   const f = await fixture(t, { fetch: (path) => path.includes("/api/admin/ultra/accounts?status=enabled") ? new Promise((resolve) => { release = resolve; }) : path.includes("/api/admin/ultra/accounts?status=all") ? json({ items: [account(9, null)], next: null }) : null });
-  f.w.document.querySelector(".fbk-btn").click(); button(f.w, "Ultra 授权").click();
+  f.w.document.querySelector(".fbk-btn").click(); button(f.w, "Plus 授权").click();
   await waitFor(() => release); button(f.w, "全部账号").click();
   await waitFor(() => f.w.document.querySelector(".fbk-account"));
   release(json({ items: [account(1)], next: null })); await tick(); await tick();
@@ -124,7 +126,7 @@ test("关闭后到达的详情不恢复内容，恶意账号字段只当文本",
 test("空列表与读取失败有可操作重试", async (t) => {
   let fail = true;
   const f = await fixture(t, { fetch: (path) => path.startsWith("/api/admin/ultra/") ? (fail ? Promise.reject(new Error("offline")) : json({ items: [], next: null })) : null });
-  f.w.document.querySelector(".fbk-btn").click(); button(f.w, "Ultra 授权").click();
+  f.w.document.querySelector(".fbk-btn").click(); button(f.w, "Plus 授权").click();
   await waitFor(() => button(f.w, "重试")); fail = false; button(f.w, "重试").click();
   await waitFor(() => f.w.document.querySelector(".fbk-empty"));
   assert.equal(f.w.document.querySelector(".fbk-empty").textContent, "暂无已授权账号");
