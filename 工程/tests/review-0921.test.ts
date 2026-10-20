@@ -197,11 +197,19 @@ import { existsSync, readFileSync } from "node:fs";
 // 验收工具不入git。详细验法随发布进入历史，发布后继续检查，不能因pending清空而漏验。
 const PENDING = "../_work/验收单工具/最新改动.json";
 const RELEASE_CHECKS = "../_work/验收单工具/发布验收.json";
+const CANDIDATES = "../_work/验收单工具/候选归档/";
 type ReviewCheck = { id: string; what: string; how: string[]; verified: boolean; screens: { src: string }[]; current?: Partial<ReviewCheck> };
-type ReleaseChecks = { checks?: ReviewCheck[] };
+type ReleaseChecks = { checks?: ReviewCheck[]; note?: string; statusLabel?: string };
 describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", () => {
   const pend = existsSync(PENDING) ? JSON.parse(readFileSync(PENDING, "utf8")) : {};
   const archive: Record<string, ReleaseChecks | string> = existsSync(RELEASE_CHECKS) ? JSON.parse(readFileSync(RELEASE_CHECKS, "utf8")) : {};
+  // 这些项目内资产不入git；整个describe沿原模式在没有本地验收资产的新clone跳过。
+  // 资产存在时，稳定文件名指向完整候选，不依赖某次备份的时间戳。
+  const candidate = (name: string) => {
+    const path = CANDIDATES + name;
+    expect(existsSync(path), `完整候选应保全：${name}`).toBe(true);
+    return JSON.parse(readFileSync(path, "utf8"));
+  };
   const pendingItems = (p: string): ReviewCheck[] => pend[p]?.items ?? [];
   const items = (p: string): ReviewCheck[] => [
     ...pendingItems(p),
@@ -217,23 +225,30 @@ describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", ()
   it("网页没有「更新弹窗」那一项", () => {
     expect(items("web").map((x) => x.id)).not.toContain("w-2609d-dialog");
   });
-  it("桌面说明：攒着改动时写明对应哪个测试版、已经装了；刚发完正式版时写明发的是几号", () => {
+  it("桌面说明区分待核测试版与正式交付资料，不把准备中冒充已发布", () => {
     // 不钉死整句——每打一次新测试版这句话就会改一次，只钉这层意思
     if (pendingItems("desktop").length) {
       expect(pend.desktop.note).toMatch(/beta\.\d+/);
       expect(pend.desktop.note).toContain("已装到这台电脑");
     } else {
-      expect(pend.desktop.note).toMatch(/\d+\.\d+\.\d+ 已于 \d{4}-\d{2}-\d{2} 正式发布/);
+      expect(pend.desktop.since).toBe("1.17.0");
+      expect(pend.desktop.note).toContain("1.17.0");
+      expect(pend.desktop.note).toMatch(/发布状态以最终交付通知为准|已于 \d{4}-\d{2}-\d{2} 正式发布/);
     }
   });
-  it("本轮正式历史完整保留旧桌面14条、网页34条，并增加今天实际交付的逐项验法", () => {
-    for (const [p, version, oldCount] of [["desktop", "1.16.1", 14], ["web", "1.15.1", 34]] as const) {
-      if (pendingItems(p).length) continue;
-      const entry = archive[`${p}|${version}`] as ReleaseChecks | undefined;
-      expect(entry, `${p}正式发布后详细验法必须归档`).toBeDefined();
+  it("桌面1.17保留19项原始验法，并补单包Plus、开关保图和最近子日期", () => {
+      const entry = archive["desktop|1.17.0"] as ReleaseChecks | undefined;
+      const original = candidate("desktop-1.16.1-发布前候选.json")["desktop|1.16.1"] as ReleaseChecks;
+      expect(archive["desktop|1.16.1"]).toBeUndefined();
+      expect(entry?.checks?.length).toBeGreaterThanOrEqual(23);
+      for (const old of original.checks ?? []) {
+        const retained = entry?.checks?.find((it) => it.id === old.id);
+        expect(retained, `${old.id}原文、验法、截图及人工状态完整保留`).toMatchObject({
+          id: old.id, what: old.what, how: old.how, screens: old.screens, verified: old.verified,
+        });
+      }
       const deliveredIds = ["261020-parent-expand", "261020-child-time-order", "261020-child-actions", "261020-existing-child-priority",
-        ...(p === "desktop" ? ["261020-ultra-image-stack"] : [])];
-      expect(entry?.checks?.length).toBeGreaterThanOrEqual(oldCount + deliveredIds.length);
+        "261020-ultra-image-stack", "261020-nearest-child-with-parent-date", "261020-plus-single-package", "261020-plus-bower-toggle", "261020-plus-ordinary-roundtrip"];
       for (const id of deliveredIds) {
         const check = entry?.checks?.find((it) => it.id === id);
         expect(check?.what.length, id).toBeGreaterThan(20);
@@ -241,22 +256,51 @@ describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", ()
       }
       expect(entry?.checks?.some((it) => it.screens.length > 0)).toBe(true);
       expect(new Set(entry?.checks?.map((it) => it.id)).size).toBe(entry?.checks?.length);
-    }
+      expect(entry?.checks?.every((it) => !it.verified && !it.current?.verified)).toBe(true);
   });
-  it("网页那几项没有浏览器做不到的操作", () => {
+  it("未发布web1.15.1完整38项只存候选，web1.17只记开发中入口", () => {
+    const original = candidate("web-1.15.1-未发布候选.json")["web|1.15.1"] as ReleaseChecks;
+    expect(original.checks).toHaveLength(38);
+    expect(original.checks?.every((it) => !it.verified)).toBe(true);
+    expect(archive["web|1.15.1"]).toBeUndefined();
+    const gate = archive["web|1.17.0"] as ReleaseChecks;
+    expect(gate.statusLabel).toBe("开发中");
+    expect(gate.checks?.map((it) => it.id)).toEqual(["261020-web-development-gate"]);
+    expect(gate.checks?.[0].what).toContain("不登录同步账本");
+    expect(pend.web.note).toContain("正在开发中");
+    expect(pend.web.note).not.toContain("已于");
+    expect(items("web").some((it) => it.id === "w-2609d-autopull")).toBe(false);
+  });
+  it("Android原25项与整块说明不变，不因Windows发布自动清空或核通过", () => {
+    const original = candidate("android-1.15.0-待核基线.json").android;
+    expect(pend.android).toEqual(original);
+    expect(pendingItems("android")).toHaveLength(25);
+    expect(pendingItems("android").every((it) => !it.verified)).toBe(true);
+  });
+  it("未发布网页候选仍完整保留浏览器能力边界", () => {
+    const candidates: ReviewCheck[] = candidate("web-1.15.1-未发布候选.json")["web|1.15.1"].checks;
     for (const w of ["托盘", "拖窗口", "快捷记浮窗", "关掉橡果"]) {
-      for (const id of ["w-2609d-autopull", "w-2609d-sidew", "w-2609d-multiline"]) expect(text("web", id), `${id} ${w}`).not.toContain(w);
+      for (const id of ["w-2609d-autopull", "w-2609d-sidew", "w-2609d-multiline"]) {
+        const item = candidates.find((it) => it.id === id)!;
+        expect(item, id).toBeDefined();
+        expect([item.what, ...item.how].join("\n"), `${id} ${w}`).not.toContain(w);
+      }
     }
   });
   it("桌面和电脑浏览器那几项叫「今日任务页」；收起的链头才代表整件事", () => {
-    // 09-23桌面旧条目已并入1.16.0摘要；网页详细条目无论待核或已归档都要继续核。
-    const pairs = [["desktop", "d-2609d-postpone"], ["desktop", "d-2609d-ctx"], ["web", "w-2609d-postpone"], ["web", "w-2609d-ctx"]]
+    // 旧网页验法属于未发布候选，保全措辞检查但不得因此放进正式记录。
+    const candidates: ReviewCheck[] = candidate("web-1.15.1-未发布候选.json")["web|1.15.1"].checks;
+    const pairs = [["desktop", "d-2609d-postpone"], ["desktop", "d-2609d-ctx"]]
       .filter(([p, id]) => items(p).some((x) => x.id === id));
-    expect(pairs.some(([p]) => p === "web")).toBe(true);
     for (const [p, id] of pairs) expect(text(p, id), id).not.toContain("今天页");
     if (items("desktop").some((x) => x.id === "d-2609d-ctx")) {
       expect(text("desktop", "d-2609d-ctx")).not.toContain("右键也是「整件事 · 名字」");
     }
-    expect(text("web", "w-2609d-ctx")).not.toContain("右键也是「整件事 · 名字」");
+    for (const id of ["w-2609d-postpone", "w-2609d-ctx"]) {
+      const item = candidates.find((it) => it.id === id)!;
+      expect(item, id).toBeDefined();
+      expect([item.what, ...item.how].join("\n")).not.toContain("今天页");
+      if (id.endsWith("ctx")) expect([item.what, ...item.how].join("\n")).not.toContain("右键也是「整件事 · 名字」");
+    }
   });
 });

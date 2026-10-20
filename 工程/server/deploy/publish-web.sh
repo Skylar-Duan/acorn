@@ -176,4 +176,4 @@ if [ -n "$FAILED" ]; then
 fi
 echo "  /version.json 里是：$(curl -s -m 15 "$SITE/version.json" | tr -d '\n')"
 echo
-echo "发完了。手机上打开 $SITE/ ，分享 → 添加到主屏幕。"
+echo "发完了。当前网页入口显示正在开发中；Windows桌面下载继续开放。"
