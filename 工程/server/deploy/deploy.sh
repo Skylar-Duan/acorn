@@ -33,7 +33,7 @@ say() { printf '\n=== %s\n' "$*"; }
 # ---------- 1. 代码 ----------
 push_code() {
   say "打包并上传代码"
-  tar -czf /tmp/acorn-sync.tgz -C "$SRV" app tests requirements.txt
+  tar -czf /tmp/acorn-sync.tgz -C "$SRV" app tests requirements.txt deploy/mirror-legacy-desktop.py
   "${SCP[@]}" /tmp/acorn-sync.tgz "$HOST:/tmp/acorn-sync.tgz"
   "${SSH[@]}" bash -s <<'REMOTE'
 set -euo pipefail
