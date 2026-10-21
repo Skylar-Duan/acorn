@@ -26,7 +26,9 @@ function type(el: HTMLTextAreaElement, text: string) {
   });
 }
 async function enter(el: HTMLTextAreaElement) {
+  const choosing = !!document.querySelector(".si-drop button");
   await act(async () => { el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  if (choosing) await act(async () => { el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
 }
 
 beforeEach(async () => {

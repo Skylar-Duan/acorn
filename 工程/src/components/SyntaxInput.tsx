@@ -11,7 +11,7 @@ import type {
 } from "react";
 import type { ParseChip, ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
-import { overlapsQuotedText } from "../core/quotedText";
+import { pickSyntaxCandidates, sameName, syntaxToken } from "../core/syntaxCompletion";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import { growArea, keepLines, oneLine } from "./autogrow";
 import Icon from "./Icon";
@@ -32,6 +32,8 @@ export interface SyntaxInputProps {
   autoFocus?: boolean;
   /** 是否显示解析 chips，默认 true */
   showChips?: boolean;
+  /** 调用方已通过点选覆盖的解析预览；保留原文和解析结果，只隐藏过期的提示。 */
+  hiddenChipKinds?: ParseChip["kind"][];
   /** 不认这几类要素（子任务行用：没有清单/标签/需求方/循环）。被关掉的类别也不弹补全 */
   skip?: ParseChip["kind"][];
   /** 「周末」指周六还是周日（设置里那一项）。这个框不碰 store，得由调用方喂进来；不给就当周日 */
@@ -78,22 +80,11 @@ const CHIP_ICON: Record<ParseChip["kind"], IconName> = {
 const TRIGGER_KIND = { "#": "tag", "@": "who", "/": "list" } as const;
 type Trigger = keyof typeof TRIGGER_KIND;
 
-// 光标前的未完成 token：触发字符 + 已敲的前缀（不含空白与其他触发符）。
-// ~ / ～ 也是边界：打「@李哥~3点」时那个 ~ 之后是时间，不该再往候选里筛人名
-const TOKEN_RE = /(?:^|\s)([#@\/])([^\s#@\/!！~～"“”＂]*)$/;
-
 const MAX_ITEMS = 6;
 
 /** 前缀命中优先，其次包含命中，最多 6 条；空前缀给全量前 6 */
 function pickCandidates(source: string[], prefix: string): string[] {
-  if (prefix === "") return source.slice(0, MAX_ITEMS);
-  const pre: string[] = [];
-  const inc: string[] = [];
-  for (const s of source) {
-    if (s.startsWith(prefix)) pre.push(s);
-    else if (s.includes(prefix)) inc.push(s);
-  }
-  return [...pre, ...inc].slice(0, MAX_ITEMS);
+  return pickSyntaxCandidates(source, prefix).slice(0, MAX_ITEMS);
 }
 
 interface DropMatch {
@@ -108,7 +99,7 @@ interface DropMatch {
 
 export default function SyntaxInput({
   value, onChange, onSubmit, lists, tags, whos,
-  placeholder, autoFocus, showChips = true, skip, weekendDay, inputStyle,
+  placeholder, autoFocus, showChips = true, hiddenChipKinds, skip, weekendDay, inputStyle,
   onBlurCommit, onEscape, onShiftEnter, multiline: multilineProp = false, allowNewline = false, elementRef,
 }: SyntaxInputProps) {
   const multiline = multilineProp || allowNewline;
@@ -135,17 +126,17 @@ export default function SyntaxInput({
   );
 
   const drop = useMemo<DropMatch | null>(() => {
-    const m = TOKEN_RE.exec(value.slice(0, caret));
-    if (m === null) return null;
-    const trigger = m[1] as Trigger;
-    const prefix = m[2];
-    const start = caret - prefix.length - 1;
-    if (overlapsQuotedText(value, start, caret)) return null;
+    const token = syntaxToken(value, caret);
+    if (token === null) return null;
+    const { trigger, prefix, start } = token;
     // 这一类根本不认，就别弹补全了（子任务行里的 # @ / 就是普通字符）
     if (skip?.includes(TRIGGER_KIND[trigger])) return null;
     const source = trigger === "#" ? tags : trigger === "@" ? whos : lists;
     const items = pickCandidates(source, prefix);
-    if (items.length === 0) return null;
+    // 半截名字只作为候选；选中后填完整标记，真正创建仍由提交入口弹窗确认。
+    const knownListPrefix = trigger === "/" && source.some((name) => name.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase()));
+    if ((trigger === "@" || trigger === "/" && !knownListPrefix) && prefix && !source.some((name) => sameName(name, prefix))) items.push(prefix);
+    if (items.length === 0 && trigger === "#") return null;
     return { trigger, start, end: caret, prefix, items };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, caret, tags, whos, lists, skipKey]);
@@ -198,8 +189,9 @@ export default function SyntaxInput({
   /** 把部分 token 替换成完整值 + 尾随空格，焦点留在输入框继续打 */
   function accept(item: string) {
     if (drop === null) return;
-    const next = `${value.slice(0, drop.start + 1)}${item} ${value.slice(drop.end)}`;
-    const pos = drop.start + 1 + item.length + 1;
+    const separator = drop.trigger === "/" && drop.start > 0 && !/\s/.test(value[drop.start - 1]) ? " " : "";
+    const next = `${value.slice(0, drop.start)}${separator}${drop.trigger}${item} ${value.slice(drop.end)}`;
+    const pos = drop.start + separator.length + item.length + 2;
     pendingCaret.current = pos;
     setCaret(pos);
     setDismissedKey(null);
@@ -210,12 +202,12 @@ export default function SyntaxInput({
     if (e.nativeEvent.isComposing) return; // IME 组字中不抢按键
     if (open && drop !== null) {
       const n = drop.items.length;
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (n > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
         e.preventDefault();
         setActive((activeIdx + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
         return;
       }
-      if (e.key === "Tab" || e.key === "Enter") {
+      if (n > 0 && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
         e.preventDefault();
         accept(drop.items[activeIdx]);
         return;
@@ -317,9 +309,9 @@ export default function SyntaxInput({
         <input ref={(el) => { inputRef.current = el; if (elementRef) elementRef.current = el; }} {...shared} />
       )}
       <CommitMark on={flashOn} />
-      {showChips && parsed.chips.length > 0 && (
+      {showChips && parsed.chips.some((c) => !hiddenChipKinds?.includes(c.kind)) && (
         <span className="si-chips">
-          {parsed.chips.map((c, i) => (
+          {parsed.chips.filter((c) => !hiddenChipKinds?.includes(c.kind)).map((c, i) => (
             <span key={`${c.kind}-${i}`} className="chip">
               <Icon name={CHIP_ICON[c.kind]} size={13} /> <span>{c.text}</span>
             </span>
@@ -328,6 +320,7 @@ export default function SyntaxInput({
       )}
       {open && drop !== null && (
         <div className="si-drop" ref={dropRef} style={dropStyle}>
+          {drop.items.length === 0 && <span className="si-item">输入名字以新建{drop.trigger === "/" ? "清单" : "需求方"}</span>}
           {drop.items.map((it, i) => (
             <button
               key={it}
@@ -335,12 +328,13 @@ export default function SyntaxInput({
               className={`si-item${i === activeIdx ? " on" : ""}`}
               onMouseDown={(e) => {
                 e.preventDefault(); // 焦点留在输入框
+                e.stopPropagation(); // 接受后候选会卸载，不能让卡片的document监听把旧目标当成卡外。
                 accept(it);
               }}
               onMouseEnter={() => setActive(i)}
             >
               <span className="si-mark"><Icon name={CHIP_ICON[TRIGGER_KIND[drop.trigger]]} size={14} /></span>
-              {it}
+              {drop.trigger !== "#" && !(drop.trigger === "/" ? lists : whos).some((name) => sameName(name, it)) ? `新建${drop.trigger === "/" ? "清单" : "需求方"}「${it}」` : it}
             </button>
           ))}
         </div>

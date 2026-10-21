@@ -148,16 +148,16 @@ const RE = {
   repDaily: /每天/g,
   ymd: /(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])/g,
   // 节日:要成词——前面得是句首、空白或要素符号(「集中秋招」「全国庆祝」「周五一起」里的都不算);
-  // 可带「今年/明年」前缀。长词在前(「五一劳动节」不能被拆成「五一」+「劳动节」两截);
+  // 可带「今年/明年/后年」前缀。长词在前(「五一劳动节」不能被拆成「五一」+「劳动节」两截);
   // 「五一」「六一」后面不许贴着数字和量词——「五一号」「六一班」「十六一天」都不是节日
   holiday: new RegExp(
-    `(?<![^\\s#@/!！~～])(今年|明年)?(${HOLIDAY_WORDS.filter((w) => w !== "五一" && w !== "六一").join("|")}|(?:五一|六一)(?![\\d一二两三四五六七八九十号日月点起天周年个次份班届楼期]))`,
+    `(?<![^\\s#@/!！~～])(今年|明年|后年)?(${HOLIDAY_WORDS.filter((w) => w !== "五一" && w !== "六一").join("|")}|(?:五一|六一)(?![\\d一二两三四五六七八九十号日月点起天周年个次份班届楼期]))`,
     "g",
   ),
-  // 今年年底 / 今年底 / 明年年底 / 明年底(须在裸「年底」之前,否则「今年」两个字会漏在标题里)
-  yearEnd: /(今年|明年)年?底/g,
-  // 明年3月 = 明年 3 月 1 号;明年3月5日 / 明年3月底 也一并认(须在「N月N日」「N月底」之前)
-  nextYearMonth: new RegExp(`明年(${NUM})月(?:(${NUM})[日号]|(底)|份)?`, "g"),
+  // 今年底 / 明年底 / 后年底,以及带「年底」的写法(须在裸「年底」之前)
+  yearEnd: /(今年|明年|后年)年?底/g,
+  // 明年/后年3月取指定年的3月1号;也认月份、日号和月底(须在裸月日之前)
+  futureYearMonth: new RegExp(`(明年|后年)(${NUM})月(?:(${NUM})[日号]|(底)|份)?`, "g"),
   monthDay: new RegExp(`(?<!\\d)(${NUM})月(${NUM})[日号]`, "g"),
   // 下个月5号 / 这个月5号 / 本月5号(须在裸「5号」之前)
   monthPrefixDay: new RegExp(`(下个?|这个?|本)月(${NUM})[日号]`, "g"),
@@ -611,37 +611,39 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   );
 
   // 节日:公历的按月日,春节/清明/端午/中秋查表(core/holidays.ts);表外年份不认,原文留在标题里。
-  // 「明年春节」取明年那次(明年不在表里就整个不认),「今年春节」照字面取今年那次
+  // 今年/明年/后年照字面取指定那年,不在表里就整个不认
   scan(
     RE.holiday,
     (m) => {
-      const ymd = holidayDate(m[2], today, m[1] as "今年" | "明年" | undefined);
+      const ymd = holidayDate(m[2], today, m[1] as "今年" | "明年" | "后年" | undefined);
       if (ymd === null) return null;
       return { chip: dateChip(ymd), apply: setDate(ymd) };
     },
     true,
   );
 
-  // 今年年底 / 明年年底
+  // 今年年底 / 明年年底 / 后年年底
   scan(
     RE.yearEnd,
     (m) => {
-      const y = Number(today.slice(0, 4)) + (m[1] === "明年" ? 1 : 0);
+      const y = Number(today.slice(0, 4)) + (m[1] === "后年" ? 2 : m[1] === "明年" ? 1 : 0);
       const ymd = `${y}-12-31`;
       return { chip: dateChip(ymd), apply: setDate(ymd) };
     },
     true,
   );
 
-  // 明年3月 = 明年 3 月 1 号;明年3月5日 / 明年3月底 照字面
+  // 明年/后年3月取指定年3月1号;日号和月底照字面
   scan(
-    RE.nextYearMonth,
+    RE.futureYearMonth,
     (m) => {
-      const mo = num(m[1]);
+      // 后年写了不完整或过长的日号时保留整句,不把前面的月份单独排期。
+      if (m[1] === "后年" && /^[\d一二两三四五六七八九十]/.test(input.slice(m.index + m[0].length))) return null;
+      const mo = num(m[2]);
       if (mo === null || mo < 1 || mo > 12) return null;
-      const y = Number(today.slice(0, 4)) + 1;
+      const y = Number(today.slice(0, 4)) + (m[1] === "后年" ? 2 : 1);
       const last = daysInMonth(y, mo);
-      const d = m[3] !== undefined ? last : m[2] !== undefined ? num(m[2]) : 1;
+      const d = m[4] !== undefined ? last : m[3] !== undefined ? num(m[3]) : 1;
       if (d === null || d < 1 || d > last) return null;
       const ymd = `${y}-${pad2(mo)}-${pad2(d)}`;
       return { chip: dateChip(ymd), apply: setDate(ymd) };

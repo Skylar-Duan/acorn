@@ -39,7 +39,7 @@ export function taskTitlePreview(current: Task, draft: string | null | undefined
     task: {
       ...current,
       ...editedTitlePatch(current, parsed),
-      ...editedCategoryPatch(current, parsed, nextList?.id ?? current.listId),
+      ...editedCategoryPatch(current, { ...parsed, who: current.who, chips: parsed.chips.filter((chip) => chip.kind !== "who") }, nextList?.id ?? current.listId),
     },
     parsed,
     listName: requestedList ?? currentList?.name ?? null,
@@ -69,7 +69,8 @@ export function subtaskTitlePreview(current: Subtask, draft: string | null | und
     subtask: {
       ...current,
       ...editedTitlePatch(current, parsed),
-      ...appendedSubCategories(current, parsed.who, knownLists),
+      // @名字需要选择/确认后保存；输入中的「李」不能变成本步的临时需求方。
+      ...appendedSubCategories(current, [], knownLists),
     },
     parsed,
     listNames: [...new Set([...currentListNames, ...requestedLists])],

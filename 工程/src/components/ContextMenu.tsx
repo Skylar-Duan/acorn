@@ -9,8 +9,10 @@ import DatePickRow from "./DatePickRow";
 import {
   closeCtxMenu, completeTasks, deleteTasks, dropSubtask, dropTasks,
   removeSubtask, setTasksDue, setTasksList, setTasksWho, showToast, uncompleteTask,
-  updateSubtask, updateTask, useApp,
+  updateSubtask, updateTask, useApp, allWho, appStore,
 } from "../core/store";
+import { isTaskCategoryDialogOpen, prepareTaskCategories } from "../core/categoryCreation";
+import SyntaxCompletion from "./SyntaxCompletion";
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
 import { useLeaving } from "./motion";
@@ -129,7 +131,7 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
             ))}
             <DatePickRow onOpenChange={setDatePicking} onPick={(ymd) => run(() => updateSubtask(taskId, subId, { due: ymd }))} />
             <div className="ctx-sep" />
-            <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { due: null, dueTime: null }))}>继承母任务</button>
+            <button className="ctx-item" onClick={() => run(() => updateSubtask(taskId, subId, { due: null, dueTime: null }))}>清除日期（继承母任务）</button>
           </div>
         )}
       </div>
@@ -190,6 +192,7 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
   const whoSettled = useRef(false);
   /** 关菜单之前的收尾。document 监听只挂一次，用 ref 每次渲染刷新 */
   const flushWhoRef = useRef<() => void>(() => {});
+  const whoCompletionOwner = `context-who:${rawIds.join("|")}`;
 
   // 已被删除/不存在的任务静默过滤
   const tasks = rawIds
@@ -216,6 +219,8 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
   // 点击菜单外（mousedown 捕获）/ Esc / 滚轮 → 关闭
   useEffect(() => {
     function onDown(e: MouseEvent) {
+      if (isTaskCategoryDialogOpen()) return;
+      if (e.target instanceof Element && e.target.closest("[data-task-popover]")?.getAttribute("data-task-popover") === whoCompletionOwner) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         // A1「点走 = 提交」：菜单一卸载 React 就不会再给那个内联框发 blur 了，先捞一把
         flushWhoRef.current();
@@ -223,12 +228,15 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
       }
     }
     function onKey(e: KeyboardEvent) {
+      if (isTaskCategoryDialogOpen()) return;
       if (e.key === "Escape") {
         whoSettled.current = true; // Esc 才是丢弃
         closeCtxMenu();
       }
     }
-    function onWheel() {
+    function onWheel(e: WheelEvent) {
+      if (isTaskCategoryDialogOpen()) return;
+      if (e.target instanceof Element && e.target.closest("[data-task-popover]")?.getAttribute("data-task-popover") === whoCompletionOwner) return;
       flushWhoRef.current();
       closeCtxMenu();
     }
@@ -284,13 +292,16 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
   const whoDefault = tasks.every((t) => whoKey(t) === whoKey(tasks[0])) ? whoKey(tasks[0]) : "";
 
   /** 需求方内联框的唯一落库口。回车、失焦、点菜单外，三条路都走它，只认第一次 */
-  function commitWho() {
+  async function commitWho() {
     const el = whoRef.current;
     if (!el || whoSettled.current) return;
     whoSettled.current = true;
     const v = el.value;
     if (v.trim() === whoDefault.trim()) return; // 没改过就别写
-    setTasksWho(ids, v.split(/[\s,，、@]+/));
+    const requested = v.split(/[\s,，、@＠]+/).filter(Boolean);
+    const result = await prepareTaskCategories(null, requested, null,
+      () => ids.some((id) => appStore.getState().data.tasks.some((task) => task.id === id && !task.deletedAt)));
+    if (result) setTasksWho(ids, result.who);
   }
   flushWhoRef.current = commitWho;
 
@@ -404,6 +415,7 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
 
       {/* 需求方：点开变内联输入 */}
       {whoOpen ? (
+        <SyntaxCompletion whos={allWho(data).map((entry) => entry.who)} owner={whoCompletionOwner} multipleWho>
         <input
           className="ctx-input"
           ref={whoRef}
@@ -424,11 +436,13 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
           onFocus={() => {
             whoSettled.current = false;
           }}
+          onChange={() => { whoSettled.current = false; }}
           // A1：点走 = 提交（点菜单里别的项、或者点到菜单外都算）。
           // **窗口失焦不是点走**：alt-tab 出去时框原样悬着，等用户回来自己了结，
           // 不然打了一半的名字会当场落成这些事的需求方
           onBlur={() => { if (document.hasFocus()) commitWho(); }}
         />
+        </SyntaxCompletion>
       ) : (
         <button className="ctx-item" onClick={() => setWhoOpen(true)}>
           需求方…

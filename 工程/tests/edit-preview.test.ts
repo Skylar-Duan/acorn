@@ -45,7 +45,7 @@ describe("已有标题输入时的只读预览", () => {
   it("母任务只替换显式归类；未知清单可展示但没有临时 id 或创建动作", () => {
     const current = task();
     const result = taskTitlePreview(current, "原任务 @王工 /生 #新标签", context);
-    expect(result.task).toMatchObject({ who: ["王工"], listId: "life", tags: ["新标签"], due: current.due, priority: 1 });
+    expect(result.task).toMatchObject({ who: ["李哥"], listId: "life", tags: ["新标签"], due: current.due, priority: 1 });
     expect(result.listName).toBe("生活");
     expect(result.unresolvedListNames).toEqual([]);
     const unknown = taskTitlePreview(current, "原任务 /全新清单", context);
@@ -94,7 +94,7 @@ describe("子任务编辑预览", () => {
     const current = sub();
     const before = structuredClone({ parent, current });
     const result = subtaskTitlePreview(current, "材料\n复核 @王工 @新人 /生活 /全新清单 #正文", context);
-    expect(result.subtask).toMatchObject({ title: "材料\n复核 #正文", who: ["王工", "新人"], listIds: ["work", "life"] });
+    expect(result.subtask).toMatchObject({ title: "材料\n复核 #正文", who: ["王工"], listIds: ["work", "life"] });
     expect(result.listNames).toEqual(["工作", "生活", "全新清单"]);
     expect(result.unresolvedListNames).toEqual(["全新清单"]);
     expect({ parent, current }).toEqual(before);

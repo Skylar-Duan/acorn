@@ -646,6 +646,14 @@ export default function Sidebar(
                 setPendingPlan(null);
               }}
             />
+            <button className="item" onMouseDown={(e) => e.preventDefault()} onClick={() => {
+              planFieldRef.current?.cancel();
+              planWrittenRef.current = undefined;
+              if (!pendingPlan) return;
+              if (pendingPlan.sub) updateSubtask(pendingPlan.sub.taskId, pendingPlan.sub.subId, { due: null, dueTime: null });
+              else setTasksDue(pendingPlan.ids, null, { coalesceKey: planCoalesceRef.current ?? `plan:${pendingPlan.ids.join(",")}:due` });
+              setPendingPlan(null);
+            }}>{pendingPlan?.sub ? "清除日期（继承母任务）" : "清除日期"}</button>
             <button className="item" onClick={() => setPendingPlan(null)}>取消</button>
           </div>
         )}

@@ -7,15 +7,17 @@ import { listColor } from "../core/colors";
 import type { FocusEvent as ReactFocusEvent } from "react";
 import type { ParseResult } from "../core/parse";
 import { parseQuickAdd } from "../core/parse";
-import { deskDueRepeat, withOverride } from "../mobile/quickAddMerge";
+import { deskDueRepeat, pickWins, withOverride } from "../mobile/quickAddMerge";
 import type { Overrides, PickField } from "../mobile/quickAddMerge";
 import type { Priority, RepeatRule, TaskImage } from "../core/model";
 import { formatShort, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
 import { addTask, allTags, allWho, appStore, showToast, useApp } from "../core/store";
-import { createCategory, existingCategoryList, isTaskCategoryDialogOpen, prepareTaskCategories, taskCategoriesNeedConfirmation } from "../core/categoryCreation";
+import { canonicalTaskWho, createCategory, existingCategoryList, isTaskCategoryDialogOpen, prepareTaskCategories, taskCategoriesNeedConfirmation } from "../core/categoryCreation";
 import { CommitMark, useCommitFlash } from "./commitFlash";
 import SyntaxInput from "./SyntaxInput";
+import SyntaxCompletion from "./SyntaxCompletion";
+import { sameName } from "../core/syntaxCompletion";
 import type { SyntaxInputEl } from "./SyntaxInput";
 import { describeRepeat } from "../core/recur";
 import DateField from "./DateField";
@@ -126,7 +128,7 @@ export default function QuickAddBar({
   /** 现在生效的日期与循环：跟回车落库用的是同一个算法 */
   const eff = deskDueRepeat(
     parsed,
-    { due: dueFieldRef.current?.pending() ?? pick.due ?? defaults?.due ?? null, repeat: pick.repeat },
+    { due: dueFieldRef.current?.pending() ?? (overrides.due !== undefined ? pick.due : pick.due ?? defaults?.due ?? null), repeat: pick.repeat },
     overrides,
   );
   const repeatAnchor = eff.due ?? today;
@@ -179,7 +181,7 @@ export default function QuickAddBar({
     dueFieldRef.current?.flush();
     // defaults.listId 可能指向一张刚被删除的清单，落库前验一遍存在性
     // 日期与循环：打字和点选谁后动谁说了算（deskDueRepeat，跟手机一个口径）
-    const dr = deskDueRepeat(parsed, { due: pendingDue ?? pick.due ?? defaults?.due ?? null, repeat: pick.repeat }, overrides);
+    const dr = deskDueRepeat(parsed, { due: pendingDue ?? (overrides.due !== undefined ? pick.due : pick.due ?? defaults?.due ?? null), repeat: pick.repeat }, overrides);
     const defaultListId =
       defaults?.listId && lists.some((l) => l.id === defaults.listId) ? defaults.listId : null;
     const pickedListId = pick.listId && lists.some((l) => l.id === pick.listId) ? pick.listId : null;
@@ -211,7 +213,7 @@ export default function QuickAddBar({
       return true;
     };
     if (!taskCategoriesNeedConfirmation(parsed.listName, who, baseListId)) {
-      return commit(parsed.listName ? existingCategoryList(parsed.listName, baseListId)?.id ?? null : baseListId, who);
+      return commit(parsed.listName ? existingCategoryList(parsed.listName, baseListId)?.id ?? null : baseListId, canonicalTaskWho(who));
     }
     submitting.current = true;
     void prepareTaskCategories(parsed.listName, who, baseListId,
@@ -264,6 +266,7 @@ export default function QuickAddBar({
           whos={whoNames}
           weekendDay={settings.weekendDay}
           showChips
+          hiddenChipKinds={pickWins(parsed, overrides, "due") ? ["date", "time"] : undefined}
         />
         <button className="qa-help" title="怎么写一句话" aria-label="怎么写一句话" onClick={guide.open}><Icon name="help" /></button>
         <CommitMark on={saved.on} />
@@ -304,7 +307,7 @@ export default function QuickAddBar({
                 setMenu(null);
               }}
             />
-            <button className="item" onClick={() => pickDue(null)}>不定日期</button>
+            <button className="item" onMouseDown={(e) => e.preventDefault()} onClick={() => pickDue(null)}>清除日期</button>
           </Pick>
 
           <Pick
@@ -357,15 +360,24 @@ export default function QuickAddBar({
               );
             })}
             <div className="sep" />
+            <SyntaxCompletion whos={whoNames} owner={popupOwner} plainWho onPick={(value) => {
+              const existing = whoNames.find((name) => sameName(name, value));
+              if (existing) setPick((p) => ({ ...p, who: [...new Set([...p.who, existing])] }));
+              else {
+                setMenu(null);
+                void createCategory("who", value).then((name) => { if (name) setPick((p) => ({ ...p, who: [...new Set([...p.who, name])] })); });
+              }
+            }}>
             <input
               className="inline"
               placeholder="新需求方，回车确定"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                   const el = e.target as HTMLInputElement;
-                  const v = el.value.trim();
+                  const v = el.value.trim().replace(/^[@＠]/, "").trim();
                   if (v && !pick.who.includes(v)) {
-                    if (whoNames.includes(v)) setPick((p) => ({ ...p, who: [...p.who, v] }));
+                    const existing = whoNames.find((name) => sameName(name, v));
+                    if (existing) setPick((p) => ({ ...p, who: [...new Set([...p.who, existing])] }));
                     else {
                       setMenu(null);
                       void createCategory("who", v).then((name) => { if (name) setPick((p) => ({ ...p, who: [...new Set([...p.who, name])] })); });
@@ -375,6 +387,7 @@ export default function QuickAddBar({
                 }
               }}
             />
+            </SyntaxCompletion>
           </Pick>
 
           <Pick

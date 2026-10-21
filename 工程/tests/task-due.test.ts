@@ -244,13 +244,13 @@ describe("母任务和待办子任务取最早安排，只计算不写回", () =
 });
 
 describe("用户实际看到的母任务安排", () => {
-  it("任务卡显示最近子任务和钟点，编辑日期框仍是母任务空白日期", () => {
+  it("任务卡独立显示最近子安排，母日期入口和编辑框保持空白", () => {
     const task = parent({ subtasks: [step("next", TODAY, { dueTime: "09:00" })] });
     put(task);
     const host = mount(createElement(TaskCard, { task }));
-    const pill = [...host.querySelectorAll<HTMLButtonElement>("button.pill")]
-      .find((b) => b.textContent?.includes("最近子任务"))!;
-    expect(pill.textContent).toContain("今天 09:00 · 最近子任务");
+    const pill = host.querySelector<HTMLButtonElement>('.tc-properties > button.pill')!;
+    expect(pill.textContent).toContain("安排日期");
+    expect(host.querySelector(".tc-next-schedule")?.textContent).toContain("最近子任务：今天 09:00");
     act(() => pill.click());
     const date = document.querySelector<HTMLInputElement>('[data-task-popover="parent"] input[type="date"]');
     expect(date).not.toBeNull();
@@ -259,12 +259,14 @@ describe("用户实际看到的母任务安排", () => {
     expect(appStore.getState().data.tasks[0].due).toBeNull();
   });
 
-  it("母日期更晚时显示最近子安排，日期编辑框仍显示手排母日期且不写回", () => {
+  it("母日期更晚时入口显示手排母日期，最近子安排另外标明且不写回", () => {
     const task = parent({ due: "2026-10-30", dueTime: "16:00", subtasks: [step("next", TODAY, { dueTime: "09:00" })] });
     put(task); const before = appStore.getState().data;
     const host = mount(createElement(TaskCard, { task }));
     const pill = host.querySelector<HTMLButtonElement>('.tc-properties > button.pill')!;
-    expect(pill.textContent).toContain("今天 09:00"); act(() => pill.click());
+    expect(pill.textContent).toContain("10月30日 16:00");
+    expect(host.querySelector(".tc-next-schedule")?.textContent).toContain("最近子任务：今天 09:00");
+    act(() => pill.click());
     expect(document.querySelector<HTMLInputElement>('[data-task-popover="parent"] input[type="date"]')?.value).toBe("2026-10-30");
     expect(document.querySelector<HTMLInputElement>('[data-task-popover="parent"] input[type="time"]')?.value).toBe("16:00");
     expect(appStore.getState().data).toBe(before); expect(appStore.getState().data.tasks[0].dueTime).toBe("16:00");

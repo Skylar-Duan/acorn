@@ -197,11 +197,13 @@ describe("新建弹窗与入口真实交互", () => {
     input(field, "合成任务 /新清单 @新需求方");
     const before = appStore.getState().data;
     await act(async () => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(isTaskCategoryDialogOpen()).toBe(false); // 第一下选择新名字，下一下才提交整句。
+    await act(async () => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     expect(document.querySelector("#category-create-title")!.textContent).toBe("新建清单");
     await choose();
     expect(document.querySelector("#category-create-title")!.textContent).toBe("新建需求方");
     await act(async () => finishCategoryDraft(null));
-    expect(field.value).toBe("合成任务 /新清单 @新需求方");
+    expect(field.value.trim()).toBe("合成任务 /新清单 @新需求方");
     expect(appStore.getState().data).toBe(before);
   });
 
@@ -210,6 +212,7 @@ describe("新建弹窗与入口真实交互", () => {
     act(() => root.render(createElement(Fragment, null, createElement(QuickAddBar, { defaults: { listId } }), createElement(CategoryCreationHost))));
     const field = host.querySelector<HTMLInputElement>(".quick-add input")!;
     input(field, "合成事项 @新朋友");
+    await act(async () => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     await act(async () => { field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     act(() => deleteList(listId));
     await choose();

@@ -56,13 +56,13 @@ export const HOLIDAY_WORDS: string[] = Object.keys(ALIAS).sort((a, b) => b.lengt
 
 /** 某个节日写法 → 'YYYY-MM-DD'。today 是 'YYYY-MM-DD'。
  *  不带 which：今年那次 >= today 取今年，否则取明年；农历节日明年不在表里就返回 null（不认）。
- *  which = "明年"：一律取明年那次（哪怕今年的还没过）；"今年"：一律取今年那次（哪怕已经过了）。
+ *  which = "今年" / "明年" / "后年"：一律取指定那年的节日（哪怕已经过了）。
  *  指定的那一年不在表里同样返回 null */
-export function holidayDate(word: string, today: string, which?: "今年" | "明年"): string | null {
+export function holidayDate(word: string, today: string, which?: "今年" | "明年" | "后年"): string | null {
   const name = ALIAS[word];
   if (name === undefined) return null;
   const y = Number(today.slice(0, 4));
-  const years = which === "今年" ? [y] : which === "明年" ? [y + 1] : [y, y + 1];
+  const years = which === "今年" ? [y] : which === "明年" ? [y + 1] : which === "后年" ? [y + 2] : [y, y + 1];
   for (const year of years) {
     const md = FIXED[name] ?? LUNAR[year]?.[name];
     if (md === undefined) continue;

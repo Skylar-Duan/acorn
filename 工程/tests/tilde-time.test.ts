@@ -17,8 +17,8 @@ import quickAddSheetSource from "../src/mobile/QuickAddSheet.tsx?raw";
 import taskCardSource from "../src/components/TaskCard.tsx?raw";
 import settingsSource from "../src/views/Settings.tsx?raw";
 import taskSheetSource from "../src/mobile/TaskSheet.tsx?raw";
-import syntaxInputSource from "../src/components/SyntaxInput.tsx?raw";
-import mergeSource from "../src/mobile/quickAddMerge.ts?raw";
+import { syntaxToken } from "../src/core/syntaxCompletion";
+import { candidatesAt } from "../src/mobile/quickAddMerge";
 
 const LISTS = ["工作", "生活"];
 const FRI = new Date(2026, 7, 21, 10, 0); // 2026-08-21 周五 10:00
@@ -449,13 +449,14 @@ describe("界面上教的写法要跟规矩对得上（教错了用户照着打�
   });
 
   it("两处补全的 token 规则口径一致：~ 也当边界（@李哥~3点 不再筛人名）", () => {
-    // 两个文件里各写着一条 TOKEN_RE，口径必须一样（SyntaxInput 那条把 / 转义了，先抹平再比）
-    const line = (src: string): string => {
-      const m = /const TOKEN_RE = .*/.exec(src);
-      expect(m, "找不到 TOKEN_RE").not.toBeNull();
-      return m![0].replace(/\\\//g, "/");
-    };
-    expect(line(syntaxInputSource)).toBe(line(mergeSource));
-    expect(line(mergeSource)).toContain("!！~～");
+    const source = { lists: ["工作"], whos: ["李哥"], tags: ["要紧"] };
+    for (const text of ["@李哥~3点", "@李哥～3点", "/工作~明天", "#要紧~明天"]) {
+      expect(syntaxToken(text, text.length)).toBeNull();
+      expect(candidatesAt(text, text.length, source)).toBeNull();
+    }
+    for (const text of ["@李", "/工", "#要"]) {
+      expect(syntaxToken(text, text.length)).toMatchObject({ trigger: text[0], prefix: text.slice(1) });
+      expect(candidatesAt(text, text.length, source)).toMatchObject({ trigger: text[0], prefix: text.slice(1) });
+    }
   });
 });

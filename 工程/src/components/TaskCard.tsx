@@ -22,6 +22,7 @@ import {
 import { startFocus } from "../core/focusCtl";
 import { FOCUS_ENABLED } from "../core/features";
 import SyntaxInput from "./SyntaxInput";
+import SyntaxCompletion from "./SyntaxCompletion";
 import type { SyntaxInputEl } from "./SyntaxInput";
 import { growArea, keepLines, oneLine } from "./autogrow";
 import DateField from "./DateField";
@@ -249,9 +250,13 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   const displayTask = titlePreview.task;
   const list = displayTask.listId ? lists.find((l) => l.id === displayTask.listId) : null;
   const today = todayYMD();
-  const previewSchedule = titlePreview.parsed?.chips.some((chip) => chip.kind === "date" || chip.kind === "time" || chip.kind === "repeat");
-  const shownDue = previewSchedule ? displayTask.due : taskDue(displayTask);
-  const shownTime = previewSchedule ? displayTask.dueTime : taskTime(displayTask);
+  // 属性编辑入口始终显示母任务自己的安排，不能让更近的子日期盖住刚保存的母日期。
+  // 列表分组/排序仍取最近安排；有不同的子安排时在入口旁明确说明来源。
+  const shownDue = displayTask.due;
+  const shownTime = displayTask.dueTime;
+  const nextDue = taskDue(displayTask);
+  const nextTime = taskTime(displayTask);
+  const showNextSubSchedule = nextDue && (nextDue !== shownDue || nextTime !== shownTime);
 
   // 已经做完的子任务沉到最下面，多了还要收起来（只改显示顺序，存的那份数组原样不动）。
   // 用户口径：「子任务已通过的排到最下面」——上面永远是还欠着的。
@@ -472,7 +477,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
     const el = whoInputRef.current;
     if (!el || whoSettled.current) return;
     whoSettled.current = true;
-    const v = el.value.trim();
+    const v = el.value.trim().replace(/^[@＠]/, "").trim();
     if (!v) return;
     el.value = "";
     const result = await prepareTaskCategories(null, [v], null,
@@ -555,6 +560,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
         <button className={`sb${s.done ? " done" : ""}`} aria-label={`${s.done ? "标记未完成" : "完成子任务"} ${s.title}`} onClick={() => toggleSubtask(task.id, s.id)} />
         {/* 子任务标题跟母任务标题同一个待遇：长了就换行，不再单行截断（v1.9.1）。
             ref按子任务复用，挂载时量高度并记录图片输入目标。 */}
+        <SyntaxCompletion whos={whoNames} lists={lists.map((list) => list.name)} owner={task.id}>
         <textarea
           rows={1}
           id={`sub-title-${s.id}`}
@@ -582,6 +588,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
           }}
           onBlur={() => { if (document.hasFocus()) void commitSubTitle(s.id); }}
         />
+        </SyntaxCompletion>
         <CommitMark on={subFlash === s.id} />
         {/* 放弃了的那一步：圈圈不动，只在旁边挂个灰标签 */}
         {(s.droppedAt || display.repeat) && <span className="sub-status">
@@ -668,7 +675,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
                 setSubMenu(null);
               }}
             />
-            <button className="item" onClick={() => { updateSubtask(task.id, s.id, { due: null, dueTime: null }); setSubMenu(null); }}>继承母任务</button>
+            <button className="item" onMouseDown={(e) => e.preventDefault()} onClick={() => { subDueFieldRef.current?.cancel(); updateSubtask(task.id, s.id, { due: null, dueTime: null }); setSubMenu(null); }}>清除日期（继承母任务）</button>
           </TaskPropertyPopover>
         )}
         {subPop.shown?.id === s.id && subPop.shown.kind === "prio" && (
@@ -700,6 +707,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             长标题在列表行上是一行省略号，点开这张卡才是看全的地方，
             它自己再截断一次就等于没地方看全了。
             rows={1} 起步，高度由 growArea 按内容算；键盘约定原样保住（见下面 onKeyDown） */}
+        <SyntaxCompletion whos={whoNames} lists={lists.map((list) => list.name)} tags={tagNames} owner={task.id}>
         <textarea
           ref={titleRef}
           rows={1}
@@ -726,6 +734,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
           }}
           onBlur={() => { if (document.hasFocus()) void commitTitle(); }}
         />
+        </SyntaxCompletion>
         <CommitMark on={titleFlash} />
         {/* 放弃只在这儿露一个灰标签，圈圈那边一点不动 */}
         {task.droppedAt && <span className="drop-tag">已放弃</span>}
@@ -761,9 +770,12 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
       <div className="chips tc-properties" aria-label="任务属性">
         {/* 日期 */}
         <button className={`pill${shownDue ? " hot" : ""}`} onClick={openDateMenu} aria-expanded={menu === "date"}
-          title={!displayTask.due && shownDue ? "最近子任务的安排；点开可为母任务单独安排日期" : undefined}>
-          <TaskIcon name="calendar" /> {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}${!displayTask.due ? " · 最近子任务" : ""}` : "安排日期"}
+          title="母任务日期">
+          <TaskIcon name="calendar" /> {shownDue ? `${formatShort(shownDue)}${shownTime ? " " + shownTime : ""}` : "安排日期"}
         </button>
+        {showNextSubSchedule && <span className="tc-next-schedule" title="列表按最近待办安排排序；此处是子任务日期，母任务日期可单独修改">
+          最近子任务：{formatShort(nextDue)}{nextTime ? ` ${nextTime}` : ""}
+        </span>}
         {menuPop.shown === "date" && (
           <TaskPropertyPopover anchor={propertyAnchor.current} owner={task.id} leaving={menuPop.leaving}>
             {presets.map((p) => (
@@ -800,7 +812,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
             />
             <div className="sep" />
             {/* 清日期同样要把还欠着的那一次去抖丢掉，否则刚清完它 350ms 后又把日期写回来 */}
-            {task.due && <button className="item" onClick={() => { dueFieldRef.current?.cancel(); updateTask(task.id, { due: null, dueTime: null }); dueWrittenRef.current = null; setMenu(null); }}>清除日期</button>}
+            <button className="item" title="清除母任务的日期和时间，子任务的独立安排保留" onMouseDown={(e) => e.preventDefault()} onClick={() => { setDraftTime(""); setDue(null); }}>清除日期</button>
           </TaskPropertyPopover>
         )}
 
@@ -871,6 +883,11 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
               </button>
             ))}
             {task.who.length > 0 && <div className="sep" />}
+            <SyntaxCompletion whos={whoNames} owner={task.id} plainWho onPick={(name) => {
+              if (whoInputRef.current) whoInputRef.current.value = name;
+              whoSettled.current = false;
+              void commitWho();
+            }}>
             <input
               className="inline"
               ref={whoInputRef}
@@ -901,6 +918,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
               // 整个悬着，等用户回来自己了结（回车提交 / Esc 丢弃）
               onBlur={() => { if (document.hasFocus()) commitWho(); }}
             />
+            </SyntaxCompletion>
             {task.who.length > 0 && (
               <button className="item" onClick={() => { setTasksWho([task.id], []); setMenu(null); }}>全部清除</button>
             )}

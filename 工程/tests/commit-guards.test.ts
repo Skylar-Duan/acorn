@@ -424,7 +424,8 @@ describe("日期弹层：月/日段一路累加出来的中间值，一次都不
     const setDue = taskCardSource.slice(taskCardSource.indexOf("function setDue"));
     expect(setDue.slice(0, 300)).toContain("dueFieldRef.current?.cancel();");
     // 清日期同理，否则清完 350ms 又被写回来
-    expect(taskCardSource).toContain('{ dueFieldRef.current?.cancel(); updateTask(task.id, { due: null, dueTime: null }); dueWrittenRef.current = null; setMenu(null); }');
+    expect(taskCardSource).toContain('onClick={() => { setDraftTime(""); setDue(null); }}');
+    expect(setDue.slice(0, 650)).toContain('dueTime: d ? draftTime || task.dueTime : null');
     // 去抖烧到点时用的是**那一刻**的落库那句，不是按下那一帧的闭包（统一封在 DateField 里）
     expect(dateFieldSource).toContain("commitRef.current = onCommit;");
     expect(dateFieldSource).toContain("makeDateCommitter((ymd) => commitRef.current(ymd))");
@@ -480,7 +481,7 @@ describe("日期弹层：月/日段一路累加出来的中间值，一次都不
     expect(submit).toContain("dueFieldRef.current?.flush();");
     expect(submit.indexOf("dueFieldRef.current?.flush();")).toBeLessThan(submit.indexOf("addTask({"));
     // 欠着的那一天进了「打字 / 点选谁后动听谁的」那道合并（deskDueRepeat），落库用的就是合并结果
-    expect(submit).toContain("deskDueRepeat(parsed, { due: pendingDue ?? pick.due ?? defaults?.due ?? null, repeat: pick.repeat }, overrides)");
+    expect(submit).toContain("deskDueRepeat(parsed, { due: pendingDue ?? (overrides.due !== undefined ? pick.due : pick.due ?? defaults?.due ?? null), repeat: pick.repeat }, overrides)");
     expect(submit).toContain("due: dr.due,");
   });
 });
