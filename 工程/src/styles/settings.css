@@ -113,7 +113,7 @@
 .set-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .set-flex { flex: 1; }
 
-/* 快捷键输入框 */
+/* 快捷键录制入口 */
 .set-shortcut { width: 170px; text-align: center; font-family: var(--mono); font-size: var(--fs-sm); }
 
 /* ---------- 关于 ---------- */

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TaskImage } from "../core/model";
-import { cloudImageBytes, listLedgerImages } from "../core/imageLibrary";
+import { cloudImageBytes, filterLedgerImages, listLedgerImages, type ImageFilter } from "../core/imageLibrary";
 import { IMAGE_LEDGER_MAX_BYTES } from "../core/taskImages";
 import { deleteManagedImages, setManagedImageSync, showToast, useApp } from "../core/store";
 import { plusEnabled } from "../core/plus";
@@ -25,15 +25,15 @@ export default function ImageManager({ onClose }: { onClose: () => void }) {
   const data = useApp((s) => s.data);
   const entries = useMemo(() => listLedgerImages(data), [data]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [filter, setFilter] = useState<"all" | "cloud" | "local">("all");
+  const [filters, setFilters] = useState<ImageFilter[]>([]);
   const [pendingDelete, setPendingDelete] = useState<{ key: string; dataUrl: string }[] | null>(null);
   const [viewing, setViewing] = useState<TaskImage | null>(null);
   const [error, setError] = useState("");
   const panel = useRef<HTMLDivElement>(null);
   const account = useRef(sessionKey());
   const close = useRef(onClose); close.current = onClose;
-  const visible = entries.filter((entry) => filter === "all" || (filter === "cloud" ? entry.cloud : !entry.cloud));
-  const chosen = selected.filter((key) => entries.some((entry) => entry.key === key));
+  const visible = filterLedgerImages(entries, filters);
+  const chosen = selected.filter((key) => visible.some((entry) => entry.key === key));
   const allVisible = visible.length > 0 && visible.every((entry) => chosen.includes(entry.key));
   const cloudBytes = cloudImageBytes(data);
 
@@ -97,10 +97,11 @@ export default function ImageManager({ onClose }: { onClose: () => void }) {
       <div className="image-manager-meter" role="progressbar" aria-label="云端图片空间" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(cloudBytes / IMAGE_LEDGER_MAX_BYTES * 100))}>
         <i style={{ width: `${Math.min(100, cloudBytes / IMAGE_LEDGER_MAX_BYTES * 100)}%` }} /></div>
       <div className="image-manager-tools"><div className="image-manager-filters" role="group" aria-label="图片范围">
-        {([ ["all", "全部"], ["cloud", "云端同步"], ["local", "仅本机"] ] as const).map(([key, label]) => <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>)}
+        {([ ["local", "本地"], ["cloud", "云端"], ["completed", "已完成"], ["pending", "未完成"] ] as const).map(([key, label]) => <button key={key} type="button" aria-pressed={filters.includes(key)} onClick={() => { setSelected([]); setPendingDelete(null); setFilters((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key]); }}>{label}</button>)}
       </div><label className="image-manager-select"><input type="checkbox" aria-label="选择当前全部图片" checked={allVisible} disabled={!visible.length} onChange={() => setSelected((old) => allVisible ? old.filter((id) => !visible.some((entry) => entry.key === id)) : [...new Set([...old, ...visible.map((entry) => entry.key)])])} />全选</label></div>
+      <p className="image-manager-filter-hint">可多选，未选时显示全部。本地指仅存本机；来源和完成状态可组合筛选。多处使用的图片全部完成才算已完成。</p>
       <div className="image-manager-grid">
-        {!visible.length && <p className="image-manager-empty">{filter === "all" ? "还没有图片" : "这个分类还没有图片"}</p>}
+        {!visible.length && <p className="image-manager-empty">{filters.length ? "这个分类还没有图片" : "还没有图片"}</p>}
         {visible.map((entry) => <article className={`image-manager-item${chosen.includes(entry.key) ? " selected" : ""}`} key={entry.key}>
           <div className="image-manager-picture"><ManagedPicture image={entry.image} onOpen={() => setViewing(entry.image)} />
             <input type="checkbox" aria-label={`选择图片 ${entry.image.name}`} checked={chosen.includes(entry.key)} onChange={() => toggle(entry.key)} />

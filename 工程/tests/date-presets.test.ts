@@ -94,7 +94,7 @@ describe("安排日期弹层：一套规矩，不用猜这次要不要点确定"
   it("预设不再自己写一份，一律从 dateOptions 现取——两处弹层同一个来源", () => {
     expect(dateMenu).toContain("presets.map");
     expect(subDateMenu).toContain("presets.map");
-    expect(taskCardSource).toContain("const presets = dateOptions(today, { weekendDay: settings.weekendDay })");
+    expect(taskCardSource).toContain("const presets = dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts })");
     expect(taskCardSource).not.toContain("duePresets(");
   });
 
@@ -238,7 +238,7 @@ describe("安排日期：桌面每个入口同一套选项，一处都不许自�
       quickAddSource.indexOf('id="due"'),
       quickAddSource.indexOf('id="list"'),
     ));
-    expect(duePick).toContain("dateOptions(today, { weekendDay: settings.weekendDay }).map");
+    expect(duePick).toContain("dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts }).map");
     expect(duePick).not.toContain("下周一");
     expect(duePick).not.toContain("明天");
     expect(duePick).not.toContain("addDays(today, 1)");

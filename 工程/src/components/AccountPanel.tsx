@@ -1,18 +1,17 @@
 // 设置账号：状态与动作。影响范围放进确认框，页面保留简洁的按钮。
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { clearLocalAccountData, eraseAcornAccount } from "../core/accountActions";
 import { holdAutoSync, signOut, syncNow, syncStore, useSync } from "../core/syncCtl";
 import { errText } from "../core/useAuthFlow";
 import { openLogin } from "../mobile/sheetStore";
 import { showToast } from "../core/store";
 import { restoreFromCloud } from "../core/wipe";
-import { inTauri, purgeTargets } from "../core/persist";
+import { purgeTargets } from "../core/persist";
 import type { Session } from "../core/cloud";
+import "../styles/account-confirm.css";
 
-async function ask(message: string, title: string): Promise<boolean> {
-  if (!inTauri) return window.confirm(message);
-  return (await import("@tauri-apps/plugin-dialog")).ask(message, { title, kind: "warning" });
-}
+type Confirmation = { message: string; title: string; resolve: (confirmed: boolean) => void };
 
 function sameAccount(session: Session): boolean {
   const current = syncStore.getState().session;
@@ -29,8 +28,58 @@ export default function AccountPanel() {
   const phase = useSync(state => state.phase);
   const message = useSync(state => state.message);
   const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const pendingConfirmation = useRef<Confirmation | null>(null);
+  const confirmationRef = useRef<HTMLDivElement>(null);
   const running = useRef(false);
   const [error, setError] = useState<string | null>(null);
+
+  function ask(message: string, title: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      pendingConfirmation.current?.resolve(false);
+      const next = { message, title, resolve };
+      pendingConfirmation.current = next;
+      setConfirmation(next);
+    });
+  }
+
+  function resolveConfirmation(confirmed: boolean) {
+    const pending = pendingConfirmation.current;
+    pendingConfirmation.current = null;
+    setConfirmation(null);
+    pending?.resolve(confirmed);
+  }
+
+  useEffect(() => {
+    resolveConfirmation(false);
+  }, [session?.email, session?.token]);
+
+  useEffect(() => () => {
+    pendingConfirmation.current?.resolve(false);
+    pendingConfirmation.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (!confirmation) return;
+    const previous = document.activeElement as HTMLElement | null;
+    confirmationRef.current?.querySelector<HTMLElement>("[data-account-confirm-cancel]")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      event.stopImmediatePropagation();
+      if (event.key === "Escape") { event.preventDefault(); resolveConfirmation(false); }
+      if (event.key === "Tab") {
+        const buttons = confirmationRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled)");
+        const first = buttons?.[0], last = buttons?.[buttons.length - 1];
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [confirmation]);
 
   async function run(action: () => Promise<void>) {
     if (running.current) return;
@@ -112,6 +161,13 @@ export default function AccountPanel() {
         <button type="button" className="btn acct-account-action acct-delete-account" disabled={busy} onClick={doEraseAccount}>注销橡果账号</button>
       </div>
       {error && <p className="acct-err" role="alert">{error}</p>}
+      {confirmation && createPortal(<div className="acct-confirm-wrap" onMouseDown={(event) => { if (event.target === event.currentTarget) resolveConfirmation(false); }}>
+        <div className="acct-confirm" role="alertdialog" aria-modal="true" aria-labelledby="acct-confirm-title" aria-describedby="acct-confirm-message" ref={confirmationRef}>
+          <h3 id="acct-confirm-title">{confirmation.title}</h3>
+          <p id="acct-confirm-message">{confirmation.message}</p>
+          <div className="acct-confirm-actions"><button type="button" className="btn" data-account-confirm-cancel onClick={() => resolveConfirmation(false)}>取消</button><button type="button" className="btn danger" onClick={() => resolveConfirmation(true)}>确定</button></div>
+        </div>
+      </div>, document.body)}
     </div>;
   }
 

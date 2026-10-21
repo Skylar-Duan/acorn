@@ -1,0 +1,14 @@
+.date-shortcut-editor { margin: 0 0 16px; padding: 16px; border: 1px solid var(--hair); border-radius: 12px; background: var(--bg); }
+.date-shortcut-note { margin: 0 0 12px; font-size: 12px; color: var(--ink-3); line-height: 1.7; }
+.date-shortcut-rule { margin: 12px 0; padding: 14px; border: 1px solid var(--hair); border-radius: 9px; background: var(--card); }
+.date-shortcut-rule-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.date-shortcut-rule-head strong { font-size: 13px; font-weight: 600; margin-right: auto; overflow-wrap: anywhere; }
+.date-shortcut-preview { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; margin-right: 8px; }
+.date-shortcut-rule-head .btn, .date-shortcut-footer .btn { font-size: 12px; }
+.date-shortcut-fields { display: flex; gap: 10px; flex-wrap: wrap; }
+.date-shortcut-fields label { display: flex; flex-direction: column; gap: 5px; color: var(--ink-3); font-size: 11px; min-width: 90px; }
+.date-shortcut-fields input, .date-shortcut-fields select { width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--hair); border-radius: 6px; background: var(--card); color: var(--ink); font: inherit; font-size: 12px; }
+.date-shortcut-fields input[type=number] { max-width: 95px; }
+.date-shortcut-fields .date-shortcut-name { flex: 1; min-width: 140px; }
+.date-shortcut-footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.date-shortcut-footer > span { flex: 1; }

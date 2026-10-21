@@ -15,6 +15,7 @@ import { pack, unpack } from "./transfer";
 import { inTauri } from "./persist";
 import { plusMetadataReceiver } from "./plus";
 import { restoreLocalOnlyImages, toCloudData } from "./imageLibrary";
+import { cleanupImagesForActiveAccount } from "./imageRetention";
 
 /** 服务器地址。构建时可用 VITE_ACORN_API 覆盖（自建服务器 / 本地联调） */
 export const API_BASE: string =
@@ -321,6 +322,10 @@ export async function syncOnce(session: Session, local: AppData): Promise<SyncOu
 
   // 最多试三轮：每轮之间只可能插进来别的设备的一次推送
   for (let attempt = 0; attempt < 3; attempt++) {
+    // 每次合并（含409重试）后重新判定，未完成引用一处也不能清；控制表随本机结果保留。
+    const cleaned = cleanupImagesForActiveAccount(mergedLocal, session.email);
+    changed = changed || cleaned !== mergedLocal;
+    mergedLocal = cleaned;
     try {
       const out = await call<{ rev: number }>("/api/sync", {
         method: "PUT",

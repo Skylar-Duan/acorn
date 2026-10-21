@@ -60,10 +60,43 @@ describe("图片管理真实组件", () => {
     click(manager().querySelector<HTMLInputElement>('[aria-label="选择当前全部图片"]')!); click(button("仅存本机"));
     expect([...manager().querySelectorAll<HTMLInputElement>(".image-manager-sync input")].every(el => !el.checked)).toBe(true);
     expect(appStore.getState().data.tasks.map(task => [task.images?.map(img => img.dataUrl), task.subtasks.map(sub => sub.images?.map(img => img.dataUrl))])).toEqual(original);
-    click(button("云端同步")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(0);
-    click(button("仅本机")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(2);
-    click(button("全部")); click(button("同步到云端"));
+    click(button("云端")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(0);
+    click(button("本地")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(2);
+    click(button("云端")); click(button("本地"));
+    click(manager().querySelector<HTMLInputElement>('[aria-label="选择当前全部图片"]')!); click(button("同步到云端"));
     expect([...manager().querySelectorAll<HTMLInputElement>(".image-manager-sync input")].every(el => el.checked)).toBe(true);
+  });
+
+  it("切换分类清空选择，批量删除只涉及当前可见且重新选择的图片", () => {
+    const data = appStore.getState().data;
+    data.tasks[1].images = [image("done")]; appStore.setState({ data }); renderManager();
+    click(manager().querySelector<HTMLInputElement>('[aria-label="选择当前全部图片"]')!);
+    click(button("已完成"));
+    expect(manager().querySelectorAll('.image-manager-item.selected')).toHaveLength(0);
+    expect(button("删除").disabled).toBe(true);
+    click(manager().querySelector<HTMLInputElement>('[aria-label="选择当前全部图片"]')!); click(button("删除"));
+    expect(document.querySelector('[role="alertdialog"] h3')?.textContent).toBe("删除 1 张图片？");
+    click(button("删除图片"));
+    expect(appStore.getState().data.tasks[0].images).toHaveLength(2);
+    expect(appStore.getState().data.tasks[1].images).toHaveLength(0);
+  });
+
+  it("四分类独立多选，来源内取并集、来源与完成状态组合，重复点可清除", () => {
+    const data = appStore.getState().data;
+    data.tasks[1].images = [image("done")];
+    data.tasks[0].images![1] = { ...data.tasks[0].images![1], sync: false };
+    appStore.setState({ data }); renderManager();
+    expect(manager().querySelectorAll(".image-manager-filters button")).toHaveLength(4);
+    expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(3);
+    click(button("已完成")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(1);
+    expect(manager().querySelector(".image-manager-owner")?.textContent).toContain("已完成历史");
+    click(button("本地")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(0);
+    click(button("未完成")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(1);
+    click(button("云端")); expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(3);
+    for (const name of ["本地", "云端", "已完成", "未完成"]) expect(button(name).getAttribute("aria-pressed")).toBe("true");
+    for (const name of ["本地", "云端", "已完成", "未完成"]) click(button(name));
+    expect(manager().querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    expect(manager().querySelectorAll(".image-manager-item")).toHaveLength(3);
   });
 
   it("云额度不足时开启同步整笔拒绝，本地图和选择状态保留", () => {
@@ -92,7 +125,22 @@ describe("图片管理真实组件", () => {
 
   it("普通或Plus关闭不暴露图片管理入口，原图片仍保留", async () => {
     flags.plus = false; const before = ledger(); await act(async () => root.render(createElement(Settings)));
-    expect(document.querySelector(".image-manage-entry")).toBeNull(); expect(document.querySelector('[aria-label="管理图片"]')).toBeNull(); expect(ledger()).toBe(before);
+    expect(document.querySelector(".image-manage-entry")).toBeNull(); expect(document.querySelector('[aria-label="管理图片"]')).toBeNull(); expect(document.querySelector('[aria-label="已完成自动移除云端数据"]')).toBeNull(); expect(ledger()).toBe(before);
+  });
+
+  it("图片下方清理开关默认关，开启保留本地图，换号不继承且返回原账号记住偏好", async () => {
+    act(() => syncStore.setState({ session: { email: "cleanup-a@example.test", token: "synthetic-a", rev: 1, syncedAt: null } }));
+    await act(async () => root.render(createElement(Settings)));
+    const toggle = () => document.querySelector<HTMLButtonElement>('[role="switch"][aria-label="已完成自动移除云端数据"]')!;
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    const before = appStore.getState().data.tasks[1].images?.[0].dataUrl;
+    click(toggle()); expect(toggle().getAttribute("aria-checked")).toBe("true");
+    expect(appStore.getState().data.settings.completedImageCleanup).toEqual({ "cleanup-a@example.test": true });
+    expect(appStore.getState().data.tasks[1].images?.[0].dataUrl).toBe(before);
+    act(() => syncStore.setState({ session: { email: "cleanup-b@example.test", token: "synthetic-b", rev: 1, syncedAt: null } }));
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    act(() => syncStore.setState({ session: { email: "cleanup-a@example.test", token: "synthetic-a2", rev: 1, syncedAt: null } }));
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
   });
 
   it("打开管理器后切换账号即时请求关闭，不延用旧账号选择", () => {

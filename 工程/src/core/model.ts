@@ -19,6 +19,8 @@ export interface ImageSyncState {
   sync: boolean;
   updatedAt: string;
   deletedAt?: string | null;
+  /** 自动清理产生的仅本机状态；重新出现未完成引用时可恢复，手动选择会清除此标记。 */
+  completedCleanup?: boolean;
   [key: string]: unknown;
 }
 
@@ -159,6 +161,8 @@ export interface Settings {
   sortMode: "time" | "priority";
   /** 记事时写「周末」「下周末」指的是周六还是周日。默认周日；老数据缺这个字段时 migrate 补成周日 */
   weekendDay: "sat" | "sun";
+  /** 桌面快捷日期的本机配置；缺失用默认五项，不改变数据版本或移动端菜单。 */
+  dateShortcuts?: import("./dateShortcuts").DateShortcutRule[];
   /** 需求方在侧栏的手排顺序（人名，按显示先后）。没排过的人接在后面。
    *  放在设置里 = 每台设备各排各的：需求方不是一条真实记录，只是任务上的一个名字，
    *  给它建一张会同步的表不值当 */
@@ -181,6 +185,8 @@ export interface Settings {
   autoLogin?: boolean;
   /** 本机检查云端更新的间隔（分钟）；缺省5分钟，不改变本机修改后的自动上传。 */
   syncIntervalMinutes?: 5 | 60 | 360 | 1440;
+  /** 本机按账号保存的图片清理偏好；缺省关闭，不从其他账号或云端设置继承。 */
+  completedImageCleanup?: Record<string, boolean>;
   /** **旧字段**（v1.15.0 那一版的名字，只在这台设备上）。现在名字和头像跟着账号走，
    *  住在 AppData.profiles 里（见 core/profile.ts）；这两个键只在第一次登录着打开新版时
    *  被迁进去一次，之后不再读也不再写。**不删**：还没升级的那台设备照旧靠它显示 */

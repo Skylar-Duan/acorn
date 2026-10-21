@@ -626,7 +626,7 @@ export default function Sidebar(
             </div>
             {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
                 下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
-            {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
+            {dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts }).map((p) => (
               <button key={p.key} className="item" onClick={() => planTo(p.ymd)}>{p.label}</button>
             ))}
             {/* 跟另外三处日期框同一个件。这一处以前**三样都没有**（没草稿、没去抖、

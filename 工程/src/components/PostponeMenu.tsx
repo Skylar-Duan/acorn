@@ -79,6 +79,7 @@ function PostponePopover({
   onClose: () => void;
 }) {
   const weekendDay = useApp((s) => s.data.settings.weekendDay);
+  const dateShortcuts = useApp((s) => s.data.settings.dateShortcuts);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [picking, setPicking] = useState(false);
@@ -89,7 +90,7 @@ function PostponePopover({
   // 「这件事现有的日期」：打开那一刻取一次（多选取最早的那个）。没日期的行不设下限
   const [floor] = useState(() => earliestDue(getRows()));
   const today = todayYMD();
-  const presets = dateOptions(today, { weekendDay, after: floor });
+  const presets = dateOptions(today, { weekendDay, dateShortcuts, after: floor });
 
   // 定位：默认贴在按钮下方、右缘对齐按钮右缘（按钮多半在行尾）；
   // 下面放不下往上弹，左边放不下贴左缘。「选日期…」摊开后尺寸变了要重算

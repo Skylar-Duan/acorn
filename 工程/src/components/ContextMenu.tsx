@@ -118,7 +118,7 @@ function SubRowMenu({ x, y, taskId, subId, leaving }: { x: number; y: number; ta
           <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
             {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…，
                 跟任务的「调整日期」、任务卡、侧栏、顺延菜单一模一样，别在这儿另写一份 */}
-            {dateOptions(today, { weekendDay: data.settings.weekendDay }).map((p) => (
+            {dateOptions(today, { weekendDay: data.settings.weekendDay, dateShortcuts: data.settings.dateShortcuts }).map((p) => (
               <button
                 key={p.key}
                 className="ctx-item"
@@ -340,7 +340,7 @@ function Menu({ x, y, ids: rawIds, whole, leaving }: { x: number; y: number; ids
           <div className={`ctx-submenu${subFlip ? " flip" : ""}`} ref={subRef}>
             {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…
                 别在这儿再手写一份。改的是母任务：还在继承的子任务跟着动，自己设过日子的不动 */}
-            {dateOptions(today, { weekendDay: data.settings.weekendDay }).map((p) => (
+            {dateOptions(today, { weekendDay: data.settings.weekendDay, dateShortcuts: data.settings.dateShortcuts }).map((p) => (
               <button key={p.key} className="ctx-item" onClick={() => run(() => setTasksDue(ids, p.ymd))}>
                 {p.label}
               </button>

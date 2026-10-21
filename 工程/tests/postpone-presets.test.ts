@@ -386,7 +386,7 @@ describe("入口：三处都是同一个「顺延 ▾」", () => {
   });
 
   it("菜单只走 dateOptions（带 after 下限）+ 一次落库的 postponeRowsTo；选日期那项走 DatePickRow、只记草稿", () => {
-    expect(postponeSource).toContain("dateOptions(today, { weekendDay, after: floor })");
+    expect(postponeSource).toContain("dateOptions(today, { weekendDay, dateShortcuts, after: floor })");
     expect(postponeSource).toContain("const [floor] = useState(() => earliestDue(getRows()));");
     expect(postponeSource).toContain("postponeRowsTo(rows, ymd)");
     expect(postponeSource).toContain("<DatePickRow");
@@ -425,7 +425,7 @@ describe("右键菜单：推到明天收进「调整日期」，代表整件事�
     expect(code).not.toContain("安排日期");
     expect(code.match(/调整日期<span className="ctx-caret">▸<\/span>/g) ?? []).toHaveLength(2);
     expect(code).toContain("调整日期");
-    expect(code.match(/dateOptions\(today, \{ weekendDay: data\.settings\.weekendDay \}\)\.map\(/g) ?? []).toHaveLength(2);
+    expect(code.match(/dateOptions\(today, \{ weekendDay: data\.settings\.weekendDay, dateShortcuts: data\.settings\.dateShortcuts \}\)\.map\(/g) ?? []).toHaveLength(2);
     expect(code.match(/<DatePickRow /g) ?? []).toHaveLength(2);
     expect(code).not.toContain("duePresets(");
     expect(code).not.toContain("adjustDatePresets(");

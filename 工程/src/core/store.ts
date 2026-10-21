@@ -17,7 +17,8 @@ import * as persist from "./persist";
 import * as cloud from "./cloud";
 import { isMobile } from "./platform";
 import { imageListUpdateError, taskImages } from "./taskImages";
-import { bulkDeleteImages, bulkSetImageSync, finalizeImageMutation } from "./imageLibrary";
+import { bulkDeleteImages, bulkSetImageSync, finalizeImageMutation, listLedgerImages } from "./imageLibrary";
+import { cleanupImagesForActiveAccount } from "./imageRetention";
 
 // 视图 id。2026-08-28 改名对照：all→plan（原「全部」现在叫「计划」）、logbook→done（原「日志」现在叫「已完成」）；
 // 原来独立的 upcoming（按天排的计划）撤掉，四象限并进 plan 成了它的一个视图切换。
@@ -319,7 +320,7 @@ function mutate(
 ) {
   const cur = appStore.getState().data;
   const images = finalizeImageMutation(cur, fn(cur));
-  const next = stamp(cur, images.data);
+  const next = stamp(cur, cleanupImagesForActiveAccount(images.data));
   if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘、也不打断合并
   if (!opts?.skipUndo) {
     const key = opts?.coalesceKey;
@@ -361,7 +362,7 @@ export function undo() {
   });
   // 撤销也是一次改动，被撤回来的那些条要重新盖时刻戳，
   // 否则同步时云端那份「更新」的会把撤销效果又推回来
-  const restored = stamp(cur, finalizeImageMutation(cur, {
+  const restored = stamp(cur, cleanupImagesForActiveAccount(finalizeImageMutation(cur, {
     ...prev,
     tasks,
     sessions: cur.sessions,
@@ -369,7 +370,7 @@ export function undo() {
     graveyard: cur.graveyard,
     // 名字和头像同 settings：不属于可撤销数据，撤一件事不许把刚换的头像也撤回去
     ...(cur.profiles !== undefined ? { profiles: cur.profiles } : {}),
-  }).data);
+  }).data));
   appStore.setState({
     data: restored,
     undoDepth: undoStack.length,
@@ -587,6 +588,10 @@ export function deleteManagedImages(keys: readonly string[]): string | null {
 export function setManagedImageSync(keys: readonly string[], sync: boolean): string | null {
   const result = bulkSetImageSync(appStore.getState().data, keys, sync);
   if (result.error) return result.error;
+  if (sync) {
+    const cleaned = cleanupImagesForActiveAccount(result.data);
+    if (cleaned !== result.data && listLedgerImages(cleaned).some((entry) => keys.includes(entry.key) && entry.completed && !entry.cloud)) return "已开启已完成图片自动移除云端数据，请先关闭该选项再同步已完成图片";
+  }
   if (result.changed) mutate(() => result.data, { toast: sync ? "已开启图片云端同步" : "图片仅保存在本机" });
   return null;
 }

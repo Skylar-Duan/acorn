@@ -1,0 +1,15 @@
+.shortcut-recorder-back { z-index: 1600; }
+.shortcut-recorder { width: 460px; min-width: 0; max-width: calc(100vw - 32px); padding: 26px; border-radius: 20px; }
+.shortcut-recorder header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.shortcut-recorder h2 { margin: 0; font-family: var(--heading); font-size: 23px; font-weight: 600; }
+.shortcut-recorder header button { width: 30px; height: 30px; display: grid; place-items: center; color: var(--ink-3); border-radius: 50%; }
+.shortcut-recorder header button:hover { background: var(--accent-soft); }
+.shortcut-recorder > p { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.7; margin: 14px 0; }
+.shortcut-capture { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 106px; padding: 20px; border: 1px dashed var(--hair); border-radius: 14px; background: var(--bg); color: var(--ink-3); }
+.shortcut-capture:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.shortcut-capture kbd { min-width: 42px; padding: 10px 12px; text-align: center; border: 1px solid var(--hair); border-bottom-width: 3px; border-radius: 8px; background: var(--card); font: 15px var(--mono); color: var(--ink); }
+.shortcut-recorder .shortcut-status { min-height: 44px; font-size: 12px; }
+.shortcut-recorder .shortcut-status.invalid { color: var(--accent); }
+.shortcut-recorder footer { display: flex; gap: 10px; align-items: center; padding-top: 18px; border-top: 1px solid var(--hair); }
+.shortcut-recorder .shortcut-reset { margin-right: auto; }
+.shortcut-recorder .btn:disabled { opacity: .45; cursor: default; }

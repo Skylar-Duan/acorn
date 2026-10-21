@@ -169,14 +169,14 @@ describe("「安排日期」只有一套规矩：五个入口同一份预设", (
   // 09-21 再改口：全应用选日子统一成 core/options.dateOptions（今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…），
   // 右键、侧栏、任务卡、随手记、顺延全是这一份——原来「侧栏不带明天」那条被这次有意推翻
   it("右键「调整日期 ▸」（任务）走 dateOptions，不自己算候选日，末尾有「选日期…」", () => {
-    expect(taskMenuDate).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay }).map(");
+    expect(taskMenuDate).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay, dateShortcuts: data.settings.dateShortcuts }).map(");
     expect(taskMenuDate).toContain("<DatePickRow");
     expect(taskMenuDate).not.toContain("下周一");
     expect(taskMenuDate).not.toContain("addDays(");
   });
 
   it("右键「调整日期 ▸」（子任务）也是同一套", () => {
-    expect(subMenuDate).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay }).map(");
+    expect(subMenuDate).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay, dateShortcuts: data.settings.dateShortcuts }).map(");
     expect(subMenuDate).toContain("<DatePickRow");
     expect(subMenuDate).not.toContain("addDays(");
     // 「继承母任务」是子任务独有的一条，得留着
@@ -184,7 +184,7 @@ describe("「安排日期」只有一套规矩：五个入口同一份预设", (
   });
 
   it("侧栏「安排到哪天？」也是同一套，日子的名字一个都不写死", () => {
-    expect(planPop).toContain("dateOptions(today, { weekendDay: settings.weekendDay }).map(");
+    expect(planPop).toContain("dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts }).map(");
     expect(planPop).not.toContain("明天");
     expect(planPop).not.toContain("下周一");
   });

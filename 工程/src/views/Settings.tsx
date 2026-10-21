@@ -22,7 +22,7 @@ import {
   restoreBackup, saveData, writeTextFile,
 } from "../core/persist";
 import type { BackupInfo, DataStatus } from "../core/persist";
-import { applyQuickAddShortcut } from "../core/shortcutCtl";
+import ShortcutRecorder from "../components/ShortcutRecorder";
 import { previewEyeCare } from "../core/eyeCare";
 import { useSync } from "../core/syncCtl";
 import { SYNC_INTERVAL_CHOICES, syncIntervalMinutes } from "../core/syncInterval";
@@ -42,8 +42,9 @@ import MobileHead from "../mobile/MobileHead";
 import SidebarSettings from "../components/SidebarSettings";
 import Icon, { type IconName } from "../components/Icon";
 import { IMAGE_LEDGER_MAX_BYTES } from "../core/taskImages";
-import { cloudImageBytes } from "../core/imageLibrary";
+import { cloudImageBytes, completedImageCleanupEnabled, imageCleanupAccountKey } from "../core/imageLibrary";
 import ImageManager from "../components/ImageManager";
+import DateShortcutSettings from "../components/DateShortcutSettings";
 import "../styles/settings.css";
 
 /** 设置页那些节在本机记忆里的键前缀（侧栏是 `acorn-side-`）。
@@ -219,9 +220,6 @@ export default function Settings() {
   const [status, setStatus] = useState<DataStatus | null>(null);
   /** null = 备份列表收起 */
   const [backups, setBackups] = useState<BackupInfo[] | null>(null);
-  const [shortcut, setShortcut] = useState(settings.quickAddShortcut);
-  /** 快捷键那格的提交回执（A2）：这里本来就是失焦即存，只是从来没告诉过人 */
-  const shortcutFlash = useCommitFlash();
   const [autoOn, setAutoOn] = useState(settings.autostart);
   const guide = useGuideEntry();
   const weekendName = settings.weekendDay === "sat" ? "周六" : "周日";
@@ -239,7 +237,6 @@ export default function Settings() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => setShortcut(settings.quickAddShortcut), [settings.quickAddShortcut]);
 
   // 色卡按当前深浅模式展示对应主题的那一面
   const swatchMode: "light" | "dark" =
@@ -248,18 +245,6 @@ export default function Settings() {
         ? "dark"
         : "light"
       : settings.mode;
-
-  function commitShortcut() {
-    const v = shortcut.trim();
-    if (!v) {
-      setShortcut(settings.quickAddShortcut);
-      return;
-    }
-    if (v === settings.quickAddShortcut) return;
-    updateSettings({ quickAddShortcut: v });
-    void applyQuickAddShortcut(v);
-    shortcutFlash.flash();
-  }
 
   async function toggleAutostart() {
     const next = !autoOn;
@@ -505,32 +490,17 @@ export default function Settings() {
               </div>
             </div>
           </div>
+          {hasDesktopFeatures && <DateShortcutSettings />}
           {/* 全局快捷键是系统级热键，只有装在电脑上的橡果注册得了。
               以前这里判的是 hasDesktopFeatures，于是电脑浏览器里摆着一个按了没反应的输入框 */}
           {isDesktopShell && (
           <div className="set-row">
             <div className="set-row-label">
               全局快捷键
-              <span className="set-hint">唤起「记一条」小窗 · 如 Alt+Space、Ctrl+Shift+A</span>
+              <span className="set-hint">唤起「记一条」小窗 · 点击录制，最多三个键</span>
             </div>
             <div className="set-ctl">
-              <input
-                className={`input set-shortcut${shortcutFlash.on ? " commit-lit" : ""}`}
-                value={shortcut}
-                onChange={(e) => setShortcut(e.target.value)}
-                // 窗口失焦不是点走：alt-tab 出去时会把打了一半的那组键当成新快捷键注册掉，
-                // 框原样悬着，等用户回来自己了结（回车确认 / Esc 还原）
-                onBlur={() => { if (document.hasFocus()) commitShortcut(); }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                  // Esc 还原成现在真正生效的那一组，别把没按下确认的字留在框里骗人
-                  if (e.key === "Escape") {
-                    e.stopPropagation();
-                    setShortcut(settings.quickAddShortcut);
-                  }
-                }}
-              />
-              <CommitMark on={shortcutFlash.on} />
+              <ShortcutRecorder value={settings.quickAddShortcut} />
             </div>
           </div>
           )}
@@ -656,6 +626,13 @@ export default function Settings() {
               </div>
             </div>
             <button type="button" className="btn image-manage-entry" onClick={() => setImageManagerOpen(true)}>管理图片</button>
+          </div>}
+          {plus && <div className="set-row">
+            <div className="set-row-label">已完成自动移除云端数据<span className="set-hint">仅清理已完成图片的云端副本，本机图片仍保留。多处使用的图片全部完成后才清理；关闭后可在管理图片中重新同步。</span></div>
+            <div className="set-ctl"><button type="button" className={`set-switch${completedImageCleanupEnabled(settings, session?.email) ? " on" : ""}`} role="switch" aria-label="已完成自动移除云端数据" aria-checked={completedImageCleanupEnabled(settings, session?.email)} disabled={!session} onClick={() => {
+              if (!session) return;
+              updateSettings({ completedImageCleanup: { ...settings.completedImageCleanup, [imageCleanupAccountKey(session.email)]: !completedImageCleanupEnabled(settings, session.email) } });
+            }} /></div>
           </div>}
           {plus && imageManagerOpen && <ImageManager onClose={() => setImageManagerOpen(false)} />}
           <div className="set-row">

@@ -531,7 +531,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   const repeatAnchor = task.due ?? today;
   // 选日子的快捷项（今天 / 明天 / 本周末 / 下周末 / 本月末）：全应用一套，规则和单测都在 core/options.ts。
   // 主任务的日期弹层和子任务的日期小签都用它
-  const presets = dateOptions(today, { weekendDay: settings.weekendDay });
+  const presets = dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts });
 
   /** 一条子任务的整行。未完成那堆和已完成那堆共用它，两处长得一模一样。
    *  写成组件体内的局部函数、不抽成外部组件：外部组件每次 render 都是个新类型，

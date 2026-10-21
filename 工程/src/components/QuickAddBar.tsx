@@ -282,7 +282,7 @@ export default function QuickAddBar({
           <Pick owner={popupOwner} menu={menu} setMenu={setMenu} id="due" on={!!pick.due} label={<><Icon name="calendar" /> {pick.due ? formatShort(pick.due) : "日期"}</>}>
             {/* 全应用选日子同一套（core/options.dateOptions）：今天 / 明天 / 本周末 / 下周末 / 本月末，
                 下面那个日期框就是「选日期…」。一处算一处用，别在这儿再写一份 */}
-            {dateOptions(today, { weekendDay: settings.weekendDay }).map((p) => (
+            {dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts }).map((p) => (
               <button key={p.key} className="item" onClick={() => pickDue(p.ymd)}>
                 {p.label}
               </button>

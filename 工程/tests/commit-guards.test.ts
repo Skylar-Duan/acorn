@@ -16,7 +16,6 @@ import ctxMenuSource from "../src/components/ContextMenu.tsx?raw";
 import calendarSource from "../src/views/Calendar.tsx?raw";
 import habitsSource from "../src/views/Habits.tsx?raw";
 import listViewSource from "../src/views/ListView.tsx?raw";
-import settingsSource from "../src/views/Settings.tsx?raw";
 import { isPlausibleYMD } from "../src/core/dates";
 import { DATE_COMMIT_MS, makeDateCommitter } from "../src/core/dateinput";
 import { defaultData } from "../src/core/model";
@@ -809,7 +808,7 @@ describe("「失焦即提交」不许把「窗口失焦」当成「点走」（a
     ["DateField · 全仓四处日期框共用的失焦口", dateFieldSource],
     ["右键菜单 · 需求方", ctxMenuSource],
     ["清单页 · 清单改名", listViewSource],
-    ["设置页 · 全局快捷键", settingsSource],
+    // 全局快捷键改为录制弹窗里的显式保存；失焦不提交，见 shortcut-recorder.test.ts。
   ] as const;
 
   it("每一个入口都装了同一道窗口判据", () => {
@@ -844,8 +843,8 @@ describe("「失焦即提交」不许把「窗口失焦」当成「点走」（a
   });
 
   it("窗口失焦时**什么都不做**：不提交，也不顺手把弹层收掉（原样悬着等人回来）", () => {
-    // 四个包了闸的单行 onBlur 一律是「条件成立才 commit」，没有 else 里的收尾动作
-    for (const src of [taskCardSource, ctxMenuSource, listViewSource, settingsSource]) {
+    // 包了闸的单行 onBlur 一律是「条件成立才 commit」，没有 else 里的收尾动作
+    for (const src of [taskCardSource, ctxMenuSource, listViewSource]) {
       for (const line of src.split("\n")) {
         if (!line.includes("document.hasFocus()") || !line.includes("onBlur=")) continue;
         expect(line).not.toContain("setMenu(null)");

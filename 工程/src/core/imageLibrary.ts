@@ -1,8 +1,8 @@
 // 图片内容仍随本机账本与备份保存；只在云请求边界投影，绝不把云投影写回本机。
-import type { AppData, ImageSyncState, Subtask, Task, TaskImage } from "./model";
+import type { AppData, ImageSyncState, Settings, Subtask, Task, TaskImage } from "./model";
 import { IMAGE_LEDGER_MAX_BYTES, imageUrlLength, taskImages } from "./taskImages";
 
-export interface ImageReference { taskId: string; subId?: string; taskTitle: string; ownerTitle: string }
+export interface ImageReference { taskId: string; subId?: string; taskTitle: string; ownerTitle: string; completed: boolean }
 export interface ManagedImage extends ImageReference {
   key: string;
   image: TaskImage;
@@ -25,8 +25,8 @@ const deleted = (data: Pick<AppData, "imageSync">, image: TaskImage) => !!stateO
 
 function owners(data: Pick<AppData, "tasks">): { owner: Task | Subtask; reference: ImageReference }[] {
   return data.tasks.flatMap((task) => [
-    { owner: task, reference: { taskId: task.id, taskTitle: task.title, ownerTitle: task.title } },
-    ...task.subtasks.map((sub) => ({ owner: sub, reference: { taskId: task.id, subId: sub.id, taskTitle: task.title, ownerTitle: sub.title } })),
+    { owner: task, reference: { taskId: task.id, taskTitle: task.title, ownerTitle: task.title, completed: task.done === true } },
+    ...task.subtasks.map((sub) => ({ owner: sub, reference: { taskId: task.id, subId: sub.id, taskTitle: task.title, ownerTitle: sub.title, completed: task.done === true || sub.done === true } })),
   ]);
 }
 
@@ -38,11 +38,45 @@ export function listLedgerImages(data: Pick<AppData, "tasks" | "imageSync">): Ma
     const current = byId.get(image.id);
     if (current) {
       current.references.push(reference); current.referenceCount++;
+      current.completed = current.completed && reference.completed;
       if (current.image.dataUrl !== image.dataUrl) current.conflict = true;
       if (!imageCloudEnabled(data, image)) current.cloud = false;
     } else byId.set(image.id, { ...reference, key: image.id, image, cloud: imageCloudEnabled(data, image), references: [reference], referenceCount: 1, conflict: false });
   }
   return [...byId.values()];
+}
+
+export type ImageFilter = "local" | "cloud" | "completed" | "pending";
+/** 来源与完成状态各自取并集，再取交集；空组不限。共享图全部引用完成才归入已完成。 */
+export function filterLedgerImages(entries: ManagedImage[], filters: readonly ImageFilter[]): ManagedImage[] {
+  const selected = new Set(filters);
+  return entries.filter((entry) =>
+    ((!selected.has("local") && !selected.has("cloud")) || selected.has(entry.cloud ? "cloud" : "local")) &&
+    ((!selected.has("completed") && !selected.has("pending")) || selected.has(entry.completed ? "completed" : "pending")));
+}
+
+export const imageCleanupAccountKey = (account: string) => account.trim().toLowerCase();
+export function completedImageCleanupEnabled(settings: Pick<Settings, "completedImageCleanup">, account: string | null | undefined): boolean {
+  return !!account && settings.completedImageCleanup?.[imageCleanupAccountKey(account)] === true;
+}
+
+/** 只关闭已完成图的云同步，复用独立操作戳；本机字节、引用、未知字段全部保留。 */
+export function cleanupCompletedCloudImages(data: AppData, account: string | null | undefined, now = new Date().toISOString()): AppData {
+  if (!completedImageCleanupEnabled(data.settings, account)) return data;
+  const entries = listLedgerImages(data);
+  // 先腾出已完成图的空间，再恢复待办图；满额时不能因为顺序而多等一轮同步。
+  const keys = entries.filter((entry) => entry.completed && entry.cloud && !entry.conflict).map((entry) => entry.key);
+  let next = data;
+  if (keys.length) {
+    next = bulkSetImageSync(next, keys, false, now).data;
+    const imageSync = { ...next.imageSync };
+    for (const id of keys) imageSync[id] = { ...imageSync[id], completedCleanup: true };
+    next = { ...next, imageSync };
+  }
+  // 另一端撤回完成/加了待办引用时，不把刚合进来的有效云图一并清掉。
+  // 只还原自动清理过的图；用户手动选择仅本机的图不能因此开启。
+  const pending = entries.filter((entry) => !entry.completed && !entry.cloud && !entry.conflict && stateOf(data, entry.key)?.completedCleanup === true).map((entry) => entry.key);
+  return pending.length ? bulkSetImageSync(next, pending, true, now).data : next;
 }
 
 /** 云空间按实际发送的每处dataURL引用计量，历史与回收站同样占云空间。 */
@@ -98,11 +132,11 @@ export function bulkDeleteImages(data: AppData, keys: readonly string[], now = n
 export function bulkSetImageSync(data: AppData, keys: readonly string[], sync: boolean, now = new Date().toISOString()): ImageLibraryChange {
   const { selected, error } = selectedImages(data, keys);
   if (error) return { data, changed: false, error };
-  const ids = new Set(selected.filter((image) => image.cloud !== sync).map((image) => image.key));
+  const ids = new Set(selected.filter((image) => image.cloud !== sync || !sync && stateOf(data, image.key)?.completedCleanup === true).map((image) => image.key));
   if (!ids.size) return { data, changed: false };
   const at = nextStamp(data, now);
   const imageSync = { ...data.imageSync };
-  for (const id of ids) imageSync[id] = { ...imageSync[id], sync, updatedAt: at, deletedAt: null };
+  for (const id of ids) imageSync[id] = { ...imageSync[id], sync, updatedAt: at, deletedAt: null, completedCleanup: false };
   const next = mapOwnerImages({ ...data, imageSync }, (images) => images.some((image) => ids.has(image?.id)) ? images.map((image) => ids.has(image?.id) ? { ...image, sync } : image) : images);
   if (sync && cloudImageBytes(next) > IMAGE_LEDGER_MAX_BYTES) return { data, changed: false, error: "云端图片空间不足20 MB，请减少勾选或先关闭其他图片的同步；本机图片仍保留" };
   return { data: next, changed: true };

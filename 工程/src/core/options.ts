@@ -11,12 +11,13 @@
 import type { RepeatRule } from "./model";
 import { addDays, cmpYMD, dayOfWeek, monthEnd, weekendOf } from "./dates";
 import { describeRepeat } from "./recur";
+import { dateShortcutLabel, resolveDateShortcut, validDateShortcuts, type DateShortcutRule } from "./dateShortcuts";
 
 // ---------------------------------------------------------------------------
 // 日期
 // ---------------------------------------------------------------------------
 
-export type DateOptionKey = "today" | "tomorrow" | "weekend" | "nextWeekend" | "monthEnd";
+export type DateOptionKey = string;
 
 /** 选日子的一项 */
 export interface DateOption {
@@ -30,6 +31,8 @@ export interface DateOption {
 export const PICK_DATE_LABEL = "选日期…";
 
 export interface DateOptionsOpts {
+  /** 桌面本机自定义；未传保留既有五项，空数组表示不显示快捷项。 */
+  dateShortcuts?: DateShortcutRule[];
   /** 设置里的周末日（settings.weekendDay），不给按周日 */
   weekendDay?: "sat" | "sun";
   /** 顺延类入口传「这件事现有的日期」：**不晚于它**的选项一律不出（顺延不该把日子往前拉，
@@ -48,6 +51,15 @@ export interface DateOptionsOpts {
  *     「今天」被藏了，跟它同一天的「本周末」也不会顶上来。
  *  本周末 / 下周末跟记事语法「~周末 / ~下周末」同一套算法（dates.weekendOf）。 */
 export function dateOptions(today: string, opts: DateOptionsOpts = {}): DateOption[] {
+  if (opts.dateShortcuts !== undefined) {
+    const out: DateOption[] = [];
+    for (const rule of validDateShortcuts(opts.dateShortcuts)) {
+      const ymd = resolveDateShortcut(today, rule, opts.weekendDay);
+      if (cmpYMD(ymd, today) < 0 || out.some((o) => o.ymd === ymd)) continue;
+      out.push({ key: rule.id, label: dateShortcutLabel(rule), ymd });
+    }
+    return opts.after ? out.filter((o) => cmpYMD(o.ymd, opts.after!) > 0) : out;
+  }
   const weekend = weekendOf(today, opts.weekendDay, 0);
   const all: DateOption[] = [
     { key: "today", label: "今天", ymd: today },
