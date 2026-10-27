@@ -58,9 +58,9 @@ describe("fetchWebVersion", () => {
     expect(calls[0]).toBe(`${WEB_VERSION_URL}?t=123`);
   });
 
-  it("测试环境里 base 是 /，网页版打包时是 /app/（由 vite 的 BASE_URL 决定）", () => {
+  it("测试环境里 base 是 /，网页版打包时也是根 /（由 vite 的 BASE_URL 决定）", () => {
     expect(WEB_VERSION_URL.endsWith("version.json")).toBe(true);
-    // 写死成 "/app/version.json" 就跟 base 脱钩了，本地预览时会查错地方
+    // 写死成 "/version.json" 就跟 base 脱钩了，本地预览时会查错地方
     expect(source).toContain("import.meta.env.BASE_URL");
   });
 

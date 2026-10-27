@@ -9,11 +9,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>橡果 Acorn</title>
 
-    <!-- ↓ 网页版（acorn.cdpandas.com/app/）「添加到主屏幕」要用的几句。
+    <!-- ↓ 网页版（acorn.cdpandas.com/，旧 /app/ 会 301 过来）「添加到主屏幕」要用的几句。
          桌面包和安卓包会把这几句一起带上，但两边都不看它：Tauri 的 WebView 不装 PWA，
          多出来的只有 public/ 里那几个图标（合计 ~83 KB），所以不另开一份 html。
          图标和 manifest 放在 public/，vite 会原样拷进产物；href 写 `/` 开头是为了让
-         vite 按各自的 base 改写（桌面 ./、网页 /app/），不要手改成相对路径。 -->
+         vite 按各自的 base 改写（桌面 ./、网页 /），不要手改成相对路径。 -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- iPhone 认的是这一个，而且不认透明——所以给的是满版那张，圆角由系统去切 -->
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />

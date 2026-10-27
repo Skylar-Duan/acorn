@@ -1,0 +1,17 @@
+[Unit]
+Description=Acorn 橡果云同步库每日备份（SQLite 在线快照）
+After=network.target
+
+[Service]
+Type=oneshot
+# 必须以 acorn 跑：root 打开 WAL 库可能新建属主 root 的 -wal/-shm，同步服务随即写不进（见脚本头注释）
+User=acorn
+Group=acorn
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/local/sbin/acorn-backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/acorn-sync /var/backups/acorn/daily
