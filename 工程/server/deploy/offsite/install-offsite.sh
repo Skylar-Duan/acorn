@@ -5,8 +5,8 @@
 #
 #   prod 侧：/etc/acorn-sync/offsite/{id_ed25519,known_hosts}（acorn 700，私钥服务器上生成、不出机）
 #            /usr/local/sbin/acorn-offsite.sh + acorn-offsite.{service,timer}
-#   11 侧：  专用账号 acornbak（独立用户，符合 preferred-web-01 共用规矩），
-#            /usr/local/bin/acorn-backup-receive，备份落 /home/acornbak/backups/（只留 3 份）
+#   11 侧：  专用账号 acorn-backup（独立用户，符合 preferred-web-01 共用规矩），
+#            /usr/local/bin/acorn-backup-receive，备份落 /home/acorn-backup/backups/（只留 3 份）
 #            钥匙限死：restrict + from=prod IP + 强制命令，不能登录、不能干别的
 #
 # 用法：bash install-offsite.sh
@@ -42,14 +42,17 @@ set -euo pipefail
 sudo sed -i 's/\r$//' /tmp/acorn-backup-receive
 sudo install -m 755 -o root -g root /tmp/acorn-backup-receive /usr/local/bin/acorn-backup-receive
 rm -f /tmp/acorn-backup-receive
-id acornbak >/dev/null 2>&1 || sudo useradd -m -s /bin/bash -c "Acorn offsite backup (16-Acorn)" acornbak
-sudo passwd -l acornbak >/dev/null
-sudo chmod 700 /home/acornbak
-sudo install -d -m 700 -o acornbak -g acornbak /home/acornbak/.ssh /home/acornbak/backups
+id acorn-backup >/dev/null 2>&1 || sudo useradd -m -s /bin/bash -c "Acorn offsite backup (16-Acorn)" acorn-backup
+sudo passwd -l acorn-backup >/dev/null
+# 归入个人分区（2026-10-27 用户定的 A 方案；分区清单 /etc/skylar-partitions.json）
+getent group skylar-personal >/dev/null || sudo groupadd skylar-personal
+sudo usermod -aG skylar-personal acorn-backup
+sudo chmod 700 /home/acorn-backup
+sudo install -d -m 700 -o acorn-backup -g acorn-backup /home/acorn-backup/.ssh /home/acorn-backup/backups
 printf 'restrict,from="%s",command="/usr/local/bin/acorn-backup-receive" %s\n' "$PROD_IP" "$PUB" \
-  | sudo tee /home/acornbak/.ssh/authorized_keys >/dev/null
-sudo chown acornbak:acornbak /home/acornbak/.ssh/authorized_keys
-sudo chmod 600 /home/acornbak/.ssh/authorized_keys
+  | sudo tee /home/acorn-backup/.ssh/authorized_keys >/dev/null
+sudo chown acorn-backup:acorn-backup /home/acorn-backup/.ssh/authorized_keys
+sudo chmod 600 /home/acorn-backup/.ssh/authorized_keys
 cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub
 REMOTE
 )"
@@ -78,4 +81,4 @@ systemctl list-timers --no-pager acorn-offsite.timer | head -2
 REMOTE
 
 echo "=== 4. 11：落地情况"
-"${F_SSH[@]}" 'sudo ls -la /home/acornbak/backups/'
+"${F_SSH[@]}" 'sudo ls -la /home/acorn-backup/backups/'

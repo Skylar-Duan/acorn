@@ -1,7 +1,7 @@
 #!/bin/bash
 # acorn-backup-receive.sh — 装在 11 的 preferred-web-01 上，接收橡果库的异地备份。
 #
-# 专用账号 acornbak 的 authorized_keys 里把这把钥匙钉死为
+# 专用账号 acorn-backup 的 authorized_keys 里把这把钥匙钉死为
 #   restrict,from="47.85.52.202",command="/usr/local/bin/acorn-backup-receive" ssh-ed25519 ...
 # 所以这把钥匙只能做一件事：从标准输入收一个 .db.gz，验过后存下，只留最近 3 份。
 # 对方传什么命令（SSH_ORIGINAL_COMMAND）一律不理。
@@ -12,7 +12,7 @@ set -euo pipefail
 umask 077
 cd /
 
-DIR="/home/acornbak/backups"
+DIR="/home/acorn-backup/backups"
 KEEP=3
 MAX_BYTES=$((500 * 1024 * 1024))   # 现在 ~200KB；设上限防有人灌满公司机器的盘
 

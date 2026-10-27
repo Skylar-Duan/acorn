@@ -16,7 +16,7 @@
 #   4. ssh 推给对方的接收脚本，对方回执的字节数与 sha256 必须和本地一致
 #   5. 写 /var/lib/acorn-sync/offsite-last.json（644）；临时文件随 PrivateTmp 与 trap 一起清掉
 #
-# 恢复：到 preferred-web-01 取 /home/acornbak/backups/ 里的一份，gunzip 后停 acorn-sync，
+# 恢复：到 preferred-web-01 取 /home/acorn-backup/backups/ 里的一份，gunzip 后停 acorn-sync，
 #       替换 /var/lib/acorn-sync/acorn.db（删掉旧的 -wal/-shm），chown acorn:acorn，再启动。
 
 set -euo pipefail
@@ -27,7 +27,7 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:
 DB="${ACORN_DB:-/var/lib/acorn-sync/acorn.db}"
 STATE_DIR="${ACORN_BACKUP_STATE_DIR:-/var/lib/acorn-sync}"
 KEY_DIR="/etc/acorn-sync/offsite"
-DEST="${ACORN_OFFSITE_DEST:-acornbak@43.156.230.45}"
+DEST="${ACORN_OFFSITE_DEST:-acorn-backup@43.156.230.45}"
 LAST_JSON="$STATE_DIR/offsite-last.json"
 FAILED_FILE="$STATE_DIR/offsite.failed"
 LOCK_FILE="$STATE_DIR/.offsite.lock"
