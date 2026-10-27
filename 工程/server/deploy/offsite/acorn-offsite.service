@@ -1,0 +1,16 @@
+[Unit]
+Description=Acorn 橡果库异地备份（推到 11 的 preferred-web-01）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=acorn
+Group=acorn
+Environment=HOME=/var/lib/acorn-sync
+ExecStart=/usr/local/sbin/acorn-offsite.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/acorn-sync

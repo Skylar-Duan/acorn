@@ -1,0 +1,13 @@
+# 每周日北京 04:10（每日备份 03:40 已跑完）。Persistent=true：关机错过的那次开机补跑。
+# 安装：deploy/offsite/install-offsite.sh
+
+[Unit]
+Description=Weekly Acorn DB offsite push to preferred-web-01 (Sun 04:10 Beijing)
+
+[Timer]
+OnCalendar=Sun *-*-* 04:10:00 Asia/Shanghai
+Persistent=true
+Unit=acorn-offsite.service
+
+[Install]
+WantedBy=timers.target
