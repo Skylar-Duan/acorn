@@ -152,6 +152,7 @@ const UNDO_CAP = 10;
  *  注意：这只动撤销栈。**逐键落库一个字都没少**，见 mutate 末尾照旧调 scheduleSave */
 const COALESCE_MS = 800;
 let undoStack: AppData[] = [];
+let redoStack: AppData[] = [];
 /** 上一次带合并键的写入：键 + 时刻。键带任务 id 与字段名，
  *  所以「改 A 的标题」和「改 B 的标题」永远并不到一张快照里去 */
 let coalesce: { key: string; at: number } | null = null;
@@ -260,6 +261,7 @@ export async function flushSave(): Promise<void> {
 /** 清空撤销栈。整份数据被换掉之后必须清——不清的话 Ctrl+Z 一按就把旧的整份写回盘 */
 export function clearUndo(): void {
   undoStack = [];
+  redoStack = [];
   coalesce = null;
   appStore.setState({ undoDepth: 0 });
 }
@@ -277,6 +279,7 @@ export async function haltPersistence(): Promise<void> {
   }
   appStore.setState({ wiped: true, undoDepth: 0 });
   undoStack = [];
+  redoStack = [];
   coalesce = null;
 }
 
@@ -286,6 +289,18 @@ export async function haltPersistence(): Promise<void> {
  *  先比对象身份（绝大多数没动的任务是同一个对象，一比就过），身份不同再比内容——
  *  撤销这类操作会重建对象但内容可能没变，只比身份会把整库都标成「刚改过」，
  *  那样第一次同步就会拿本机盖掉云端。 */
+// 记录是不可变更新的：未动的数组、图片和未知字段沿用原引用。
+// 逐字段短路比较，避免每敲一个字都把整件事（含内联图片）转成两份巨型 JSON。
+function sameContent(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ak = Object.keys(a), bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  const ar = a as Record<string, unknown>, br = b as Record<string, unknown>;
+  return ak.every((key) => Object.prototype.hasOwnProperty.call(br, key) && sameContent(ar[key], br[key]));
+}
+
 function stampChanged<T extends { id: string; updatedAt: string }>(
   prev: T[],
   next: T[],
@@ -296,19 +311,20 @@ function stampChanged<T extends { id: string; updatedAt: string }>(
   const out = next.map((x) => {
     const old = prevById.get(x.id);
     if (old === x) return x;
-    if (old !== undefined && JSON.stringify(old) === JSON.stringify(x)) return old;
+    if (old !== undefined && sameContent(old, x)) return old;
     touched = true;
     return { ...x, updatedAt: at };
   });
-  return touched || out.length !== prev.length ? out : next;
+  return !touched && out.length === prev.length && out.every((x, i) => x === prev[i]) ? prev : out;
 }
 
 function stamp(prev: AppData, next: AppData): AppData {
   const at = new Date().toISOString();
   const tasks = next.tasks === prev.tasks ? next.tasks : stampChanged(prev.tasks, next.tasks, at);
   const lists = next.lists === prev.lists ? next.lists : stampChanged(prev.lists, next.lists, at);
-  if (tasks === next.tasks && lists === next.lists) return next;
-  return { ...next, tasks, lists };
+  const result = tasks === next.tasks && lists === next.lists ? next : { ...next, tasks, lists };
+  const keys = Object.keys(result) as (keyof AppData)[];
+  return keys.length === Object.keys(prev).length && keys.every((key) => Object.is(prev[key], result[key])) ? prev : result;
 }
 
 /** 所有写操作的唯一入口：应用变更 → 盖改动时刻 → 快照进撤销栈 → 计划落盘。无实际变更时什么都不做。
@@ -323,6 +339,7 @@ function mutate(
   const next = stamp(cur, cleanupImagesForActiveAccount(images.data));
   if (next === cur) return; // 无操作（如对已完成任务再次 complete）不压栈不落盘、也不打断合并
   if (!opts?.skipUndo) {
+    redoStack = [];
     const key = opts?.coalesceKey;
     const at = Date.now();
     // 只有「接着上一次同键写入、且还没停手够久」才并。栈空时不能并（没有可并的快照）
@@ -346,6 +363,21 @@ export function undo() {
   // 撤过之后接着打字必须另起一张快照：栈顶已经不是刚才合并的那张了
   coalesce = null;
   if (!prev) return;
+  redoStack.push(appStore.getState().data);
+  restoreHistory(prev);
+}
+
+export function redo() {
+  const next = redoStack.pop();
+  coalesce = null;
+  if (!next) return;
+  undoStack.push(appStore.getState().data);
+  if (undoStack.length > UNDO_CAP) undoStack.shift();
+  restoreHistory(next);
+}
+
+/** 撤销和重做共用恢复规则；偏好、专注及已消费提醒均保持当前状态。 */
+function restoreHistory(prev: AppData) {
   // sessions 与 settings 不属于可撤销数据（专注记录/偏好不该被连带回滚），从当前状态嫁接。
   // 逐任务再嫁接两样：已消费的过期提醒不复活（否则撤销会重复轰炸）、focusMinutes 取两边较大值
   const cur = appStore.getState().data;
@@ -387,6 +419,7 @@ export function applyRemoteData(data: AppData) {
   const cur = appStore.getState().data;
   if (data === cur) return;
   undoStack = [];
+  redoStack = [];
   coalesce = null;
   appStore.setState({ data, undoDepth: 0 });
   scheduleSave();
@@ -492,6 +525,7 @@ export async function initStore(): Promise<void> {
     );
   }
   undoStack = []; // 换数据源（含恢复备份后 reload）不能撤销回旧数据
+  redoStack = [];
   coalesce = null;
   appStore.setState({
     data,

@@ -123,8 +123,8 @@ const RE = {
   // 字符类统一排斥 / ——否则「#紧要/工作」会整体吞成一个标签,清单丢失;
   // 同样排斥 ~ 与 ～:「@李哥~3点」的人名到 ~ 为止,时间不能被吃进名字里
   tag: /#([^\s#@/!！~～"“”＂]+)/g,
-  // '/' 必须在行首或空白之后,防止误吞 8/20 这类日期
-  list: /(?<!\S)\/([^\s#@/!！~～"“”＂]+)/g,
+  // '/' 在行首、空白或闭合引号之后识别；引用内部由 quotedSpans 保护，8/20 仍是正文。
+  list: /(?<![^\s"”＂])\/([^\s#@/!！~～"“”＂]+)/g,
   who: /@([^\s#@/!！~～"“”＂]+)/g,
   prioWord: /[!！](高|中|低)/g,
   prioBang: /[!！]+/g,
@@ -154,8 +154,11 @@ const RE = {
     `(?<![^\\s#@/!！~～])(今年|明年|后年)?(${HOLIDAY_WORDS.filter((w) => w !== "五一" && w !== "六一").join("|")}|(?:五一|六一)(?![\\d一二两三四五六七八九十号日月点起天周年个次份班届楼期]))`,
     "g",
   ),
-  // 今年底 / 明年底 / 后年底,以及带「年底」的写法(须在裸「年底」之前)
-  yearEnd: /(今年|明年|后年)年?底/g,
+  // 28年底 / 2028年底与今年底同义;两位年份固定指20xx,不会随当前年份滚动。
+  yearEnd: /(?<!\d)(今年|明年|后年|\d{4}年|\d{2}年)年?(?:底|末)/g,
+  // 指定年份/季度必须一起识别,不能把「明年」留在标题里或排到今年。
+  numberedQuarterEnd: new RegExp(`(?<!\\d)(今年|明年|后年|\\d{4}年|\\d{2}年)?第?(${NUM})季度(?:末|底)`, "g"),
+  quarterEnd: /(本|这个?|下个?)?季度(?:末|底)/g,
   // 明年/后年3月取指定年的3月1号;也认月份、日号和月底(须在裸月日之前)
   futureYearMonth: new RegExp(`(明年|后年)(${NUM})月(?:(${NUM})[日号]|(底)|份)?`, "g"),
   monthDay: new RegExp(`(?<!\\d)(${NUM})月(${NUM})[日号]`, "g"),
@@ -300,7 +303,7 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   // URL、邮件地址、明确的文件路径/文件名里的 ~ 是字面字符,不能拆出日期。
   // /工作 仍是清单语法;只有带后续目录分隔符的绝对路径才按文件路径保护。
   const literalSpans = Array.from(input.matchAll(
-    /\b[a-z][a-z\d+.-]*:\/\/[^\s"“”＂]+|\bwww\.[^\s"“”＂]+|\b[a-z]:[\\/][^\s"“”＂]+|\\\\[^\s"“”＂]+|(?<!\S)(?:\.{1,2}[\\/]|~[\\/]|\/(?:[^/\s"“”＂]+\/)+)[^\s"“”＂]+|[^\s"“”＂]+@[^\s@"“”＂]+\.[^\s@"“”＂]+|[^\s/\\"“”＂]+\.[a-z][a-z\d]{0,7}(?=\s|$|["“”＂])/gi,
+    /\b[a-z][a-z\d+.-]*:\/\/[^\s"“”＂]+|\bwww\.[^\s"“”＂]+|\b[a-z]:[\\/][^\s"“”＂]+|\\\\[^\s"“”＂]+|(?<![^\s"”＂])(?:\.{1,2}[\\/]|~[\\/]|\/(?:[^/\s"“”＂]+\/)+)[^\s"“”＂]+|[^\s"“”＂]+@[^\s@"“”＂]+\.[^\s@"“”＂]+|[^\s/\\"“”＂]+\.[a-z][a-z\d]{0,7}(?=\s|$|["“”＂])/gi,
   ), (m) => [m.index!, m.index! + m[0].length] as const);
 
   /** 时间闸门:这个 token 前面有没有人领着?
@@ -487,6 +490,8 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
   // ---- 2. /清单(先精确后前缀,都不中原样返回交由调用方新建;扫描序即出现序,覆盖实现「最后一个生效」) ----
   if (!skip.has("list"))
     scan(RE.list, (m) => {
+      // 只有真正闭合的引用能充当边界，转义引号或单独的右引号仍是普通正文。
+      if (m.index > 0 && /["”＂]/.test(input[m.index - 1]) && !quotes.some((span) => span.end === m.index)) return null;
       const name = m[1];
       const hit =
         opts.listNames.find((n) => n === name) ?? opts.listNames.find((n) => n.startsWith(name));
@@ -622,12 +627,54 @@ export function parseQuickAdd(input: string, opts: ParseOpts): ParseResult {
     true,
   );
 
-  // 今年年底 / 明年年底 / 后年年底
+  const resolveYear = (word: string): number => {
+    const y = Number(today.slice(0, 4));
+    if (word === "今年") return y;
+    if (word === "明年") return y + 1;
+    if (word === "后年") return y + 2;
+    const digits = word.slice(0, -1); // 数字年份带一个「年」
+    return digits.length === 2 ? 2000 + Number(digits) : Number(digits);
+  };
+
+  // 今年年底 / 明年年底 / 后年年底，以及28年底、2032年末
   scan(
     RE.yearEnd,
     (m) => {
-      const y = Number(today.slice(0, 4)) + (m[1] === "后年" ? 2 : m[1] === "明年" ? 1 : 0);
+      const y = resolveYear(m[1]);
+      if (y < 1000 || y > 9999) return null;
       const ymd = `${y}-12-31`;
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  // 第一季度末=3月31日;写了年份按字面,没写年份则取尚未过去的那次。
+  scan(
+    RE.numberedQuarterEnd,
+    (m) => {
+      const quarter = num(m[2]);
+      if (quarter === null || quarter < 1 || quarter > 4) return null;
+      let y = m[1] ? resolveYear(m[1]) : Number(today.slice(0, 4));
+      if (y < 1000 || y > 9999) return null;
+      const mo = quarter * 3;
+      let ymd = `${y}-${pad2(mo)}-${pad2(daysInMonth(y, mo))}`;
+      if (!m[1] && cmpYMD(ymd, today) < 0) {
+        y += 1;
+        ymd = `${y}-${pad2(mo)}-${pad2(daysInMonth(y, mo))}`;
+      }
+      return { chip: dateChip(ymd), apply: setDate(ymd) };
+    },
+    true,
+  );
+
+  scan(
+    RE.quarterEnd,
+    (m) => {
+      const currentQuarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+      const quarter = currentQuarter + (m[1]?.startsWith("下") ? 1 : 0);
+      const y = Number(today.slice(0, 4)) + Math.floor(quarter / 4);
+      const mo = (quarter % 4 + 1) * 3;
+      const ymd = `${y}-${pad2(mo)}-${pad2(daysInMonth(y, mo))}`;
       return { chip: dateChip(ymd), apply: setDate(ymd) };
     },
     true,

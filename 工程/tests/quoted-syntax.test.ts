@@ -35,6 +35,27 @@ describe("引用正文不参与语法识别", () => {
     });
   });
 
+  it.each(styles)("闭合%s…%s后紧接/清单可识别，引用内的斜杠仍保持原文", (open, close) => {
+    const literal = `核对${open}/生活 /原文 https://example.com/a/b${close}`;
+    for (const parsed of [parse(`${literal}/工作`), parseEditedTitle(`${literal}/工作`, options)]) {
+      expect(parsed).toMatchObject({ title: literal, listName: "工作" });
+      expect(parsed.chips).toEqual([{ kind: "list", text: "工作" }]);
+    }
+  });
+
+  it("转义引号与孤立的右引号不会把后面的斜杠变成自动归类", () => {
+    for (const text of ['记录\\"/工作', '记录”/工作', '记录\\＂/工作']) {
+      expect(parse(text)).toMatchObject({ title: text, listName: null, chips: [] });
+    }
+  });
+
+  it.each(styles)("闭合%s…%s后的绝对或相对文件路径仍保留原文", (open, close) => {
+    for (const path of ['/usr/local', '/usr/local/notes', './notes/next', '../notes/next', '~/notes/next']) {
+      const text = `核对${open}正文${close}${path}`;
+      expect(parse(text)).toMatchObject({ title: text, listName: null, chips: [] });
+    }
+  });
+
   it.each(styles)("%s…%s 内空格、提醒词和换行均不被标题清理改写", (open, close) => {
     const literal = `${open}  提醒我  @李哥\n\t~明天  ${close}`;
     expect(parse(`~明天   核对 ${literal}`).title).toBe(`核对 ${literal}`);

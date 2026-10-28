@@ -222,6 +222,9 @@ export function toCloudData(data: AppData): AppData {
 /** 本机变更与撤销共用：为图片操作盖独立新戳，防止云端旧图或旧开关回流。 */
 export function finalizeImageMutation(previous: AppData, requested: AppData, now = new Date().toISOString()): { data: AppData; message?: string } {
   if (previous === requested) return { data: previous };
+  // 文字、日期和设置没有改图片时无需重新聚合全账本、核算云空间。
+  // 仍比较所有新增/删除owner，撤销删图或恢复图片不能走这条快路。
+  if (previous.imageSync === requested.imageSync && sameOwnedImages(previous.tasks, requested.tasks)) return { data: requested };
   const before = new Map(listLedgerImages(previous).map((image) => [image.key, image]));
   const after = new Map(listLedgerImages(requested).map((image) => [image.key, image]));
   const imageSync = { ...requested.imageSync };
@@ -231,7 +234,8 @@ export function finalizeImageMutation(previous: AppData, requested: AppData, now
   for (const id of ids) {
     const old = before.get(id), next = after.get(id);
     const from = stateOf(previous, id), to = stateOf(requested, id);
-    if (old && !next && !to?.deletedAt) { imageSync[id] = { ...imageSync[id], sync: false, updatedAt: at, deletedAt: at }; stateChanged = true; }
+    // 重做删除时requested可能带着更早的删除戳；必须盖新戳才能赢过刚撤销恢复的云图。
+    if (old && !next) { imageSync[id] = { ...imageSync[id], sync: false, updatedAt: at, deletedAt: at }; stateChanged = true; }
     else if (next && (!old || JSON.stringify(from) !== JSON.stringify(to) || old.cloud !== next.cloud)) {
       imageSync[id] = { ...imageSync[id], sync: next.cloud, updatedAt: at, deletedAt: null }; stateChanged = true;
     }
@@ -247,4 +251,28 @@ export function finalizeImageMutation(previous: AppData, requested: AppData, now
   if (fallback) data = { ...data, imageSync };
   if (stateChanged || fallback) data = restoreLocalOnlyImages(data, data);
   return { data, ...(fallback ? { message: "云端图片空间已满，新图片已仅保存在本机，可在图片管理中调整同步" } : {}) };
+}
+
+function sameOwnedImages(previous: Task[], requested: Task[]): boolean {
+  if (previous === requested) return true;
+  const remaining = new Map(previous.map((task) => [task.id, task]));
+  const hasImages = (task: Task) => taskImages(task.images).length > 0 || task.subtasks.some((sub) => taskImages(sub.images).length > 0);
+  for (const task of requested) {
+    const old = remaining.get(task.id);
+    remaining.delete(task.id);
+    if (old === task) continue;
+    if (!old) { if (hasImages(task)) return false; continue; }
+    if (old.images !== task.images) return false;
+    if (old.subtasks === task.subtasks) continue;
+    const subs = new Map(old.subtasks.map((sub) => [sub.id, sub]));
+    for (const sub of task.subtasks) {
+      const before = subs.get(sub.id);
+      subs.delete(sub.id);
+      if (before === sub) continue;
+      if (!before) { if (taskImages(sub.images).length) return false; continue; }
+      if (before.images !== sub.images) return false;
+    }
+    if ([...subs.values()].some((sub) => taskImages(sub.images).length > 0)) return false;
+  }
+  return ![...remaining.values()].some(hasImages);
 }

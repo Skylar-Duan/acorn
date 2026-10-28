@@ -147,6 +147,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   /** 「点卡片里的别处 = 只收浮层、不收卡片」的收尾函数。跟 flushRef 同一个道理：
    *  那条 document 监听的闭包停在首帧，读不到最新的 menu / subMenu，只能挂 ref */
   const closeMenusRef = useRef<() => void>(() => {});
+  const collapseSubsRef = useRef<(target: Element | null) => void>(() => {});
   /** 同上：那条监听的闭包停在首帧，要认「我是哪一件事」只能靠 ref 每次渲染刷新 */
   const taskIdRef = useRef(task.id);
   taskIdRef.current = task.id;
@@ -171,6 +172,7 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
       if (isTaskCategoryDialogOpen()) return;
       if (e.target instanceof Element && e.target.closest("[data-image-dialog]")) return;
       if (e.target instanceof Element && e.target.closest("[data-task-popover]")?.getAttribute("data-task-popover") === taskIdRef.current) return;
+      collapseSubsRef.current(e.target instanceof Element ? e.target : null);
       if (!cardRef.current.contains(e.target as Node)) {
         // A1「点走 = 提交」：卡片马上就要没了，先把还悬着的输入落库再收
         flushRef.current();
@@ -455,6 +457,25 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
       touchSub(id);
     }
   }
+
+  // 子行与母卡同样点外保存并收起；同一子行的图片、属性按钮仍属于这一行。
+  // 定位子任务的临时展开也要撤掉，否则从四象限进来的行会一直保持展开。
+  collapseSubsRef.current = (target) => {
+    const row = target?.closest<HTMLElement>(".sub-row[data-subtask-id]");
+    const keepId = row && cardRef.current?.contains(row) ? row.dataset.subtaskId : undefined;
+    const closing = Object.keys(subExpanded).filter((id) => subExpanded[id] && id !== keepId);
+    if (locatingSubId && locatingSubId !== keepId) {
+      if (!closing.includes(locatingSubId)) closing.push(locatingSubId);
+      setDismissedLocate(locatingSubId);
+    }
+    if (!closing.length) return;
+    closing.forEach((id) => { void commitSubTitle(id); });
+    setSubExpanded((current) => {
+      const next = { ...current };
+      closing.forEach((id) => { next[id] = false; });
+      return next;
+    });
+  };
 
   /** 子任务标题的回执计时（A7）：停手 TYPING_IDLE_MS 才闪，闪 FLASH_MS 后收 */
   function touchSub(id: string) {

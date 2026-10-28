@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setParentFolded } from "./core/parentFold";
 import { overdueParentActions } from "./core/parentRows";
+import { historyShortcut } from "./core/historyShortcut";
 import { listColor } from "./core/colors";
 import type { CSSProperties } from "react";
 import Sidebar from "./components/Sidebar";
@@ -33,7 +34,7 @@ import { useLeaving } from "./components/motion";
 import {
   appStore, clearSelection, completeTasks, deleteTasks, dismissToast, expandTask,
   hasChain, navigate, postponeTasks, retrySave, setChainFolded, setChangelogOpen, setPaletteOpen,
-  setQuickAddOpen, setSearchOpen, setSelection, setTasksList, setWebNewVersion, undo, useApp,
+  setQuickAddOpen, setSearchOpen, setSelection, setTasksList, setWebNewVersion, undo, redo, useApp,
   postponeRowsForTasks,
 } from "./core/store";
 import { useUpdate } from "./core/updateCtl";
@@ -195,9 +196,11 @@ export default function App() {
         setSearchOpen(true);
         return;
       }
-      if (mod && e.key.toLowerCase() === "z" && !inEditable()) {
+      const history = historyShortcut(e, inEditable());
+      if (history) {
         e.preventDefault();
-        undo();
+        if (history === "undo") undo();
+        else redo();
         return;
       }
       // Ctrl+1 不再是切视图而是「记一条」（v1.11.2 随手记退场）：它原来就排在第一位，

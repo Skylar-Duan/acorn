@@ -39,6 +39,43 @@ beforeEach(async () => {
 afterEach(async () => { act(() => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); await flushSave(); });
 
 describe("任务卡逐步展开与即时元数据预览", () => {
+  it("点同一子行保留展开，点另一行或母备注收起，母卡保持打开", async () => {
+    const before = ledger();
+    act(() => row().querySelector<HTMLButtonElement>(".sub-disclosure")!.click());
+    act(() => input().dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    expect(input().dataset.expanded).toBe("true");
+    const other = host.querySelector<HTMLElement>('[data-subtask-id="plain"]')!;
+    await act(async () => { other.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+    expect(input().dataset.expanded).toBe("false");
+    expect(appStore.getState().ui.expandedId).toBe("parent");
+    act(() => row().querySelector<HTMLButtonElement>(".sub-disclosure")!.click());
+    await act(async () => { host.querySelector(".tc-notes-wrap")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+    expect(input().dataset.expanded).toBe("false");
+    expect(ledger()).toBe(before);
+  });
+
+  it("点外收起先保存子标题草稿，属性弹层操作保留展开", async () => {
+    act(() => row().querySelector<HTMLButtonElement>(".sub-disclosure")!.click());
+    type(input(), "核对新材料\n保留下一行");
+    act(() => row().querySelector<HTMLButtonElement>(".sub-property-date")!.click());
+    const popup = document.querySelector<HTMLElement>("[data-task-popover]")!;
+    act(() => popup.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    expect(input().dataset.expanded).toBe("true");
+    await act(async () => { host.querySelector(".tc-notes-wrap")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+    expect(input().dataset.expanded).toBe("false");
+    expect(appStore.getState().data.tasks[0].subtasks[0].title).toBe("核对新材料\n保留下一行");
+    expect(appStore.getState().ui.expandedId).toBe("parent");
+    expect(appStore.getState().data.tasks[0].subtasks[0].images).toEqual([picture, { ...picture, id: "b", name: "第二张.jpg" }]);
+  });
+
+  it("从定位入口临时展开的子任务也能点外收起", async () => {
+    act(() => root.render(createElement(TaskCard, { task: appStore.getState().data.tasks[0], locateSubId: "child", detailMode: true })));
+    expect(input().dataset.expanded).toBe("true");
+    await act(async () => { host.querySelector(".tc-notes-wrap")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+    expect(input().dataset.expanded).toBe("false");
+    expect(appStore.getState().ui.expandedId).toBe("parent");
+  });
+
   it("默认折成一行，日期前只显示一张多图摘要；展开收起零数据或撤销写入", () => {
     const before = ledger(), undo = appStore.getState().undoDepth;
     expect(input().getAttribute("wrap")).toBe("off");

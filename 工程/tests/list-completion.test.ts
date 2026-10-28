@@ -54,6 +54,37 @@ afterEach(async () => {
 });
 
 describe("清单选择补全统一覆盖母子新增编辑", () => {
+  it.each(paths)("%s在闭合引用后输入/仍可选择清单，前文的引用斜杠不误判为路径", async (path) => {
+    const el = field(path), before = ledger();
+    const literal = '"/"“”';
+    type(el, `${literal}/wO`);
+    expect(document.querySelector(".si-drop")!.textContent).toContain("Work");
+    await key(el, "Enter");
+    expect(el.value).toBe(`${literal} /Work `);
+    expect(ledger()).toBe(before);
+    await key(el, "Enter");
+    const saved = path === "新增母任务" ? appStore.getState().data.tasks.find((task) => task.title === literal)
+      : path === "新增子任务" ? parent().subtasks.find((sub) => sub.title === literal)
+      : path === "编辑母任务" ? parent() : parent().subtasks[0];
+    expect(saved?.title).toBe(literal);
+    if (path.endsWith("子任务")) {
+      expect(saved).toMatchObject({ listIds: path === "编辑子任务" ? ["reading", "work"] : ["work"] });
+      expect(parent().listId).toBe("reading");
+    } else expect(saved).toMatchObject({ listId: "work" });
+  });
+
+  it.each(paths)("%s在闭合中文引用后直接提交完整/清单，保留引用原文", async (path) => {
+    const el = field(path), literal = '核对“链接 https://example.com/a/b”';
+    type(el, `${literal}/Work `);
+    await key(el, "Enter");
+    const saved = path === "新增母任务" ? appStore.getState().data.tasks.find((task) => task.title === literal)
+      : path === "新增子任务" ? parent().subtasks.find((sub) => sub.title === literal)
+      : path === "编辑母任务" ? parent() : parent().subtasks[0];
+    expect(saved?.title).toBe(literal);
+    if (path.endsWith("子任务")) expect(saved).toMatchObject({ listIds: path === "编辑子任务" ? ["reading", "work"] : ["work"] });
+    else expect(saved).toMatchObject({ listId: "work" });
+  });
+
   it.each(paths)("%s裸/及大小写前缀可选择；紧贴正文只在明确选择时转换成归类", async (path) => {
     const el = field(path), before = ledger();
     type(el, "整理/"); expect(document.querySelector(".si-drop")!.textContent).toContain("Work");
