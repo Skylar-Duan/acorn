@@ -243,9 +243,16 @@ export default function TaskCard({ task, locateSubId, detailMode = false }: { ta
   }, []);
   // 子任务那一堆同理。它们没有各自的 ref（是个 map 出来的列表），
   // ref={growArea} 只在挂载那一下调一次，所以外部改动（撤销/同步/标题编辑）得在这儿补一遍。
-  // 只扫这张卡自己的 .subs，不动别处
+  // 只扫这张卡自己的 .subs，不动别处。量高会强制排版，一百多条子任务每键全量一遍就是打字卡顿的来源：
+  // 记住每个框上次量时的内容和展开态，没变的跳过（宽度变化不走这条，跟以前一样）
+  const subSizedRef = useRef(new WeakMap<HTMLTextAreaElement, string>());
   useLayoutEffect(() => {
-    cardRef.current?.querySelectorAll<HTMLTextAreaElement>(".subs textarea").forEach((el) => el.hasAttribute("data-expanded") ? resizeSubTitle(el) : growArea(el));
+    cardRef.current?.querySelectorAll<HTMLTextAreaElement>(".subs textarea").forEach((el) => {
+      const sig = `${el.dataset.expanded ?? ""}\n${el.value}`;
+      if (subSizedRef.current.get(el) === sig) return;
+      subSizedRef.current.set(el, sig);
+      if (el.hasAttribute("data-expanded")) resizeSubTitle(el); else growArea(el);
+    });
   }, [task.subtasks, subDrafts, subExpanded, locatingSubId]);
 
   const titlePreview = useMemo(() => taskTitlePreview(task, titleDraft, { lists, now: new Date(), weekendDay: settings.weekendDay }), [task, titleDraft, lists, settings.weekendDay]);
