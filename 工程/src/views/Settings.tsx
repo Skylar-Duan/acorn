@@ -417,8 +417,9 @@ export default function Settings() {
           summary={session ? "同步 · 云端下载" : "登录 / 注册"}
         >
           <AccountPanel />
-          {isDesktopShell && <div className="set-row">
-            <div className="set-row-label">自动同步间隔<span className="set-hint">检查云端更新的间隔；本机修改仍自动上传。</span></div>
+          {(isDesktopShell || isMobile) && <div className="set-row">
+            {/* 手机（10-30 起）也有：不在后台定时拉，只在切回橡果时按这个间隔查一次 */}
+            <div className="set-row-label">自动同步间隔<span className="set-hint">{isMobile ? "切回橡果时按这个间隔检查云端；本机修改仍自动上传。" : "检查云端更新的间隔；本机修改仍自动上传。"}</span></div>
             <div className="set-ctl"><div className="set-seg" role="group" aria-label="自动同步间隔">
               {SYNC_INTERVAL_CHOICES.map(({ minutes, label }) => <button type="button" key={minutes}
                 className={syncIntervalMinutes(settings) === minutes ? "on" : undefined}
@@ -490,7 +491,8 @@ export default function Settings() {
               </div>
             </div>
           </div>
-          {hasDesktopFeatures && <DateShortcutSettings />}
+          {/* 10-30 起手机也能编辑：手机上的日期选项、顺延读的是同一份 */}
+          <DateShortcutSettings />
           {/* 全局快捷键是系统级热键，只有装在电脑上的橡果注册得了。
               以前这里判的是 hasDesktopFeatures，于是电脑浏览器里摆着一个按了没反应的输入框 */}
           {isDesktopShell && (

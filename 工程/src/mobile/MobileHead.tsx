@@ -10,6 +10,7 @@
 // 单独一个文件而不是塞进 MobileShell：壳子要引「更多」那一页，而「更多」自己也要用这个顶栏，
 // 两边互引会绕成环。抽出来之后谁都只依赖它，不依赖对方。
 
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { setSearchOpen, useApp } from "../core/store";
 import { useSync } from "../core/syncCtl";
@@ -135,8 +136,33 @@ export default function MobileHead({
   // 挂在这儿而不是壳子里：每个视图的第一块都是 .mhead，挂在它身上就等于每页都有，
   // 而且它跟着标题一起钉在顶上——列表滚起来时风景不动，像窗外的景
   const theme = useApp((s) => s.data.settings.theme);
+  // 10-30：往下滚之后大标题收成一行（.compact，样式在 mobile-v2.css）。
+  // 滚动发生在页面里那块 .view-body 上，scroll 事件不冒泡，但在祖先上**捕获**得到——
+  // 挂在这一页的 <section class="main"> 上，哪一块在滚都听得见，不用每个视图各传一个 ref
+  const ref = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const page = ref.current?.closest(".main");
+    if (!page) return;
+    let raf = 0;
+    const onScroll = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || typeof el.scrollTop !== "number" || el === ref.current) return;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        // 两道线防抖：滚过 28 才收、回到 8 以内才放，停在边界上不会来回闪
+        setCompact((was) => (was ? el.scrollTop > 8 : el.scrollTop > 28));
+      });
+    };
+    page.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => {
+      page.removeEventListener("scroll", onScroll, { capture: true });
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
   return (
-    <div className={`view-head mhead${sceneFit ? " mhead-fit" : ""}`}>
+    <div ref={ref} className={`view-head mhead${sceneFit ? " mhead-fit" : ""}${compact ? " compact" : ""}`}>
       {/* z-index:-1 沉在内容之下（样式见 mobile-shell.css 的 .mhead-scene）。
           桌面那幅贴在主区**底部**的水印在手机上已经撤了（App.tsx 只在 !isMobile 时挂），
           否则它会从底部导航条底下露出小半个太阳来——PM 一眼就看见的那个「幽灵圆」 */}

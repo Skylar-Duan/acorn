@@ -44,7 +44,7 @@ describe("① 安排日期的候选日：两张纸都走 core/options.dateOption
   it("两张纸都 import 并现算 dateOptions(today, { weekendDay })", () => {
     for (const [name, src] of [["任务详情", taskSheetSource], ["记一条", quickAddSheetSource]] as const) {
       expect(src, name).toContain('import { dateOptions } from "../core/options";');
-      expect(src, name).toContain("const presets = dateOptions(today, { weekendDay: settings.weekendDay });");
+      expect(src, name).toContain("const presets = dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts });");
       expect(src, name).not.toContain("duePresets");
       // 渲染那一排就是它，不是别的什么数组；五颗三列两行
       expect(src, name).toMatch(/<div className="msh-dates">\s*\{presets\.map\(\(p\) =>/);

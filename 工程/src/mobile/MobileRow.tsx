@@ -29,11 +29,12 @@ import { isMobile } from "../core/platform";
 import { LONG_PRESS_MS, SLOP_PX } from "../core/touchSort";
 import {
   completeTasks, deleteTasks, dropSubtask, dropTasks,
-  removeSubtask, rowDue, rowPriority, rowTime, uncompleteTask, updateSubtask,
+  aliveSubtasks, removeSubtask, rowDue, rowPriority, rowTime, uncompleteTask, updateSubtask,
 } from "../core/store";
 import { openSheet } from "./sheetStore";
 import { useSwipeRow } from "./swipe";
-import { IcoDone, IcoDrop, IcoPostpone, IcoTrash } from "./icons";
+import { IcoChevron, IcoDone, IcoDrop, IcoPostpone, IcoTrash } from "./icons";
+import { haptic } from "./haptic";
 import "../styles/mobile.css";
 import "../styles/mobile-shell.css";
 
@@ -95,9 +96,14 @@ export interface MobileRowProps {
   doneDate?: string | null;
   /** 第一次进「今天」时给第一行演一次「往右滑一下再回来」的示意（画板 ① 的说明便签） */
   hint?: boolean;
+  /** 10-30：母任务行（今天 / 计划跟桌面同一套母子结构）。有待办步骤时给：
+   *  行尾写「做完几步 / 共几步」和一颗 ›，点 › 原地摊开；收着时第二层写下一步是什么 */
+  parent?: { folded: boolean; next: Subtask; onToggle: () => void };
+  /** 摊在母任务底下的步骤行：缩进、方形小勾、不再挂「母任务名 ›」（它就在正上方） */
+  nested?: boolean;
 }
 
-export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRowProps) {
+export default function MobileRow({ task, sub = null, doneDate, hint, parent, nested }: MobileRowProps) {
   const row = { task, sub };
   const due = rowDue(row);
   const dueTime = rowTime(row);
@@ -133,6 +139,8 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
     onRight: toggleDone,
     // 了结了的行左边只有一个「删除」，动作条就窄成一块
     leftWidth: settled ? ACT_W : LEFT_FULL,
+    // 拉过「松手就完成」那条线、或左滑停到动作条上时轻震一下：手指不用看就知道到位了
+    onThreshold: haptic,
   });
 
   // 长按：跟桌面同一套判定思路（按住够久 + 期间别挪），只是弹的东西换成了底部动作单
@@ -160,6 +168,7 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
       press.current = null;
       setPressing(false);
       sheetJustOpened.current = true;
+      haptic(16);
       openSheet({ kind: "actions", taskId: task.id, subId: sub?.id });
       eatNextTouchEnd();
     }, LONG_PRESS_MS);
@@ -200,17 +209,27 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
   };
 
   const title = sub ? sub.title : task.title;
-  const parent = task.title || "（未命名）";
+  const parentName = task.title || "（未命名）";
   const when = doneDate
     ? `${isDropped ? "放弃于" : "完成于"} ${formatDoneShort(doneDate)}`
     : due
       ? `${formatShort(due)}${dueTime ? ` ${dueTime}` : ""}`
       : "";
 
+  const steps = aliveSubtasks(task);
+  const stepAll = steps.length;
+  const stepDone = steps.filter((x) => x.done).length;
+  // 第二层：母任务收着时写下一步；独立露面的步骤写它属于哪件事；摊在母任务底下的步骤不写（母任务就在正上方）
+  const meta = parent?.folded
+    ? `下一步 · ${parent.next.title || "（未命名）"}`
+    : sub && !nested
+      ? `${parentName.length > PARENT_MAX ? `${parentName.slice(0, PARENT_MAX)}…` : parentName} ›`
+      : "";
+
   return (
     <div
       // .shifted：行让开了就给它一点投影，看着像浮起来的一张纸，而不是同一张纸被涂了色
-      className={`swipe-wrap${swipe.state === "dragging" ? " dragging" : ""}${swipe.dx !== 0 ? " shifted" : ""}${hint ? " mrow-hint" : ""}`}
+      className={`swipe-wrap${nested ? " nested" : ""}${parent && !parent.folded ? " parent-open" : ""}${swipe.state === "dragging" ? " dragging" : ""}${swipe.dx !== 0 ? " shifted" : ""}${hint ? " mrow-hint" : ""}`}
       style={{ ["--dx" as string]: `${swipe.dx}px` }}
     >
       {/* 右滑那层：整行让开之后露出来的绿色。字和勾跟着进度渐显，还没拉够的时候是暗的，
@@ -263,29 +282,35 @@ export default function MobileRow({ task, sub = null, doneDate, hint }: MobileRo
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
-        {/* DOM 顺序就是视觉顺序：圈 → 重要性小圆点 → 右边那一叠。
-            v1.14 的 DOM 里色条排在圈前面、靠 CSS 的 order 摆回来，这一版把 DOM 本身摆对了 */}
         <button
-          className={`mrow-cb${isDone ? " done" : ""}`}
+          className={`mrow-cb p${priority}${isDone ? " done" : ""}${isDropped ? " dropped" : ""}`}
           aria-label={isDropped ? "放回未完成" : isDone ? "标记未完成" : "完成"}
           onClick={(e) => {
             e.stopPropagation();
+            haptic();
             toggleDone();
           }}
         />
-        <span className={`mrow-bar p${priority}`} />
         <span className="mrow-main">
           <span className="mrow-title">{title || "（未命名）"}</span>
-          {/* 第二层小字：没日期也不是子任务的事就不摆这一层，卡跟着矮回一行的高度 */}
-          {(sub || when) && (
-            <span className="mrow-meta">
-              {sub && (
-                <span className="mrow-parent">
-                  {parent.length > PARENT_MAX ? `${parent.slice(0, PARENT_MAX)}…` : parent} ›
-                </span>
-              )}
-              {when && <span className={`mrow-when${overdue ? " warn" : ""}`}>{when}</span>}
-            </span>
+          {/* 第二层小字只放「这件事属于谁 / 下一步是什么」；日期挪到行尾那一列，一眼扫得到 */}
+          {meta && <span className="mrow-meta">{meta}</span>}
+        </span>
+        <span className="mrow-tail">
+          {when && <span className={`mrow-when${overdue ? " warn" : ""}`}>{when}</span>}
+          {parent && (
+            <button
+              className={`mrow-steps${parent.folded ? "" : " open"}`}
+              aria-label={parent.folded ? "展开步骤" : "收起步骤"}
+              aria-expanded={!parent.folded}
+              onClick={(e) => {
+                e.stopPropagation();
+                parent.onToggle();
+              }}
+            >
+              <span>{stepDone}/{stepAll}</span>
+              <IcoChevron size={14} />
+            </button>
           )}
         </span>
       </div>

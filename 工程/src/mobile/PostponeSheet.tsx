@@ -73,6 +73,7 @@ export function PostponeSheetHost() {
 function PostponeBody({ refs, live }: { refs: RowRef[]; live: boolean }) {
   const tasks = useApp((s) => s.data.tasks);
   const weekendDay = useApp((s) => s.data.settings.weekendDay);
+  const dateShortcuts = useApp((s) => s.data.settings.dateShortcuts);
   const rows = resolvePostponeRows(refs, tasks);
   // 「这件事现有的日期」：打开那一刻取一次（好几行取最早的那个）。没日期的行不设下限
   const [floor] = useState(() => earliestDue(rows));
@@ -81,7 +82,7 @@ function PostponeBody({ refs, live }: { refs: RowRef[]; live: boolean }) {
   const pickedRef = useRef("");
   const fieldRef = useRef<DateFieldHandle | null>(null);
   const today = todayYMD();
-  const presets = dateOptions(today, { weekendDay, after: floor });
+  const presets = dateOptions(today, { weekendDay, dateShortcuts, after: floor });
 
   // 要推的那几行全没了（撤销、云同步、别处做完了）：收掉，别对着空气选日子
   const empty = rows.length === 0;

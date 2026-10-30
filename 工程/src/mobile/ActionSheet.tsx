@@ -108,7 +108,7 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
 
       {pane === "date" && (
         <div className="msheet-pane">
-          {dateOptions(today, { weekendDay: data.settings.weekendDay }).map((p) => (
+          {dateOptions(today, { weekendDay: data.settings.weekendDay, dateShortcuts: data.settings.dateShortcuts }).map((p) => (
             <button
               key={p.key}
               className={`msheet-chip${curDue === p.ymd ? " on" : ""}`}

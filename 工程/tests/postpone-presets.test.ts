@@ -367,10 +367,10 @@ describe("入口：三处都是同一个「顺延 ▾」", () => {
   it("今天页逾期组：桌面是「全部顺延 ▾」，手机是「全部顺延 →」开小纸，推的都是整组逾期行", () => {
     const src = stripComments(todaySource);
     const head = src.slice(src.indexOf('<span className="group-label">逾期'), src.indexOf("<RowList rows={overdueShown}"));
-    expect(head).toContain('openSheet({ kind: "postpone", rows: overdue.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })');
+    expect(head).toContain('openSheet({ kind: "postpone", rows: parents.overdueActions.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })');
     expect(head).toContain("全部顺延 →");
     expect(head).not.toContain("推到明天");
-    expect(head).toContain('<PostponeButton className="act" label="全部顺延" getRows={() => parents?.overdueActions ?? overdue} />');
+    expect(head).toContain('<PostponeButton className="act" label="全部顺延" getRows={() => parents.overdueActions} />');
   });
 
   it("多选浮条：「顺延」，不再是「推到明天」", () => {

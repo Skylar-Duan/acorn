@@ -21,7 +21,7 @@ import { taskDue, taskTime } from "../core/taskDue";
 import { describeRepeat, firstOccurrence } from "../core/recur";
 import { parseSubtaskInput } from "../core/parse";
 import {
-  addSubtask, addTasksWho, aliveSubtasks, allTags, allWho, appStore, completeTask, deleteTasks, dropSubtask,
+  addSubtask, addTasksWho, aliveSubtasks, allTags, allWho, appStore, completeTask, completeTasks, deleteTasks, dropSubtask,
   dropTasks, foldDoneSubs, removeSubtask, removeTaskWho, setTasksWho, splitSubtasks, SUB_DONE_PEEK,
   toggleSubtask, uncompleteTask, updateSubtask, updateTask, useApp,
 } from "../core/store";
@@ -111,7 +111,7 @@ function TaskSheetBody({ task }: { task: Task }) {
   // 安排日期的快捷项现算（09-21 全应用统一的那一套，规则和单测都在 core/options.dateOptions）：
   // 今天 / 明天 / 本周末 / 下周末 / 本月末，撞同一天的不出现，本周末按设置里的周末日算。
   // 下面常驻的那个日期框就是这一套里的「选日期…」。全仓每处选日子共用这一份，绝不在这儿再写一份
-  const presets = dateOptions(today, { weekendDay: settings.weekendDay });
+  const presets = dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts });
   const list = task.listId ? lists.find((l) => l.id === task.listId) : null;
   // 母任务一起传进去：没自己填日期的那几步按母任务的日子排，跟屏幕上显示的日期一致（同 TaskCard）
   const { open: openSubs, done: doneSubs } = useMemo(
@@ -290,45 +290,6 @@ function TaskSheetBody({ task }: { task: Task }) {
         </button>
       </div>
 
-        <div className="msh-subs">
-          <div className="msh-sec">
-            <span className="msh-sec-t">
-              {/* 分母只数还在的：删进回收站的那几步（v7）不该占着「N/M」 */}
-              子任务 · {doneSubs.length}/{aliveSubtasks(task).length}
-            </span>
-            <span className="msh-sec-hint">左滑可放弃 / 删除</span>
-          </div>
-          {openSubs.map((s) => (
-            <SubRow key={s.id} task={task} sub={s} today={today} />
-          ))}
-          {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
-          <div className="msh-subadd">
-            <span className="msh-sb ghost" aria-hidden />
-            <input
-              value={newSub}
-              placeholder="添加子任务，可以直接写「~明天 !高」"
-              enterKeyHint="done"
-              onChange={(e) => setNewSub(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-                e.preventDefault();
-                addSubFromInput(); // 连着加下一条，焦点不走
-              }}
-              // 打了一半点走也算数（只打了「明天」没打标题时一条都不加，见 addSubFromInput）
-              onBlur={() => {
-                if (document.hasFocus()) addSubFromInput();
-              }}
-            />
-          </div>
-          {canFoldDone && (
-            <button className="msh-donefold" onClick={() => setShowDone(!doneShown)}>
-              {doneShown ? "收起已完成" : `显示已完成 ${doneSubs.length}`}
-              <span aria-hidden>{doneShown ? "▴" : "▾"}</span>
-            </button>
-          )}
-          {doneShown && doneSubs.map((s) => <SubRow key={s.id} task={task} sub={s} today={today} />)}
-        </div>
-
         <div className="msh-props">
           {/* ---- 日期（连时间和循环一起，它们说的是同一件事：这件事什么时候要做） ---- */}
           <button className={`msh-prop${seg === "date" ? " open" : ""}`} onClick={() => toggleSeg("date")}>
@@ -388,7 +349,7 @@ function TaskSheetBody({ task }: { task: Task }) {
           <button className={`msh-prop${seg === "list" ? " open" : ""}`} onClick={() => toggleSeg("list")}>
             <span className="msh-dot" style={{ background: list ? listColor(list.color) : "var(--ink-3)" }} />
             <span className="msh-prop-k">清单</span>
-            <span className={`msh-prop-v${list ? "" : " off"}`}>{list ? list.name : "没有清单"}</span>
+            <span className={`msh-prop-v${list ? "" : " off"}`}>{list ? list.name : "清单"}</span>
             <span className="msh-caret"><ChevronRight /></span>
           </button>
           {seg === "list" && (
@@ -419,7 +380,7 @@ function TaskSheetBody({ task }: { task: Task }) {
             <IconWho />
             <span className="msh-prop-k">需求方</span>
             <span className={`msh-prop-v${task.who.length ? "" : " off"}`}>
-              {task.who.length ? task.who.join("、") : "没指定"}
+              {task.who.length ? task.who.join("、") : "需求方"}
             </span>
             <span className="msh-caret"><ChevronRight /></span>
           </button>
@@ -464,7 +425,7 @@ function TaskSheetBody({ task }: { task: Task }) {
           <div className="msh-pair">
             <button className={`msh-prop${seg === "prio" ? " open" : ""}`} onClick={() => toggleSeg("prio")}>
               <span className={`flag p${task.priority}`} />
-              <span className={`msh-prop-v${task.priority ? "" : " off"}`}>{PRIO_NAME[task.priority]}</span>
+              <span className={`msh-prop-v${task.priority ? "" : " off"}`}>{task.priority ? `${PRIO_NAME[task.priority]}` : "重要性"}</span>
             </button>
             <button className={`msh-prop${seg === "tags" ? " open" : ""}`} onClick={() => toggleSeg("tags")}>
               <span aria-hidden>#</span>
@@ -522,9 +483,61 @@ function TaskSheetBody({ task }: { task: Task }) {
             </div>
           )}
         </div>
+
+        <div className="msh-subs">
+          <div className="msh-sec">
+            <span className="msh-sec-t">
+              {/* 分母只数还在的：删进回收站的那几步（v7）不该占着「N/M」。一步都没有时不写「0/0」 */}
+              子任务{aliveSubtasks(task).length > 0 && ` · ${doneSubs.length}/${aliveSubtasks(task).length}`}
+            </span>
+            {openSubs.length > 0 && <span className="msh-sec-hint">左滑可放弃 / 删除</span>}
+          </div>
+          {openSubs.map((s) => (
+            <SubRow key={s.id} task={task} sub={s} today={today} />
+          ))}
+          {/* 添加栏排在已完成上面：做完的越攒越多，压在下面就得先滚过一堆划线的字才够得着 */}
+          <div className="msh-subadd">
+            <span className="msh-sb ghost" aria-hidden />
+            <input
+              value={newSub}
+              placeholder="添加子任务，可以直接写「~明天 !高」"
+              enterKeyHint="done"
+              onChange={(e) => setNewSub(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                addSubFromInput(); // 连着加下一条，焦点不走
+              }}
+              // 打了一半点走也算数（只打了「明天」没打标题时一条都不加，见 addSubFromInput）
+              onBlur={() => {
+                if (document.hasFocus()) addSubFromInput();
+              }}
+            />
+          </div>
+          {canFoldDone && (
+            <button className="msh-donefold" onClick={() => setShowDone(!doneShown)}>
+              {doneShown ? "收起已完成" : `显示已完成 ${doneSubs.length}`}
+              <span aria-hidden>{doneShown ? "▴" : "▾"}</span>
+            </button>
+          )}
+          {doneShown && doneSubs.map((s) => <SubRow key={s.id} task={task} sub={s} today={today} />)}
+        </div>
       </div>
 
       <div className="msh-foot">
+        <button
+          className={`msh-done${task.done ? " on" : ""}`}
+          onClick={() => {
+            if (task.done) {
+              uncompleteTask(task.id);
+              return;
+            }
+            completeTasks([task.id]);
+            closeSheet();
+          }}
+        >
+          {task.done ? "放回未完成" : "完成"}
+        </button>
         <button
           className="msh-drop"
           onClick={() => dropTasks([task.id], !task.droppedAt)}
@@ -534,7 +547,7 @@ function TaskSheetBody({ task }: { task: Task }) {
           ) : (
             <>
               <IconDrop />
-              放弃这件事
+              放弃
             </>
           )}
         </button>

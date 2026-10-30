@@ -144,11 +144,32 @@ export default function RowList({ rows, fold, anchor, orderedIds, fadeOnDone, hi
     const shown = rows.filter((r) => !fold.hidden.has(rowKey(r)));
     // 空组不画：不然会剩一个 0 高但有边框的白盒子
     if (shown.length === 0) return null;
+    // 10-30 起今天 / 计划跟桌面同一套母子结构：母任务一行带「几步做完了几步」，点 › 原地摊开待办步骤。
+    // 摊开的步骤是母任务那一行的一部分（同一张卡里缩进），不是另起一件事
     return (
       <div className="mcard">
-        {shown.map((r, i) => (
-          <MobileRow key={rowKey(r)} task={r.task} sub={r.sub} hint={hintFirstRow && i === 0} />
-        ))}
+        {shown.map((r, i) => {
+          const key = rowKey(r);
+          const children = parentGroups && !r.sub ? pendingChildRows(r.task) : [];
+          const folded = fold.more.has(key);
+          return (
+            <div className="mgroup" key={key}>
+              <MobileRow
+                task={r.task}
+                sub={r.sub}
+                hint={hintFirstRow && i === 0}
+                parent={children.length ? { folded, next: children[0].sub!, onToggle: () => toggleParentFolded(r.task.id) } : undefined}
+              />
+              {children.length > 0 && (
+                <div className={`msteps${folded ? "" : " open"}`} aria-hidden={folded}>
+                  <div className="msteps-in">
+                    {!folded && children.map((c) => <MobileRow key={rowKey(c)} task={c.task} sub={c.sub} nested />)}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }

@@ -127,19 +127,22 @@ describe("② A 的长相铺到了列表、段标题、顶栏、导航、＋", (
     expect(cb).toContain("background: var(--card);");
   });
 
-  it("🔴 一行的视觉顺序是 圈 → 小圆点 → 那一叠字，靠 DOM 顺序不靠 order", () => {
+  it("🔴 一行的视觉顺序是 圈 → 那一叠字 → 行尾日期，靠 DOM 顺序不靠 order（10-30 起重要性就是圈的颜色）", () => {
     // v1.11.2~v1.14：DOM 里色条排在圈前面，视觉顺序靠 flex 的 order 摆回来。
     // v1.15.0 重写 MobileRow（一件事一张卡、标题折两行）时把 DOM 本身摆对了，
     // 那四条 order 是给旧 DOM 打的补丁，留着只会误导下一个人 —— 一起撤掉
     const rowSource = read("src/mobile/MobileRow.tsx");
     const body = rowSource.slice(rowSource.indexOf('className={`swipe-body mrow'));
-    expect(body.indexOf('className={`mrow-cb')).toBeLessThan(body.indexOf('className={`mrow-bar'));
-    expect(body.indexOf('className={`mrow-bar')).toBeLessThan(body.indexOf('className="mrow-main"'));
+    expect(body.indexOf('className={`mrow-cb p${priority}')).toBeGreaterThan(-1);
+    expect(body.indexOf('className={`mrow-cb')).toBeLessThan(body.indexOf('className="mrow-main"'));
+    expect(body.indexOf('className="mrow-main"')).toBeLessThan(body.indexOf('className="mrow-tail"'));
     for (const line of [".mrow-cb { order:", ".mrow-bar { order:", ".mrow-title { order:", ".mrow-when { order:"]) {
       expect(shellCss, line).not.toContain(line);
     }
-    // 重要性从 3px 竖条改成 8px 小圆点（画板里的 .dot）
-    expect(shellCss).toContain(".mrow-bar { width: 8px; height: 8px; border-radius: 50%;");
+    // 10-30：那颗小圆点撤了，重要性画在勾选圈上（高红、中暖褐、低灰，跟桌面 .flag 一套）
+    const v2 = read("src/styles/mobile-v2.css");
+    expect(v2).toContain(".shell.mobile .mshell .mrow-bar { display: none; }");
+    expect(v2).toContain(".shell.mobile .mshell .mrow-cb.p3 { border-color: var(--m2-prio-3);");
   });
 
   it("段标题是一颗胶囊；裸文本那两页（习惯 / 更多）靠容器自己缩成胶囊", () => {
@@ -321,7 +324,7 @@ describe("⑤ 那颗小橡果只在「今天」露一次脸", () => {
   });
 
   it("今天页那句副标题带上了 A 的语气", () => {
-    expect(todaySource).toContain("· 还剩 ${left} 件，慢慢来");
+    expect(todaySource).toContain("· 还剩 ${left} 件");
     expect(todaySource).toContain('" · 都做完了"');
   });
 });

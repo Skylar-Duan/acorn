@@ -105,6 +105,15 @@ export function IcoNext({ size = 16 }: IconProps) {
   );
 }
 
+/** 母任务行尾那颗「摊开步骤」：朝右，摊开时 CSS 转成朝下 */
+export function IcoChevron({ size = 14 }: IconProps) {
+  return (
+    <Ico size={size}>
+      <path d="M9 6l6 6-6 6" />
+    </Ico>
+  );
+}
+
 /** 「···」：这是唯一一个实心的，三个点描边画出来只是三个小圈 */
 export function IcoDots({ size = 22 }: IconProps) {
   return (

@@ -24,8 +24,8 @@
 .quad-x-title { display: flex; align-items: center; justify-content: center; gap: 5px; position: absolute; left: 45px; right: 26px; bottom: 10px; color: var(--ink-2); font-size: 11px; }
 .quad-point { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: 50%; transform: translate(-50%, -50%); background: transparent; cursor: grab; touch-action: none; z-index: 2; outline: none; }
 .quad-point > span { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--ink-3); box-shadow: 0 0 0 2px var(--card); transition: box-shadow var(--dur-1), scale var(--dur-1); pointer-events: none; }
-.quad-point.p3 > span { background: var(--warn); }
-.quad-point.p2 > span { background: var(--accent); }
+.quad-point.p3 > span { background: #C0564A; } /* 10-30：跟任务行 .flag 同一套重要性颜色（高红、中暖褐、低灰） */
+.quad-point.p2 > span { background: var(--warn); }
 .quad-point.p1 > span { background: var(--ink-3); }
 .quad-point.p0 > span { background: var(--card); border: 2px solid var(--ink-3); }
 .quad-sub-point > span { border-radius: 4px; }

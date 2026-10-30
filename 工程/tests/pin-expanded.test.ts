@@ -410,7 +410,7 @@ describe("视图接线", () => {
 
   it("今天：两组一起钉，兜底行池给的是整份 openRows（改到明天时这两组一条都不剩）", () => {
     expect(todayViewSource).toContain('[{ key: "overdue", rows: overdue }, { key: "today", rows: todays }]');
-    expect(todayViewSource).toContain("(isMobile ? openRows(data) : mergeParentRows(openRows(data))).filter((r) => r.task.id === expandedId)");
+    expect(todayViewSource).toContain("sortRows(mergeParentRows(openRows(data)).filter((r) => r.task.id === expandedId)");
     // 真画出去的必须是钉过的那份
     expect(todayViewSource).toContain("<RowList rows={overdueShown}");
     expect(todayViewSource).toContain("<RowList rows={todayShown}");

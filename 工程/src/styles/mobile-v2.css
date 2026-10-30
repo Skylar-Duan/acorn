@@ -1,0 +1,389 @@
+/* 手机端第二版视觉层（2026-10-30）。
+   用户 10-30 拍板：列表改「一组一张大卡」、母子任务跟桌面一致、详情属性收成胶囊；
+   总纲原话「不要拘泥于以前的版本和设计，可以全部推翻重新设计，我要精品工作效率类软件，
+   流畅性、现代感、审美性都很重要」。方案与设计稿：方案/手机版优化方案（10-30）.html。
+
+   为什么另起一个文件而不是改 mobile-shell.css 里那上千行：那边每条规则背后都有一段历史，
+   这一版要的是整体换一副面孔，叠一层比逐条改更好核对、也更好回退。
+   纪律照旧：① 选择器一律以 `.shell.mobile .mshell` 开头（三个类），不靠加载顺序赢；
+   ② 颜色全走 themes.css 的 token，六主题 × 深浅自动成立；③ 时长只认 --dur-1 / --dur-2。 */
+
+.shell.mobile {
+  --m2-gutter: 14px;          /* 整个手机端只有这一条左右对齐线 */
+  --m2-radius: 18px;          /* 分组卡的圆角 */
+  --m2-row-min: 52px;         /* 一行事的最小高度：标题一行时就这么高，折两行时自然长高 */
+  --m2-cb: 22px;              /* 勾选圈 */
+  --m2-sep: color-mix(in srgb, var(--hair) 70%, transparent);
+  --m2-card-shadow: 0 1px 2px rgba(32, 38, 49, .04), 0 6px 22px rgba(32, 38, 49, .05);
+  --m2-press: color-mix(in srgb, var(--ink) 5%, var(--card));
+  --m2-prio-3: #C0564A;       /* 跟桌面 .flag.p3 同一个色：重要性全应用只有一套颜色 */
+  --m2-prio-2: var(--warn);
+  --m2-prio-1: var(--ink-3);
+  --m2-fab: 56px;
+}
+/* 深色由 App 自己的 data-mode 决定（设置里选的），不跟系统 */
+[data-mode="dark"] .shell.mobile {
+  --m2-card-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .28);
+}
+
+/* ---------- 正文底部：给 ＋ 和导航让够位置，最后一行永远不被压住 ---------- */
+.shell.mobile .mshell .view-body {
+  padding-bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + var(--m2-fab) + 36px);
+  scroll-padding-bottom: calc(var(--m-nav-h) + var(--m2-fab) + 36px);
+}
+
+/* ---------- 顶栏：大标题，往下滚收成一行 ---------- */
+.shell.mobile .mshell .mhead { padding-left: 20px; padding-right: var(--m2-gutter); padding-bottom: 2px; }
+.shell.mobile .mshell .mhead-top { gap: 8px; align-items: center; }
+.shell.mobile .mshell .mhead-title {
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  transition: font-size var(--dur-2) var(--ease), line-height var(--dur-2) var(--ease);
+}
+.shell.mobile .mshell .mhead-title.small { font-size: 26px; line-height: 32px; }
+.shell.mobile .mshell .mhead-sub {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  /* 副标题不许被截成「还剩 3 …」：这一句是打开 3 秒内最要紧的信息，宁可折一行 */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-height: 40px;
+  opacity: 1;
+  transition: max-height var(--dur-2) var(--ease), opacity var(--dur-1) var(--ease), margin var(--dur-2) var(--ease);
+}
+.shell.mobile .mshell .mhead-acorn { transition: opacity var(--dur-1) var(--ease), width var(--dur-2) var(--ease); }
+.shell.mobile .mshell .mhead-btn,
+.shell.mobile .mshell .mhead-avatar,
+.shell.mobile .mshell .mhead-plain {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  box-shadow: 0 1px 2px rgba(32, 38, 49, .06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.shell.mobile .mshell .mhead-plain { background: none; box-shadow: none; margin-left: -8px; }
+.shell.mobile .mshell .mring { transform: scale(.86); transform-origin: center; margin: 0 -3px; }
+/* 往下滚之后（MobileHead 挂 .compact）：大标题收成 20px 一行，副标题和小橡果让出位置。
+   顶栏本来就钉在上面（它不在滚动的那块里），收起来就是多露两行内容 */
+.shell.mobile .mshell .mhead.compact .mhead-title { font-size: 21px; line-height: 28px; }
+.shell.mobile .mshell .mhead.compact .mhead-sub { max-height: 0; opacity: 0; margin-top: 0; overflow: hidden; }
+.shell.mobile .mshell .mhead.compact .mhead-acorn { opacity: 0; width: 0; }
+.shell.mobile .mshell .mhead.compact { padding-top: calc(max(var(--m-safe-top), 12px) + 10px); }
+.shell.mobile .mshell .mhead { transition: padding var(--dur-2) var(--ease); }
+/* 收起后顶栏下缘一道发丝线，告诉人「底下的东西是滚上去了，不是没了」 */
+.shell.mobile .mshell .mhead::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--m2-sep);
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.shell.mobile .mshell .mhead.compact::after { opacity: 1; }
+
+/* 顶栏第二行（计划的排序 + 收起子任务、已完成的三选一）：一行排开、同一个高度 */
+.shell.mobile .mshell .mhead-extra { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; margin-top: 12px; padding-bottom: 8px; }
+.shell.mobile .mshell .mhead-extra .all-sort { flex: 0 1 auto; margin: 0; }
+.shell.mobile .mshell .mhead-extra > .btn.ghost {
+  margin-left: auto;
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* ---------- 段标题：不再是胶囊，是一行安静的小标题 + 数字 ---------- */
+.shell.mobile .mshell .group-head,
+.shell.mobile .mshell .group-head.split {
+  width: auto;
+  max-width: none;
+  height: auto;
+  margin: 20px 20px 8px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: .3px;
+}
+.shell.mobile .mshell .group-label {
+  height: auto;
+  padding: 0;
+  background: none;
+  color: inherit;
+  border-radius: 0;
+}
+.shell.mobile .mshell .group-label .n { margin-left: 6px; color: var(--ink-3); font-weight: 500; font-variant-numeric: tabular-nums; }
+.shell.mobile .mshell .group-head.warn,
+.shell.mobile .mshell .group-head.warn .group-label { background: none; color: var(--warn); }
+.shell.mobile .mshell .group-head .act { font-size: 13px; font-weight: 600; color: var(--accent); }
+/* 裸文本那一路（习惯 / 更多）原来靠容器缩成胶囊，链接挂在容器外；现在容器就是一行字，链接照样在右边 */
+.shell.mobile .mshell .group-head:not(.split) { display: block; width: max-content; position: relative; }
+
+/* ---------- 分组卡：同一组装进一张圆角大卡，行与行之间一道内缩的发丝线 ---------- */
+.shell.mobile .mshell .mcard,
+.shell.mobile .mshell .mcard:has(> .swipe-wrap) {
+  margin: 0 var(--m2-gutter);
+  border-radius: var(--m2-radius);
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: var(--m2-card-shadow);
+  /* 圆角裁切 + 投影在安卓 WebView 上滑动时会掉帧：单独一层，交给合成器 */
+  isolation: isolate;
+}
+.shell.mobile .mshell .mcard + .mcard { margin-top: 10px; }
+.shell.mobile .mshell .mcard:has(> .swipe-wrap) > .swipe-wrap {
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.shell.mobile .mshell .mcard:has(> .swipe-wrap) > .swipe-wrap + .swipe-wrap { margin-top: 0; }
+.shell.mobile .mshell .mcard > .swipe-wrap + .swipe-wrap::before,
+.shell.mobile .mshell .mcard > .mgroup + .mgroup::before,
+.shell.mobile .mshell .msteps-in > .swipe-wrap::before {
+  content: "";
+  position: absolute;
+  left: 50px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--m2-sep);
+  z-index: 2;
+  pointer-events: none;
+}
+.shell.mobile .mshell .mcard > .mgroup { position: relative; }
+.shell.mobile .mshell .msteps-in > .swipe-wrap::before { left: 78px; }
+
+/* 滑动露出来的底色层：**行没让开时整层不画**。圆角裁切在抗锯齿那一圈会漏出底下的红「删除」，
+   看着像卡片右边描了一道粉边（10-30 拍图找到的） */
+.shell.mobile .mshell .swipe-wrap:not(.shifted):not(.dragging) > .swipe-under { visibility: hidden; }
+.shell.mobile .mshell .swipe-wrap.shifted .swipe-body { box-shadow: 0 0 16px rgba(0, 0, 0, .12); }
+.shell.mobile .mshell .swipe-act { font-size: 12px; font-weight: 600; gap: 4px; }
+.shell.mobile .mshell .swipe-act.delete { background: var(--m2-prio-3); }
+
+/* ---------- 一行事 ---------- */
+.shell.mobile .mshell .mrow {
+  gap: 12px;
+  min-height: var(--m2-row-min);
+  padding: 10px var(--m2-gutter) 10px 16px;
+  background: var(--card);
+  transition: background var(--dur-1) var(--ease);
+}
+.shell.mobile .mshell .mrow:active,
+.shell.mobile .mshell .mrow.pressing { background: var(--m2-press); }
+.shell.mobile .mshell .mrow-bar { display: none; }
+.shell.mobile .mshell .mrow-main { gap: 2px; align-self: center; }
+.shell.mobile .mshell .mrow-title { font-size: 15.5px; line-height: 21px; font-weight: 450; }
+.shell.mobile .mshell .mrow-meta {
+  display: block;
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shell.mobile .mshell .mrow-tail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  max-width: 42%;
+}
+.shell.mobile .mshell .mrow-when {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.shell.mobile .mshell .mrow-when.warn { color: var(--warn); font-weight: 600; }
+
+/* 勾选圈：圈的颜色就是重要性——不再另外摆一颗小圆点（以前那颗灰点在「无」的时候只是噪音） */
+.shell.mobile .mshell .mrow-cb {
+  width: var(--m2-cb);
+  height: var(--m2-cb);
+  border-width: 1.8px;
+  border-color: color-mix(in srgb, var(--ink-3) 55%, transparent);
+  background: transparent;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.shell.mobile .mshell .mrow-cb.p3 { border-color: var(--m2-prio-3); background: color-mix(in srgb, var(--m2-prio-3) 9%, transparent); }
+.shell.mobile .mshell .mrow-cb.p2 { border-color: var(--m2-prio-2); background: color-mix(in srgb, var(--m2-prio-2) 9%, transparent); }
+.shell.mobile .mshell .mrow-cb.p1 { border-color: var(--m2-prio-1); }
+.shell.mobile .mshell .mrow-cb:active { transform: scale(.88); }
+.shell.mobile .mshell .mrow-cb.done { background: var(--ok); border-color: var(--ok); }
+.shell.mobile .mshell .mrow-cb.done::after { left: 6.5px; top: 3.5px; width: 5px; height: 10px; }
+.shell.mobile .mshell .mrow-cb.dropped { border-style: dashed; background: transparent; }
+
+/* 母任务行尾：「几步 / 共几步」+ 一颗 ›，摊开时转成朝下 */
+.shell.mobile .mshell .mrow-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  min-width: 44px;
+  padding: 0 6px 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+}
+.shell.mobile .mshell .mrow-steps::before { content: ""; position: absolute; inset: -8px -6px; }
+.shell.mobile .mshell .mrow-steps svg { transition: transform var(--dur-2) var(--ease); }
+.shell.mobile .mshell .mrow-steps.open svg { transform: rotate(90deg); }
+
+/* 摊开的步骤：缩进一档、方形小勾、底色压一点点，读得出「这是上面那件事的一部分」 */
+.shell.mobile .mshell .msteps.open .msteps-in { animation: msteps-in var(--dur-2) var(--ease); }
+@keyframes msteps-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.shell.mobile .mshell .swipe-wrap.nested .mrow {
+  padding-left: 44px;
+  min-height: 46px;
+  background: color-mix(in srgb, var(--bg) 45%, var(--card));
+}
+.shell.mobile .mshell .swipe-wrap.nested .mrow:active { background: var(--m2-press); }
+.shell.mobile .mshell .swipe-wrap.nested .mrow-cb { width: 19px; height: 19px; border-radius: 6px; }
+.shell.mobile .mshell .swipe-wrap.nested .mrow-cb.done::after { left: 5.5px; top: 2.5px; }
+.shell.mobile .mshell .swipe-wrap.nested .mrow-title { font-size: 14.5px; line-height: 20px; color: var(--ink); }
+
+/* 「已完成 · 3  展开」那一行：跟段标题同一个口径 */
+.shell.mobile .mshell .mfoldrow { width: calc(100% - 40px); margin: 18px 20px 8px; padding: 6px 0; font-size: 13px; }
+.shell.mobile .mshell .mfoldrow .group-label { background: none; color: var(--ink-3); padding: 0; height: auto; }
+.shell.mobile .mshell .mfoldrow .more { color: var(--accent); font-weight: 600; }
+
+/* ---------- 悬浮 ＋ 与底部导航 ---------- */
+.shell.mobile .mshell .mfab {
+  width: var(--m2-fab);
+  height: var(--m2-fab);
+  border-radius: 19px;
+  right: 18px;
+  bottom: calc(var(--m-nav-h) + var(--m-safe-bottom) + 16px);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 38%, transparent), 0 2px 6px rgba(0, 0, 0, .12);
+  transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.shell.mobile .mshell .mfab:active { transform: scale(.92); box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent); }
+.shell.mobile .mshell .mnav {
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  backdrop-filter: saturate(1.6) blur(18px);
+  border-top: 1px solid var(--m2-sep);
+}
+.shell.mobile .mshell .mnav-tab { font-size: 11px; gap: 3px; }
+.shell.mobile .mshell .mnav-ico { width: 52px; height: 28px; border-radius: 999px; transition: background var(--dur-1) var(--ease); }
+.shell.mobile .mshell .mnav-tab.on .mnav-ico svg { transform: scale(1.04); }
+
+/* ---------- 计划页搜索条 ---------- */
+.shell.mobile .mshell .plan-search {
+  margin: 4px var(--m2-gutter) 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+  box-shadow: none;
+}
+.shell.mobile .mshell .plan-search input.input {
+  height: 38px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14.5px;
+}
+
+/* 动效降级：系统开了「减少动态效果」就全部定格 */
+@media (prefers-reduced-motion: reduce) {
+  .shell.mobile .mshell .msteps.open .msteps-in { animation: none; }
+}
+
+/* ---------- 任务详情（底部抽屉）：属性收成标题下一排胶囊 ----------
+   抽屉可能挂在壳子外面（浮层），所以这几条不靠 .mshell，靠抽屉自己的两个类 .msheet.msh-sheet 提权 */
+.msheet.msh-sheet .msh-props {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 20px 6px 58px;
+}
+.msheet.msh-sheet .msh-pair { display: contents; }
+.msheet.msh-sheet .msh-prop,
+.msheet.msh-sheet .msh-pair .msh-prop {
+  width: auto;
+  max-width: 100%;
+  min-height: 34px;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+  font-size: 13.5px;
+  transition: background var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.msheet.msh-sheet .msh-prop:active { transform: scale(.96); }
+.msheet.msh-sheet .msh-prop svg { width: 16px; height: 16px; }
+.msheet.msh-sheet .msh-prop-k,
+.msheet.msh-sheet .msh-caret { display: none; }
+.msheet.msh-sheet .msh-prop-v { flex: 0 1 auto; }
+.msheet.msh-sheet .msh-prop:has(.msh-prop-v:not(.off)) { background: var(--accent-soft); color: var(--accent); }
+.msheet.msh-sheet .msh-prop:has(.msh-prop-v:not(.off)) .msh-prop-v { color: var(--accent); font-weight: 600; }
+.msheet.msh-sheet .msh-prop.open { box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* 展开的那一段（日期预设、清单列表…）占满一整行，落在胶囊下面 */
+.msheet.msh-sheet .msh-props > .msh-seg {
+  flex: 0 0 100%;
+  margin: 2px 0 4px;
+  padding: 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ink) 3%, var(--card));
+  animation: msh-seg-in var(--dur-2) var(--ease);
+}
+@keyframes msh-seg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.msheet.msh-sheet .msh-subs { margin-top: 8px; }
+.msheet.msh-sheet .msh-sec { padding-top: 10px; }
+
+/* 底部三颗：完成（主）· 放弃 · 删除 */
+.msheet.msh-sheet .msh-foot { gap: 8px; padding: 10px 16px calc(12px + var(--m-safe-bottom)); border-top-color: color-mix(in srgb, var(--hair) 70%, transparent); }
+.msheet.msh-sheet .msh-done {
+  order: 3;
+  flex: 1.4;
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 15px;
+  font-weight: 650;
+  font-family: inherit;
+  transition: transform var(--dur-1) var(--ease);
+}
+.msheet.msh-sheet .msh-done.on { background: var(--card); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--hair); }
+.msheet.msh-sheet .msh-done:active,
+.msheet.msh-sheet .msh-drop:active,
+.msheet.msh-sheet .msh-del:active { transform: scale(.96); }
+.msheet.msh-sheet .msh-drop { order: 1; flex: 1; border: 0; background: color-mix(in srgb, var(--ink) 5%, var(--card)); }
+.msheet.msh-sheet .msh-del { order: 2; border: 0; background: color-mix(in srgb, var(--ink) 5%, var(--card)); }
+.msheet.msh-sheet .msh-del.armed { background: #C0564A; }
+
+/* ---------- 设置：收起的卡不再在底下空一截 ----------
+   .set-fold 收起靠 grid 0fr，可里面那层的 12px 上内边距收不掉，底下就多出一条空白 */
+.shell.mobile .mshell .set-section.set-closed .set-fold-inner { padding-top: 0; }
+.shell.mobile .mshell .set-section { border-radius: var(--m2-radius); box-shadow: var(--m2-card-shadow); }
+.msheet.msh-sheet .msh-prop .flag.p0 { display: none; }

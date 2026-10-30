@@ -20,6 +20,8 @@ export interface SwipeOptions {
   /** 左滑露出的动作条有多宽。不给就不允许左滑 */
   leftWidth?: number;
   disabled?: boolean;
+  /** 手指拉过「松手就生效」那条线的那一刻调一次（往回退再越过会再调）。拿来轻震 */
+  onThreshold?: () => void;
 }
 
 export type SwipeState = "idle" | "dragging" | "openLeft" | "firing";
@@ -50,7 +52,11 @@ const INTENT_PX = 8;
 const RIGHT_MAX = 140;
 
 export function useSwipeRow(opts: SwipeOptions): SwipeRow {
-  const { onRight, rightPx = 72, leftWidth = 0, disabled = false } = opts;
+  const { onRight, rightPx = 72, leftWidth = 0, disabled = false, onThreshold } = opts;
+  const onThresholdRef = useRef(onThreshold);
+  onThresholdRef.current = onThreshold;
+  /** 上一帧在不在线外：只在跨线那一下震，别每帧都震 */
+  const past = useRef(false);
   const [dx, setDx] = useState(0);
   const [state, setState] = useState<SwipeState>("idle");
   const start = useRef<{ x: number; y: number; base: number; captured: boolean; id: number } | null>(null);
@@ -89,6 +95,7 @@ export function useSwipeRow(opts: SwipeOptions): SwipeRow {
       // 只认主按键 / 手指；右键留给别的
       if (e.pointerType === "mouse" && e.button !== 0) return;
       start.current = { x: e.clientX, y: e.clientY, base: dx, captured: false, id: e.pointerId };
+      past.current = false;
       swiped.current = false;
     },
     [disabled, dx, state],
@@ -109,7 +116,12 @@ export function useSwipeRow(opts: SwipeOptions): SwipeRow {
         }
         s.captured = true;
         swiped.current = true;
-        (e.currentTarget as HTMLElement).setPointerCapture(s.id);
+        // 指针已经被系统收回（来电、通知下拉、手势切 App）时这一句会抛错，抛出去整次滑动就断在半路
+        try {
+          (e.currentTarget as HTMLElement).setPointerCapture(s.id);
+        } catch {
+          /* 抓不住就不抓：手指还在这一行上，照样跟手 */
+        }
         setState("dragging");
       }
       let next = s.base + mx;
@@ -120,9 +132,14 @@ export function useSwipeRow(opts: SwipeOptions): SwipeRow {
       if (next > RIGHT_MAX) next = RIGHT_MAX + (next - RIGHT_MAX) * 0.25;
       // 左滑越过动作条宽度也有阻力：那儿没有更多东西
       if (next < -leftWidth) next = -leftWidth + (next + leftWidth) * 0.25;
+      const over = (next >= rightPx && !!onRightRef.current) || (leftWidth > 0 && next <= -leftWidth * 0.6);
+      if (over !== past.current) {
+        past.current = over;
+        if (over) onThresholdRef.current?.();
+      }
       setDx(next);
     },
-    [leftWidth],
+    [leftWidth, rightPx],
   );
 
   const settle = useCallback(() => {

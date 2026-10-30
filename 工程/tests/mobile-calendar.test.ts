@@ -183,7 +183,7 @@ describe("③ 手机日历的样式：定高格子、纸、点的颜色全是 to
 describe("④ 顶栏后面那片风景：日历页跟顶栏等高，别的页还是 190", () => {
   it("MobileHead 有 sceneFit 开关，挂的是 .mhead-fit；只有日历传", () => {
     expect(headSource).toContain("sceneFit?: boolean;");
-    expect(headSource).toContain('className={`view-head mhead${sceneFit ? " mhead-fit" : ""}`}');
+    expect(headSource).toContain('className={`view-head mhead${sceneFit ? " mhead-fit" : ""}${compact ? " compact" : ""}`}');
     expect(calendarSource).toContain("sceneFit");
     for (const name of ["Today", "Plan", "Done", "ListView", "MobileMore", "Habits", "StatsView", "Settings", "Quadrant"]) {
       expect(read(`src/views/${name}.tsx`), name).not.toContain("sceneFit");

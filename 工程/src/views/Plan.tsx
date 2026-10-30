@@ -10,7 +10,7 @@ import { Fragment, useMemo, useState } from "react";
 import { todayYMD } from "../core/dates";
 import { planGroups } from "../core/plan";
 import { searchTasks } from "../core/search";
-import { aliveTasks, openRows, rowTaskIds, setFoldAll, updateSettings, useApp } from "../core/store";
+import { aliveTasks, openRows, rowTaskIds, updateSettings, useApp } from "../core/store";
 import { hardCutRows } from "../core/motion";
 import { mergeParentRows, pendingChildRows } from "../core/parentRows";
 import { setAllParentFolded, useParentFold } from "../core/parentFold";
@@ -33,7 +33,7 @@ export default function Plan() {
   const data = useApp((s) => s.data);
   const legacyFoldAll = useApp((s) => s.ui.foldAll);
   const parentFoldAll = useParentFold((s) => s.foldAll);
-  const foldAll = isMobile ? legacyFoldAll : parentFoldAll;
+  const foldAll = parentFoldAll;
   const expandedId = useApp((s) => s.ui.expandedId);
   const sortMode = data.settings.sortMode;
   const today = todayYMD();
@@ -61,7 +61,7 @@ export default function Plan() {
   const [q, setQ] = useState("");
   const query = q.trim();
   const rawOpen = useMemo(() => openRows(data), [data]);
-  const openAll = useMemo(() => isMobile ? rawOpen : mergeParentRows(rawOpen), [rawOpen]);
+  const openAll = useMemo(() => mergeParentRows(rawOpen), [rawOpen]);
   // **过滤必须发生在 planGroups 之前**：下面 fold / anchor / orderedIds / foldable 四个派生值
   // 全都得吃过滤后的行——否则折叠链头被搜掉之后 anchor 会指向没渲染的行，展开卡凭空消失，
   // 键盘上下也会走到看不见的任务上。
@@ -90,13 +90,13 @@ export default function Plan() {
   const totalOpen = useMemo(() => rowTaskIds(openAll).length, [openAll]);
   // 折叠和展开卡的落点都得**整页算一次**：子任务各带日期时会散落在不同的时间段里，
   // 一段一段各算各的，「收起」就变成了「每段收一次」，等于没收
-  const fold = useFoldPlan(allRows, !isMobile);
+  const fold = useFoldPlan(allRows, true);
   const anchor = cardAnchor(allRows, expandedId);
   // 连选按「件」走：一件事拆成几行也只占一个连选位
   const orderedIds = rowTaskIds(allRows);
   // 有子任务可以折叠的事——一件都没有就别摆那个按钮
-  const foldable = isMobile ? allRows.some((r) => r.sub) : allRows.some((r) => pendingChildRows(r.task).length > 0);
-  const pendingCount = isMobile ? allRows.length : allRows.reduce((n, r) => n + Math.max(1, pendingChildRows(r.task).length), 0);
+  const foldable = allRows.some((r) => pendingChildRows(r.task).length > 0);
+  const pendingCount = allRows.reduce((n, r) => n + Math.max(1, pendingChildRows(r.task).length), 0);
 
   const sub = (
     <>
@@ -133,11 +133,11 @@ export default function Plan() {
           {foldable && (
             <button
               className="btn ghost"
-              title={foldAll ? "展开每件事的全部子任务" : isMobile ? "折叠后每件事只显示下一步" : "收起子任务，保留每件母任务"}
+              title={foldAll ? "展开每件事的全部子任务" : "收起子任务，保留每件母任务"}
               // 这一下可能翻掉上百行。高度过渡不能上合成器，每帧都要重算轨道并回流其下方
               // 的全部内容——这个按钮存在的理由恰恰是「行太多了」。所以总开关这条路走硬切，
               // 高度动画只留给单条小三角（它一次只动几行）
-              onClick={() => { hardCutRows(); if (isMobile) setFoldAll(!foldAll); else setAllParentFolded(!foldAll); }}
+              onClick={() => { hardCutRows(); setAllParentFolded(!foldAll); }}
             >
               {foldAll ? "展开子任务" : "收起子任务"}
             </button>
@@ -217,11 +217,11 @@ export default function Plan() {
                   <div className={g.warn ? "group-head split warn" : "group-head split"}>
                     <span className="group-label">
                       {g.label}
-                      {g.warn ? ` ${g.rows.length}` : ""}
+                      {isMobile ? <span className="n">{rows.length}</span> : g.warn ? ` ${g.rows.length}` : ""}
                     </span>
                   </div>
                 )}
-                <RowList rows={g.rows} fold={fold} anchor={anchor} orderedIds={orderedIds} parentGroups={!isMobile} />
+                <RowList rows={g.rows} fold={fold} anchor={anchor} orderedIds={orderedIds} parentGroups />
               </Fragment>
             );
           })}

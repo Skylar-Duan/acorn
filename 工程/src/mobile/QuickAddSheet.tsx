@@ -78,7 +78,7 @@ function QuickAddBody({ listId }: { listId: string | null }) {
   const today = todayYMD();
   // 快捷项走 core/options.dateOptions 那一份（09-21 全应用统一：今天 / 明天 / 本周末 / 下周末 / 本月末），
   // 全仓一处算一处用；下面常驻的日期框就是这一套里的「选日期…」
-  const presets = dateOptions(today, { weekendDay: settings.weekendDay });
+  const presets = dateOptions(today, { weekendDay: settings.weekendDay, dateShortcuts: settings.dateShortcuts });
   const guide = useGuideEntry();
 
   /** 那句话本身（原文）。标题是解析之后剩下的那部分 */

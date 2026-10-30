@@ -577,11 +577,24 @@ export async function autoPullIfDue(now = Date.now()): Promise<boolean> {
  * 挂上按所选周期检查云端的定时器与回焦检查。切档立刻重排，仅保留一份定时器；
  * 换账号或账本暂时失效时清掉旧定时器，旧回调也不能落进新账号。
  *
- * **只在电脑上**（isMobile 为假，电脑浏览器上的网页版也算）：手机进后台就落盘推一把、
- * 回来有每天补一轮，再加定时拉会在计费流量上一直跑。
+ * **定时器只在电脑上**（isMobile 为假，电脑浏览器上的网页版也算）：手机在计费流量上不定时拉。
+ * 手机（10-30 起）只在**切回橡果那一下**按同一个间隔查一次：先比云端修订号，没变就不下整本，
+ * 一次就是一个很小的请求。以前手机只有「每天补一轮」，电脑上刚改的事手机要隔天才看得到。
  */
 export function startAutoPull(mobile = isMobile): void {
-  if (mobile || autoPullOff || typeof window === "undefined") return;
+  if (autoPullOff || typeof window === "undefined") return;
+  if (mobile) {
+    const onShow = () => {
+      if (document.visibilityState === "visible") void autoPullIfDue();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    autoPullRearm = null;
+    autoPullOff = () => {
+      document.removeEventListener("visibilitychange", onShow);
+      autoPullOff = null;
+    };
+    return;
+  }
   let timer: ReturnType<typeof setTimeout> | null = null;
   let generation = 0;
   let startedAt = Date.now();

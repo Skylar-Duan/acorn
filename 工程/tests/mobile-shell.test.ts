@@ -320,9 +320,10 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
   it("右边是一叠不是一排：标题独占第一层，日期 / 母任务名在第二层", () => {
     expect(rowSource).toContain('<span className="mrow-main">');
     expect(rowSource).toContain('<span className="mrow-title">{title || "（未命名）"}</span>');
-    expect(rowSource).toContain('<span className="mrow-meta">');
-    // 既没日期也不是子任务的事不摆第二层，卡跟着矮回一行的高度
-    expect(rowSource).toContain("{(sub || when) && (");
+    expect(rowSource).toContain('className="mrow-meta"');
+    // 10-30：日期挪到行尾那一列；第二层只在「下一步 / 属于哪件事」有话说时才摆
+    expect(rowSource).toContain("{meta && <span className=\"mrow-meta\">{meta}</span>}");
+    expect(rowSource).toContain('<span className="mrow-tail">');
     const main = shellCss.slice(shellCss.indexOf(".mrow-main {"), shellCss.indexOf(".mrow-bar {"));
     expect(main).toContain("flex-direction: column;");
     // 不给 min-width: 0 的话，长标题会把整张卡撑破而不是折行
@@ -336,7 +337,7 @@ describe("③ 一行事：点圆圈 / 右滑 / 左滑 / 长按，四条路各归
   // 现在它自己占第二层，抢不到标题了
   it("「母任务名 ›」那颗胶囊限 14 个字（第二层还有一层省略号兜底）", () => {
     expect(rowSource).toContain("const PARENT_MAX = 14;");
-    expect(rowSource).toContain("parent.length > PARENT_MAX");
+    expect(rowSource).toContain("parentName.length > PARENT_MAX");
     const p = shellCss.slice(shellCss.indexOf(".mrow-parent {"), shellCss.indexOf(".mrow-when {"));
     expect(p).toContain("text-overflow: ellipsis;");
   });
@@ -687,7 +688,7 @@ describe("⑧ 动作单：每个动作都对得上桌面右键菜单里那一条
   // 09-21 有意改口：候选日从 duePresets（今天 / 本周五 / 本周日 / 本月末）换成全应用统一的 dateOptions
   it("候选日走全应用那一份 dateOptions，不在手机上另写一份「明天 / 下周一」", () => {
     expect(actionSheetSource).toContain('import { PICK_DATE_LABEL, dateOptions } from "../core/options";');
-    expect(actionSheetSource).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay }).map");
+    expect(actionSheetSource).toContain("dateOptions(today, { weekendDay: data.settings.weekendDay, dateShortcuts: data.settings.dateShortcuts }).map");
     expect(actionSheetSource).not.toContain("duePresets");
     const pane = stripComments(
       actionSheetSource.slice(

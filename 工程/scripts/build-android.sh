@@ -72,6 +72,21 @@ io.open(p, "w", encoding="utf-8", newline="").write(s.replace(anchor, add, 1))
 print("  已补上 REQUEST_INSTALL_PACKAGES")
 PY
 fi
+# 10-30：勾掉、滑过生效线、长按时那一下轻震（mobile/haptic.ts）。没有这条权限 navigator.vibrate 静默无效
+if [ -f "$MANIFEST" ] && ! grep -q "android.permission.VIBRATE" "$MANIFEST"; then
+  echo "=== 给 AndroidManifest 补上「轻震」权限"
+  python - "$MANIFEST" <<'PY'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+anchor = '<uses-permission android:name="android.permission.INTERNET" />'
+if anchor not in s:
+    raise SystemExit("AndroidManifest 里找不到 INTERNET 那行，权限没打上")
+add = anchor + chr(10) + '    <uses-permission android:name="android.permission.VIBRATE" />'
+io.open(p, "w", encoding="utf-8", newline="").write(s.replace(anchor, add, 1))
+print("  已补上 VIBRATE")
+PY
+fi
 
 # App 自己的安卓安装组件（v1.13.0）：真源在入库的 src-tauri/android/InstallPlugin.kt，
 # gen/ 是可再生的，所以每次都拷一份进去。lib.rs 用 include_bytes! 钉着 gen/ 里这份——

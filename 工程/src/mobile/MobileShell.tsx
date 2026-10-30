@@ -19,6 +19,8 @@ import { openSheet } from "./sheetStore";
 import MobileMore, { AddToHomeNudge } from "../views/MobileMore";
 import { IcoHabits, IcoMore, IcoPlan, IcoPlus, IcoQuad, IcoToday } from "./icons";
 import "../styles/mobile-shell.css";
+// 10-30 第二版视觉层，必须排在 mobile-shell.css 后面引（它自己的选择器也更具体，双保险）
+import "../styles/mobile-v2.css";
 
 /** 底部那五格。**固定五项**——常驻位再多一个就谁都记不住了。
  *

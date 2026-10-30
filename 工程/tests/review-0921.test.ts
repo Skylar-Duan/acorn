@@ -273,10 +273,11 @@ describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", ()
     expect(pend.web.note).not.toContain("已于");
     expect(items("web").some((it) => it.id === "w-2609d-autopull")).toBe(false);
   });
-  it("Android原25项与整块说明不变，不因Windows发布自动清空或核通过", () => {
+  it("Android原25项原样保留，不因Windows发布自动清空或核通过（10-30 手机焕新在前面新增5项）", () => {
     const original = candidate("android-1.15.0-待核基线.json").android;
-    expect(pend.android).toEqual(original);
-    expect(pendingItems("android")).toHaveLength(25);
+    expect(pend.android.since).toBe(original.since);
+    expect(pendingItems("android").slice(-25)).toEqual(original.items);
+    expect(pendingItems("android")).toHaveLength(30);
     expect(pendingItems("android").every((it) => !it.verified)).toBe(true);
   });
   it("未发布网页候选仍完整保留浏览器能力边界", () => {

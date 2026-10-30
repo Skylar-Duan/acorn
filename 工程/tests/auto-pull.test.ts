@@ -175,12 +175,22 @@ describe("挂上之后：回到眼前取一次、每 5 分钟取一次、登出�
     expect(syncOnce).not.toHaveBeenCalled();
   });
 
-  it("手机上不挂（手机有进后台推一把 + 每天补一轮，不在计费流量上定时拉）", async () => {
+  it("手机上不挂定时器、不认 focus（不在计费流量上定时拉）", async () => {
     startAutoPull(true);
     await vi.advanceTimersByTimeAsync(AUTO_PULL_EVERY_MS * 2);
     window.dispatchEvent(new Event("focus"));
     await settle();
     expect(syncOnce).not.toHaveBeenCalled();
+  });
+
+  it("手机切回橡果时按同一个间隔查一次云端（10-30）", async () => {
+    startAutoPull(true);
+    await vi.advanceTimersByTimeAsync(AUTO_PULL_EVERY_MS + 1000);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(syncOnce.mock.calls.length + whoAmI.mock.calls.length).toBeGreaterThan(0);
+    stopAutoPull();
   });
 });
 

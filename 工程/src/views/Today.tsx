@@ -23,14 +23,14 @@ export default function Today() {
   const today = todayYMD();
 
   const legacy = tasksForToday(data, today);
-  const parents = isMobile ? null : parentRowsForToday(data, today);
-  const { overdue, todays } = parents ?? legacy;
+  const parents = parentRowsForToday(data, today);
+  const { overdue, todays } = parents;
   const { doneToday } = legacy;
   // 展开着的那件事钉在上一版的位置上（core/pin.ts）：在卡里加一条明天到期的子任务、
   // 或者顺手把日期改到下周，这件事的行会整个退出这个视图，卡片当场没了没法接着输入。
   // 所以兜底行池给的是**整份** openRows——光靠下面这两组是捞不回来的
   const pinPool = expandedId
-    ? sortRows((isMobile ? openRows(data) : mergeParentRows(openRows(data))).filter((r) => r.task.id === expandedId), data.settings.sortMode)
+    ? sortRows(mergeParentRows(openRows(data)).filter((r) => r.task.id === expandedId), data.settings.sortMode)
     : [];
   const pinned = usePinExpanded(
     [{ key: "overdue", rows: overdue }, { key: "today", rows: todays }],
@@ -43,7 +43,7 @@ export default function Today() {
   const allRows = [...overdueShown, ...todayShown];
   const orderedIds = rowTaskIds(allRows);
   // 折叠整页算一次（跟「计划」同一套口径），否则逾期区和今天区会各收一遍
-  const fold = useFoldPlan(allRows, !isMobile);
+  const fold = useFoldPlan(allRows, true);
   const anchor = cardAnchor(allRows, expandedId);
   // 这两个只用来判断「这一组还剩东西吗、组标题画不画」。
   // 真正交给 RowList 的是**没过滤过**的那份：折叠掉的行由它收成 0 高，收/放才都有动画（B5）
@@ -51,7 +51,7 @@ export default function Today() {
   const todayRows = visibleRows(todayShown, fold);
   const focusMin = sessions.filter((s) => s.date === today).reduce((a, b) => a + b.minutes, 0);
   // 底部进度按「件」算不按「行」算：一件事拆成 3 个子任务时，做掉 1 个不该让分母也跟着缩水
-  const total = (parents?.todayCount ?? rowTaskIds(todays).length) + doneToday.length;
+  const total = parents.todayCount + doneToday.length;
   const doneRatio = total === 0 ? 0 : doneToday.length / total;
   /** 手机端：还欠着几件（给顶栏那句副标题用）。桌面照旧只写日期 */
   const left = Math.max(0, total - doneToday.length);
@@ -66,7 +66,7 @@ export default function Today() {
         // 进度环取代底部那条「完成 0/1」：手机上底部那一行被导航压着，等于没有
         <MobileHead
           title="今天"
-          sub={`${formatCN(today)}${total === 0 ? "" : left > 0 ? ` · 还剩 ${left} 件，慢慢来` : " · 都做完了"}`}
+          sub={`${formatCN(today)}${total === 0 ? "" : left > 0 ? ` · 还剩 ${left} 件` : " · 都做完了"}`}
           ring={{ done: doneToday.length, total }}
           // 那颗有表情的小橡果只在这一页露一次脸（画板 PolishA）
           mascot
@@ -86,7 +86,7 @@ export default function Today() {
             {/* split + .group-label：手机上标题收成一颗胶囊贴左、这句链接贴右缘（画板 A）。
                 桌面上这两个类名都没有样式，一个像素不变 */}
             <div className="group-head warn split">
-              <span className="group-label">逾期 {overdue.length}</span>
+              <span className="group-label">逾期{isMobile ? <span className="n">{overdue.length}</span> : ` ${overdue.length}`}</span>
               {/* 原来是「全部推到明天 →」，只能推一天；现在点开选 今天 / 明天 / 本周末 / 下周末 / 本月末 / 选日期…
                   顺延的是逾期组**全部**行（折起来看不见的也算），跟原来口径一样。
                   桌面是「全部顺延 ▾」小菜单；手机（09-21）换成同一套选项的底部小纸（mobile/PostponeSheet） */}
@@ -94,29 +94,29 @@ export default function Today() {
                 <button
                   className="act"
                   onClick={() =>
-                    openSheet({ kind: "postpone", rows: overdue.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })
+                    openSheet({ kind: "postpone", rows: parents.overdueActions.map((r) => ({ taskId: r.task.id, subId: r.sub?.id })) })
                   }
                 >
                   全部顺延 →
                 </button>
               ) : (
-                <PostponeButton className="act" label="全部顺延" getRows={() => parents?.overdueActions ?? overdue} />
+                <PostponeButton className="act" label="全部顺延" getRows={() => parents.overdueActions} />
               )}
             </div>
             {/* 手机端：整页最上面那一行演一次「往右滑」的示意（hintFirstRow） */}
-            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} parentGroups={!isMobile} />
+            <RowList rows={overdueShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint} parentGroups />
           </>
         )}
         {todayRows.length > 0 && (
-          <div className="group-head split"><span className="group-label">今天</span></div>
+          <div className="group-head split"><span className="group-label">今天{isMobile && <span className="n">{todayRows.length}</span>}</span></div>
         )}
         {/* 逾期那组在上面，示意只演一次：那儿有行的时候这儿就不演了 */}
-        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint && overdueRows.length === 0} parentGroups={!isMobile} />
+        <RowList rows={todayShown} fold={fold} anchor={anchor} orderedIds={orderedIds} hintFirstRow={hint && overdueRows.length === 0} parentGroups />
         {/* 做完的这一组：桌面照旧一条组标题 + 逐行摊开；
             手机上默认收成一行「已完成 · N 展开」——今天这一屏该留给还没做的事 */}
         {doneToday.length > 0 && (isMobile ? (
           <button className="mfoldrow" onClick={() => setDoneOpen(!doneOpen)}>
-            <span className="group-label">已完成 · {doneToday.length}</span>
+            <span className="group-label">已完成<span className="n">{doneToday.length}</span></span>
             <span className="more">{doneOpen ? "收起" : "展开"}</span>
           </button>
         ) : (

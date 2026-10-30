@@ -285,7 +285,7 @@ describe("⑤ 「随手记」退场：词没了，数据一条没少", () => {
 
   it("换上的说法说的都是「清单」这件事本身", () => {
     expect(read("src/mobile/QuickAddSheet.tsx")).toContain("先不分清单");
-    expect(read("src/mobile/TaskSheet.tsx")).toContain("没有清单");
+    expect(read("src/mobile/TaskSheet.tsx")).toContain('list ? list.name : "清单"');
     expect(read("src/mobile/TaskSheet.tsx")).toContain("不放进清单");
     expect(read("src/mobile/ActionSheet.tsx")).toContain("移出清单");
     expect(read("src/mobile/ListSettingsSheet.tsx")).toContain("会变成没有清单");

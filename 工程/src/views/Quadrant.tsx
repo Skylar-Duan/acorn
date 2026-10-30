@@ -226,7 +226,7 @@ export default function QuadrantBoard() {
   const previewTop = above >= 12 ? above : anchorY + 14;
   const previewStyle = { left: clamp((plotRect?.left ?? 0) + shownX / 100 * size.width - 142, 12, Math.max(12, window.innerWidth - 296)), top: clamp(previewTop, 12, Math.max(12, window.innerHeight - previewHeight - 12)) };
   const board = <div className="view-body quad-body quad-coordinate">
-    <div className="quad-legend"><span><Icon name="grid" size={14} />{points.length} 条待办</span><span>拖动安排 · 空格键调整</span></div>
+    <div className="quad-legend"><span><Icon name="grid" size={14} />{points.length} 条待办</span><span>{isMobile ? "按住拖动安排" : "拖动安排 · 空格键调整"}</span></div>
     <div className={`quad-chart${drag ? " quad-dragging" : ""}`}>
       <div className="quad-y-title">重要性 <Icon name="arrowUp" size={13} /></div>
       <div className="quad-plot" ref={plot} role="group" aria-label="重要性与截止日期坐标平面">
