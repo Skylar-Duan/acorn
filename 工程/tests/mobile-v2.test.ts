@@ -90,6 +90,13 @@ describe("手感", () => {
   });
 });
 
+describe("更新弹窗", () => {
+  it("「装完打开…」那行跟上面的框一样有左右留白（1.15.0 里只挂了小字样式，贴着弹窗边）", () => {
+    expect(read("src/components/UpdateDialog.tsx")).toContain('<p className="update-hint update-note">');
+    expect(read("src/styles/overlays.css")).toContain(".update-note { padding: 0 22px 12px;");
+  });
+});
+
 describe("补齐桌面已有的功能", () => {
   it("手机上的日期选项、顺延都读自定义快捷日期", () => {
     for (const p of ["src/mobile/TaskSheet.tsx", "src/mobile/QuickAddSheet.tsx", "src/mobile/ActionSheet.tsx", "src/mobile/PostponeSheet.tsx"]) {
