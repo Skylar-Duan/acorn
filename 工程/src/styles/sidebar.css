@@ -58,3 +58,7 @@
 .sidebar-module-floating .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 body.sidebar-module-dragging, body.sidebar-module-dragging * { cursor: grabbing !important; user-select: none !important; }
 @media (hover: none) { .side-modules .sidebar-drag-grip { opacity: .55; } }
+/* 清单／需求方入口（10-30）：不再展开，整行像普通导航项一样可点、可高亮 */
+.side-modules .side-category-entry { cursor: pointer; }
+.side-modules .side-category-entry.on { font-weight: 600; color: var(--accent); background: var(--accent-soft); }
+.side-modules .side-group-toggle.spacer { visibility: hidden; pointer-events: none; }

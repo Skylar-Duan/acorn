@@ -40,6 +40,7 @@ const stripComments = (s: string) =>
 const shellSource = read("src/mobile/MobileShell.tsx");
 const moreSource = read("src/views/MobileMore.tsx");
 const sidebarSource = read("src/components/Sidebar.tsx");
+const overviewSource = read("src/views/CategoryOverview.tsx");
 const storeSource = read("src/core/store.ts");
 const appSource = read("src/App.tsx");
 const pagesCss = read("src/styles/mobile-pages.css");
@@ -647,12 +648,11 @@ describe("④ 「更多」页接的是现成的那一套", () => {
     expect(storeSource).toContain("export function moveWho(dragName: string, overName: string | null)");
   });
 
-  it("桌面侧栏一个字没动：它那套 HTML5 拖拽和落库还在原处", () => {
-    expect(sidebarSource).toContain('reorderProps("list"');
-    expect(sidebarSource).toContain('reorderProps("who"');
-    expect(sidebarSource).toContain('useLongPressSort("list"');
-    expect(sidebarSource).toContain('useLongPressSort("who"');
-    expect(sidebarSource).toContain("draggable");
+  it("桌面的清单／需求方换位置搬到了右侧总览卡片（10-30），手机这套不受影响", () => {
+    expect(sidebarSource).not.toContain('reorderProps("list"');
+    expect(overviewSource).toContain("draggable");
+    expect(overviewSource).toContain("moveList");
+    expect(overviewSource).toContain("moveWho");
   });
 });
 

@@ -28,6 +28,7 @@ import { IcoDots } from "../mobile/icons";
 import RowList, { cardAnchor, planFold } from "../components/RowList";
 import Icon from "../components/Icon";
 import "../styles/trash.css";
+import "../styles/category-overview.css";
 
 export type ListKind = "inbox" | "list" | "who" | "tag" | "trash";
 
@@ -203,7 +204,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
   const orderedIds = useMemo(() => shown.map((t) => t.id), [shown]);
 
   return (
-    <section className={`main${kind === "trash" ? " trash-page" : ""}`}>
+    <section className={`main${kind === "trash" ? " trash-page" : ""}${!isMobile && (kind === "list" || kind === "who") ? " category-detail" : ""}`}>
       {isMobile ? (
         // 清单页的手机版顶栏（画板 ⑤）：返回 · 色点 + 名字 · N 件 · 「···」。
         // 原来摊在这一行上的六颗颜色点和红色的「删除清单」全收进「···」那张纸里
@@ -240,6 +241,12 @@ export default function ListView({ kind }: { kind: ListKind }) {
         />
       ) : (
       <div className="view-head">
+        {(kind === "list" || kind === "who") && (
+          // 侧栏不再展开条目，回总览走这里（10-30）
+          <button type="button" className="category-back" onClick={() => navigate(kind)} aria-label={`返回全部${kind === "list" ? "清单" : "需求方"}`}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 3.5-4.5 4.5 4.5 4.5" /></svg>{kind === "list" ? "清单" : "需求方"}
+          </button>
+        )}
         {kind === "list" && list ? (
           <>
             <span

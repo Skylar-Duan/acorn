@@ -7,14 +7,12 @@ import { dateOptions } from "../core/options";
 import { isMobile } from "../core/platform";
 import { parentRowsForToday } from "../core/parentRows";
 import {
-  addTasksWho, aliveTasks, allTags, allWho, appStore, categoryRows, deleteTasks, habitsOpenToday,
-  moveList, moveWho, navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
-  setQuickAddOpen, setTasksDue, setTasksList, updateSubtask, updateTask, useApp, type ViewId,
+  aliveTasks, allTags, allWho, appStore, deleteTasks, habitsOpenToday,
+  navigate, openRows, removeSubtask, rowDue, rowTaskIds, setChangelogOpen,
+  setQuickAddOpen, setTasksDue, updateSubtask, updateTask, useApp, type ViewId,
   trashedSubtaskRows, updateSettings,
 } from "../core/store";
 import { createCategory } from "../core/categoryCreation";
-import { categoryIcon } from "../core/categoryIcons";
-import { listColor } from "../core/colors";
 import { shortVersion } from "../core/version";
 import { forceFoldOpen, useFold } from "../core/useFold";
 import { moveSidebarModule, sidebarHidden, sidebarModules, sidebarName, SIDEBAR_MODULES, type SidebarModuleId } from "../core/sidebar";
@@ -28,9 +26,6 @@ import type { DateFieldHandle } from "./DateField";
 import { useLeaving } from "./motion";
 import { dismissRestored, syncFootState, useSync } from "../core/syncCtl";
 import { openFoundUpdate, updateFootState, useUpdate } from "../core/updateCtl";
-import {
-  IDLE, LONG_PRESS_MS, cancel, down, hold, move, up, type SortState,
-} from "../core/touchSort";
 import iconUrl from "../../src-tauri/icons/32x32.png";
 
 /** 跳进设置页之后，把「云账号」那一节滚到眼前。
@@ -86,154 +81,10 @@ function dropDue(e: React.DragEvent, ids: string[], due: string | null) {
   else setTasksDue(ids, due);
 }
 
-/** 同一个 li 上挂了两套拖拽（接任务 / 换位置），同名回调要挨个调过去，不能后者盖前者 */
-function mergeDrop(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...a, ...b };
-  for (const k of Object.keys(a)) {
-    const fa = a[k];
-    const fb = b[k];
-    if (typeof fa === "function" && typeof fb === "function") {
-      out[k] = (e: React.DragEvent) => {
-        (fa as (e: React.DragEvent) => void)(e);
-        (fb as (e: React.DragEvent) => void)(e);
-      };
-    }
-  }
-  return out;
-}
-
-/** 侧栏内部的「换位置」拖拽：清单拖清单、需求方拖需求方。
- *  跟「任务拖到侧栏」是两套 dataTransfer 类型，互不干扰 */
-function reorderProps(
-  kind: "list" | "who",
-  self: string,
-  onDrop: (dragged: string) => void,
-  hint: { over: string | null; set: (v: string | null) => void },
-) {
-  const type = `text/acorn-${kind}-move`;
-  const key = `${kind}:${self}`;
-  return {
-    draggable: true,
-    onDragStart: (e: React.DragEvent) => {
-      e.stopPropagation();
-      e.dataTransfer.setData(type, self);
-      e.dataTransfer.effectAllowed = "move";
-    },
-    onDragOver: (e: React.DragEvent) => {
-      if (!e.dataTransfer.types.includes(type)) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      if (hint.over !== key) hint.set(key);
-    },
-    onDragLeave: () => hint.set(hint.over === key ? null : hint.over),
-    onDrop: (e: React.DragEvent) => {
-      if (!e.dataTransfer.types.includes(type)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      hint.set(null);
-      const dragged = e.dataTransfer.getData(type);
-      if (dragged && dragged !== self) onDrop(dragged);
-    },
-    onDragEnd: () => hint.set(null),
-  };
-}
-
-/** 手指版的「换位置」：按住不动一会儿进排序模式，移动改落点，抬手落位。
- *  跟上面那套 HTML5 拖拽并存——鼠标走那套，手指走这套，靠 pointerType 分流。
- *  时序判定（滑动算滚动 / 没到时长算点击 / 排完序吞掉那一下点击）在 core/touchSort.ts，那边有单测。 */
-function useLongPressSort(
-  kind: "list" | "who",
-  onDrop: (from: string, to: string) => void,
-  hint: { over: string | null; set: (v: string | null) => void },
-) {
-  const [st, setSt] = useState<SortState>(IDLE);
-  const timer = useRef<number | null>(null);
-  // 排完序松手时浏览器还会补一次 click，不吞掉的话「换个位置」会顺手跳进这张清单
-  const swallow = useRef(false);
-
-  function stopTimer() {
-    if (timer.current !== null) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-  }
-
-  // 排序中要把页面按住。React 的 onTouchMove 是被动监听，preventDefault 无效，
-  // 必须自己挂一个 passive:false 的原生监听，否则手指一动侧栏就滚走了。
-  useEffect(() => {
-    if (st.phase !== "sorting") return;
-    const block = (e: TouchEvent) => e.preventDefault();
-    document.addEventListener("touchmove", block, { passive: false });
-    return () => document.removeEventListener("touchmove", block);
-  }, [st.phase]);
-
-  useEffect(() => stopTimer, []);
-
-  /** 手指底下压着的是哪一项。用实时命中测试而不是记录每行的位置——侧栏会折叠、会滚 */
-  function keyAt(x: number, y: number): string | null {
-    const el = document.elementFromPoint(x, y) as HTMLElement | null;
-    const row = el?.closest?.(`[data-sort^="${kind}:"]`) as HTMLElement | null;
-    const k = row?.getAttribute("data-sort");
-    return k ? k.slice(kind.length + 1) : null;
-  }
-
-  function finish(next: SortState) {
-    stopTimer();
-    setSt(next);
-    hint.set(null);
-  }
-
-  return {
-    /** 这一项现在正被拎着吗（界面上要浮起来） */
-    lifted: (self: string) => st.phase === "sorting" && st.self === self,
-    /** 刚排完序的那一下 click 要不要吞掉。读一次就复位 */
-    swallowClick: () => {
-      const v = swallow.current;
-      swallow.current = false;
-      return v;
-    },
-    props: (self: string) => ({
-      "data-sort": `${kind}:${self}`,
-      onPointerDown: (e: React.PointerEvent) => {
-        if (e.pointerType === "mouse") return; // 鼠标继续走 HTML5 拖拽那套
-        const next = down(st, self, e.clientX, e.clientY);
-        if (next === st) return;
-        swallow.current = false;
-        setSt(next);
-        // 抓住指针：手指滑出这一行之后还要继续收到 move / up
-        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-        stopTimer();
-        timer.current = window.setTimeout(() => setSt((s) => hold(s)), LONG_PRESS_MS);
-      },
-      onPointerMove: (e: React.PointerEvent) => {
-        if (st.phase === "idle") return;
-        const next = move(st, e.clientX, e.clientY, keyAt);
-        if (next === st) return;
-        if (next.phase === "idle") stopTimer(); // 判成滚动了，计时器也得停
-        setSt(next);
-        hint.set(next.over ? `${kind}:${next.over}` : null);
-      },
-      onPointerUp: () => {
-        if (st.phase === "idle") return;
-        const r = up(st);
-        swallow.current = r.sorted;
-        finish(r.next);
-        if (r.drop) onDrop(r.drop.from, r.drop.to);
-      },
-      onPointerCancel: () => finish(cancel()),
-    }),
-  };
-}
-
 export default function Sidebar(
   { drawerOpen = false, onNavigate }: { drawerOpen?: boolean; onNavigate?: () => void } = {},
 ) {
   const view = useApp((s) => s.ui.view);
-  const curList = useApp((s) => s.ui.listId);
-  const curWho = useApp((s) => s.ui.who);
   const curTag = useApp((s) => s.ui.tag);
   // B8：只订阅自己真用得上的那三片，别整份 data 一变就跟着走。
   // 侧栏里几处派生（openRows / allWho / allTags / 计数）以前是**每次渲染都全量重算一遍**——
@@ -266,11 +117,6 @@ export default function Sidebar(
   const groupOpen = { lists: listsOpen, who: whoOpen, tags: tagsOpen };
   const toggleGroup = { lists: toggleLists, who: toggleWho, tags: toggleTags };
   const [dropHint, setDropHint] = useState<string | null>(null);
-  /** 侧栏内部换位置时，鼠标正悬在哪一条上（画一条落点线） */
-  const [moveOver, setMoveOver] = useState<string | null>(null);
-  const moveHint = { over: moveOver, set: setMoveOver };
-  const listSort = useLongPressSort("list", (from, to) => moveList(from, to), moveHint);
-  const whoSort = useLongPressSort("who", (from, to) => moveWho(from, to), moveHint);
   /** 拖到「计划」后待定日期的任务组 + 弹层位置（落点处）。sub 非空 = 拖的是一条子任务行，只改它 */
   const [pendingPlan, setPendingPlan] = useState<
     { ids: string[]; sub: { taskId: string; subId: string } | null; x: number; y: number } | null
@@ -495,60 +341,9 @@ export default function Sidebar(
       if (sub) removeSubtask(sub.taskId, sub.subId);
       else deleteTasks(ids);
     }),
-    lists: (
-        <ul>
-          {lists.map((l) => {
-            const n = categoryRows({ tasks }, { listId: l.id }).length;
-            return (
-              <li
-                key={l.id}
-                className={`${view === "list" && curList === l.id ? "on" : ""}${dropHint === `list-${l.id}` ? " dropping" : ""}${moveOver === `list:${l.id}` ? " move-over" : ""}${listSort.lifted(l.id) ? " lifted" : ""}`}
-                title="拖动可以换位置（手机上长按）"
-                onClick={() => {
-                  if (listSort.swallowClick()) return;
-                  navigate("list", { listId: l.id });
-                  onNavigate?.();
-                }}
-                {...listSort.props(l.id)}
-                {...mergeDrop(
-                  dropProps(`list-${l.id}`, (ids) => setTasksList(ids, l.id)),
-                  reorderProps("list", l.id, (dragged) => moveList(dragged, l.id), moveHint),
-                )}
-              >
-                <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("list", l.icon)} color={listColor(l.color)} />
-                <span className="side-label">{l.name}</span>
-                {n > 0 && <span className="n">{n}</span>}
-              </li>
-            );
-          })}
-        </ul>
-
-    ),
-    who: (
-            <ul>
-              {whoList.map(({ who, open: n }) => (
-                <li
-                  key={who}
-                  className={`${view === "who" && curWho === who ? "on" : ""}${dropHint === `who-${who}` ? " dropping" : ""}${moveOver === `who:${who}` ? " move-over" : ""}${whoSort.lifted(who) ? " lifted" : ""}`}
-                  title="拖动可以换位置（手机上长按）"
-                  onClick={() => {
-                    if (whoSort.swallowClick()) return;
-                    navigate("who", { who });
-                    onNavigate?.();
-                  }}
-                  {...whoSort.props(who)}
-                  {...mergeDrop(
-                    dropProps(`who-${who}`, (ids) => addTasksWho(ids, who)),
-                    reorderProps("who", who, (dragged) => moveWho(dragged, who), moveHint),
-                  )}
-                >
-                  <span className="sidebar-drag-grip" aria-hidden="true">⠿</span><SidebarIcon path={categoryIcon("who", settings.whoAppearance?.[who]?.icon)} color={settings.whoAppearance?.[who]?.color ? listColor(settings.whoAppearance[who].color) : undefined} />
-                  <span className="side-label">{who}</span>
-                  {n > 0 && <span className="n">{n}</span>}
-                </li>
-              ))}
-            </ul>
-    ),
+    // 清单／需求方的条目搬到了右侧总览页（views/CategoryOverview），侧栏只留入口
+    lists: null,
+    who: null,
     tags: (
             <ul>
               {tagList.map(({ tag, open: n }) => (
@@ -589,24 +384,35 @@ export default function Sidebar(
       <nav aria-label="侧栏">
         {modules.map((m, i) => (
           <section key={m.id} data-sidebar-module={m.id} className={`side-module${m.group ? " side-module-group" : ""}${moduleDrag.over === m.id ? " module-over" : ""}${moduleDrag.floating?.id === m.id ? " module-lifted" : ""}`} {...moduleDrag.target(m.id, modules[i + 1]?.id ?? null)}>
-            {m.group ? <>
+            {m.id === "lists" || m.id === "who" ? (() => {
+              // 清单／需求方不再在侧栏往下展开（10-30）：点一下右侧主区换成总览页
+              const kind = m.id === "lists" ? "list" : "who";
+              const go = () => { navigate(kind); onNavigate?.(); };
+              return <div className={`side-module-heading side-category-entry${view === kind ? " on" : ""}`} tabIndex={0} role="link" title="点开看全部，拖动整组排序，右键编辑或隐藏"
+                {...moduleDrag.source(m.id)} onClick={() => { if (!moduleDrag.swallowClick()) go(); }} onContextMenu={(e) => openModuleMenu(e, m.id)} onKeyDown={(e) => { moduleKeys(e, m.id); if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }}>
+                <span className="side-group-controls">
+                  <span className="side-group-toggle spacer" aria-hidden="true" />
+                  <button type="button" className="side-group-add" title={kind === "list" ? "新建清单" : "新建需求方"} aria-label={kind === "list" ? "新建清单" : "新建需求方"} onClick={(e) => {
+                  e.stopPropagation();
+                  void createCategory(kind).then((created) => { if (created) { navigate(kind, kind === "list" ? { listId: created } : { who: created }); onNavigate?.(); } });
+                  }}>＋</button>
+                </span>
+                <SidebarIcon path={m.icon} /><span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
+                {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
+              </div>;
+            })() : m.group ? <>
               <div className="side-module-heading" tabIndex={0} role="button" aria-expanded={groupOpen[m.id as keyof typeof groupOpen]} title="拖动整组排序，右键编辑或隐藏"
                 {...moduleDrag.source(m.id)} onClick={() => { if (!moduleDrag.swallowClick()) toggleGroup[m.id as keyof typeof toggleGroup](); }} onContextMenu={(e) => openModuleMenu(e, m.id)} onKeyDown={(e) => { moduleKeys(e, m.id); if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroup[m.id as keyof typeof toggleGroup](); } }}>
                 <span className="side-group-controls">
                   <button type="button" className="side-group-toggle" aria-label={`${groupOpen[m.id as keyof typeof groupOpen] ? "收起" : "展开"}${sidebarName(m.id, settings.sidebar)}`} aria-expanded={groupOpen[m.id as keyof typeof groupOpen]} aria-controls={`side-group-${m.id}`} onClick={(e) => { e.stopPropagation(); toggleGroup[m.id as keyof typeof toggleGroup](); }}>
                     <svg className={`side-group-chevron${groupOpen[m.id as keyof typeof groupOpen] ? " expanded" : ""}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
                   </button>
-                  {(m.id === "lists" || m.id === "who") && <button type="button" className="side-group-add" title={m.id === "lists" ? "新建清单" : "新建需求方"} aria-label={m.id === "lists" ? "新建清单" : "新建需求方"} onClick={(e) => {
-                  e.stopPropagation();
-                  void createCategory(m.id === "lists" ? "list" : "who").then((created) => { if (created) forceFoldOpen(m.id); });
-                  }}>＋</button>}
                 </span>
                 <SidebarIcon path={m.icon} /><span className="side-label">{sidebarName(m.id, settings.sidebar)}</span>
                 {groupCounts[m.id as keyof typeof groupCounts] > 0 && <span className="n">{groupCounts[m.id as keyof typeof groupCounts]}</span>}
               </div>
               {groupOpen[m.id as keyof typeof groupOpen] && <div id={`side-group-${m.id}`}>
                 {moduleBodies[m.id]}
-                {m.id === "who" && whoList.length === 0 && <p className="side-group-empty">暂无需求方</p>}
                 {m.id === "tags" && tagList.length === 0 && <p className="side-group-empty">暂无标签</p>}
               </div>}
             </> : <ul>{moduleBodies[m.id]}</ul>}

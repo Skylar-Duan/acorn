@@ -10,6 +10,7 @@ import LoadingScreen from "./components/LoadingScreen";
 import { SideGrip } from "./components/SideGrip";
 import Today from "./views/Today";
 import ListView from "./views/ListView";
+import CategoryOverview from "./views/CategoryOverview";
 import Habits from "./views/Habits";
 import Plan from "./views/Plan";
 import Quadrant from "./views/Quadrant";
@@ -339,8 +340,9 @@ export default function App() {
       // 四象限只在手机上是一页；桌面上它是「计划」里的一个 tab，路由到这儿就等于计划
       case "quadrant": return isMobile ? <Quadrant key={bodyKey} /> : <Plan key={bodyKey} />;
       case "done": return <Done key={bodyKey} />;
-      case "list": return <ListView key={bodyKey} kind="list" />;
-      case "who": return <ListView key={bodyKey} kind="who" />;
+      // 桌面：没选具体哪个时是总览页（侧栏不再往下展开条目，10-30）
+      case "list": return listId || isMobile ? <ListView key={bodyKey} kind="list" /> : <CategoryOverview key={bodyKey} kind="list" />;
+      case "who": return whoFilter || isMobile ? <ListView key={bodyKey} kind="who" /> : <CategoryOverview key={bodyKey} kind="who" />;
       case "tag": return <ListView key={bodyKey} kind="tag" />;
       case "habits": return <Habits key={bodyKey} />;
       case "trash": return <ListView key={bodyKey} kind="trash" />;

@@ -138,7 +138,7 @@ describe("桌面侧栏真实交互", () => {
 
   it("行首交互按钮不开始排序，普通点击仍能切换导航与折叠", () => {
     render(); measureRows(); const order = moduleIds();
-    const toggle = moduleElement("lists").querySelector<HTMLButtonElement>(".side-group-toggle")!;
+    const toggle = moduleElement("tags").querySelector<HTMLButtonElement>(".side-group-toggle")!;
     pointer(toggle, "pointerdown", 10, 315); pointer(window, "pointermove", 90, 25);
     expect(document.querySelector(".sidebar-module-floating")).toBeNull();
     act(() => toggle.click());
@@ -149,17 +149,23 @@ describe("桌面侧栏真实交互", () => {
     expect(appStore.getState().ui.view).toBe("calendar"); expect(moduleIds()).toEqual(order);
   });
 
-  it("清单/需求方/标签独立收展，记住各自上次的状态", () => {
-    localStorage.setItem("acorn-side-lists", "0");
+  it("清单/需求方不再在侧栏展开，点入口去右侧总览；标签仍独立收展", () => {
+    localStorage.setItem("acorn-side-tags", "0");
     render();
-    expect(moduleElement("lists").querySelectorAll("li")).toHaveLength(0);
-    for (const id of ["who", "tags"]) expect(moduleElement(id).querySelectorAll("li")).toHaveLength(5);
-    const toggle = moduleElement("lists").querySelector<HTMLButtonElement>(".side-group-toggle")!;
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    act(() => toggle.click());
-    expect(moduleElement("lists").querySelectorAll("li")).toHaveLength(5);
-    expect(localStorage.getItem("acorn-side-lists")).toBe("1");
-    expect(moduleElement("who").querySelectorAll("li")).toHaveLength(5);
+    for (const id of ["lists", "who"]) {
+      expect(moduleElement(id).querySelectorAll("li")).toHaveLength(0);
+      expect(moduleElement(id).querySelector(".side-group-chevron")).toBeNull();
+    }
+    expect(moduleElement("lists").querySelector(".side-module-heading .n")!.textContent).toBe("5");
+    act(() => moduleElement("lists").querySelector<HTMLElement>(".side-module-heading")!.click());
+    expect(appStore.getState().ui).toMatchObject({ view: "list", listId: null });
+    expect(moduleElement("lists").querySelector(".side-module-heading")!.classList).toContain("on");
+    act(() => moduleElement("who").querySelector<HTMLElement>(".side-module-heading")!.click());
+    expect(appStore.getState().ui).toMatchObject({ view: "who", who: null });
+    expect(moduleElement("tags").querySelectorAll("li")).toHaveLength(0);
+    act(() => moduleElement("tags").querySelector<HTMLButtonElement>(".side-group-toggle")!.click());
+    expect(moduleElement("tags").querySelectorAll("li")).toHaveLength(5);
+    expect(localStorage.getItem("acorn-side-tags")).toBe("1");
     expect(host.querySelector(".side-more,.side-fold")).toBeNull();
     expect(moduleIds()).toContain("done");
     expect(host.querySelectorAll(".side-module-heading")).toHaveLength(3);
@@ -175,22 +181,16 @@ describe("桌面侧栏真实交互", () => {
     const ids = moduleIds();
     expect(ids[ids.length - 1]).toBe("lists");
   });
-  it("模块拖到任务落点不会改日期或归属，任务拖到清单仍能归类", () => {
+  it("模块拖到任务落点不会改日期或归属", () => {
     render();
     const tasks = appStore.getState().data.tasks;
     drop(moduleElement("today").querySelector("li")!, { [SIDEBAR_MODULE_MIME]: "calendar" });
     expect(appStore.getState().data.tasks).toBe(tasks);
-    drop(moduleElement("lists").querySelectorAll("li")[2], { "text/acorn-task": "task-0" });
-    expect(appStore.getState().data.tasks[0].listId).toBe("list-2");
   });
-  it("拖任务到今日任务仍改今天；拖给需求方仍追加需求方", () => {
+  it("拖任务到今日任务仍改今天", () => {
     render();
     drop(moduleElement("today").querySelector("li")!, { "text/acorn-task": "task-0" });
     expect(appStore.getState().data.tasks[0].due).toBe(todayYMD());
-    const who = moduleElement("who").querySelectorAll("li")[1];
-    const name = who.querySelector(".side-label")!.textContent;
-    drop(who, { "text/acorn-task": "task-0" });
-    expect(appStore.getState().data.tasks[0].who).toContain(name);
   });
   it("拖到计划仍先选日期，拖子任务到今天只改这一步", () => {
     const data = appStore.getState().data;
@@ -205,15 +205,6 @@ describe("桌面侧栏真实交互", () => {
     drop(moduleElement("today").querySelector("li")!, { "text/acorn-task": "task-0", "text/acorn-sub": "task-0:step-0" });
     expect(appStore.getState().data.tasks[0].due).toBeNull();
     expect(appStore.getState().data.tasks[0].subtasks[0].due).toBe(todayYMD());
-  });
-  it("组内清单拖动仍改变原来的清单顺序，模块位置保持原样", () => {
-    render();
-    const before = moduleIds();
-    drop(moduleElement("lists").querySelector("li")!, { "text/acorn-list-move": "list-4" });
-    expect(moduleElement("lists").querySelector(".side-label")!.textContent).toBe("清单");
-    expect(moduleElement("lists").querySelector("li .side-label")!.textContent).toBe("演示清单 4");
-    expect(moduleIds()).toEqual(before);
-    expect(appStore.getState().data.lists.find((l) => l.id === "list-4")!.order).toBe(0);
   });
   it("右键编辑模块别名只改本机称呼，清单与人名保持原样", () => {
     render();

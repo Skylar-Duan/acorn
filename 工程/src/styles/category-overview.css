@@ -1,0 +1,72 @@
+/* 清单／需求方总览：覆盖右侧主区，整页从右滑入，卡片依次跟上。
+   减少动态效果时 base.css 统一把时长压到接近 0，这里不另判 */
+.main.category-page { animation: category-slide var(--dur-2) var(--ease); }
+.main.category-page .view-body { animation: none; }
+@keyframes category-slide { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+
+.category-new { font-size: 13px; }
+.category-empty { color: var(--ink-3); font-size: 13px; margin: 24px 2px; }
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 14px;
+  padding: 2px 2px 8px;
+}
+
+.category-card {
+  --cat: var(--accent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 118px;
+  padding: 14px 16px 13px;
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  overflow: hidden;
+  animation: category-card-in calc(var(--dur-2) * 1.4) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+  transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+/* 左侧一道本色细边，跟侧栏图标同色，一眼认得是哪个 */
+.category-card::before {
+  content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--cat); opacity: .55;
+}
+.category-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.category-card:active { transform: translateY(0) scale(.99); }
+.category-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.category-card.over { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-2px); }
+@keyframes category-card-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+
+.category-card-head { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.category-card-icon {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 10px;
+  background: var(--surface-inset); color: var(--cat);
+}
+.category-card-icon .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.category-card-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.category-card-count { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.category-card-peek { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.category-card-peek li { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; color: var(--ink-2); }
+.category-peek-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.category-peek-due { flex: none; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.category-peek-due.late { color: var(--warn); }
+.category-card-clear { margin: 0; font-size: 13px; color: var(--ink-3); }
+.category-card-foot { margin-top: auto; display: flex; gap: 10px; font-size: 11.5px; color: var(--ink-3); }
+.category-card-foot .late { color: var(--warn); }
+
+/* 从总览点进某一个清单／需求方：同样从右滑入，跟卡片是一路的 */
+.main.category-detail { animation: category-slide var(--dur-2) var(--ease); }
+.category-back {
+  display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 9px 0 5px; margin-right: 4px;
+  border-radius: 9px; font-size: 13px; color: var(--ink-2); background: none; cursor: pointer;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.category-back:hover { background: var(--surface-hover); color: var(--accent); }
+.category-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
