@@ -19,7 +19,7 @@
 //   · 记完**只清那句话、不清点选**——跟桌面「选中的会保持生效，方便连续记录」同一个口径。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listColor } from "../core/colors";
-import type { Priority } from "../core/model";
+import type { Priority, TaskImage } from "../core/model";
 import { LIST_COLORS } from "../core/model";
 import { parseQuickAdd } from "../core/parse";
 // 显示文字跟任务卡同一个说法（「每周一」「每月最后一天」），不再各写一份
@@ -27,7 +27,11 @@ import { describeRepeat } from "../core/recur";
 import type { ParseChip } from "../core/parse";
 import { formatShort, todayYMD } from "../core/dates";
 import { dateOptions } from "../core/options";
-import { addList, addTask, allTags, allWho, useApp } from "../core/store";
+import { addList, addTask, allTags, allWho, appStore, showToast, useApp } from "../core/store";
+import ImageAttachments from "../components/ImageAttachments";
+import { plusEnabled } from "../core/plus";
+import { imageListUpdateError } from "../core/taskImages";
+import { imageEditContext } from "../core/imageEditContext";
 import DateField from "../components/DateField";
 import type { DateFieldHandle } from "../components/DateField";
 import { CommitMark, useCommitFlash } from "../components/commitFlash";
@@ -174,9 +178,22 @@ function QuickAddBody({ listId }: { listId: string | null }) {
     changePick("due", { due: d, dueTime: d ? eff.dueTime : null });
   }
 
+  // Plus（10-30）：记一条也能带图，跟电脑「记一条」同一套草稿规矩——
+  // 图片还在压缩就不让记；记的那一刻再按最新账本查一次容量；记完清空、换下一条不串图
+  const [images, setImages] = useState<TaskImage[]>([]);
+  const imagesRef = useRef<TaskImage[]>([]);
+  const imageBusy = useRef(false);
+  const imageRevision = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
   function record() {
     const t = parsed.title.trim();
     if (!t) return;
+    if (imageBusy.current) { showToast("图片还在处理，请稍候再记", false); return; }
+    const draftImages = plusEnabled() ? imagesRef.current : [];
+    const capacity = imageListUpdateError(appStore.getState().data, [], draftImages);
+    if (capacity) { showToast(capacity, false); return; }
     // 📅 里刚选完、去抖还没烧到点的那一天：这条事必须带上它（flush 把它记进 pick 给下一条接着用）
     const pendingDue = dueFieldRef.current?.pending() ?? null;
     dueFieldRef.current?.flush();
@@ -196,7 +213,9 @@ function QuickAddBody({ listId }: { listId: string | null }) {
       due: m.due,
       dueTime: m.due ? m.dueTime : null,
       repeat: m.repeat,
+      ...(draftImages.length ? { images: draftImages } : {}),
     });
+    if (imagesRef.current === draftImages) { imagesRef.current = []; setImages([]); imageRevision.current++; }
     // 只清那句话（连带它的 × 和「以点选为准」的记号）；点选原样留着，焦点也留着：
     // 连着记三条不用重选清单、也不用重新点输入框
     setText("");
@@ -246,7 +265,7 @@ function QuickAddBody({ listId }: { listId: string | null }) {
           autoFocus
           // 手机屏窄，放不下整句例子；但新规矩得有个地方提一句，不然打了「明天」没反应会以为坏了。
           // 完整写法点右边那颗「?」能看到
-          placeholder="记一条…（时间前打个 ~）"
+          placeholder="记一条"
           enterKeyHint="done"
           aria-label="要记的这件事"
           onChange={(e) => {
@@ -268,6 +287,10 @@ function QuickAddBody({ listId }: { listId: string | null }) {
         </button>
       </div>
       {guide.sheet}
+      <ImageAttachments images={images} draft label="这件事的图片" pickerLabel="给这件事添加图片"
+        onBusyChange={(busy) => { imageBusy.current = busy; }}
+        createContext={() => { const revision = imageRevision.current; return imageEditContext(() => mounted.current && imageRevision.current === revision); }}
+        onChange={(next) => { if (!next.length) imageRevision.current++; imagesRef.current = next; setImages(next); }} />
 
       {/* 认出来的东西：一颗一颗摆在输入框底下，用户立刻知道「下周一 20:00」被读懂了。
           × 是「这个别认」，原文回到标题里。改过点选的那一类不在这排（点选那排在显示它） */}

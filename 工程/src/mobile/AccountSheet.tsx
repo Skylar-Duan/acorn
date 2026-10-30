@@ -85,7 +85,7 @@ function Body() {
         <div className="msheet-label">账号</div>
         <div className="msh-acct-none">
           <span className="msh-acct-pic big" aria-hidden="true"><IcoWho size={28} /></span>
-          <p>现在记的事只存在这台手机上。登录之后，手机和电脑看到的就是同一本。</p>
+          <p>登录后，手机和电脑同步同一份待办。</p>
         </div>
         <button
           className="msh-acct-go"
@@ -171,29 +171,10 @@ function Body() {
         aria-checked={autoOn}
         onClick={toggleAutoLogin}
       >
-        <span className="t">
-          下次打开还认这台手机
-          <span className="why">
-            {autoOn
-              ? "关掉之后，下次打开橡果要重新输一次密码"
-              : "这次照常同步；下次打开要重新输密码。没登录那段时间记的东西不会传上去，再登录时可能要在「云端和本机两份档案」里挑一份"}
-          </span>
-        </span>
+        {/* 10-30 用户：手机上不要解释性的长句，现代简约。开关名字本身就是说明 */}
+        <span className="t">自动登录</span>
         <span className={`msh-switch${autoOn ? " on" : ""}`} aria-hidden="true" />
       </button>
-
-      {/* 自启动：这一版只说实话，不做一颗按了没反应的按钮（跟清单设置里「调整清单顺序」同一个做法）。
-          真要做「开机自己起来」，得给安卓加开机广播 + 一个常驻通知的前台服务：
-          通知栏常年挂个图标、耗电、国产手机还得用户自己一层层放行——那是另一件事，得用户单独点头 */}
-      <div className="msh-acct-row dim">
-        <span className="t">
-          让提醒准时响
-          <span className="why">
-            橡果没开着的时候提醒不会响。到手机的「设置 → 应用 → 橡果」里允许自启动、
-            把省电策略改成「不限制」，它才叫得动你。
-          </span>
-        </span>
-      </div>
 
       {err && <p className="msh-acct-err">{err}</p>}
 
@@ -204,12 +185,11 @@ function Body() {
         onClick={() => {
           void signOut().then(() => {
             closeSheet();
-            showToast("已退出登录。这台设备上的数据原样留着，一条都没清", false);
+            showToast("已退出登录", false);
           });
         }}
       >
         退出登录
-        <span className="why">这台设备上的事一条都不动，想清空要去设置 → 账号</span>
       </button>
     </div>
   );

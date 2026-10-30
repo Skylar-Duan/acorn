@@ -35,6 +35,9 @@ import { openSheet } from "./sheetStore";
 import { useSwipeRow } from "./swipe";
 import { IcoChevron, IcoDone, IcoDrop, IcoPostpone, IcoTrash } from "./icons";
 import { haptic } from "./haptic";
+import { usePlus } from "../core/plus";
+import { renderableTaskImages } from "../core/imageDisplay";
+import { taskImages } from "../core/taskImages";
 import "../styles/mobile.css";
 import "../styles/mobile-shell.css";
 
@@ -216,6 +219,9 @@ export default function MobileRow({ task, sub = null, doneDate, hint, parent, ne
       ? `${formatShort(due)}${dueTime ? ` ${dueTime}` : ""}`
       : "";
 
+  // Plus：有图的行在行尾露一张缩略图（多张写个数），跟电脑任务行同一个口径；点它照样是点开这件事
+  const plus = usePlus();
+  const pics = plus ? renderableTaskImages(taskImages((sub ?? task).images)) : [];
   const steps = aliveSubtasks(task);
   const stepAll = steps.length;
   const stepDone = steps.filter((x) => x.done).length;
@@ -297,6 +303,12 @@ export default function MobileRow({ task, sub = null, doneDate, hint, parent, ne
           {meta && <span className="mrow-meta">{meta}</span>}
         </span>
         <span className="mrow-tail">
+          {pics.length > 0 && (
+            <span className="mrow-pic" aria-label={`${pics.length}张图片`}>
+              <img src={pics[0].dataUrl} alt="" loading="lazy" draggable={false} />
+              {pics.length > 1 && <i>{pics.length}</i>}
+            </span>
+          )}
           {when && <span className={`mrow-when${overdue ? " warn" : ""}`}>{when}</span>}
           {parent && (
             <button

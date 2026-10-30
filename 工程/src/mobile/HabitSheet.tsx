@@ -206,7 +206,7 @@ function HabitBody({ id }: { id?: string }) {
           >
             <IcoTrash size={20} />
             真的删掉「{habit!.title || "这个习惯"}」
-            <span className="why">进回收站，30 天内能捞回来</span>
+            
           </button>
           <button className="mls-opt" onClick={() => setConfirming(false)}>
             取消
@@ -216,7 +216,7 @@ function HabitBody({ id }: { id?: string }) {
         <button className="mls-opt danger" onClick={() => setConfirming(true)}>
           <IcoTrash size={20} />
           删除这个习惯
-          <span className="why">进回收站，30 天内能捞回来</span>
+          
         </button>
       ))}
     </div>

@@ -176,7 +176,7 @@ function ActionSheetBody({ taskId, subId }: { taskId: string; subId?: string }) 
 
       {pane === "who" && !sub && (
         <div className="msheet-pane">
-          {whoAll.length === 0 && <span className="msheet-title">还没有记过需求方。在电脑上或详情里加一个。</span>}
+          {whoAll.length === 0 && <span className="msheet-title">还没有需求方</span>}
           {whoAll.map(({ who }) => {
             const on = task.who.includes(who);
             return (

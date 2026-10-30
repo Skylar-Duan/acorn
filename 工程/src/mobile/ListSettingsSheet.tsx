@@ -90,13 +90,7 @@ function Body({ listId }: { listId: string }) {
         ))}
       </div>
 
-      {/* 清单的顺序跟着数据走，改它要能拖。手机上的拖动排序还在桌面侧栏那套里，
-          这一版先如实说明去哪儿改，不做一个按了没反应的按钮 */}
-      <div className="mls-opt dim">
-        <IcoGrip />
-        调整清单顺序
-        <span className="why">在电脑上长按拖动</span>
-      </div>
+      {/* 清单顺序在「更多」里长按拖动；这里不再摆一行说明（10-30 去冗余说明） */}
 
       {confirming ? (
         <>

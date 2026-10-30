@@ -428,13 +428,15 @@ describe("界面上教的写法要跟规矩对得上（教错了用户照着打�
     expect(guideSource).toContain('{ text: "下周三 去体检"');
   });
 
-  it("三个输入框的提示语都带着 ~", () => {
+  it("电脑上的输入框提示语都带着 ~；手机（10-30 起）提示语只写名字，写法看「?」", () => {
     expect(quickAddBarSource).toContain("记一条…「~周五下午3点 提交周报");
     expect(quickAddWinSource).toContain("记一条…「~周五下午3点 提交周报");
-    expect(quickAddSheetSource).toContain("时间前打个 ~"); // 手机屏窄，只提一句
-    // 子任务那两条也得改口，不然照着「明天 !高」打，日期不会被认出来
+    // 10-30 用户：手机上不必要的描述统统删掉或者最简化。写法说明留在记一条右边那颗「?」里
+    expect(quickAddSheetSource).toContain('placeholder="记一条"');
+    expect(quickAddSheetSource).toContain('aria-label="怎么记一句话"');
+    // 子任务：电脑照旧提示 ~；手机只写「添加子任务」
     expect(taskCardSource).toContain("可以写「~明天 !高」");
-    expect(taskSheetSource).toContain("可以直接写「~明天 !高」");
+    expect(taskSheetSource).toContain('placeholder="添加子任务"');
     // 直接改标题就能改属性，不再另开一句话输入框。
     expect(taskCardSource).toContain("任务标题，可加 ~明天 @人 /清单");
     expect(taskCardSource).not.toContain("tc-sentence");

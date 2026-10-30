@@ -387,3 +387,102 @@
 .shell.mobile .mshell .set-section.set-closed .set-fold-inner { padding-top: 0; }
 .shell.mobile .mshell .set-section { border-radius: var(--m2-radius); box-shadow: var(--m2-card-shadow); }
 .msheet.msh-sheet .msh-prop .flag.p0 { display: none; }
+
+/* ---------- Plus 图片（10-30 起手机也有，资格跟账号走） ----------
+   抽屉可能挂在壳子外，选择器靠 .msheet / .shell.mobile 提权 */
+.msheet .msh-images {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 20px 8px 58px;
+}
+.msheet .msh-images > .task-images { flex: 0 0 100%; order: 2; margin: 0; }
+/* 「＋ 图片」：手机上没有粘贴 / 拖拽这条顺手路，这颗得像个按钮，而且写字 */
+.msheet .msh-images > .sub-image-add,
+.msheet .msh-qa > .sub-image-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+  color: var(--ink-2);
+  font-size: 13.5px;
+  transition: transform var(--dur-1) var(--ease);
+}
+.msheet .msh-images > .sub-image-add::after,
+.msheet .msh-qa > .sub-image-add::after { content: "图片"; }
+.msheet .msh-images > .sub-image-add:active,
+.msheet .msh-qa > .sub-image-add:active { transform: scale(.96); }
+.msheet .msh-qa > .sub-image-add { margin: 4px 0 2px; }
+.msheet .msh-qa > .task-images { margin: 6px 0 2px; }
+.msheet .task-image-thumb { width: 76px; height: 76px; }
+.msheet .image-open { border-radius: 12px; }
+/* 手机没有悬停：删图那颗 × 一直在，按得到（44 的触控区由 ::before 撑） */
+.msheet .image-remove { width: 22px; height: 22px; top: -6px; right: -6px; }
+.msheet .image-remove::before { content: ""; position: absolute; inset: -11px; }
+.msheet .task-images-head button { min-height: 34px; }
+
+/* 子任务行：缩略图 + 小加号排在日期前；点缩略图，图片在这一行底下展开 */
+.msheet .msh-sub { flex-wrap: wrap; }
+.msheet .msh-sub > .sub-images-motion { flex: 0 0 100%; order: 99; padding-left: 36px; }
+.msheet .msh-sub > .sub-image-add {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+  color: var(--ink-3);
+  position: relative;
+}
+.msheet .msh-sub > .sub-image-add::before { content: ""; position: absolute; inset: -7px; }
+.msheet .msh-sub > .image-summary { width: 32px; height: 32px; border-radius: 8px; }
+
+/* 列表行尾那张缩略图 */
+.shell.mobile .mshell .mrow-pic {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  overflow: visible;
+}
+.shell.mobile .mshell .mrow-pic > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--hair);
+}
+.shell.mobile .mshell .mrow-pic > i {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--card);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.msheet .msh-qa > .sub-image-add { align-self: flex-start; width: auto; }
+
+/* ---------- 去掉说明小字（10-30 用户：「不必要的描述统统删掉或者最简化」，
+   参照苹果办公软件、Notability、时间积木：一项设置就是一个名字 + 一个控件） ---------- */
+.shell.mobile .mshell .set-hint,
+.shell.mobile .mshell .set-desc { display: none; }
+.shell.mobile .mshell .msh-acct-row .why,
+.msheet .msh-acct-row .why { display: none; }
+/* 手机上那一串应用私有目录路径对人没意义（也改不了），整行不摆 */
+.shell.mobile .mshell .set-row:has(> .set-path) { display: none; }

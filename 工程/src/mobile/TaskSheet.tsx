@@ -32,6 +32,9 @@ import { closeSheet, topSheet, useSheet } from "./sheetStore";
 import Sheet from "./Sheet";
 import RepeatOptions from "./RepeatOptions";
 import { useSwipeRow } from "./swipe";
+import ImageAttachments from "../components/ImageAttachments";
+import { usePlus } from "../core/plus";
+import { taskImages } from "../core/taskImages";
 import "../styles/mobile-sheet.css";
 
 const PRIO_NAME: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
@@ -290,6 +293,10 @@ function TaskSheetBody({ task }: { task: Task }) {
         </button>
       </div>
 
+        {/* Plus（10-30 起手机也有，跟电脑同一套账号资格）：这件事自己的图片。
+            手机上没有「粘贴 / 拖进来」这条顺手路，所以给一颗明着的「＋ 图片」去相册选 */}
+        <TaskImagesBlock task={task} />
+
         <div className="msh-props">
           {/* ---- 日期（连时间和循环一起，它们说的是同一件事：这件事什么时候要做） ---- */}
           <button className={`msh-prop${seg === "date" ? " open" : ""}`} onClick={() => toggleSeg("date")}>
@@ -490,7 +497,7 @@ function TaskSheetBody({ task }: { task: Task }) {
               {/* 分母只数还在的：删进回收站的那几步（v7）不该占着「N/M」。一步都没有时不写「0/0」 */}
               子任务{aliveSubtasks(task).length > 0 && ` · ${doneSubs.length}/${aliveSubtasks(task).length}`}
             </span>
-            {openSubs.length > 0 && <span className="msh-sec-hint">左滑可放弃 / 删除</span>}
+            
           </div>
           {openSubs.map((s) => (
             <SubRow key={s.id} task={task} sub={s} today={today} />
@@ -500,7 +507,7 @@ function TaskSheetBody({ task }: { task: Task }) {
             <span className="msh-sb ghost" aria-hidden />
             <input
               value={newSub}
-              placeholder="添加子任务，可以直接写「~明天 !高」"
+              placeholder="添加子任务"
               enterKeyHint="done"
               onChange={(e) => setNewSub(e.target.value)}
               onKeyDown={(e) => {
@@ -581,6 +588,9 @@ function TaskSheetBody({ task }: { task: Task }) {
  *  滑到一半的位移和正在改的标题都会当场没掉 */
 function SubRow({ task, sub, today }: { task: Task; sub: Subtask; today: string }) {
   const sw = useSwipeRow({ leftWidth: SUB_ACTIONS_W });
+  const plus = usePlus();
+  /** 这一步的图片摊没摊开（跟电脑上子任务「点缩略图展开在正文下面」同一个口径） */
+  const [imagesOpen, setImagesOpen] = useState(false);
   /** 原地改标题的草稿。null = 没在改 */
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -666,10 +676,32 @@ function SubRow({ task, sub, today }: { task: Task; sub: Subtask; today: string 
         {sub.droppedAt && <span className="msh-droptag">已放弃</span>}
         {/* 这一步会重复（v8）：跟「已放弃」同一副长相的小签，勾掉它是推到下一次不是了结 */}
         {sub.repeat && <span className="msh-subrep">↻ {describeRepeat(sub.repeat)}</span>}
+        {/* 图片在日期前，跟电脑子任务一样：一张缩略图（多张叠层计数）+ 一颗小加号 */}
+        {plus && !sub.done && (
+          <ImageAttachments compact inlineExpanded={imagesOpen} onExpand={() => setImagesOpen((v) => !v)}
+            images={taskImages(sub.images)} label="这一步的图片" pickerLabel={`给子任务添加图片 ${sub.title}`}
+            targetKey={`${task.id}:${sub.id}`}
+            canEdit={() => !!appStore.getState().data.tasks.find((t) => t.id === task.id && !t.deletedAt)?.subtasks.some((x) => x.id === sub.id && !x.deletedAt)}
+            onChange={(images) => updateSubtask(task.id, sub.id, { images })} />
+        )}
         {shownDue && (
           <span className={`msh-subdate${own ? " own" : ""}${overdue ? " over" : ""}`}>{formatShort(shownDue)}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** 这件事自己的图片（Plus）。没资格的账号整块不画，图片数据照样留在账本里 */
+function TaskImagesBlock({ task }: { task: Task }) {
+  const plus = usePlus();
+  if (!plus) return null;
+  return (
+    <div className="msh-images">
+      <ImageAttachments images={taskImages(task.images)} label="图片" pickerLabel="给这件事添加图片"
+        targetKey={task.id}
+        canEdit={() => appStore.getState().data.tasks.some((t) => t.id === task.id && !t.deletedAt)}
+        onChange={(images) => updateTask(task.id, { images })} />
     </div>
   );
 }

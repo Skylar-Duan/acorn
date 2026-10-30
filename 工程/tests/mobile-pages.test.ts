@@ -190,7 +190,7 @@ describe("② 「加一个习惯」那张纸", () => {
     expect(habitSheetSource).toContain("删除这个习惯");
     expect(habitSheetSource).toContain("真的删掉");
     // deleteTasks 是软删，说的得是它真做的那件事
-    expect(habitSheetSource).toContain("进回收站，30 天内能捞回来");
+    expect(habitSheetSource).not.toContain("进回收站，30 天内能捞回来");
   });
 
   it("App 把这张纸挂上了树，而且只在手机上挂", () => {

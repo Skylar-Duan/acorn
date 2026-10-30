@@ -49,10 +49,10 @@ describe("10-30 拍图找到的毛病", () => {
   });
   it("详情里没有子任务时不写「0/0」，也不提示左滑", () => {
     expect(sheet).toContain("子任务{aliveSubtasks(task).length > 0 && ` · ${doneSubs.length}/${aliveSubtasks(task).length}`}");
-    expect(sheet).toContain("{openSubs.length > 0 && <span className=\"msh-sec-hint\">左滑可放弃 / 删除</span>}");
+    expect(sheet).not.toContain("左滑可放弃 / 删除");
   });
   it("手机四象限不写「空格键调整」", () => {
-    expect(read("src/views/Quadrant.tsx")).toContain('{isMobile ? "按住拖动安排" : "拖动安排 · 空格键调整"}');
+    expect(read("src/views/Quadrant.tsx")).toContain("{!isMobile && <span>拖动安排 · 空格键调整</span>}");
   });
   it("重要性全应用一套颜色：四象限的点跟任务行 .flag 一样（高红、中暖褐）", () => {
     const quad = read("src/styles/quadrant.css");
@@ -110,5 +110,46 @@ describe("补齐桌面已有的功能", () => {
   });
   it("详情底部有「完成」主按钮", () => {
     expect(sheet).toContain('{task.done ? "放回未完成" : "完成"}');
+  });
+});
+
+describe("手机 Plus（10-30，安卓 1.17.0）：资格跟账号走，跟电脑同一套", () => {
+  const plus = read("src/core/plus.ts");
+  it("认 Plus 的端：Windows 上的橡果 + 安卓上的橡果；网页版不认", () => {
+    expect(plus).toContain("&& (isDesktopShell && /Windows/i.test(navigator.userAgent) || (inTauri || PLUS_PREVIEW) && isAndroid);");
+    expect(plus).toContain("const supported = () => !isWebBuild");
+  });
+  it("截图预览开关只在专门的构建里生效，正式包里是 false", () => {
+    expect(plus).toContain('const PLUS_PREVIEW = import.meta.env.VITE_ACORN_PLUS_PREVIEW === "1";');
+    expect(read(".env.plus-preview").trim()).toBe("VITE_ACORN_PLUS_PREVIEW=1");
+  });
+  it("图片组件不再按「是不是手机」藏起来，只看 Plus", () => {
+    const img = read("src/components/ImageAttachments.tsx");
+    expect(img).not.toContain("isMobile");
+    expect(img).toContain("if (!plus) return null;");
+  });
+  it("详情、子任务、记一条、列表行都接上图片，且都只在 Plus 时出现", () => {
+    expect(sheet).toContain("function TaskImagesBlock");
+    expect(sheet).toContain("if (!plus) return null;");
+    expect(sheet).toContain("{plus && !sub.done && (");
+    const qa = read("src/mobile/QuickAddSheet.tsx");
+    expect(qa).toContain('pickerLabel="给这件事添加图片"');
+    expect(qa).toContain("const draftImages = plusEnabled() ? imagesRef.current : [];");
+    expect(row).toContain("const pics = plus ? renderableTaskImages(taskImages((sub ?? task).images)) : [];");
+  });
+});
+
+describe("去冗余说明（10-30 用户点名）", () => {
+  it("点名的几句都不在手机上出现", () => {
+    const acct = read("src/mobile/AccountSheet.tsx");
+    for (const t of ["下次打开还认这台手机", "让提醒准时响", "这台设备上的事一条都不动"]) expect(acct).not.toContain(t);
+    const quad = read("src/views/Quadrant.tsx");
+    expect(quad).not.toContain('sub="重要向上，截止越近越靠右"');
+    expect(quad).toContain("{!isMobile && <p className=\"quad-footnote\">");
+    expect(quad).toContain('{isMobile ? "截止" : "截止越近，越靠右"}');
+  });
+  it("设置页手机上不摆说明小字；安卓上没有导出那一节", () => {
+    expect(v2).toContain(".shell.mobile .mshell .set-desc { display: none; }");
+    expect(read("src/views/Settings.tsx")).toContain("{canSaveFile && <SetSection");
   });
 });

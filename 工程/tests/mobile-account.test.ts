@@ -160,7 +160,7 @@ describe("头像上显示哪个字", () => {
 describe("账号纸上那颗「退出登录」只断登录态，绝不清本机", () => {
   it("接的是 syncCtl.signOut，跟设置页那条「只退出登录，保留本机」同一句回执", () => {
     expect(accountSheetSource).toContain("signOut()");
-    expect(accountSheetSource).toContain("已退出登录。这台设备上的数据原样留着，一条都没清");
+    expect(accountSheetSource).toContain('showToast("已退出登录", false);');
     expect(accountPanelSource).toContain("本机数据保留");
   });
 
@@ -262,9 +262,10 @@ describe("抽屉栈与挂载", () => {
 });
 
 describe("自启动：这一版只说实话，不做按了没反应的按钮", () => {
-  it("那一行是说明不是按钮（跟清单设置里「调整清单顺序」同一个做法）", () => {
-    expect(accountSheetSource).toContain('<div className="msh-acct-row dim">');
-    expect(accountSheetSource).toContain("橡果没开着的时候提醒不会响");
+  // 10-30 用户点名删掉「让提醒准时响」那一大段说明：手机上不摆没有动作的说明行
+  it("不再摆那一行只有说明、没有动作的「让提醒准时响」", () => {
+    expect(accountSheetSource).not.toContain('<div className="msh-acct-row dim">');
+    expect(accountSheetSource).not.toContain("橡果没开着的时候提醒不会响");
   });
 
   it("没有偷偷去唤一个唤不起来的系统页", () => {

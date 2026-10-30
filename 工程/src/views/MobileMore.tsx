@@ -189,7 +189,6 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
     <section className="main">
       <MobileHead
         title="更多"
-        sub="日历、已完成、清单，和你的账号"
         search={false}
         right={
           <button className="mhead-btn" aria-label="设置" onClick={go(() => navigate("settings"))}>
@@ -216,8 +215,8 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
           <button className="mmore-acct" onClick={() => openLogin("manual")}>
             <span className="mmore-avatar">＋</span>
             <span className="txt">
-              <span className="name wrap">登录，让手机和电脑记的是同一本</span>
-              <span className="state dim">现在这些事只存在这台设备上</span>
+              <span className="name wrap">登录</span>
+              <span className="state dim">多设备同步</span>
             </span>
             <span className="go">
               <IcoNext />
@@ -234,7 +233,7 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
               <span className="mmore-avatar">⌂</span>
               <span className="txt">
                 <span className="name wrap">把橡果放到主屏幕上</span>
-                <span className="state dim">开起来更像个 App，数据也放得更稳</span>
+                
               </span>
               <span className="go">
                 <IcoNext />
@@ -256,7 +255,6 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
               <IcoCalendar size={24} />
             </span>
             <b>日历</b>
-            <span>按月、按周看安排</span>
           </button>
           {/* 「已完成」v1.14.1 从底部导航收进来（四象限接了它那格）：
               做完的事是回头看的，一周想不起来点几次，一步能到就够了 */}
@@ -265,21 +263,19 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
               <IcoDone size={24} />
             </span>
             <b>已完成</b>
-            <span>做完的事按天收着</span>
           </button>
           <button className="mmore-tile" onClick={go(() => navigate("stats"))}>
             <span className="ico">
               <IcoStats />
             </span>
             <b>统计</b>
-            <span>这周做完了几件</span>
           </button>
           <button className="mmore-tile" onClick={go(() => navigate("trash"))}>
             <span className="ico">
               <IcoTrash size={24} />
             </span>
             <b>回收站</b>
-            <span>{trashCount > 0 ? `${trashCount} 件，删掉的留 30 天` : "删掉的留 30 天"}</span>
+            {trashCount > 0 && <span>{trashCount} 件</span>}
           </button>
         </div>
 
@@ -287,7 +283,7 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
             不说一声就没人知道这件事存在（桌面那边靠的是 title 提示） */}
         <div className="group-head">
           清单
-          <span className="mgroup-hint">按住可换位置</span>
+          
         </div>
         {/* 拖动中这张卡不能再裁切：被拎起来的那一行要浮出纸面（放大一点、带投影），
             .mcard 自己的 overflow: hidden 会把投影连着圆角一起切掉 */}
@@ -352,7 +348,7 @@ export default function MobileMore({ onNavigate }: { onNavigate?: () => void }) 
                 不上云、也不进撤销栈——手机上排的顺序不会跑到电脑上去，反过来也一样 */}
             <div className="group-head">
               需求方
-              <span className="mgroup-hint">按住可换位置</span>
+              
             </div>
             <div className={`mcard${whoSort.active ? " sorting" : ""}`} ref={whoSort.box}>
               {whoList.map(({ who, open: n }) => (

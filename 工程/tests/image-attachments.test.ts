@@ -189,9 +189,10 @@ describe("Ultra图片入口", () => {
     expect(getTask().subtasks.find((s) => s.title === "图片新步骤")?.images?.[0].id).toBe("new-child");
     expect(getTask().images).toHaveLength(2);
   });
-  it("普通版/手机没有图片、数量和入口，记录字段仍完整保留", () => {
+  // 10-30 起手机也认 Plus（资格跟账号走）：手机不再是「没有图片」的理由，没资格才是
+  it("普通账号（电脑或手机）没有图片、数量和入口，记录字段仍完整保留", () => {
     updateTask("image-task", { images: [image] });
-    for (const [ultra, mobile] of [[false, false], [true, true]]) {
+    for (const [ultra, mobile] of [[false, false], [false, true]]) {
       flags.ultra = ultra; flags.mobile = mobile;
       act(() => root.render(createElement(TaskCard, { task: getTask() })));
       expect(document.querySelector("img")).toBeNull(); expect(document.querySelector('input[type="file"]')).toBeNull();

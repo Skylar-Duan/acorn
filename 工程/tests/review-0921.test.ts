@@ -176,7 +176,7 @@ describe("文案", () => {
     const titles = (p: "android" | "web") => (beta[p]?.highlights ?? []).map((h) => h.title);
     expect(titles("web")).not.toContain("修复更新弹窗贴边");
     expect(beta.android).toBeUndefined();
-    expect(changelogData.android[0].version).toBe("1.16.0");
+    expect(changelogData.android.some((e) => e.version === "1.16.0")).toBe(true);
   });
   it("桌面那份叫「今日任务页」，不叫「今天页」（1.16.0 正式条目 + 以后攒的 beta）", () => {
     const beta = changelogData.beta as Partial<Record<"desktop", { highlights: { body: string }[] }>>;

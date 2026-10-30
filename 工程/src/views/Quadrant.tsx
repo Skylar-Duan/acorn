@@ -226,7 +226,7 @@ export default function QuadrantBoard() {
   const previewTop = above >= 12 ? above : anchorY + 14;
   const previewStyle = { left: clamp((plotRect?.left ?? 0) + shownX / 100 * size.width - 142, 12, Math.max(12, window.innerWidth - 296)), top: clamp(previewTop, 12, Math.max(12, window.innerHeight - previewHeight - 12)) };
   const board = <div className="view-body quad-body quad-coordinate">
-    <div className="quad-legend"><span><Icon name="grid" size={14} />{points.length} 条待办</span><span>{isMobile ? "按住拖动安排" : "拖动安排 · 空格键调整"}</span></div>
+    <div className="quad-legend"><span><Icon name="grid" size={14} />{points.length} 条待办</span>{!isMobile && <span>拖动安排 · 空格键调整</span>}</div>
     <div className={`quad-chart${drag ? " quad-dragging" : ""}`}>
       <div className="quad-y-title">重要性 <Icon name="arrowUp" size={13} /></div>
       <div className="quad-plot" ref={plot} role="group" aria-label="重要性与截止日期坐标平面">
@@ -251,9 +251,9 @@ export default function QuadrantBoard() {
         {!points.length && <div className="quad-empty"><Icon name="checkCircle" size={26} /><span>暂时没有待办</span></div>}
       </div>
       <div className="quad-x-ticks">{ticks.map((tick) => <span key={tick.key} style={{ left: `${tick.xPct}%` }}>{tick.label}</span>)}</div>
-      <div className="quad-x-title">截止越近，越靠右 <Icon name="arrowRight" size={13} /></div>
+      <div className="quad-x-title">{isMobile ? "截止" : "截止越近，越靠右"} <Icon name="arrowRight" size={13} /></div>
     </div>
-    <p className="quad-footnote">有待办步骤的任务只显示子点；无日期在最左，逾期在最右。</p>
+    {!isMobile && <p className="quad-footnote">有待办步骤的任务只显示子点；无日期在最左，逾期在最右。</p>}
     <span className="quad-live" role="status" aria-live="polite">{live}</span>
     {shown && !activeTask && createPortal(<div ref={previewElement} className={`quad-preview${drag ? " adjusting" : ""}`} style={previewStyle} data-quad-preview>
       {shown.parentTitle && <div className="quad-preview-parent"><Icon name="folder" size={13} />{shown.parentTitle}</div>}
@@ -276,6 +276,6 @@ export default function QuadrantBoard() {
       </div>
     </div>, document.body)}
   </div>;
-  if (isMobile) return <section className="main"><MobileHead title="四象限" sub="重要向上，截止越近越靠右" search={false} />{board}</section>;
+  if (isMobile) return <section className="main"><MobileHead title="四象限" search={false} />{board}</section>;
   return board;
 }

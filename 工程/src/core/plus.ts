@@ -1,7 +1,7 @@
 // Plus是账号资格，与正式/beta版本通道无关；缓存与本机开关不进账本。
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import { isDesktopShell, isWebBuild } from "./platform";
+import { inTauri, isAndroid, isDesktopShell, isWebBuild } from "./platform";
 
 export const PLUS_OWNER_EMAIL = "bower.6868@gmail.com";
 export interface PlusMetadata { email: string; plus?: boolean; ultra?: boolean; plusCanToggle?: boolean }
@@ -80,11 +80,18 @@ export function createPlusController(deps: Dependencies) {
   return { store, setSession, applyMetadata, metadataReceiver, setEnabled, setWindowContext };
 }
 
-const supported = () => isDesktopShell && !isWebBuild && typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
+// 认得 Plus 的端：装在 Windows 上的橡果，和（10-30 起）装在安卓上的橡果。网页版仍然不认。
+// 资格只看账号（服务器判），这里只回答「这一端有没有做图片功能」
+// VITE_ACORN_PLUS_PREVIEW 只给验收截图用的那份构建（vite build --mode plus-preview）：浏览器里冒充安卓 App，
+// 并把控制器挂到 window 上好塞一个演示账号。正式包里这个常量是 false，整段被打包器删掉
+const PLUS_PREVIEW = import.meta.env.VITE_ACORN_PLUS_PREVIEW === "1";
+const supported = () => !isWebBuild && typeof navigator !== "undefined"
+  && (isDesktopShell && /Windows/i.test(navigator.userAgent) || (inTauri || PLUS_PREVIEW) && isAndroid);
 const controller = createPlusController({
   supported,
   storage: () => typeof localStorage === "undefined" ? null : localStorage,
 });
+if (PLUS_PREVIEW && typeof window !== "undefined") (window as unknown as { __acornPlus: typeof controller }).__acornPlus = controller;
 export const plusStore = controller.store;
 export const setPlusSession = controller.setSession;
 export const applyPlusMetadata = controller.applyMetadata;

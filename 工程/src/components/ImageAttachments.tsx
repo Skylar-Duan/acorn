@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TaskImage } from "../core/model";
 import { plusEnabled, plusStore, usePlus } from "../core/plus";
-import { isMobile } from "../core/platform";
 import { compressTaskImage } from "../core/imageCompression";
 import { imageEditContext, type ImageOperation } from "../core/imageEditContext";
 import { appStore, showToast } from "../core/store";
@@ -98,7 +97,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
     return () => { document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", escape, true); };
   }, [expanded, viewing]);
   useEffect(() => {
-    if (!plus || isMobile) return;
+    if (!plus) return;
     return bindImageInput(props.inputTargets?.() ?? [], (files) => { void attach(files); });
   });
   useEffect(() => {
@@ -152,7 +151,7 @@ export default function ImageAttachments(props: ImageAttachmentsProps) {
   const inlinePanel = useLeaving(props.inlineExpanded ? true : null);
   const inline = props.inlineExpanded !== undefined;
   const compactGallery = props.compact && !inline;
-  if (!plus || isMobile) return null;
+  if (!plus) return null;
   const visible = renderableTaskImages(images);
   const showGallery = visible.length > 0 || busy || !!error;
   if (!showGallery && !props.pickerLabel) return null;

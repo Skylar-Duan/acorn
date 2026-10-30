@@ -393,7 +393,6 @@ export default function Settings() {
       {isMobile ? (
         <MobileHead
           title="设置"
-          sub="通用、主题、账号与数据"
           search={false}
           onBack={() => navigate("today")}
         />
@@ -613,7 +612,7 @@ export default function Settings() {
           id="data"
           title="数据"
           anchorId="set-data"
-          summary={status ? status.dir : "正在检查…"}
+          summary={isMobile ? (plus ? "图片空间 · 备份" : "备份") : status ? status.dir : "正在检查…"}
         >
           <div className="set-desc">每天首次保存时自动留一份备份，保留 30 份。</div>
           {plusCanToggle && <div className="set-row">
@@ -676,7 +675,8 @@ export default function Settings() {
         </SetSection>
 
         {/* ---------- 导出与导入 ---------- */}
-        <SetSection
+        {/* 安卓 App 存不了文件，这一节只剩一句说明——10-30 起手机上整节不摆 */}
+        {canSaveFile && <SetSection
           id="io"
           title="导出与导入"
           summary={canSaveFile ? "JSON · CSV · Markdown" : "手机上请登录账号迁移"}
@@ -703,7 +703,7 @@ export default function Settings() {
               使用的就是同一份数据。
             </div>
           )}
-        </SetSection>
+        </SetSection>}
 
         {/* ---------- 版本更新（手机和桌面都有） ---------- */}
         {/* 排在倒数第二：一年也点不了几次，主流 App 都把它压在「关于」头上 */}
@@ -738,8 +738,10 @@ export default function Settings() {
           {/* 「保存在你自己的磁盘上」这句在网页版是假的：那儿的账本在浏览器里。
               这一页别处都已经如实说了，这一行也得跟上 */}
           <span className="set-about-line">
+            {isMobile ? shortVersion() : <>
             {shortVersion()} · 本地优先的待办工具 ·{" "}
             {isWeb ? "数据存在这台设备的浏览器里，登录之后才有云端那一份。" : "数据保存在你自己的磁盘上。"}
+            </>}
           </span>
           {/* 跟侧栏版本号点开的是同一个弹窗，别三处各讲一遍 */}
           <button className="btn ghost" onClick={() => setChangelogOpen(true)}>查看更新日志</button>

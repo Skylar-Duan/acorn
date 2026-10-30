@@ -587,7 +587,7 @@ describe("⑥ 顶栏：大标题 + 副标题 + 进度环 + 搜索圆钮", () => 
     expect(quad).toContain('import MobileHead from "../mobile/MobileHead";');
     expect(nl(stripComments(quad))).toMatch(/if \(isMobile\) return <section className="main"><MobileHead/);
     expect(quad).toContain('title="四象限"');
-    expect(quad).toContain('sub="重要向上，截止越近越靠右"');
+    expect(quad).toContain('<MobileHead title="四象限" search={false} />');
     // 桌面那条路原样：只返回格子本身，外面那层 section 和标题栏归 Plan 管
     expect(quad).toContain('<div className="view-body quad-body quad-coordinate">');
     expect(quad).toContain("return board;");
@@ -666,7 +666,7 @@ describe("⑦ 清单页：顶栏收干净，颜色和删除进「···」那张
     expect(listSettingsSource).toContain("renameList(list!.id, v)");
     expect(listSettingsSource).toContain("LIST_COLORS.map((c) => (");
     expect(listSettingsSource).toContain("setListColor(list.id, c)");
-    expect(listSettingsSource).toContain("调整清单顺序");
+    expect(listSettingsSource).not.toContain("在电脑上长按拖动");
     expect(listSettingsSource).toContain("deleteList(list.id);");
   });
 
@@ -742,7 +742,7 @@ describe("⑨ 更多：账号 + 四张格子 + 三张表", () => {
   it("账号卡两态：登录了进设置，没登录就是登录入口", () => {
     expect(moreSource).toContain('navigate("settings")');
     expect(moreSource).toContain('openLogin("manual")');
-    expect(moreSource).toContain("登录，让手机和电脑记的是同一本");
+    expect(moreSource).toContain('<span className="name wrap">登录</span>');
     // 同步时刻直接用侧栏那份现成的算法，不另写一句
     expect(moreSource).toContain('import { syncFootState, useSync } from "../core/syncCtl";');
   });
@@ -755,7 +755,7 @@ describe("⑨ 更多：账号 + 四张格子 + 三张表", () => {
     }
     expect(moreSource).not.toContain('navigate("habits")');
     expect(moreSource).not.toContain('navigate("quadrant")');
-    expect(moreSource).toContain("日历、已完成、清单，和你的账号");
+    expect(moreSource).not.toContain("日历、已完成、清单，和你的账号");
     expect(moreSource).toContain('navigate("list", { listId: l.id })');
     expect(moreSource).toContain('navigate("who", { who })');
     expect(moreSource).toContain('navigate("tag", { tag })');

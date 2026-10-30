@@ -108,7 +108,6 @@ export default function StatsView() {
       {isMobile ? (
         <MobileHead
           title="统计"
-          sub="最近做完了多少、连着做了几天"
           search={false}
           onBack={() => navigate("today")}
         />

@@ -109,8 +109,9 @@ describe("① 底部导航：四象限上来，已完成收进「更多」", () 
     expect(files).toEqual(["src/mobile/MobileShell.tsx"]);
   });
 
-  it("「更多」页那句副标题跟着格子改了口（还写着四象限就是骗人）", () => {
-    expect(moreSource).toContain("日历、已完成、清单，和你的账号");
+  // 10-30 用户：去掉不必要的描述，「更多」页不再摆副标题
+  it("「更多」页没有那句报菜名的副标题，更不能还写着四象限", () => {
+    expect(moreSource).not.toContain("日历、已完成、清单，和你的账号");
     expect(moreSource).not.toContain("日历、四象限、清单");
   });
 
@@ -621,11 +622,9 @@ describe("④ 「更多」页接的是现成的那一套", () => {
     expect(tagBlock).not.toContain("mgroup-hint");
   });
 
-  it("🔴 得有一句话告诉人这件事存在（手机上没有鼠标可以「试着拖一下」）", () => {
-    const hints = [...moreSource.matchAll(/<span className="mgroup-hint">([^<]+)<\/span>/g)].map((m) => m[1]);
-    expect(hints).toEqual(["按住可换位置", "按住可换位置"]);
-    // 讲人话，不带工程词
-    for (const t of hints) expect(t).not.toMatch(/拖拽|排序|drag|sort|随手记/i);
+  // 10-30 用户点名去冗余说明：长按拖动是手机通行手势，不再写「按住可换位置」
+  it("清单和需求方表头不再挂「按住可换位置」这类说明小字", () => {
+    expect(moreSource).not.toContain('<span className="mgroup-hint">按住可换位置</span>');
   });
 
   it("🔴 「排到最后一个」这一档真的成立：落点给 null = 拖到队尾", () => {

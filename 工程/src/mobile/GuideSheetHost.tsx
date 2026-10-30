@@ -38,7 +38,7 @@ function GuideBody() {
       <div className="msh-guide-head">
         <div className="msh-guide-t">
           <span className="msheet-label">怎么记一句话</span>
-          <span className="msh-guide-sub">日期、清单、需求方、重要性、循环，都能写在同一句里</span>
+          <span className="msh-guide-sub"></span>
         </div>
         <button className="msh-collapse" aria-label="关闭" onClick={closeSheet}>×</button>
       </div>

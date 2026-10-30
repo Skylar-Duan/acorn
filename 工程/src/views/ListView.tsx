@@ -212,7 +212,7 @@ export default function ListView({ kind }: { kind: ListKind }) {
           // 手机上没有「随手记」这个词了（2026-09-03）：那些事在 今天 / 计划 / 日历 里照常排着，
           // 只是不再单开一个叫「随手记」的地方。搜索结果仍可能落到这一页，所以它得有个说人话的名字
           title={kind === "inbox" ? "还没有清单的事" : kind === "list" && list ? list.name : title}
-          sub={kind === "list" ? "" : kind === "inbox" ? "没有日期、也没有归入清单的" : kind === "trash" ? `${tasks.length + subRows.length} 项 · 删除后保留30天` : sub}
+          sub={kind === "list" ? "" : kind === "inbox" ? "" : kind === "trash" ? `${tasks.length + subRows.length} 项` : sub}
           small={kind === "list"}
           dot={kind === "list" && list ? listColor(list.color) : null}
           // 每一页都得有路回去：这几页手机上都不是常驻位，进来了就要走得掉
