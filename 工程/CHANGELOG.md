@@ -7,6 +7,20 @@
 > 2026-09-18 起：三端各排各的号，改动先攒在下面「未发布」里、不给号；用户说发布时再定每一端的号，
 > 这一节改成带号的标题，同时往 `changelog.ts` 补产品向条目。验收单是 `../交付验收/橡果 v1 怎么验.html`。
 
+## 安卓 v1.16.0 · 2026-10-30
+
+用户 10-30：「手机版直接发正式版，目前只有我一个用户」。此前 1.15.1-beta.1～5 的改动全部并入，beta.5 起：
+
+- 手机第二版视觉层 `src/styles/mobile-v2.css`（三类选择器 `.shell.mobile .mshell` 提权）：分组大卡、行尾日期、重要性画在勾选圈、段标题去胶囊、＋ 与导航留白、滑动底色未让开时 `visibility: hidden`（修圆角处透红边）、设置收起时 `.set-fold-inner` 去上内边距。
+- 今天 / 计划手机端改走 `parentRowsForToday` / `mergeParentRows` + `useFoldPlan(..., true)`；`RowList` 手机分支按 `pendingChildRows` 在母行下渲染 `MobileRow nested`，母行带 `parent={folded,next,onToggle}`。
+- `MobileHead` 在所在 `.main` 上捕获 scroll，滚过 28 收 `.compact`、回到 8 内放开。
+- `mobile/haptic.ts`（`navigator.vibrate`，仅 isMobile）；`swipe.ts` 新增 `onThreshold`，跨线只触发一次；`setPointerCapture` 抛错兜住。`build-android.sh` 幂等补 `android.permission.VIBRATE`。
+- `TaskSheet`：属性块移到子任务上方并改胶囊样式；无子任务不写 0/0；底部加「完成」主按钮。
+- `startAutoPull(mobile)`：手机只挂 visibilitychange → `autoPullIfDue`（同一间隔、先比修订号），不挂定时器和 focus；设置「自动同步间隔」手机可见。
+- 手机四处 `dateOptions` 传 `dateShortcuts`；`DateShortcutSettings` 不再按 `hasDesktopFeatures` 隐藏。
+- 四象限点色与 `.flag` 统一（p3 红 / p2 warn），手机文案「按住拖动安排」。
+- 测试：新增 `tests/mobile-v2.test.ts`；旧版长相断言按新设计改写。DATA_VERSION 仍 8，只发安卓。
+
 ## Windows 未发布 · 2026-10-28
 
 ### 本月未标Claude的四项修正

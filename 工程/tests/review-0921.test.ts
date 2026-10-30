@@ -170,11 +170,13 @@ describe("文案", () => {
     expect(accountPanelSource).toContain("确定退出登录吗");
   });
   // 桌面这段 09-23 已随 1.16.0 发布、beta 清空（细节并进 1.16.0 的「体验优化」），这两条只剩还攒着的两端要核
-  it("网页 beta 段没有「修复更新弹窗贴边」（网页弹不出那个框）；安卓留着", () => {
+  // 安卓这段 10-30 已随 1.16.0 发布、beta 清空（细节并进 1.16.0 的「体验优化」）
+  it("网页 beta 段没有「修复更新弹窗贴边」（网页弹不出那个框）；安卓已发布、beta 清空", () => {
     const beta = changelogData.beta as Partial<Record<"desktop" | "android" | "web", { highlights: { title: string }[] }>>;
     const titles = (p: "android" | "web") => (beta[p]?.highlights ?? []).map((h) => h.title);
     expect(titles("web")).not.toContain("修复更新弹窗贴边");
-    expect(titles("android")).toContain("修复更新弹窗贴边");
+    expect(beta.android).toBeUndefined();
+    expect(changelogData.android[0].version).toBe("1.16.0");
   });
   it("桌面那份叫「今日任务页」，不叫「今天页」（1.16.0 正式条目 + 以后攒的 beta）", () => {
     const beta = changelogData.beta as Partial<Record<"desktop", { highlights: { body: string }[] }>>;
@@ -273,12 +275,13 @@ describe.skipIf(!existsSync(PENDING))("验收单（待核与正式历史）", ()
     expect(pend.web.note).not.toContain("已于");
     expect(items("web").some((it) => it.id === "w-2609d-autopull")).toBe(false);
   });
-  it("Android原25项原样保留，不因Windows发布自动清空或核通过（10-30 手机焕新在前面新增5项）", () => {
+  it("Android原25项原样保留、不被核通过：10-30 随安卓1.16.0发布整块挪进正式历史（前面是手机焕新5项）", () => {
     const original = candidate("android-1.15.0-待核基线.json").android;
-    expect(pend.android.since).toBe(original.since);
-    expect(pendingItems("android").slice(-25)).toEqual(original.items);
-    expect(pendingItems("android")).toHaveLength(30);
-    expect(pendingItems("android").every((it) => !it.verified)).toBe(true);
+    const released = (archive["android|1.16.0"] as ReleaseChecks).checks!;
+    expect(released.slice(-25)).toEqual(original.items);
+    expect(released).toHaveLength(30);
+    expect(released.every((it) => !it.verified)).toBe(true);
+    expect(pendingItems("android")).toHaveLength(0);
   });
   it("未发布网页候选仍完整保留浏览器能力边界", () => {
     const candidates: ReviewCheck[] = candidate("web-1.15.1-未发布候选.json")["web|1.15.1"].checks;
